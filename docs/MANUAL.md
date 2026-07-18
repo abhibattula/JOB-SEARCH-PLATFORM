@@ -48,9 +48,14 @@ copy .env.example .env
 ### Start the app
 
 ```powershell
-.venv\Scripts\Activate.ps1            # if not already activated
-python app.py
+.\run.bat        # or double-click run.bat in Explorer
 ```
+
+`run.bat` always uses the project's `.venv`, so it works from any shell with
+no activation. The equivalent manual form is
+`.venv\Scripts\python.exe app.py` — but plain `python app.py` with the
+*system* Python will fail with `ModuleNotFoundError: No module named 'fitz'`
+because the dependencies are installed only in the venv.
 
 Open **http://127.0.0.1:8000** in your browser. That's it.
 
@@ -76,9 +81,12 @@ python cli.py load-sponsorship
 ### Run without the browser (headless)
 
 ```powershell
-python cli.py refresh           # full pipeline, prints per-source counts
-python cli.py refresh --force   # ignore the 30-minute cooldown
+.\jobs.bat refresh              # full pipeline, prints per-source counts
+.\jobs.bat refresh --force      # ignore the 30-minute cooldown
+.\jobs.bat load-sponsorship     # load USCIS/DOL files from data\
 ```
+
+(`jobs.bat` is the venv-safe wrapper around `cli.py`.)
 
 Useful for Windows Task Scheduler; alternatively set `SCHEDULE_REFRESH=1` in
 `.env` and the app refreshes itself nightly at 07:00 while running.

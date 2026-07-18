@@ -5,7 +5,8 @@ This is the daily-use manual. For first-time setup, follow
 
 ## The daily loop
 
-1. Run `python app.py` (or keep it running) and open **http://127.0.0.1:8000**.
+1. Run `.\run.bat` (or double-click it; keeps the app running) and open
+   **http://127.0.0.1:8000**.
 2. The feed shows instantly from the local database. A background refresh
    starts automatically — unless one ran in the last 30 minutes — and new jobs
    stream into the list with a green **new** flag. No reload needed.

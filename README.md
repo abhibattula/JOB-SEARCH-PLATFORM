@@ -31,11 +31,15 @@ entirely on your machine for $0.
 
 ```powershell
 python -m venv .venv
-.venv\Scripts\Activate.ps1
-pip install -r requirements.txt
+.venv\Scripts\python.exe -m pip install -r requirements.txt
 copy .env.example .env        # add your free Groq key to unlock scoring
-python app.py                 # -> http://127.0.0.1:8000
+.\run.bat                     # -> http://127.0.0.1:8000
 ```
+
+`run.bat` (double-clickable) always uses the project's virtual environment —
+no activation needed. `jobs.bat refresh` / `jobs.bat load-sponsorship` do the
+same for the headless commands. (Running `python app.py` with your *system*
+Python fails with `ModuleNotFoundError` — the dependencies live in `.venv`.)
 
 Full setup (sponsorship data download, seed-list management, smoke tests):
 **[specs/001-ai-job-engine/quickstart.md](specs/001-ai-job-engine/quickstart.md)**
