@@ -1,0 +1,509 @@
+"""SQLite persistence: schema, upserts with dedup, feed queries, refresh runs.
+
+All timestamps are stored as UTC strings. Connections are opened per call so the
+background refresh thread and web request threads never share one. WAL mode
+requires the database to live on a local disk.
+"""
+from __future__ import annotations
+
+import hashlib
+import json
+import os
+import re
+import sqlite3
+from contextlib import contextmanager
+from datetime import datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any, Iterator, Mapping
+
+COOLDOWN_MINUTES = 30
+STALE_RUN_MINUTES = 30
+VALID_STATUSES = {"none", "saved", "applied", "hidden"}
+DEFAULT_FEED_STATUSES = ("none", "saved")
+
+_SCHEMA = """
+CREATE TABLE IF NOT EXISTS companies (
+    id INTEGER PRIMARY KEY,
+    name TEXT UNIQUE NOT NULL,
+    normalized_name TEXT,
+    ats_type TEXT,
+    ats_slug TEXT,
+    h1b_approvals INTEGER DEFAULT 0,
+    lca_titles TEXT,
+    sponsor_score TEXT DEFAULT 'UNKNOWN',
+    sponsor_checked INTEGER DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS idx_companies_norm ON companies(normalized_name);
+
+CREATE TABLE IF NOT EXISTS jobs (
+    id INTEGER PRIMARY KEY,
+    company_id INTEGER NOT NULL REFERENCES companies(id),
+    title TEXT NOT NULL,
+    location TEXT,
+    is_remote INTEGER DEFAULT 0,
+    description TEXT,
+    url TEXT UNIQUE NOT NULL,
+    dedup_key TEXT,
+    source TEXT NOT NULL,
+    posted_date TEXT,
+    first_seen TEXT NOT NULL,
+    is_entry_level INTEGER,
+    sponsorship TEXT DEFAULT 'UNKNOWN',
+    sponsorship_evidence TEXT,
+    match_score REAL,
+    match_json TEXT,
+    status TEXT DEFAULT 'none'
+);
+CREATE INDEX IF NOT EXISTS idx_jobs_posted ON jobs(posted_date);
+CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
+CREATE INDEX IF NOT EXISTS idx_jobs_entry ON jobs(is_entry_level, sponsorship);
+CREATE INDEX IF NOT EXISTS idx_jobs_dedup ON jobs(dedup_key);
+
+CREATE TABLE IF NOT EXISTS user_profile (
+    id INTEGER PRIMARY KEY,
+    resume_text TEXT,
+    resume_filename TEXT,
+    skills TEXT,
+    target_locations TEXT,
+    preferences TEXT,
+    updated_at TEXT
+);
+
+CREATE TABLE IF NOT EXISTS refresh_runs (
+    id INTEGER PRIMARY KEY,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    trigger TEXT,
+    source_status TEXT DEFAULT '{}'
+);
+
+CREATE TABLE IF NOT EXISTS h1b_employers (
+    normalized_name TEXT PRIMARY KEY,
+    display_name TEXT,
+    approvals INTEGER DEFAULT 0,
+    lca_titles TEXT
+);
+"""
+
+
+def get_db_path() -> Path:
+    return Path(os.environ.get("JOBS_DB_PATH", "data/jobs.db"))
+
+
+def _utcnow() -> str:
+    now = datetime.now(timezone.utc)
+    return now.strftime("%Y-%m-%d %H:%M:%S.") + f"{now.microsecond // 1000:03d}"
+
+
+def _parse_ts(value: str) -> datetime:
+    parsed = datetime.fromisoformat(value)
+    if parsed.tzinfo is None:
+        parsed = parsed.replace(tzinfo=timezone.utc)
+    return parsed
+
+
+@contextmanager
+def _conn() -> Iterator[sqlite3.Connection]:
+    path = get_db_path()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    conn = sqlite3.connect(path, timeout=30)
+    conn.row_factory = sqlite3.Row
+    conn.execute("PRAGMA journal_mode=WAL")
+    conn.execute("PRAGMA foreign_keys=ON")
+    try:
+        yield conn
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+def init_db() -> None:
+    with _conn() as conn:
+        conn.executescript(_SCHEMA)
+
+
+def normalize_company(name: str) -> str:
+    cleaned = re.sub(r"[^\w\s]", " ", (name or "").casefold())
+    words = cleaned.split()
+    suffixes = {"inc", "incorporated", "llc", "corp", "corporation", "ltd",
+                "limited", "co", "company", "plc", "lp", "llp"}
+    while words and words[-1] in suffixes:
+        words.pop()
+    return " ".join(words)
+
+
+def _dedup_key(company: str, title: str, location: str | None) -> str:
+    basis = "|".join(
+        re.sub(r"\s+", " ", (part or "").casefold().strip())
+        for part in (normalize_company(company), title, location or "")
+    )
+    return hashlib.sha1(basis.encode("utf-8")).hexdigest()
+
+
+def _get_or_create_company(
+    conn: sqlite3.Connection,
+    name: str,
+    ats_type: str | None = None,
+    ats_slug: str | None = None,
+) -> int:
+    row = conn.execute("SELECT id FROM companies WHERE name = ?", (name,)).fetchone()
+    if row:
+        return row["id"]
+    cur = conn.execute(
+        "INSERT INTO companies (name, normalized_name, ats_type, ats_slug)"
+        " VALUES (?, ?, ?, ?)",
+        (name, normalize_company(name), ats_type, ats_slug),
+    )
+    return cur.lastrowid
+
+
+def upsert_job(job: Mapping[str, Any]) -> str:
+    """Insert or refresh one job. Returns 'inserted' | 'updated' | 'skipped'.
+
+    Updates never touch first_seen, status, classification, or match results.
+    A job whose (company, title, location) already exists via a *different*
+    source is treated as a cross-source duplicate and skipped.
+    """
+    url = job["url"]
+    dedup = _dedup_key(job["company"], job["title"], job.get("location"))
+    with _conn() as conn:
+        existing = conn.execute("SELECT * FROM jobs WHERE url = ?", (url,)).fetchone()
+        if existing:
+            new_posted = job.get("posted_date")
+            posted = existing["posted_date"]
+            if new_posted and (posted is None or new_posted > posted):
+                posted = new_posted
+            conn.execute(
+                "UPDATE jobs SET title=?, location=?, is_remote=?,"
+                " description=COALESCE(NULLIF(?, ''), description), posted_date=?"
+                " WHERE id=?",
+                (
+                    job["title"],
+                    job.get("location"),
+                    1 if job.get("is_remote") else 0,
+                    job.get("description") or "",
+                    posted,
+                    existing["id"],
+                ),
+            )
+            return "updated"
+        duplicate = conn.execute(
+            "SELECT id FROM jobs WHERE dedup_key = ? AND source != ?",
+            (dedup, job["source"]),
+        ).fetchone()
+        if duplicate:
+            return "skipped"
+        company_id = _get_or_create_company(
+            conn, job["company"], job.get("company_ats_type"), job.get("company_ats_slug")
+        )
+        conn.execute(
+            "INSERT INTO jobs (company_id, title, location, is_remote, description,"
+            " url, dedup_key, source, posted_date, first_seen)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            (
+                company_id,
+                job["title"],
+                job.get("location"),
+                1 if job.get("is_remote") else 0,
+                job.get("description") or "",
+                url,
+                dedup,
+                job["source"],
+                job.get("posted_date"),
+                _utcnow(),
+            ),
+        )
+        return "inserted"
+
+
+_JOB_COLUMNS = (
+    "j.id, j.title, j.location, j.is_remote, j.url, j.source, j.posted_date,"
+    " j.first_seen, j.is_entry_level, j.sponsorship, j.match_score, j.status,"
+    " c.name AS company"
+)
+
+
+def _row_to_job(row: sqlite3.Row, latest_start: str | None) -> dict:
+    job = dict(row)
+    job["is_remote"] = bool(job.get("is_remote"))
+    if latest_start is not None and job.get("first_seen"):
+        job["is_new"] = _parse_ts(job["first_seen"]) >= _parse_ts(latest_start)
+    else:
+        job["is_new"] = False
+    return job
+
+
+def query_jobs(
+    window: str | None = "7d",
+    statuses: list[str] | tuple[str, ...] | None = DEFAULT_FEED_STATUSES,
+    entry_level: bool | None = None,
+    location: str | None = None,
+    remote: bool | None = None,
+    sort: str = "score",
+    limit: int = 100,
+    offset: int = 0,
+) -> tuple[list[dict], int]:
+    where, params = [], []
+    if window in ("7d", "24h"):
+        days = 7 if window == "7d" else 1
+        where.append(
+            "date(COALESCE(j.posted_date, j.first_seen)) >= date('now', ?)"
+        )
+        params.append(f"-{days} days")
+    if statuses:
+        placeholders = ",".join("?" for _ in statuses)
+        where.append(f"j.status IN ({placeholders})")
+        params.extend(statuses)
+    if entry_level is True:
+        where.append("j.is_entry_level = 1")
+    elif entry_level is False:
+        where.append("(j.is_entry_level = 0 OR j.is_entry_level IS NULL)")
+    if location:
+        where.append("j.location LIKE ?")
+        params.append(f"%{location}%")
+    if remote:
+        where.append("j.is_remote = 1")
+    clause = f" WHERE {' AND '.join(where)}" if where else ""
+    order = (
+        " ORDER BY j.match_score IS NULL, j.match_score DESC,"
+        " COALESCE(j.posted_date, j.first_seen) DESC"
+        if sort == "score"
+        else " ORDER BY COALESCE(j.posted_date, j.first_seen) DESC"
+    )
+    with _conn() as conn:
+        latest = conn.execute(
+            "SELECT started_at FROM refresh_runs ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        latest_start = latest["started_at"] if latest else None
+        total = conn.execute(
+            f"SELECT COUNT(*) AS n FROM jobs j JOIN companies c ON j.company_id = c.id{clause}",
+            params,
+        ).fetchone()["n"]
+        rows = conn.execute(
+            f"SELECT {_JOB_COLUMNS} FROM jobs j JOIN companies c ON j.company_id = c.id"
+            f"{clause}{order} LIMIT ? OFFSET ?",
+            [*params, limit, offset],
+        ).fetchall()
+    return [_row_to_job(row, latest_start) for row in rows], total
+
+
+def get_job(job_id: int) -> dict | None:
+    with _conn() as conn:
+        latest = conn.execute(
+            "SELECT started_at FROM refresh_runs ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        row = conn.execute(
+            "SELECT j.*, c.name AS company, c.h1b_approvals, c.sponsor_score"
+            " FROM jobs j JOIN companies c ON j.company_id = c.id WHERE j.id = ?",
+            (job_id,),
+        ).fetchone()
+    if row is None:
+        return None
+    return _row_to_job(row, latest["started_at"] if latest else None)
+
+
+def set_status(job_id: int, status: str) -> None:
+    if status not in VALID_STATUSES:
+        raise ValueError(f"invalid status {status!r}")
+    with _conn() as conn:
+        cur = conn.execute("UPDATE jobs SET status = ? WHERE id = ?", (status, job_id))
+        if cur.rowcount == 0:
+            raise KeyError(f"no job with id {job_id}")
+
+
+def set_match(job_id: int, score: float | None, match_json: str | None) -> None:
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE jobs SET match_score = ?, match_json = ? WHERE id = ?",
+            (score, match_json, job_id),
+        )
+
+
+def set_classification(
+    job_id: int, is_entry_level: bool, sponsorship: str, evidence: dict | None
+) -> None:
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE jobs SET is_entry_level = ?, sponsorship = ?,"
+            " sponsorship_evidence = ? WHERE id = ?",
+            (
+                1 if is_entry_level else 0,
+                sponsorship,
+                json.dumps(evidence) if evidence else None,
+                job_id,
+            ),
+        )
+
+
+def jobs_needing_classification() -> list[dict]:
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT j.id, j.title, j.description, c.name AS company, c.id AS company_id"
+            " FROM jobs j JOIN companies c ON j.company_id = c.id"
+            " WHERE j.is_entry_level IS NULL"
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def jobs_needing_score(limit: int = 150) -> list[dict]:
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT j.id, j.title, j.description, c.name AS company"
+            " FROM jobs j JOIN companies c ON j.company_id = c.id"
+            " WHERE j.is_entry_level = 1 AND j.match_score IS NULL"
+            " AND j.status NOT IN ('applied', 'hidden')"
+            " ORDER BY COALESCE(j.posted_date, j.first_seen) DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def get_company_by_name(name: str) -> dict | None:
+    with _conn() as conn:
+        row = conn.execute("SELECT * FROM companies WHERE name = ?", (name,)).fetchone()
+    return dict(row) if row else None
+
+
+# --- refresh runs -----------------------------------------------------------
+
+
+def start_run(trigger: str, force: bool = False) -> int | None:
+    """Begin a refresh run. Returns run id, or None when blocked.
+
+    Blocked when another run is active (always) or when the last run finished
+    within the cooldown (unless force). An unfinished run older than
+    STALE_RUN_MINUTES is treated as crashed and superseded.
+    """
+    now = datetime.now(timezone.utc)
+    superseded_id = -1
+    with _conn() as conn:
+        active = conn.execute(
+            "SELECT id, started_at FROM refresh_runs WHERE finished_at IS NULL"
+            " ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+        if active:
+            age = now - _parse_ts(active["started_at"])
+            if age < timedelta(minutes=STALE_RUN_MINUTES):
+                return None
+            superseded_id = active["id"]
+            conn.execute(
+                "UPDATE refresh_runs SET finished_at = ? WHERE id = ?",
+                (_utcnow(), active["id"]),
+            )
+        if not force:
+            last = conn.execute(
+                "SELECT finished_at FROM refresh_runs WHERE finished_at IS NOT NULL"
+                " AND id != ? ORDER BY id DESC LIMIT 1",
+                (superseded_id,),
+            ).fetchone()
+            if last and now - _parse_ts(last["finished_at"]) < timedelta(
+                minutes=COOLDOWN_MINUTES
+            ):
+                return None
+        cur = conn.execute(
+            "INSERT INTO refresh_runs (started_at, trigger) VALUES (?, ?)",
+            (_utcnow(), trigger),
+        )
+        return cur.lastrowid
+
+
+def update_run_source(run_id: int, source: str, **fields: Any) -> None:
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT source_status FROM refresh_runs WHERE id = ?", (run_id,)
+        ).fetchone()
+        if row is None:
+            return
+        status = json.loads(row["source_status"] or "{}")
+        status.setdefault(source, {}).update(fields)
+        conn.execute(
+            "UPDATE refresh_runs SET source_status = ? WHERE id = ?",
+            (json.dumps(status), run_id),
+        )
+
+
+def finish_run(run_id: int) -> None:
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE refresh_runs SET finished_at = ? WHERE id = ?",
+            (_utcnow(), run_id),
+        )
+
+
+def get_run_status() -> dict:
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT * FROM refresh_runs ORDER BY id DESC LIMIT 1"
+        ).fetchone()
+    if row is None:
+        return {"active": False, "run_id": None, "sources": {}}
+    return {
+        "active": row["finished_at"] is None,
+        "run_id": row["id"],
+        "started_at": row["started_at"],
+        "finished_at": row["finished_at"],
+        "trigger": row["trigger"],
+        "sources": json.loads(row["source_status"] or "{}"),
+    }
+
+
+def _force_run_started_at(run_id: int, started_at: str) -> None:
+    """Test helper: backdate a run's start time."""
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE refresh_runs SET started_at = ? WHERE id = ?", (started_at, run_id)
+        )
+
+
+# --- user profile -----------------------------------------------------------
+
+_PROFILE_JSON_FIELDS = ("skills", "target_locations", "preferences")
+
+
+def get_profile() -> dict | None:
+    with _conn() as conn:
+        row = conn.execute("SELECT * FROM user_profile WHERE id = 1").fetchone()
+    if row is None:
+        return None
+    profile = dict(row)
+    for field in _PROFILE_JSON_FIELDS:
+        profile[field] = json.loads(profile[field]) if profile[field] else []
+    if not isinstance(profile["preferences"], dict):
+        profile["preferences"] = {}
+    return profile
+
+
+def save_profile(**fields: Any) -> None:
+    """Create or partially update the single profile row (id=1)."""
+    with _conn() as conn:
+        existing = conn.execute(
+            "SELECT * FROM user_profile WHERE id = 1"
+        ).fetchone()
+        current = dict(existing) if existing else {
+            "resume_text": None, "resume_filename": None, "skills": None,
+            "target_locations": None, "preferences": None,
+        }
+        for key, value in fields.items():
+            if key in _PROFILE_JSON_FIELDS and value is not None:
+                value = json.dumps(value)
+            current[key] = value
+        conn.execute(
+            "INSERT INTO user_profile (id, resume_text, resume_filename, skills,"
+            " target_locations, preferences, updated_at)"
+            " VALUES (1, ?, ?, ?, ?, ?, ?)"
+            " ON CONFLICT(id) DO UPDATE SET resume_text=excluded.resume_text,"
+            " resume_filename=excluded.resume_filename, skills=excluded.skills,"
+            " target_locations=excluded.target_locations,"
+            " preferences=excluded.preferences, updated_at=excluded.updated_at",
+            (
+                current["resume_text"],
+                current["resume_filename"],
+                current["skills"],
+                current["target_locations"],
+                current["preferences"],
+                _utcnow(),
+            ),
+        )

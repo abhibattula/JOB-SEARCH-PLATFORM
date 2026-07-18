@@ -1,0 +1,16 @@
+fastapi
+uvicorn[standard]
+jinja2
+python-multipart
+httpx
+python-jobspy
+PyMuPDF
+rapidfuzz
+pydantic
+PyYAML
+python-dotenv
+openai
+pandas
+openpyxl
+apscheduler
+pytest

@@ -1,0 +1,68 @@
+# Seed list of monitored companies — every entry below validated live on 2026-07-18
+# via `python scripts/check_seeds.py`.
+#
+# ats: greenhouse | lever | ashby | workday
+#   greenhouse/lever/ashby: `slug` is the public board identifier
+#   workday: `host` + `site` (+ optional `search`)
+#
+# NOTE on Workday (NVIDIA/AMD/Qualcomm/Micron/TI...): as of 2026-07 Workday career
+# sites sit behind Cloudflare fingerprinting that blocks plain HTTP clients, so no
+# Workday entries ship by default (Constitution III: no bot-protection fights).
+# The workday source module exists and works if that changes — add entries here.
+# Hardware-employer postings still arrive via the jobspy/Indeed source.
+
+companies:
+  # ---- Greenhouse (SWE) ----
+  - {name: Stripe, ats: greenhouse, slug: stripe}
+  - {name: Databricks, ats: greenhouse, slug: databricks}
+  - {name: Cloudflare, ats: greenhouse, slug: cloudflare}
+  - {name: Coinbase, ats: greenhouse, slug: coinbase}
+  - {name: Robinhood, ats: greenhouse, slug: robinhood}
+  - {name: Brex, ats: greenhouse, slug: brex}
+  - {name: Figma, ats: greenhouse, slug: figma}
+  - {name: Duolingo, ats: greenhouse, slug: duolingo}
+  - {name: Samsara, ats: greenhouse, slug: samsara}
+  - {name: Gusto, ats: greenhouse, slug: gusto}
+  - {name: Affirm, ats: greenhouse, slug: affirm}
+  - {name: Airtable, ats: greenhouse, slug: airtable}
+  - {name: Asana, ats: greenhouse, slug: asana}
+  - {name: Dropbox, ats: greenhouse, slug: dropbox}
+  - {name: Pinterest, ats: greenhouse, slug: pinterest}
+  - {name: Reddit, ats: greenhouse, slug: reddit}
+  - {name: Lyft, ats: greenhouse, slug: lyft}
+  - {name: Instacart, ats: greenhouse, slug: instacart}
+  - {name: DoorDash, ats: greenhouse, slug: doordashusa}
+  - {name: Anthropic, ats: greenhouse, slug: anthropic}
+  - {name: Scale AI, ats: greenhouse, slug: scaleai}
+  - {name: MongoDB, ats: greenhouse, slug: mongodb}
+  - {name: Datadog, ats: greenhouse, slug: datadog}
+  - {name: Twilio, ats: greenhouse, slug: twilio}
+  - {name: Okta, ats: greenhouse, slug: okta}
+  - {name: Attentive, ats: greenhouse, slug: attentive}
+
+  # ---- Greenhouse (hardware / defense / robotics) ----
+  - {name: SpaceX, ats: greenhouse, slug: spacex}
+  - {name: Anduril, ats: greenhouse, slug: andurilindustries}
+  - {name: Nuro, ats: greenhouse, slug: nuro}
+  - {name: Relativity Space, ats: greenhouse, slug: relativity}
+  - {name: Astranis, ats: greenhouse, slug: astranis}
+  - {name: Waymo, ats: greenhouse, slug: waymo}
+
+  # ---- Lever ----
+  - {name: Palantir, ats: lever, slug: palantir}
+  - {name: Shield AI, ats: lever, slug: shieldai}
+  - {name: Zoox, ats: lever, slug: zoox}
+
+  # ---- Ashby ----
+  - {name: OpenAI, ats: ashby, slug: openai}
+  - {name: Linear, ats: ashby, slug: linear}
+  - {name: Replit, ats: ashby, slug: replit}
+  - {name: Cursor, ats: ashby, slug: cursor}
+  - {name: Notion, ats: ashby, slug: notion}
+  - {name: Ramp, ats: ashby, slug: ramp}
+  - {name: Supabase, ats: ashby, slug: supabase}
+  - {name: Modal, ats: ashby, slug: modal}
+  - {name: Perplexity, ats: ashby, slug: perplexity}
+  - {name: ElevenLabs, ats: ashby, slug: elevenlabs}
+  - {name: Sierra, ats: ashby, slug: sierra}
+  - {name: Plaid, ats: ashby, slug: plaid}

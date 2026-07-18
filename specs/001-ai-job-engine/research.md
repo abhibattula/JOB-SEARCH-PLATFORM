@@ -36,6 +36,14 @@ markers remain.
   arms race (Constitution III). Workday covers the big hardware employers
   (NVIDIA, AMD, Qualcomm, Micron, TI, Marvell) central to the user's target
   roles.
+- **Implementation finding (2026-07-18)**: Workday career sites now sit behind
+  Cloudflare TLS fingerprinting — the CxS endpoint returns the SPA HTML shell
+  to any plain HTTP client (verified with primed cookies, browser UA, and full
+  Origin/Referer/XHR headers). Per Constitution III we do not escalate to TLS
+  impersonation. The workday source module ships fully implemented and
+  fixture-tested, but no Workday entries are seeded by default; big-hardware
+  coverage flows through jobspy/Indeed searches instead. Revisit if Workday's
+  posture changes.
 - **Alternatives considered**: Playwright/Scrapy scraping of Wellfound, Dice,
   Google Jobs (rejected for v1 — DataDome/anti-bot fights, high maintenance);
   GitHub Jobs API and StackOverflow Jobs (rejected — services shut down in

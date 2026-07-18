@@ -1,0 +1,27 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>{% block title %}{{ title | default("Job Engine") }}{% endblock %}</title>
+  <link rel="stylesheet" href="/static/styles.css">
+  <script src="/static/htmx.min.js" defer></script>
+</head>
+<body>
+  <header class="topbar">
+    <a class="brand" href="/">Job&nbsp;Engine</a>
+    <nav>
+      <a href="/">Feed</a>
+      <a href="/?status=saved">Saved</a>
+      <a href="/?status=applied">Applied</a>
+      <a href="/?status=hidden">Hidden</a>
+      <a href="/profile">Profile</a>
+    </nav>
+  </header>
+  <main>
+    {% block content %}
+    <p class="empty-state">The engine is running. The feed arrives with US1.</p>
+    {% endblock %}
+  </main>
+</body>
+</html>

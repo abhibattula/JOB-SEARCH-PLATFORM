@@ -20,9 +20,9 @@ independently testable increment.
 
 **Purpose**: Project skeleton and static assets
 
-- [ ] T001 Create project skeleton per plan.md: `engine/` + `engine/ingest/` + `web/templates/partials/` + `web/static/` + `tests/fixtures/` dirs with `__init__.py` files; `.gitignore` (data/, .env, .venv, __pycache__); `requirements.txt` (fastapi, uvicorn[standard], jinja2, python-multipart, httpx, python-jobspy, PyMuPDF, rapidfuzz, pydantic, PyYAML, python-dotenv, openai, pandas, openpyxl, pytest); `.env.example` (LLM_BASE_URL, LLM_MODEL, LLM_API_KEY, JOBS_DB_PATH, JOBSPY_LINKEDIN, SCHEDULE_REFRESH)
-- [ ] T002 [P] Vendor `web/static/htmx.min.js` and create minimal `web/static/styles.css`
-- [ ] T003 [P] Create `companies.yml` seed list: ~50 SWE companies (from SimplifyJobs/New-Grad-Positions list) + ~25 hardware employers (NVIDIA, AMD, Qualcomm, Micron, TI, Marvell, Analog Devices…) with `ats` type and slug; Workday entries carry `tenant` + `site`. Include a throwaway validation script (`scripts/check_seeds.py`) that hits each board endpoint once and reports slugs returning errors/empty — wrong slugs silently produce zero jobs
+- [x] T001 Create project skeleton per plan.md: `engine/` + `engine/ingest/` + `web/templates/partials/` + `web/static/` + `tests/fixtures/` dirs with `__init__.py` files; `.gitignore` (data/, .env, .venv, __pycache__); `requirements.txt` (fastapi, uvicorn[standard], jinja2, python-multipart, httpx, python-jobspy, PyMuPDF, rapidfuzz, pydantic, PyYAML, python-dotenv, openai, pandas, openpyxl, pytest); `.env.example` (LLM_BASE_URL, LLM_MODEL, LLM_API_KEY, JOBS_DB_PATH, JOBSPY_LINKEDIN, SCHEDULE_REFRESH)
+- [x] T002 [P] Vendor `web/static/htmx.min.js` and create minimal `web/static/styles.css`
+- [x] T003 [P] Create `companies.yml` seed list: ~50 SWE companies (from SimplifyJobs/New-Grad-Positions list) + ~25 hardware employers (NVIDIA, AMD, Qualcomm, Micron, TI, Marvell, Analog Devices…) with `ats` type and slug; Workday entries carry `tenant` + `site`. Include a throwaway validation script (`scripts/check_seeds.py`) that hits each board endpoint once and reports slugs returning errors/empty — wrong slugs silently produce zero jobs
 
 ## Phase 2: Foundational (Blocking Prerequisites)
 
@@ -30,10 +30,10 @@ independently testable increment.
 
 **⚠️ CRITICAL**: No user story work can begin until this phase is complete
 
-- [ ] T004 [P] Write failing tests in `tests/test_db.py`: idempotent schema init; upsert dedup by `url` and by `dedup_key`; `first_seen`/`status`/`match_score` preserved on re-upsert; recency queries (7d/24h windows using `COALESCE(posted_date, first_seen)`); status transitions
-- [ ] T005 Implement `engine/db.py` to pass T004: 4 tables + indexes per data-model.md, WAL mode, `JOBS_DB_PATH` env override, `upsert_job` (creates the `companies` row on the fly with `ats_type NULL` for non-seed companies from HN/jobspy), feed query with all contract filters, `refresh_runs` helpers (cooldown lookup, stale-run supersede), status update. Connections are per-call/thread-safe (background refresh writes while web reads); all timestamps stored as UTC ISO strings
-- [ ] T006 Implement `engine/ingest/base.py`: `RawJob` dataclass (title, company, location, remote, description, url, posted_date, source), Source protocol, polite httpx helper (≤1 req/s/domain, timeout, single retry), and source registry in `engine/ingest/__init__.py`
-- [ ] T007 Implement `web/main.py` FastAPI app factory + `web/templates/base.html` + `app.py` uvicorn entrypoint serving a shell page at GET /
+- [x] T004 [P] Write failing tests in `tests/test_db.py`: idempotent schema init; upsert dedup by `url` and by `dedup_key`; `first_seen`/`status`/`match_score` preserved on re-upsert; recency queries (7d/24h windows using `COALESCE(posted_date, first_seen)`); status transitions
+- [x] T005 Implement `engine/db.py` to pass T004: 4 tables + indexes per data-model.md, WAL mode, `JOBS_DB_PATH` env override, `upsert_job` (creates the `companies` row on the fly with `ats_type NULL` for non-seed companies from HN/jobspy), feed query with all contract filters, `refresh_runs` helpers (cooldown lookup, stale-run supersede), status update. Connections are per-call/thread-safe (background refresh writes while web reads); all timestamps stored as UTC ISO strings
+- [x] T006 Implement `engine/ingest/base.py`: `RawJob` dataclass (title, company, location, remote, description, url, posted_date, source), Source protocol, polite httpx helper (≤1 req/s/domain, timeout, single retry), and source registry in `engine/ingest/__init__.py`
+- [x] T007 Implement `web/main.py` FastAPI app factory + `web/templates/base.html` + `app.py` uvicorn entrypoint serving a shell page at GET /
 
 **Checkpoint**: `pytest tests/test_db.py` green; `python app.py` serves a page
 
