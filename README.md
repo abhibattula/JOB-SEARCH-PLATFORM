@@ -40,6 +40,8 @@ python app.py                 # -> http://127.0.0.1:8000
 Full setup (sponsorship data download, seed-list management, smoke tests):
 **[specs/001-ai-job-engine/quickstart.md](specs/001-ai-job-engine/quickstart.md)**
 · Daily usage: **[docs/USER_GUIDE.md](docs/USER_GUIDE.md)**
+· Complete manual (how everything works and connects):
+**[docs/MANUAL.md](docs/MANUAL.md)**
 
 ## Architecture (30 seconds)
 
