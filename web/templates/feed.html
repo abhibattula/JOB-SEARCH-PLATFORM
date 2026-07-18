@@ -34,6 +34,7 @@
           hx-on::after-request="htmx.trigger('#feed-region','refresh-feed')">
     Refresh now
   </button>
+  <a class="export-link data" href="/api/export?{{ query_string }}" title="Download the current view as CSV">CSV ↓</a>
 </form>
 
 <div id="feed-region"

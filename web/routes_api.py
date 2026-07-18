@@ -135,6 +135,40 @@ async def set_job_status(job_id: int, request: Request, status: str | None = Non
     return job_summary(db.get_job(job_id))
 
 
+@router.get("/export")
+def export_csv(
+    window: str = "7d",
+    status: str | None = None,
+    location: str | None = None,
+    remote: int = 0,
+    sort: str = "score",
+    entry_level: str | None = None,
+):
+    import csv
+    import io
+
+    from fastapi.responses import Response
+
+    params = parse_feed_params(
+        window, status, location, remote, sort, entry_level, limit=500
+    )
+    jobs, _ = db.query_jobs(**params)
+    buffer = io.StringIO()
+    fields = [
+        "title", "company", "location", "is_remote", "posted_date", "source",
+        "sponsorship", "match_score", "status", "url",
+    ]
+    writer = csv.DictWriter(buffer, fieldnames=fields, extrasaction="ignore")
+    writer.writeheader()
+    for job in jobs:
+        writer.writerow(job_summary(job))
+    return Response(
+        buffer.getvalue(),
+        media_type="text/csv",
+        headers={"Content-Disposition": "attachment; filename=jobs.csv"},
+    )
+
+
 def _profile_payload() -> dict:
     profile = db.get_profile() or {}
     return {

@@ -1,8 +1,10 @@
 # Data Model: Personalized AI Job Engine
 
-SQLite database at `data/jobs.db` (override via `JOBS_DB_PATH`). Schema created
-idempotently by `engine/db.py` on startup; WAL mode enabled (concurrent web reads
-during background refresh writes).
+SQLite database at `data/jobs.db` (override via `JOBS_DB_PATH`; must be a local
+disk — WAL does not work on network filesystems). Schema created idempotently by
+`engine/db.py` on startup; WAL mode enabled (concurrent web reads during
+background refresh writes). All timestamps are UTC strings with millisecond
+precision (`YYYY-MM-DD HH:MM:SS.mmm`).
 
 ## Tables
 
@@ -18,6 +20,7 @@ during background refresh writes).
 | h1b_approvals | INTEGER | DEFAULT 0 | total approvals from USCIS Data Hub (recent FYs) |
 | lca_titles | TEXT | NULL | JSON array of job titles from DOL LCA disclosures |
 | sponsor_score | TEXT | DEFAULT 'UNKNOWN' | `HIGH` \| `MEDIUM` \| `UNKNOWN` (per-company; per-job rating may downgrade to EXCLUDED via JD text) |
+| sponsor_checked | INTEGER | DEFAULT 0 | set to 1 once matched against `h1b_employers` so repeated passes stay cheap |
 
 ### jobs
 
@@ -30,7 +33,7 @@ during background refresh writes).
 | is_remote | BOOLEAN | DEFAULT 0 | derived from location/remote flags |
 | description | TEXT | NULL | plain text (HTML stripped) |
 | url | TEXT | UNIQUE NOT NULL | apply/detail link |
-| dedup_key | TEXT | UNIQUE | sha1(normalized company \| title \| location) — cross-source dedup |
+| dedup_key | TEXT | INDEX (not UNIQUE) | sha1(normalized company \| title \| location); an insert is skipped only when the same key exists from a **different** source — the same role at two locations from one board stays two rows |
 | source | TEXT | NOT NULL | `greenhouse` \| `lever` \| `ashby` \| `workday` \| `hn` \| `jobspy` |
 | posted_date | TEXT (ISO date) | NULL | source-provided; may be absent |
 | first_seen | TEXT (ISO datetime) | NOT NULL DEFAULT now | set on insert, never updated |
@@ -62,6 +65,19 @@ Single row (id = 1) in v1; structure does not preclude more rows later.
 | target_locations | TEXT | JSON array — pre-populates the location filter only (never hard-excludes) |
 | preferences | TEXT | JSON object (future-proof bag: remote_only default, etc.) |
 | updated_at | TEXT | ISO datetime |
+
+### h1b_employers
+
+Aggregated public sponsorship records (USCIS Data Hub + DOL LCA), loaded by
+`cli.py load-sponsorship`; the join source for company matching so companies
+discovered after the load (HN/jobspy) can still be matched.
+
+| Column | Type | Notes |
+|---|---|---|
+| normalized_name | TEXT PRIMARY KEY | casefolded, legal suffixes stripped |
+| display_name | TEXT | original USCIS employer name |
+| approvals | INTEGER | summed initial + continuing approvals |
+| lca_titles | TEXT | JSON array of engineering titles from DOL LCA |
 
 ### refresh_runs
 

@@ -139,6 +139,19 @@ class TestProfileApi:
         assert response.status_code == 422
 
 
+class TestExportApi:
+    def test_csv_of_current_filter(self, client):
+        seed_job(url="https://example.com/1", title="Export Me")
+        seed_job(url="https://example.com/2", title="Austin Job", location="Austin, TX")
+        response = client.get("/api/export", params={"location": "Austin"})
+        assert response.status_code == 200
+        assert "text/csv" in response.headers["content-type"]
+        assert "attachment" in response.headers.get("content-disposition", "")
+        body = response.text
+        assert "Austin Job" in body
+        assert "Export Me" not in body  # filter respected
+
+
 class TestRefreshApi:
     def test_start_then_cooldown_then_force(self, client):
         first = client.post("/api/refresh")

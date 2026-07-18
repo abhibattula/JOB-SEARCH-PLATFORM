@@ -24,6 +24,9 @@ copy .env.example .env
 
 1. Download the latest employer CSV from the USCIS H-1B Employer Data Hub
    (uscis.gov → Reports and Studies → H-1B Employer Data Hub) into `data/uscis/`.
+   Direct file URLs follow the pattern
+   `https://www.uscis.gov/sites/default/files/document/data/h1b_datahubexport-<year>.csv`
+   (2023 verified working; add every year you can fetch — approvals accumulate).
 2. Download the latest LCA disclosure file from the DOL performance data page
    into `data/dol/`.
 3. Load: `python cli.py load-sponsorship`
