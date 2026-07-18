@@ -48,16 +48,23 @@ copy .env.example .env
 ### Start the app
 
 ```powershell
-.\run.bat        # or double-click run.bat in Explorer
+.\run.bat          # Windows: opens the desktop window (double-clickable too)
+```
+```bash
+./run.sh           # macOS/Linux (first time: chmod +x run.sh run.command jobs.sh)
+                   # or double-click run.command in Finder
 ```
 
-`run.bat` always uses the project's `.venv`, so it works from any shell with
-no activation. The equivalent manual form is
-`.venv\Scripts\python.exe app.py` — but plain `python app.py` with the
-*system* Python will fail with `ModuleNotFoundError: No module named 'fitz'`
-because the dependencies are installed only in the venv.
+Both launchers run **`desktop.py`**: the web server starts inside the process
+and a native window opens onto it (Edge WebView2 on Windows, WKWebView on
+macOS). Closing the window shuts everything down. If no webview backend is
+available, the app opens your default browser instead and keeps serving until
+Ctrl+C. Server-only mode (no window — for scripts or future hosting):
+`.venv\Scripts\python.exe app.py` → http://127.0.0.1:8000.
 
-Open **http://127.0.0.1:8000** in your browser. That's it.
+All launchers always use the project's `.venv` — plain `python desktop.py`
+with the *system* Python fails with `ModuleNotFoundError` because the
+dependencies are installed only in the venv.
 
 - First ever open: the feed is empty and a refresh starts automatically —
   watch the channel strip fill in over a few minutes.
@@ -153,8 +160,9 @@ python app.py                # then in the browser:
                       │  pipeline.py  ── orchestrates a refresh ──┐  │
                       │      │                                    │  │
                       │      ▼                                    │  │
-                      │  ingest/  greenhouse lever ashby workday  │  │
-                      │           hn jobspy   (fetch RawJobs)     │  │
+                      │  ingest/  greenhouse lever ashby          │  │
+                      │           smartrecruiters workable        │  │
+                      │           workday hn jobspy (RawJobs)     │  │
                       │      │                                    │  │
                       │      ▼            after ingest:           │  │
                       │  db.py (SQLite) ◄─ filters.py (classify)◄─┘  │
@@ -213,10 +221,12 @@ faces over the same engine — anything the app can do, a script can do.
 | `ingest/greenhouse.py` | Greenhouse boards API (`boards-api.greenhouse.io`). Posting date = `first_published`. | `fetch_jobs(entries)` |
 | `ingest/lever.py` | Lever postings API (`api.lever.co`). Converts epoch-ms `createdAt` to a date. | `fetch_jobs(entries)` |
 | `ingest/ashby.py` | Ashby posting API (`api.ashbyhq.com`). Skips unlisted jobs. | `fetch_jobs(entries)` |
+| `ingest/smartrecruiters.py` | SmartRecruiters postings API, US-scoped (`country=us`); feeds the posting's experience-level label into the description so the classifier can use it. | `fetch_jobs(entries)` |
+| `ingest/workable.py` | Workable v3 jobs endpoint (POST — the v1 widget returns empty as of 2026-07). Title-based classification like Workday. | `fetch_jobs(entries)` |
 | `ingest/workday.py` | Workday CxS endpoint with pagination and relative-date parsing ("Posted 3 Days Ago"). Implemented + tested, but no default seeds — Workday blocks non-browser clients (Cloudflare) as of 2026-07. | `fetch_jobs(entries)`, `parse_posted_on` |
 | `ingest/hn.py` | Latest "Ask HN: Who is hiring?" thread via the Algolia API. Parses the conventional `Company \| Role \| Location` first line; each comment's own timestamp is the posting date. | `fetch_jobs([])` |
 | `ingest/jobspy_source.py` | Indeed (and optionally LinkedIn) via the python-jobspy library, searching entry-level SWE/hardware terms. Best-effort by design. | `fetch_jobs([])` |
-| `filters.py` | The two classifiers. Entry-level: seniority markers always lose, then entry markers / hardware families / description scan — and the title must be an engineering role at all. Sponsorship: negative phrases ("unable to sponsor", "citizens only", clearance) beat positive ones ("visa sponsorship", H-1B, OPT/CPT). | `classify_entry_level`, `scan_sponsorship`, `rate_sponsorship` |
+| `filters.py` | The two classifiers. Entry-level: seniority markers always lose, then entry markers / hardware families / description scan — and the title must be an engineering role at all. Eligibility: negative wording ("unable to sponsor", citizens-only, security clearance, ITAR/"U.S. person" — word-boundary regexes so "military" never matches ITAR) beats positive wording (visa sponsorship, H-1B, OPT/CPT) → EXCLUDED, which is hidden from all normal views and never scored. | `classify_entry_level`, `scan_sponsorship`, `rate_sponsorship` |
 | `sponsorship.py` | Loads USCIS CSVs (approval counts per employer) and DOL LCA files (job titles, filtered to engineering SOC codes), stores them, and joins company names to records with three-stage matching. | `load_all`, `match_employer`, `apply_to_companies` |
 | `matcher.py` | LLM calls through the OpenAI-compatible client (Groq by default — swap providers via `.env` only). Output must validate against the `MatchAnalysis` schema; one retry, then the job stays unscored. Throttled for free-tier limits. | `analyze_match`, `extract_skills`, `MatchAnalysis` |
 | `resume.py` | PDF → text with PyMuPDF. Raises `NoTextError` for scanned/garbage files. | `extract_text` |
@@ -239,7 +249,9 @@ faces over the same engine — anything the app can do, a script can do.
 
 | File | Responsibility |
 |---|---|
-| `app.py` | Entrypoint: loads `.env`, optionally starts the nightly scheduler, runs uvicorn. |
+| `desktop.py` | **The single-file desktop entrypoint**: starts the server in-process, opens the native window (pywebview), falls back to the browser, shuts down cleanly on close. |
+| `app.py` | Server-only entrypoint: loads `.env`, optionally starts the nightly scheduler, runs uvicorn. Also exports `maybe_start_scheduler` for desktop.py. |
+| `run.bat` / `run.sh` / `run.command` | Venv-safe desktop launchers (Windows / POSIX / macOS-double-click). `jobs.bat` / `jobs.sh` wrap the CLI. |
 | `cli.py` | `refresh` and `load-sponsorship` commands — the same engine, headless. |
 | `companies.yml` | The seed list of monitored boards (every entry live-validated). Add a company = add one line. |
 | `scripts/check_seeds.py` | Validates every seed entry against its live endpoint (wrong slugs otherwise fail silently as zero jobs). |
@@ -278,7 +290,7 @@ everything (next run rebuilds it, but statuses are lost).
 |---|---|
 | `POST /api/refresh` | Start a background refresh. Returns `{started: false, reason: "cooldown"/"running"}` when blocked; `?force=1` bypasses the cooldown (never the running lock). |
 | `GET /api/refresh/status` | Active flag + per-source `{state, found, added, error}`. |
-| `GET /api/jobs` | The feed as JSON. Params: `window=7d\|24h\|all`, `status`, `location`, `remote=1`, `entry_level=all`, `sort=score\|date`, `limit`, `offset`. |
+| `GET /api/jobs` | The feed as JSON. Params: `window=7d\|24h\|all`, `status`, `location`, `remote=1`, `entry_level=all`, `ineligible=1` (audit view of excluded jobs), `sort=score\|date`, `limit`, `offset`. EXCLUDED jobs are hidden unless `ineligible=1`. |
 | `GET /api/jobs/{id}` | Full job incl. description, sponsorship evidence, parsed match analysis. |
 | `POST /api/jobs/{id}/status` | Set `saved\|applied\|hidden\|none` (query param or JSON body). |
 | `GET /api/export` | The current filtered view as a CSV download. |
@@ -322,8 +334,10 @@ the app runs.
   are behind Cloudflare fingerprinting that rejects plain HTTP clients. This
   project's constitution forbids bot-protection fights, so those postings
   arrive via Indeed instead. The Workday module is ready if that changes.
-- **Why do I still see EXCLUDED jobs?** They're flagged, not hidden, per the
-  spec — one click on ✕ hides any of them permanently.
+- **Where did the EXCLUDED jobs go?** Since feature 002 they're hidden from
+  every normal view — as a sponsorship-seeking candidate you can't get roles
+  requiring clearance/citizenship/ITAR status, so they only appear under the
+  **Ineligible** tab (with the exact wording that triggered the exclusion).
 - **Why did a job reappear after I refreshed?** It shouldn't — statuses
   survive refreshes by design. If it looks that way, it's likely the same
   role posted at a second location (a separate row by design).

@@ -25,8 +25,11 @@ def _feed_context(
     remote: int = 0,
     sort: str = "score",
     entry_level: str | None = None,
+    ineligible: int = 0,
 ) -> dict:
-    params = parse_feed_params(window, status, location, remote, sort, entry_level)
+    params = parse_feed_params(
+        window, status, location, remote, sort, entry_level, ineligible=ineligible
+    )
     jobs, total = db.query_jobs(**params)
     run = db.get_run_status()
     profile = db.get_profile()
@@ -42,6 +45,7 @@ def _feed_context(
         "sort": sort,
         "has_profile": bool(profile and profile.get("resume_text")),
         "entry_level": entry_level or "",
+        "ineligible": bool(ineligible),
         "query_string": request.url.query,
     }
 
@@ -64,9 +68,10 @@ def create_app() -> FastAPI:
         remote: int = 0,
         sort: str = "score",
         entry_level: str | None = None,
+        ineligible: int = 0,
     ):
         context = _feed_context(
-            request, window, status, location, remote, sort, entry_level
+            request, window, status, location, remote, sort, entry_level, ineligible
         )
         return templates.TemplateResponse(request, "feed.html", context)
 
@@ -79,9 +84,10 @@ def create_app() -> FastAPI:
         remote: int = 0,
         sort: str = "score",
         entry_level: str | None = None,
+        ineligible: int = 0,
     ):
         context = _feed_context(
-            request, window, status, location, remote, sort, entry_level
+            request, window, status, location, remote, sort, entry_level, ineligible
         )
         return templates.TemplateResponse(request, "partials/feed_table.html", context)
 

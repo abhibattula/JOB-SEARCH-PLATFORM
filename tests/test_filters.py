@@ -59,6 +59,30 @@ class TestSponsorshipScan:
             assert flag == -1, text
             assert phrase
 
+    def test_itar_and_clearance_wording_is_ineligible(self):
+        for text in (
+            "To conform to U.S. Government export regulations (ITAR), applicant must be a U.S. Person.",
+            "This role is subject to ITAR requirements.",
+            "Must be a U.S. person as defined by 22 CFR.",
+            "Open to US persons only due to export control regulations.",
+            "Requires an active Secret clearance.",
+            "TS/SCI clearance required.",
+            "Must be a U.S. citizen.",
+            "Only US citizens and green card holders will be considered.",
+        ):
+            flag, phrase = filters.scan_sponsorship(text)
+            assert flag == -1, text
+            assert phrase
+
+    def test_itar_pattern_has_no_false_positives(self):
+        for text in (
+            "Join our military-grade security team.",  # 'military' contains 'itar'
+            "We value humanitarian work and personal growth.",
+            "Experience with Docker and person-alization systems.",
+        ):
+            flag, _ = filters.scan_sponsorship(text)
+            assert flag == 0, text
+
     def test_positive_phrases(self):
         for text in (
             "Visa sponsorship available for exceptional candidates.",

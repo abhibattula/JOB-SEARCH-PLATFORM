@@ -37,9 +37,13 @@ still work).
 ## Run
 
 ```powershell
-python app.py
-# → http://127.0.0.1:8000
+.\run.bat        # Windows — opens the desktop app window
 ```
+```bash
+./run.sh         # macOS — or double-click run.command (chmod +x first time)
+```
+
+Server-only mode (browser at http://127.0.0.1:8000): `python app.py` (venv).
 
 First open on an empty database: the feed shows an empty state and a refresh
 starts automatically; jobs stream in over the next few minutes. Subsequent opens

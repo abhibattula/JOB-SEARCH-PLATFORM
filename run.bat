@@ -6,4 +6,4 @@ if not exist "%~dp0.venv\Scripts\python.exe" (
     echo   .venv\Scripts\python.exe -m pip install -r requirements.txt
     exit /b 1
 )
-"%~dp0.venv\Scripts\python.exe" "%~dp0app.py" %*
+"%~dp0.venv\Scripts\python.exe" "%~dp0desktop.py" %*

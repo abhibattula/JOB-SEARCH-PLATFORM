@@ -246,8 +246,16 @@ def query_jobs(
     sort: str = "score",
     limit: int = 100,
     offset: int = 0,
+    ineligible: bool = False,
+    include_ineligible: bool = False,
 ) -> tuple[list[dict], int]:
     where, params = [], []
+    # Sponsorship-ineligible (EXCLUDED) jobs never appear in normal views;
+    # ineligible=True is the audit view showing only them.
+    if ineligible:
+        where.append("j.sponsorship = 'EXCLUDED'")
+    elif not include_ineligible:
+        where.append("j.sponsorship != 'EXCLUDED'")
     if window in ("7d", "24h"):
         days = 7 if window == "7d" else 1
         where.append(
@@ -356,11 +364,24 @@ def jobs_needing_score(limit: int = 150) -> list[dict]:
             "SELECT j.id, j.title, j.description, c.name AS company"
             " FROM jobs j JOIN companies c ON j.company_id = c.id"
             " WHERE j.is_entry_level = 1 AND j.match_score IS NULL"
+            " AND j.sponsorship != 'EXCLUDED'"  # never spend LLM quota on ineligible jobs
             " AND j.status NOT IN ('applied', 'hidden')"
             " ORDER BY COALESCE(j.posted_date, j.first_seen) DESC LIMIT ?",
             (limit,),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def prune_old_jobs(days: int = 45) -> int:
+    """Delete stale jobs the user never touched; Saved/Applied/Hidden history
+    is never deleted. Returns the number of rows removed."""
+    with _conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM jobs WHERE status = 'none'"
+            " AND date(COALESCE(posted_date, first_seen)) < date('now', ?)",
+            (f"-{days} days",),
+        )
+        return cur.rowcount
 
 
 def get_company_by_name(name: str) -> dict | None:

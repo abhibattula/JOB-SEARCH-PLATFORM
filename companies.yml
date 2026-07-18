@@ -53,6 +53,28 @@ companies:
   - {name: Shield AI, ats: lever, slug: shieldai}
   - {name: Zoox, ats: lever, slug: zoox}
 
+  # ---- Expansion validated 2026-07-18 via check_seeds ----
+  - {name: Roblox, ats: greenhouse, slug: roblox}
+  - {name: Verkada, ats: greenhouse, slug: verkada}
+  - {name: Neuralink, ats: greenhouse, slug: neuralink}
+  - {name: SambaNova, ats: greenhouse, slug: sambanovasystems}
+  - {name: Formlabs, ats: greenhouse, slug: formlabs}
+  - {name: Zipline, ats: greenhouse, slug: flyzipline}
+  - {name: Axon, ats: greenhouse, slug: axon}
+  - {name: Rocket Lab, ats: greenhouse, slug: rocketlab}
+  - {name: Astera Labs, ats: greenhouse, slug: asteralabs}
+  - {name: xAI, ats: greenhouse, slug: xai}
+  - {name: Chime, ats: greenhouse, slug: chime}
+  - {name: Discord, ats: greenhouse, slug: discord}
+  - {name: Kraken, ats: lever, slug: kraken123}
+  - {name: Etched, ats: ashby, slug: Etched}
+  - {name: Cognition, ats: ashby, slug: cognition}
+  - {name: Visa, ats: smartrecruiters, slug: Visa}
+  - {name: Bosch, ats: smartrecruiters, slug: BoschGroup}
+  - {name: ServiceNow, ats: smartrecruiters, slug: ServiceNow}
+  - {name: Hugging Face, ats: workable, slug: huggingface}
+  - {name: Netguru, ats: workable, slug: netguru}
+
   # ---- Ashby ----
   - {name: OpenAI, ats: ashby, slug: openai}
   - {name: Linear, ats: ashby, slug: linear}

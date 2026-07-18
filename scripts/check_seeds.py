@@ -48,6 +48,25 @@ def check_entry(client: httpx.Client, entry: dict) -> tuple[bool, str]:
             if r.status_code != 200:
                 return False, f"HTTP {r.status_code}"
             return True, f"{len(r.json().get('jobs', []))} jobs"
+        if ats == "smartrecruiters":
+            r = client.get(
+                f"https://api.smartrecruiters.com/v1/companies/{entry['slug']}/postings",
+                params={"limit": 1},
+            )
+            if r.status_code != 200:
+                return False, f"HTTP {r.status_code}"
+            total = r.json().get("totalFound", 0)
+            return total > 0, f"{total} jobs"
+        if ats == "workable":
+            r = client.post(
+                f"https://apply.workable.com/api/v3/accounts/{entry['slug']}/jobs",
+                json={"query": ""},
+                headers={"Accept": "application/json", "Content-Type": "application/json"},
+            )
+            if r.status_code != 200:
+                return False, f"HTTP {r.status_code}"
+            total = r.json().get("total", 0)
+            return total > 0, f"{total} jobs"
         if ats == "workday":
             tenant = entry["host"].split(".")[0]
             url = f"https://{entry['host']}/wday/cxs/{tenant}/{entry['site']}/jobs"

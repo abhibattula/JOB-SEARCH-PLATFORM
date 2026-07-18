@@ -21,6 +21,9 @@ SEARCH_TERMS = [
     "entry level software engineer",
     "entry level hardware engineer",
     "new grad hardware engineer FPGA ASIC",
+    "embedded software engineer new grad",
+    "design verification engineer entry level",
+    "software developer entry level",
 ]
 RESULTS_PER_SEARCH = 40
 HOURS_OLD = 24 * 8  # slightly beyond the 7-day feed window

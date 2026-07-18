@@ -5,8 +5,10 @@ This is the daily-use manual. For first-time setup, follow
 
 ## The daily loop
 
-1. Run `.\run.bat` (or double-click it; keeps the app running) and open
-   **http://127.0.0.1:8000**.
+1. Run `.\run.bat` (Windows) or double-click `run.command` (Mac) — the app
+   opens in its own window. (It's a local web server underneath: if you prefer
+   a browser, `python app.py` with the venv still serves
+   **http://127.0.0.1:8000**.)
 2. The feed shows instantly from the local database. A background refresh
    starts automatically — unless one ran in the last 30 minutes — and new jobs
    stream into the list with a green **new** flag. No reload needed.
@@ -21,8 +23,11 @@ This is the daily-use manual. For first-time setup, follow
   - `HIGH` — the JD offers sponsorship outright, or the company has a strong
     H-1B approval history (≥25 recent approvals)
   - `MEDIUM` — some approval history, JD silent
-  - `EXCLUDED` — the JD refuses sponsorship or demands citizenship/clearance.
-    This overrides any history — skip these.
+  - `EXCLUDED` — the JD refuses sponsorship or demands citizenship, a security
+    clearance, or ITAR "U.S. person" status. **These never appear in your
+    normal feed** — you can't get them, so they don't waste your time. The
+    **Ineligible** tab shows them with the exact wording that triggered the
+    exclusion, in case you want to audit a call.
   - `UNKNOWN` — no signal either way (also what you get before loading the
     USCIS data)
   - The **evidence** (approval count, exact JD phrase) is on the job's detail
@@ -73,9 +78,12 @@ the LLM provider you configured.
 
 ## Managing job sources
 
-- **Add a company**: one line in `companies.yml` (Greenhouse/Lever/Ashby slug),
-  then `python scripts/check_seeds.py` to confirm the slug is right — a wrong
-  slug fails silently as zero jobs.
+- **Add a company**: one line in `companies.yml`
+  (Greenhouse/Lever/Ashby/SmartRecruiters/Workable slug), then
+  `python scripts/check_seeds.py` to confirm the slug is right — a wrong slug
+  fails silently as zero jobs.
+- **Freshness**: postings older than 45 days that you never saved, applied to,
+  or hid are pruned automatically after each refresh.
 - **Workday employers** (NVIDIA, AMD, Qualcomm…): blocked for HTTP clients by
   Cloudflare as of 2026-07, so none ship by default — their roles arrive via
   the Indeed source instead. If that changes, add entries with `ats: workday`,

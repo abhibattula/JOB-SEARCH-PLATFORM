@@ -169,6 +169,45 @@ class TestHackerNews:
         assert not any("CaseLight" in j.company for j in jobs)
 
 
+class TestSmartRecruiters:
+    def test_parses_real_payload(self, monkeypatch):
+        from engine.ingest import smartrecruiters
+
+        monkeypatch.setattr(
+            smartrecruiters, "polite_get",
+            lambda url, **kw: fake_response(load_fixture("smartrecruiters_sample.json")),
+        )
+        jobs = list(smartrecruiters.fetch_jobs([{"name": "Visa", "slug": "Visa"}]))
+        assert len(jobs) == 2
+        first = jobs[0]
+        assert first.title == "Sr. Manager"
+        assert first.url == "https://jobs.smartrecruiters.com/Visa/744000133907678"
+        assert first.location == "Austin, TX, United States"
+        assert first.is_remote is False
+        assert first.posted_date == "2026-06-24"
+        assert "Mid-Senior Level" in first.description  # experience level feeds classifier
+        assert first.source == "smartrecruiters"
+
+
+class TestWorkable:
+    def test_parses_real_payload(self, monkeypatch):
+        from engine.ingest import workable
+
+        monkeypatch.setattr(
+            workable, "polite_post",
+            lambda url, **kw: fake_response(load_fixture("workable_sample.json")),
+        )
+        jobs = list(workable.fetch_jobs([{"name": "Hugging Face", "slug": "huggingface"}]))
+        assert len(jobs) >= 1
+        first = jobs[0]
+        assert "Python Software Engineer" in first.title
+        assert first.url == "https://apply.workable.com/huggingface/j/F8427A442D/"
+        assert first.is_remote is True
+        assert first.posted_date == "2026-06-02"
+        assert first.location == "United States"
+        assert first.source == "workable"
+
+
 class TestJobspy:
     def _frame(self):
         pd = pytest.importorskip("pandas")

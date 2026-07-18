@@ -13,4 +13,5 @@ openai
 pandas
 openpyxl
 apscheduler
+pywebview
 pytest

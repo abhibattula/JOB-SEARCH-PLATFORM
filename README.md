@@ -11,16 +11,21 @@ entirely on your machine for $0.
 - **Open the app → see fresh jobs.** The feed renders instantly from the local
   database (last 7 days by default, one-click 24-hour view) while a background
   refresh pulls all sources and streams new postings in live.
-- **Aggregates real sources, no scraping fights**: Greenhouse, Lever, and Ashby
-  public JSON APIs across ~47 validated companies, Hacker News "Who is hiring"
-  threads, and Indeed via python-jobspy. One refresh ≈ 14,000+ postings.
+- **Aggregates real sources, no scraping fights**: Greenhouse, Lever, Ashby,
+  SmartRecruiters, and Workable public JSON APIs across ~67 validated
+  companies, Hacker News "Who is hiring" threads, and Indeed via python-jobspy.
+  One refresh ≈ 14,000+ postings; untouched postings older than 45 days are
+  pruned automatically so the feed stays current.
 - **Entry-level filter tuned for SWE + hardware**: new-grad/junior markers plus
   the hardware families (firmware, embedded, FPGA, ASIC, verification,
   validation, silicon, RTL), with senior/staff/II+ roles excluded. 100% on the
   44-title test fixture (gate: ≥90%).
-- **Sponsorship badges with evidence**: USCIS H-1B Employer Data Hub history
-  fuzzy-joined to each company, combined with JD wording. Explicit "unable to
-  sponsor" / "citizens only" / clearance requirements always win → EXCLUDED.
+- **Sponsorship-aware, eligibility-first**: USCIS H-1B Employer Data Hub
+  history fuzzy-joined to each company, combined with JD wording. Roles you
+  can't get as a sponsorship-seeking candidate — security clearance, US
+  citizens only, ITAR "U.S. persons" — are detected and **hidden from the
+  feed entirely** (an Ineligible view lets you audit them with the exact
+  trigger phrase).
 - **Resume matching (free LLM)**: upload a PDF once; new entry-level jobs get a
   0–100 score, matching/missing skills, and concrete "add X to your resume"
   actions via the Groq free tier (any OpenAI-compatible endpoint works).
@@ -29,17 +34,30 @@ entirely on your machine for $0.
 
 ## Quick start
 
+**Windows**
 ```powershell
 python -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 copy .env.example .env        # add your free Groq key to unlock scoring
-.\run.bat                     # -> http://127.0.0.1:8000
+.\run.bat                     # opens the app in its own desktop window
 ```
 
-`run.bat` (double-clickable) always uses the project's virtual environment —
-no activation needed. `jobs.bat refresh` / `jobs.bat load-sponsorship` do the
-same for the headless commands. (Running `python app.py` with your *system*
-Python fails with `ModuleNotFoundError` — the dependencies live in `.venv`.)
+**macOS**
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -r requirements.txt
+cp .env.example .env
+chmod +x run.sh run.command jobs.sh   # first time only
+./run.sh                              # or double-click run.command in Finder
+```
+
+The launcher runs `desktop.py`: the server starts inside the process and a
+native window opens (Edge WebView2 on Windows, WKWebView on macOS — no browser
+tab, no Node). Closing the window shuts everything down; if no webview backend
+exists, your default browser opens instead. `jobs.bat` / `./jobs.sh` run the
+headless commands (`refresh`, `load-sponsorship`). Launchers always use
+`.venv`, so nothing needs activating. Server-only mode (for scripts/hosting):
+`.venv\Scripts\python.exe app.py`.
 
 Full setup (sponsorship data download, seed-list management, smoke tests):
 **[specs/001-ai-job-engine/quickstart.md](specs/001-ai-job-engine/quickstart.md)**

@@ -62,9 +62,12 @@ def _run_source(run_id: int, name: str, entries: list[dict]) -> None:
 
 
 def _post_ingest(run_id: int) -> None:
-    """Post-ingest stages: sponsorship matching, classification, scoring."""
+    """Post-ingest stages: sponsorship matching, classification, scoring, prune."""
     _classify_new_jobs()
     _score_new_jobs()
+    removed = db.prune_old_jobs()
+    if removed:
+        log.info("pruned %d stale untouched jobs", removed)
 
 
 def _classify_new_jobs() -> None:

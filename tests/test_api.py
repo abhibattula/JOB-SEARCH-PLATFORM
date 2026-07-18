@@ -69,6 +69,19 @@ class TestJobsApi:
         narrowed = client.get("/api/jobs", params={"location": "Austin"}).json()
         assert narrowed["total"] == 1
 
+    def test_excluded_hidden_by_default_and_ineligible_view(self, client):
+        eligible = seed_job(url="https://example.com/ok", title="Eligible Job")
+        excluded = seed_job(url="https://example.com/no", title="Clearance Job")
+        db.set_classification(excluded["id"], True, "EXCLUDED", {"phrase": "itar"})
+
+        default = client.get("/api/jobs").json()
+        assert default["total"] == 1
+        assert default["jobs"][0]["id"] == eligible["id"]
+
+        audit = client.get("/api/jobs", params={"ineligible": 1}).json()
+        assert audit["total"] == 1
+        assert audit["jobs"][0]["sponsorship"] == "EXCLUDED"
+
     def test_job_detail_and_404(self, client):
         job = seed_job()
         detail = client.get(f"/api/jobs/{job['id']}")

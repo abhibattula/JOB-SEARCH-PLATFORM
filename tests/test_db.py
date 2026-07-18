@@ -179,6 +179,49 @@ class TestRefreshRuns:
         db.finish_run(run_id)
 
 
+class TestEligibility:
+    def _seed_with_sponsorship(self):
+        for i, rating in enumerate(["HIGH", "UNKNOWN", "EXCLUDED", "EXCLUDED"]):
+            db.upsert_job(make_job(url=f"e{i}", title=f"Engineer {chr(65 + i)}"))
+        jobs, _ = db.query_jobs(window=None, statuses=None, include_ineligible=True)
+        for job, rating in zip(sorted(jobs, key=lambda j: j["url"]),
+                               ["HIGH", "UNKNOWN", "EXCLUDED", "EXCLUDED"]):
+            db.set_classification(job["id"], True, rating, None)
+
+    def test_default_feed_hides_excluded(self, tmp_db):
+        self._seed_with_sponsorship()
+        jobs, total = db.query_jobs(window=None)
+        assert total == 2
+        assert all(j["sponsorship"] != "EXCLUDED" for j in jobs)
+
+    def test_ineligible_view_shows_only_excluded(self, tmp_db):
+        self._seed_with_sponsorship()
+        jobs, total = db.query_jobs(window=None, ineligible=True)
+        assert total == 2
+        assert all(j["sponsorship"] == "EXCLUDED" for j in jobs)
+
+    def test_excluded_jobs_never_scored(self, tmp_db):
+        self._seed_with_sponsorship()
+        candidates = db.jobs_needing_score()
+        assert len(candidates) == 2  # the two eligible entry-level jobs only
+
+
+class TestPrune:
+    def test_prunes_stale_untouched_jobs_only(self, tmp_db):
+        db.upsert_job(make_job(url="fresh", posted_date=iso_days_ago(2)))
+        db.upsert_job(make_job(url="stale", title="Old Job", posted_date=iso_days_ago(60)))
+        db.upsert_job(make_job(url="stale-saved", title="Old Saved", posted_date=iso_days_ago(60)))
+        jobs, _ = db.query_jobs(window=None, statuses=None)
+        ids = {j["url"]: j["id"] for j in jobs}
+        db.set_status(ids["stale-saved"], "applied")
+
+        removed = db.prune_old_jobs(days=45)
+        assert removed == 1
+        remaining, _ = db.query_jobs(window=None, statuses=None, include_ineligible=True)
+        urls = {j["url"] for j in remaining}
+        assert urls == {"fresh", "stale-saved"}
+
+
 class TestProfile:
     def test_profile_roundtrip(self, tmp_db):
         assert db.get_profile() is None

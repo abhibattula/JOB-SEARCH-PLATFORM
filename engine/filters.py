@@ -67,13 +67,21 @@ def classify_entry_level(title: str, description: str = "") -> bool:
 
 # --- sponsorship -------------------------------------------------------------
 
-_NEGATIVE = [
-    "unable to sponsor", "will not sponsor", "cannot sponsor",
-    "not able to sponsor", "without sponsorship", "citizens only",
-    "citizenship required", "not require sponsorship", "no visa sponsorship",
-    "sponsorship is not available", "not offer sponsorship",
-    "not provide sponsorship", "security clearance",
-]
+# Ineligibility wording. The user needs sponsorship: clearance, citizens-only,
+# and ITAR/export-control "U.S. person" requirements (citizen or green card —
+# OPT does not qualify) all mean the role is not applyable.
+_NEGATIVE = [re.compile(p) for p in (
+    r"unable to sponsor", r"will not sponsor", r"cannot sponsor",
+    r"not able to sponsor", r"without sponsorship", r"citizens only",
+    r"citizenship required", r"not require sponsorship",
+    r"no visa sponsorship", r"sponsorship is not available",
+    r"not offer sponsorship", r"not provide sponsorship",
+    r"security clearance",
+    r"\bitar\b", r"\bu\.?s\.?\s+persons?\b", r"export control",
+    r"export regulations", r"\b(?:active|secret|top secret)\s+clearance",
+    r"ts\s*/\s*sci", r"must be a u\.?s\.?\s+citizen",
+    r"green card holders?\s+(?:only|will be considered)",
+)]
 _POSITIVE = ["visa sponsorship", "will sponsor", "sponsorship available", "h-1b", "h1b"]
 _POSITIVE_CASED = [r"\bOPT\b", r"\bCPT\b"]  # uppercase acronyms only
 
@@ -81,11 +89,12 @@ HIGH_APPROVALS_THRESHOLD = 25
 
 
 def scan_sponsorship(text: str) -> tuple[int, str | None]:
-    """Return (flag, phrase): 1 positive, 0 silent, -1 refuses sponsorship."""
+    """Return (flag, phrase): 1 positive, 0 silent, -1 ineligible."""
     lowered = (text or "").lower()
-    for phrase in _NEGATIVE:
-        if phrase in lowered:
-            return -1, phrase
+    for pattern in _NEGATIVE:
+        match = pattern.search(lowered)
+        if match:
+            return -1, match.group(0)
     for phrase in _POSITIVE:
         if phrase in lowered:
             return 1, phrase

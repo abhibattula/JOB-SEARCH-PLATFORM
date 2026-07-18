@@ -29,6 +29,7 @@ def parse_feed_params(
     entry_level: str | None = None,
     limit: int = 100,
     offset: int = 0,
+    ineligible: int = 0,
 ) -> dict:
     statuses: tuple[str, ...] | list[str] | None
     if status:
@@ -50,6 +51,7 @@ def parse_feed_params(
         "sort": sort if sort in ("score", "date") else "score",
         "limit": max(1, min(limit, 500)),
         "offset": max(0, offset),
+        "ineligible": bool(ineligible),
     }
 
 
@@ -94,9 +96,10 @@ def list_jobs(
     entry_level: str | None = None,
     limit: int = 100,
     offset: int = 0,
+    ineligible: int = 0,
 ):
     params = parse_feed_params(
-        window, status, location, remote, sort, entry_level, limit, offset
+        window, status, location, remote, sort, entry_level, limit, offset, ineligible
     )
     jobs, total = db.query_jobs(**params)
     return {"jobs": [job_summary(j) for j in jobs], "total": total}
@@ -143,6 +146,7 @@ def export_csv(
     remote: int = 0,
     sort: str = "score",
     entry_level: str | None = None,
+    ineligible: int = 0,
 ):
     import csv
     import io
@@ -150,7 +154,8 @@ def export_csv(
     from fastapi.responses import Response
 
     params = parse_feed_params(
-        window, status, location, remote, sort, entry_level, limit=500
+        window, status, location, remote, sort, entry_level,
+        limit=500, ineligible=ineligible,
     )
     jobs, _ = db.query_jobs(**params)
     buffer = io.StringIO()

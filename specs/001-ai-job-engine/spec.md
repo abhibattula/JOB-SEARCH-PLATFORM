@@ -12,6 +12,10 @@
 - Q: Should v1 let you track your interaction with each job (saved / applied / hidden)? → A: Yes, minimal statuses — Saved, Applied, Hidden; default feed shows only unhandled jobs; dedicated filters reveal saved/applied lists.
 - Q: How should location preferences affect the job feed? → A: Show all US + remote jobs by default; an on-demand location filter narrows the view; preferences pre-populate the filter but never silently hide jobs.
 
+### Session 2026-07-18 (feature 002)
+
+- Superseded by [002-desktop-eligibility-coverage](../002-desktop-eligibility-coverage/spec.md): EXCLUDED (sponsorship-ineligible) jobs are now *hidden* from all normal views rather than shown with a badge (FR-003/FR-009 deltas), and the ineligibility detector covers ITAR/clearance/citizenship wording.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Open the App and See Fresh, Relevant Jobs (Priority: P1)
