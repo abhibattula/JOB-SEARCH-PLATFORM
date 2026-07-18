@@ -1,0 +1,67 @@
+{
+ "id": 48747976,
+ "title": "Ask HN: Who is hiring? (July 2026)",
+ "created_at": "2026-07-01T15:01:21.000Z",
+ "children": [
+  {
+   "author": "Overwatch360",
+   "children": [],
+   "created_at": "2026-07-01T15:01:52.000Z",
+   "created_at_i": 1782918112,
+   "id": 48747987,
+   "options": [],
+   "parent_id": 48747976,
+   "points": null,
+   "story_id": 48747976,
+   "text": "CaseLight is looking for a U.S.-based developer for a 20\u201325% equity partnership.<p>Investigators across legal, corporate, insurance, and private sectors are stuck with enterprise case management platforms charging $100+ per seat with 20-seat minimums and lengthy contracts just for their basic package.<p>Meanwhile, 50,000 small investigative agencies, 100,000 corporate&#x2F;insurance investigators, and 400,000 small-firm attorneys are forced into a patchwork of Word, Excel, Canva, Hunchly, and half a dozen disconnected apps just to get basic casework done. It destroys workflow and breaks evidence integrity.<p>CaseLight solves this by building a secure case management and evidence retention system where cases live on the investigator\u2019s hardware, data never leaves their control, metadata stays intact, nothing gets overwritten, and there\u2019s no cloud or subscription trap.<p>Pricing is $50&#x2F",
+   "title": null,
+   "type": "comment",
+   "url": null
+  },
+  {
+   "author": "norejisace",
+   "children": [],
+   "created_at": "2026-07-01T15:02:00.000Z",
+   "created_at_i": 1782918120,
+   "id": 48747990,
+   "options": [],
+   "parent_id": 48747976,
+   "points": null,
+   "story_id": 48747976,
+   "text": "We The Flywheel | AI-Native Engineers &amp; Operators | REMOTE (worldwide) | Contract &#x2F; Part-time (10\u201340 hrs&#x2F;wk)<p>We&#x27;re a remote-first digital product studio building across sports media, AI, fitness, and personal branding \u2014 500+ web properties and deeply AI-native workflows. AI does the heavy lifting here, but it&#x27;s the leverage, not the point: we hire for the human judgment, ingenuity, and taste on top of it.<p>Open roles (remote, contract):<p>- Agentic Engineer \u2014 ship real software with AI coding agents (Claude Code, Cursor, Aider). You&#x27;re an engineer, not a prompt operator: basic technical foundation in databases, frameworks, integrations, APIs. &lt;30 hrs&#x2F;wk.<p>- Sr Agentic Engineer \u2014 architect and own multi-step agent workflows; track record required. &lt;30 hrs&#x2F;wk.<p>- Agentic Operator \u2014 the human-in-the-loop: walk user flows, native-language QA ",
+   "title": null,
+   "type": "comment",
+   "url": null
+  },
+  {
+   "author": "justin_sdx",
+   "children": [],
+   "created_at": "2026-07-01T15:02:50.000Z",
+   "created_at_i": 1782918170,
+   "id": 48748003,
+   "options": [],
+   "parent_id": 48747976,
+   "points": null,
+   "story_id": 48747976,
+   "text": "SmarterDx | 150-250k+ + equity + benefits | Remote (US only) | Multiple roles | <a href=\"https:&#x2F;&#x2F;smarterdx.com&#x2F;careers\" rel=\"nofollow\">https:&#x2F;&#x2F;smarterdx.com&#x2F;careers</a><p>SmarterDx builds clinical AI for one of healthcare\u2019s most broken systems: how hospitals get paid for the care they actually deliver.<p>Our physician-designed clinical AI platform reviews the clinical record, understands the nuance of patient care, and helps hospitals capture appropriate reimbursement across the revenue cycle. The core problem is hard: messy clinical data, complex regulations, payer rules, medical reasoning, and real financial stakes. When we get it right, hospitals recover millions in earned revenue, reduce manual review burden, and keep clinical and revenue teams focused on higher-value work.<p>We\u2019ve hit serious scale while keeping the team unusually strong and technical: ",
+   "title": null,
+   "type": "comment",
+   "url": null
+  },
+  {
+   "author": "mwest1066",
+   "children": [],
+   "created_at": "2026-07-01T15:02:56.000Z",
+   "created_at_i": 1782918176,
+   "id": 48748007,
+   "options": [],
+   "parent_id": 48747976,
+   "points": null,
+   "story_id": 48747976,
+   "text": "PrairieLearn (Remote US) \u2014 Full-Stack Software Engineer \u2014 TypeScript &#x2F; Postgres &#x2F; React &#x2F; AI<p>PrairieLearn (<a href=\"https:&#x2F;&#x2F;www.prairielearn.com\" rel=\"nofollow\">https:&#x2F;&#x2F;www.prairielearn.com</a>) is an open-source assessment platform used by universities across the US (Berkeley, Princeton, Michigan, Illinois, and others). We power mastery-based learning and large-scale exams.<p>We\u2019re a small, profitable, early-stage company (bootstrapped, no VC) that is growing quickly. Our users love us and we have very high retention and rapid spread through word of mouth. As an early-stage hire, you\u2019ll work across the stack and enjoy meaningful ownership from day one.<p>Tech we use: Node.js &#x2F; TypeScript backend, Postgres, AWS, React. We\u2019re also developing AI tooling, including LLM agents to help instructors create content, and vision-language models to help gra",
+   "title": null,
+   "type": "comment",
+   "url": null
+  }
+ ]
+}

@@ -1,0 +1,56 @@
+{# Progress strip: the logic-analyzer channel readout for the active/last run #}
+{% if run.run_id %}
+<div class="channels {{ 'live' if run.active }}" title="Per-source status for the {{ 'current' if run.active else 'last' }} refresh">
+  {% for name, info in run.sources.items() %}
+  <span class="channel {{ info.state }}">
+    <span class="glyph">{%- if info.state == 'done' -%}✓{%- elif info.state == 'failed' -%}✕{%- elif info.state == 'running' -%}▸{%- else -%}·{%- endif -%}</span>
+    {{ name }}{% if info.found is defined and info.state in ('done', 'running') %} {{ info.added }}{% endif %}
+  </span>
+  {% endfor %}
+  {% if run.active %}<span class="channel note">refreshing…</span>{% endif %}
+</div>
+{% endif %}
+
+{% if jobs %}
+<table class="feed">
+  <thead>
+    <tr>
+      <th>Role</th><th>Company</th><th>Location</th><th>Posted</th>
+      <th>Sponsor</th><th>Match</th><th></th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for job in jobs %}
+    <tr class="{{ 'is-new' if job.is_new }}">
+      <td class="role">
+        <a href="/jobs/{{ job.id }}">{{ job.title }}</a>
+        {% if job.is_new %}<span class="new-flag">new</span>{% endif %}
+        {% if job.status == 'saved' %}<span class="saved-flag">saved</span>{% endif %}
+      </td>
+      <td>{{ job.company }}</td>
+      <td class="data">{{ 'Remote' if job.is_remote and not job.location else (job.location or '—') }}</td>
+      <td class="data">{{ (job.posted_date or job.first_seen)[:10] }}</td>
+      <td><span class="badge {{ job.sponsorship|lower }}">{{ job.sponsorship }}</span></td>
+      <td class="data score">{% if job.match_score is not none %}{{ '%d' % job.match_score }}{% else %}—{% endif %}</td>
+      <td class="actions">
+        <button hx-post="/api/jobs/{{ job.id }}/status?status=saved" hx-swap="none"
+                hx-on::after-request="htmx.trigger('#feed-region','refresh-feed')" title="Save">☆</button>
+        <button hx-post="/api/jobs/{{ job.id }}/status?status=applied" hx-swap="none"
+                hx-on::after-request="htmx.trigger('#feed-region','refresh-feed')" title="Mark applied">✓</button>
+        <button hx-post="/api/jobs/{{ job.id }}/status?status=hidden" hx-swap="none"
+                hx-on::after-request="htmx.trigger('#feed-region','refresh-feed')" title="Hide">✕</button>
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+<p class="count data">{{ total }} job{{ 's' if total != 1 }} in view</p>
+{% else %}
+<div class="empty-state">
+  {% if run.active %}
+  <p>No jobs in this window yet — a refresh is running. New postings appear here as sources finish.</p>
+  {% else %}
+  <p>No jobs match this view. Widen the time window, clear filters, or hit <strong>Refresh now</strong>.</p>
+  {% endif %}
+</div>
+{% endif %}

@@ -1,0 +1,74 @@
+{% extends "base.html" %}
+{% block title %}{{ job.title }} · {{ job.company }}{% endblock %}
+{% block content %}
+<article class="job-detail">
+  <header class="job-head">
+    <div>
+      <h1>{{ job.title }}</h1>
+      <p class="sub">{{ job.company }} · <span class="data">{{ job.location or ('Remote' if job.is_remote else '—') }}</span>
+        · posted <span class="data">{{ (job.posted_date or job.first_seen)[:10] }}</span>
+        · via <span class="data">{{ job.source }}</span></p>
+    </div>
+    <div class="job-actions">
+      <a class="apply" href="{{ job.url }}" target="_blank" rel="noopener">Open posting ↗</a>
+      <button hx-post="/api/jobs/{{ job.id }}/status?status=saved" hx-swap="none">Save</button>
+      <button hx-post="/api/jobs/{{ job.id }}/status?status=applied" hx-swap="none">Mark applied</button>
+      <button hx-post="/api/jobs/{{ job.id }}/status?status=hidden" hx-swap="none">Hide</button>
+    </div>
+  </header>
+
+  <div class="split">
+    <section class="jd">
+      <h2>Description</h2>
+      {% if job.description %}
+      <p class="jd-text">{{ job.description }}</p>
+      {% else %}
+      <p class="empty-state">No description captured for this source — open the posting for details.</p>
+      {% endif %}
+    </section>
+
+    <aside class="analysis">
+      <section>
+        <h2>Sponsorship</h2>
+        <p><span class="badge {{ (job.sponsorship or 'UNKNOWN')|lower }}">{{ job.sponsorship or 'UNKNOWN' }}</span></p>
+        {% if evidence %}
+        <ul class="evidence data">
+          {% if evidence.h1b_approvals %}<li>{{ evidence.h1b_approvals }} H-1B approvals on record</li>{% endif %}
+          {% if evidence.phrase %}<li>JD wording: “{{ evidence.phrase }}”</li>{% endif %}
+          {% if evidence.matched_employer %}<li>matched employer: {{ evidence.matched_employer }}</li>{% endif %}
+        </ul>
+        {% else %}
+        <p class="muted">No sponsorship data yet — load USCIS/DOL records via <code>python cli.py load-sponsorship</code>.</p>
+        {% endif %}
+      </section>
+
+      <section>
+        <h2>Match analysis</h2>
+        {% if match %}
+        <p class="score-big data">{{ '%d' % match.match_score }}<span>/100</span></p>
+        {% if match.matching_skills %}
+        <h3>You have</h3>
+        <p class="chips">{% for s in match.matching_skills %}<span class="chip have">{{ s }}</span>{% endfor %}</p>
+        {% endif %}
+        {% if match.missing_skills %}
+        <h3>Missing</h3>
+        <p class="chips">{% for s in match.missing_skills %}<span class="chip miss">{{ s }}</span>{% endfor %}</p>
+        {% endif %}
+        {% if match.gap_actions %}
+        <h3>To improve this match</h3>
+        <ol class="gaps">
+          {% for gap in match.gap_actions %}
+          <li><strong>{{ gap.action }}</strong>{% if gap.impact %} — {{ gap.impact }}{% endif %}</li>
+          {% endfor %}
+        </ol>
+        {% endif %}
+        {% if match.reasoning %}<p class="muted">{{ match.reasoning }}</p>{% endif %}
+        {% else %}
+        <p class="muted">Not scored yet. Scores appear after a refresh once your resume is on the
+          <a href="/profile">Profile</a> page.</p>
+        {% endif %}
+      </section>
+    </aside>
+  </div>
+</article>
+{% endblock %}

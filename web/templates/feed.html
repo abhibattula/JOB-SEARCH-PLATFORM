@@ -1,0 +1,45 @@
+{% extends "base.html" %}
+{% block title %}Feed · Job Engine{% endblock %}
+{% block content %}
+<!-- Kick a background refresh on open; server no-ops inside the 30-min cooldown -->
+<div hx-post="/api/refresh" hx-trigger="load" hx-swap="none"></div>
+
+{% if not has_profile %}
+<div class="notice">
+  Add your resume on the <a href="/profile">Profile</a> page to unlock match scores and gap analysis.
+</div>
+{% endif %}
+
+<form class="toolbar" method="get" action="/">
+  <div class="segmented" role="group" aria-label="Time window">
+    <a class="{{ 'on' if window == '24h' }}" href="/?window=24h&status={{ status_view }}&sort={{ sort }}">Today</a>
+    <a class="{{ 'on' if window == '7d' }}" href="/?window=7d&status={{ status_view }}&sort={{ sort }}">This week</a>
+    <a class="{{ 'on' if window == 'all' }}" href="/?window=all&status={{ status_view }}&sort={{ sort }}">All</a>
+  </div>
+  <input type="hidden" name="window" value="{{ window }}">
+  <input type="hidden" name="status" value="{{ status_view }}">
+  <input type="search" name="location" value="{{ location }}" placeholder="Location contains…">
+  <label class="check"><input type="checkbox" name="remote" value="1" {{ 'checked' if remote }}> Remote only</label>
+  <select name="sort">
+    <option value="score" {{ 'selected' if sort == 'score' }}>Sort: match score</option>
+    <option value="date" {{ 'selected' if sort == 'date' }}>Sort: newest</option>
+  </select>
+  <select name="entry_level" title="Seniority filter">
+    <option value="" {{ 'selected' if not entry_level }}>Entry-level only</option>
+    <option value="all" {{ 'selected' if entry_level == 'all' }}>All levels</option>
+  </select>
+  <button type="submit">Apply filters</button>
+  <button type="button" class="ghost" title="Bypass the cooldown and pull all sources now"
+          hx-post="/api/refresh?force=1" hx-swap="none"
+          hx-on::after-request="htmx.trigger('#feed-region','refresh-feed')">
+    Refresh now
+  </button>
+</form>
+
+<div id="feed-region"
+     hx-get="/partials/feed?{{ query_string }}"
+     hx-trigger="every 5s, refresh-feed from:body"
+     hx-swap="innerHTML">
+  {% include "partials/feed_table.html" %}
+</div>
+{% endblock %}

@@ -1,0 +1,26 @@
+{
+ "total": 3,
+ "jobPostings": [
+  {
+   "title": "ASIC Design Engineer, New College Grad",
+   "externalPath": "/job/US-CA-Santa-Clara/ASIC-Design-Engineer--New-College-Grad_JR1985001",
+   "locationsText": "US, CA, Santa Clara",
+   "postedOn": "Posted Today",
+   "bulletFields": ["JR1985001"]
+  },
+  {
+   "title": "Hardware Engineer - GPU Verification",
+   "externalPath": "/job/US-TX-Austin/Hardware-Engineer---GPU-Verification_JR1985002",
+   "locationsText": "US, TX, Austin",
+   "postedOn": "Posted 3 Days Ago",
+   "bulletFields": ["JR1985002"]
+  },
+  {
+   "title": "Senior Firmware Engineer",
+   "externalPath": "/job/US-CA-Santa-Clara/Senior-Firmware-Engineer_JR1985003",
+   "locationsText": "US, CA, Santa Clara",
+   "postedOn": "Posted 30+ Days Ago",
+   "bulletFields": ["JR1985003"]
+  }
+ ]
+}

@@ -11,6 +11,7 @@ import json
 import os
 import re
 import sqlite3
+import threading
 from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -341,7 +342,8 @@ def set_classification(
 def jobs_needing_classification() -> list[dict]:
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT j.id, j.title, j.description, c.name AS company, c.id AS company_id"
+            "SELECT j.id, j.title, j.description, c.name AS company,"
+            " c.id AS company_id, c.h1b_approvals, c.name AS company_name"
             " FROM jobs j JOIN companies c ON j.company_id = c.id"
             " WHERE j.is_entry_level IS NULL"
         ).fetchall()
@@ -365,6 +367,65 @@ def get_company_by_name(name: str) -> dict | None:
     with _conn() as conn:
         row = conn.execute("SELECT * FROM companies WHERE name = ?", (name,)).fetchone()
     return dict(row) if row else None
+
+
+def store_h1b_employers(employers: dict) -> None:
+    """Upsert normalized -> {display_name, approvals, lca_titles} records."""
+    with _conn() as conn:
+        for normalized, record in employers.items():
+            conn.execute(
+                "INSERT INTO h1b_employers (normalized_name, display_name, approvals,"
+                " lca_titles) VALUES (?, ?, ?, ?)"
+                " ON CONFLICT(normalized_name) DO UPDATE SET"
+                " display_name=excluded.display_name, approvals=excluded.approvals,"
+                " lca_titles=COALESCE(excluded.lca_titles, h1b_employers.lca_titles)",
+                (
+                    normalized,
+                    record.get("display_name"),
+                    int(record.get("approvals") or 0),
+                    json.dumps(record["lca_titles"]) if record.get("lca_titles") else None,
+                ),
+            )
+
+
+def load_h1b_employers() -> dict:
+    with _conn() as conn:
+        rows = conn.execute("SELECT * FROM h1b_employers").fetchall()
+    return {
+        row["normalized_name"]: {
+            "display_name": row["display_name"],
+            "approvals": row["approvals"],
+            "lca_titles": json.loads(row["lca_titles"]) if row["lca_titles"] else None,
+        }
+        for row in rows
+    }
+
+
+def get_unchecked_companies() -> list[dict]:
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT id, name FROM companies WHERE sponsor_checked = 0"
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def set_company_sponsorship(
+    company_id: int,
+    approvals: int,
+    sponsor_score: str,
+    lca_titles: list | None = None,
+) -> None:
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE companies SET h1b_approvals=?, sponsor_score=?,"
+            " lca_titles=COALESCE(?, lca_titles), sponsor_checked=1 WHERE id=?",
+            (
+                approvals,
+                sponsor_score,
+                json.dumps(lca_titles) if lca_titles else None,
+                company_id,
+            ),
+        )
 
 
 # --- refresh runs -----------------------------------------------------------
@@ -410,8 +471,13 @@ def start_run(trigger: str, force: bool = False) -> int | None:
         return cur.lastrowid
 
 
+# update_run_source does a read-modify-write of the shared JSON status column;
+# concurrent source threads must not interleave it or updates get lost.
+_RUN_STATUS_LOCK = threading.Lock()
+
+
 def update_run_source(run_id: int, source: str, **fields: Any) -> None:
-    with _conn() as conn:
+    with _RUN_STATUS_LOCK, _conn() as conn:
         row = conn.execute(
             "SELECT source_status FROM refresh_runs WHERE id = ?", (run_id,)
         ).fetchone()

@@ -1,0 +1,28 @@
+{% extends "base.html" %}
+{% block title %}Profile · Job Engine{% endblock %}
+{% block content %}
+<article class="profile">
+  <h1>Profile</h1>
+  {% if profile and profile.resume_filename %}
+  <p>Resume on file: <span class="data">{{ profile.resume_filename }}</span>
+    (updated {{ profile.updated_at[:10] if profile.updated_at }})</p>
+  {% if profile.skills %}
+  <p class="chips">{% for s in profile.skills %}<span class="chip have">{{ s }}</span>{% endfor %}</p>
+  {% endif %}
+  {% else %}
+  <p class="muted">No resume yet. Upload one to unlock match scores and gap analysis.</p>
+  {% endif %}
+
+  <form class="profile-form" method="post" action="/api/profile" enctype="multipart/form-data">
+    <label>Resume (PDF)
+      <input type="file" name="resume" accept="application/pdf">
+    </label>
+    <label>Preferred locations (comma-separated — pre-fills the feed filter, never hides jobs)
+      <input type="text" name="target_locations"
+             value="{{ profile.target_locations | join(', ') if profile and profile.target_locations }}"
+             placeholder="e.g. CA, TX, Remote">
+    </label>
+    <button type="submit">Save profile</button>
+  </form>
+</article>
+{% endblock %}

@@ -1,0 +1,68 @@
+# Real-world job titles for the entry-level classifier accuracy gate (SC-004).
+# entry: expected classification. description provided where the title alone
+# is ambiguous and the decision must come from the description scan.
+cases:
+  # --- entry-level: explicit markers ---
+  - {title: "Software Engineer, New Grad", entry: true}
+  - {title: "Software Engineer I", entry: true}
+  - {title: "Engineer 1 - Platform Infrastructure", entry: true}
+  - {title: "Junior Software Developer", entry: true}
+  - {title: "Associate Software Engineer", entry: true}
+  - {title: "Entry Level Software Engineer", entry: true}
+  - {title: "New College Grad - Hardware Engineer", entry: true}
+  - {title: "University Graduate Software Engineer", entry: true}
+  - {title: "Early Career FPGA Design Engineer", entry: true}
+  - {title: "ASIC Design Engineer, New College Grad", entry: true}
+  - {title: "Rotation Program Engineer (2026 Cohort)", entry: true}
+  - {title: "Graduate Hardware Engineer", entry: true}
+  - {title: "Software Engineer (0-2 Years Experience)", entry: true}
+
+  # --- entry-level: hardware family passes through without senior markers ---
+  - {title: "Hardware Engineer - GPU Verification", entry: true}
+  - {title: "Firmware Engineer", entry: true}
+  - {title: "Embedded Software Engineer", entry: true}
+  - {title: "Design Verification Engineer", entry: true}
+  - {title: "Silicon Validation Engineer", entry: true}
+  - {title: "RTL Design Engineer", entry: true}
+  - {title: "Physical Design Engineer", entry: true}
+
+  # --- entry-level: decided by description ---
+  - title: "Software Engineer"
+    description: "Recent graduates welcome. 0-2 years of experience with Python."
+    entry: true
+  - title: "Backend Engineer"
+    description: "This role is ideal for a new grad joining our platform team."
+    entry: true
+
+  # --- not entry-level: seniority markers ---
+  - {title: "Senior Software Engineer", entry: false}
+  - {title: "Staff Software Engineer", entry: false}
+  - {title: "Principal Hardware Engineer", entry: false}
+  - {title: "Lead Firmware Engineer", entry: false}
+  - {title: "Engineering Manager", entry: false}
+  - {title: "Sr. Embedded Systems Engineer", entry: false}
+  - {title: "Software Engineer II", entry: false}
+  - {title: "Software Engineer III", entry: false}
+  - {title: "Senior Staff ASIC Design Engineer", entry: false}
+  - {title: "Director of Engineering", entry: false}
+  - {title: "Software Architect", entry: false}
+  - {title: "Senior FPGA Developer", entry: false}
+  - {title: "Technical Program Manager, Compute Infrastructure", entry: false}
+
+  # --- not entry-level: decided by description or default-out ---
+  - title: "Software Engineer"
+    description: "Requires 8+ years of experience building distributed systems."
+    entry: false
+  - title: "Full Stack Engineer"
+    description: "You have at least 5 years of production experience."
+    entry: false
+  - {title: "Backend Engineer", entry: false}
+  - {title: "Research Engineer", entry: false}
+  - {title: "Account Executive, AI Sales (Grower)", entry: false}
+  - {title: "Product Manager, Payments", entry: false}
+
+  # --- not engineering roles: entry markers alone must not qualify them ---
+  - {title: "Bridge Operations Associate", entry: false}
+  - {title: "Credit Risk Operations Associate (CDMX)", entry: false}
+  - {title: "New Grad Account Executive", entry: false}
+  - {title: "Junior Recruiter", entry: false}
