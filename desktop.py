@@ -46,7 +46,25 @@ def wait_until_ready(url: str, timeout: float = 15.0) -> bool:
     return False
 
 
+def _redirect_streams_when_windowed() -> None:
+    """Windowed (console-less) builds have sys.stdout/stderr = None, which
+    breaks uvicorn's logging setup. Point them at a log file in the data dir —
+    which doubles as the place users can look when something goes wrong."""
+    import sys
+
+    if sys.stdout is not None and sys.stderr is not None:
+        return
+    from engine import paths
+
+    log_dir = paths.data_dir()
+    log_dir.mkdir(parents=True, exist_ok=True)
+    stream = open(log_dir / "app.log", "a", buffering=1, encoding="utf-8", errors="replace")
+    sys.stdout = sys.stdout or stream
+    sys.stderr = sys.stderr or stream
+
+
 def main() -> None:
+    _redirect_streams_when_windowed()
     db.init_db()
     maybe_start_scheduler()
     port = pick_port()

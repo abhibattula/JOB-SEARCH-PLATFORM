@@ -4,7 +4,12 @@
 import os
 import sys
 
+from PyInstaller.utils.hooks import collect_submodules
+
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
+# collect_submodules imports the package at build time; the repo root is not on
+# sys.path during spec execution, so add it or the collection silently yields [].
+sys.path.insert(0, ROOT)
 
 datas = [
     (os.path.join(ROOT, "web", "templates"), "web/templates"),
@@ -13,15 +18,32 @@ datas = [
     (os.path.join(ROOT, "assets", "uscis"), "assets/uscis"),
 ]
 
-hiddenimports = [
-    "uvicorn.logging",
-    "uvicorn.loops.auto",
-    "uvicorn.protocols.http.auto",
-    "uvicorn.protocols.http.h11_impl",
-    "uvicorn.protocols.websockets.auto",
-    "uvicorn.lifespan.on",
-    "uvicorn.lifespan.off",
-]
+# The engine loads sources via importlib with string names, and imports pandas/
+# jobspy/matcher lazily inside functions — all invisible to static analysis, so
+# everything engine-adjacent must be declared explicitly.
+_engine_modules = collect_submodules("engine")
+assert any("ingest.greenhouse" in m for m in _engine_modules), (
+    f"engine submodule collection failed: {_engine_modules}"
+)
+
+hiddenimports = (
+    _engine_modules
+    + [
+        "uvicorn.logging",
+        "uvicorn.loops.auto",
+        "uvicorn.protocols.http.auto",
+        "uvicorn.protocols.http.h11_impl",
+        "uvicorn.protocols.websockets.auto",
+        "uvicorn.lifespan.on",
+        "uvicorn.lifespan.off",
+        "jobspy",
+        "pandas",
+        "openpyxl",
+        "openai",
+        "apscheduler.schedulers.background",
+        "apscheduler.triggers.cron",
+    ]
+)
 
 a = Analysis(
     [os.path.join(ROOT, "desktop.py")],
