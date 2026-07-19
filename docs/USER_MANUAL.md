@@ -1,4 +1,4 @@
-# Personalized AI Job Engine — Complete Manual
+# Personalized AI Job Engine — User Manual
 
 Everything about this program in one place: what it is, how to run and test
 it, how every module works, and how the pieces connect. For a short daily-use
@@ -32,7 +32,16 @@ recurring cost: **$0**.
 
 ## 2. How to run it
 
-### First-time setup (once)
+### Installed the app from an installer?
+
+Just launch **Job Engine** from the Start menu (Windows) or Applications
+(macOS) — nothing below applies to you. Your data lives in
+`%LOCALAPPDATA%\JobEngine` (Windows) or
+`~/Library/Application Support/JobEngine` (macOS), and if anything goes wrong
+there's an `app.log` in that folder. First-run setup happens inside the app
+(welcome steps + Settings page).
+
+### Running from source — first-time setup (once)
 
 ```powershell
 # from the project root (I:\PROJECTS\JOB SEARCH TOOL)
