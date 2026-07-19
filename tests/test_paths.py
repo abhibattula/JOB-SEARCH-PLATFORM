@@ -18,9 +18,11 @@ class TestDataDir:
     def test_frozen_uses_platform_dir(self, monkeypatch, tmp_path):
         monkeypatch.delenv("JOBS_DATA_DIR", raising=False)
         monkeypatch.setattr(sys, "frozen", True, raising=False)
-        monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))
+        monkeypatch.setenv("LOCALAPPDATA", str(tmp_path))      # windows base
+        monkeypatch.setenv("XDG_DATA_HOME", str(tmp_path))     # linux base
         result = paths.data_dir()
         assert result.name == "JobEngine"
+        # windows/linux resolve under tmp_path; macOS under ~/Library
         assert str(tmp_path) in str(result) or "Application Support" in str(result)
 
 
