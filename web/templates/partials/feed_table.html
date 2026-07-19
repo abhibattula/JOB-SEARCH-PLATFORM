@@ -1,7 +1,7 @@
 {# Progress strip: the logic-analyzer channel readout for the active/last run #}
 {% if run.run_id %}
 <div class="channels {{ 'live' if run.active }}" title="Per-source status for the {{ 'current' if run.active else 'last' }} refresh">
-  {% for name, info in run.sources.items() %}
+  {% for name, info in run.sources.items() if not name.startswith('_') %}
   <span class="channel {{ info.state }}">
     <span class="glyph">{%- if info.state == 'done' -%}✓{%- elif info.state == 'failed' -%}✕{%- elif info.state == 'running' -%}▸{%- else -%}·{%- endif -%}</span>
     {{ name }}{% if info.found is defined and info.state in ('done', 'running') %} {{ info.added }}{% endif %}

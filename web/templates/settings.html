@@ -37,6 +37,11 @@
         <input type="checkbox" name="schedule_refresh" value="1" {{ 'checked' if settings.schedule_refresh }}>
         Auto-refresh nightly at 7:00 while the app is running
       </label>
+      <label class="check">
+        <input type="hidden" name="alerts_enabled" value="0">
+        <input type="checkbox" name="alerts_enabled" value="1" {{ 'checked' if settings.alerts_enabled }}>
+        Desktop notification when a refresh finds new 70+ matches
+      </label>
       <div class="settings-actions">
         <button type="submit">Save settings</button>
         <button type="button" class="ghost" hx-post="/api/settings/test" hx-target="#key-test-result" hx-swap="innerHTML">

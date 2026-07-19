@@ -68,12 +68,20 @@ def _run_source(run_id: int, name: str, entries: list[dict]) -> None:
 
 
 def _post_ingest(run_id: int) -> None:
-    """Post-ingest stages: sponsorship matching, classification, scoring, prune."""
+    """Post-ingest stages: sponsorship matching, classification, scoring,
+    prune, then fresh-match alerts."""
     _classify_new_jobs()
     _score_new_jobs()
     removed = db.prune_old_jobs()
     if removed:
         log.info("pruned %d stale untouched jobs", removed)
+    from . import alerts
+
+    status = db.get_run_status()
+    if status.get("run_id") == run_id and status.get("started_at"):
+        count = alerts.process(since=status["started_at"])
+        if count:
+            db.update_run_source(run_id, "_alerts", state="done", found=count)
 
 
 def _classify_new_jobs() -> None:

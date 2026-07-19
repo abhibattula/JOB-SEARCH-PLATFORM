@@ -45,10 +45,11 @@ def _feed_context(
     entry_level: str | None = None,
     ineligible: int = 0,
     min_score: float | None = None,
+    seen: str | None = None,
 ) -> dict:
     params = parse_feed_params(
         window, status, location, remote, sort, entry_level,
-        ineligible=ineligible, min_score=min_score,
+        ineligible=ineligible, min_score=min_score, seen=seen,
     )
     jobs, total = db.query_jobs(**params)
     run = db.get_run_status()
@@ -101,10 +102,11 @@ def create_app() -> FastAPI:
         entry_level: str | None = None,
         ineligible: int = 0,
         min_score: float | None = None,
+        seen: str | None = None,
     ):
         context = _feed_context(
             request, window, status, location, remote, sort, entry_level,
-            ineligible, min_score,
+            ineligible, min_score, seen,
         )
         return templates.TemplateResponse(request, "feed.html", context)
 
@@ -119,10 +121,11 @@ def create_app() -> FastAPI:
         entry_level: str | None = None,
         ineligible: int = 0,
         min_score: float | None = None,
+        seen: str | None = None,
     ):
         context = _feed_context(
             request, window, status, location, remote, sort, entry_level,
-            ineligible, min_score,
+            ineligible, min_score, seen,
         )
         return templates.TemplateResponse(request, "partials/feed_table.html", context)
 

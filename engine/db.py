@@ -290,6 +290,7 @@ def query_jobs(
     ineligible: bool = False,
     include_ineligible: bool = False,
     min_score: float | None = None,
+    seen_since: str | None = None,
 ) -> tuple[list[dict], int]:
     where, params = [], []
     # Sponsorship-ineligible (EXCLUDED) jobs never appear in normal views;
@@ -320,6 +321,9 @@ def query_jobs(
     if min_score is not None:
         where.append("j.match_score >= ?")
         params.append(min_score)
+    if seen_since:
+        where.append("j.first_seen >= ?")  # same UTC string format, sortable
+        params.append(seen_since)
     clause = f" WHERE {' AND '.join(where)}" if where else ""
     order = (
         " ORDER BY j.match_score IS NULL, j.match_score DESC,"

@@ -15,6 +15,8 @@ DEFAULTS = {
     "JOBSPY_LINKEDIN": "0",
     "SCHEDULE_REFRESH": "0",
     "MAX_SCORE_PER_RUN": "150",
+    "ALERTS_ENABLED": "1",
+    "UPDATE_CHECK": "1",
 }
 
 

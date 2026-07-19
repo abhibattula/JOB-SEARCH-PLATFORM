@@ -31,7 +31,15 @@ def parse_feed_params(
     offset: int = 0,
     ineligible: int = 0,
     min_score: float | None = None,
+    seen: str | None = None,
 ) -> dict:
+    seen_since = None
+    if seen == "24h":
+        from datetime import datetime, timedelta, timezone
+
+        seen_since = (
+            datetime.now(timezone.utc) - timedelta(days=1)
+        ).strftime("%Y-%m-%d %H:%M:%S.000")
     statuses: tuple[str, ...] | list[str] | None
     if status:
         statuses = [s for s in status.split(",") if s in db.VALID_STATUSES]
@@ -54,6 +62,7 @@ def parse_feed_params(
         "offset": max(0, offset),
         "ineligible": bool(ineligible),
         "min_score": min_score if min_score and min_score > 0 else None,
+        "seen_since": seen_since,
     }
 
 
@@ -103,10 +112,11 @@ def list_jobs(
     offset: int = 0,
     ineligible: int = 0,
     min_score: float | None = None,
+    seen: str | None = None,
 ):
     params = parse_feed_params(
         window, status, location, remote, sort, entry_level, limit, offset,
-        ineligible, min_score,
+        ineligible, min_score, seen,
     )
     jobs, total = db.query_jobs(**params)
     return {"jobs": [job_summary(j) for j in jobs], "total": total}
@@ -194,6 +204,7 @@ def get_settings():
         "llm_model": settings.get("LLM_MODEL"),
         "jobspy_linkedin": settings.get("JOBSPY_LINKEDIN") == "1",
         "schedule_refresh": settings.get("SCHEDULE_REFRESH") == "1",
+        "alerts_enabled": settings.get("ALERTS_ENABLED") != "0",
         "max_score_per_run": int(settings.get("MAX_SCORE_PER_RUN") or "150"),
     }
 
@@ -206,6 +217,7 @@ async def save_settings(
     llm_model: str | None = Form(None),
     jobspy_linkedin: str | None = Form(None),
     schedule_refresh: str | None = Form(None),
+    alerts_enabled: str | None = Form(None),
 ):
     if llm_api_key:  # blank never clears an existing key
         settings.set("LLM_API_KEY", llm_api_key.strip())
@@ -217,6 +229,8 @@ async def save_settings(
         settings.set("JOBSPY_LINKEDIN", "1" if jobspy_linkedin == "1" else "0")
     if schedule_refresh is not None:
         settings.set("SCHEDULE_REFRESH", "1" if schedule_refresh == "1" else "0")
+    if alerts_enabled is not None:
+        settings.set("ALERTS_ENABLED", "1" if alerts_enabled == "1" else "0")
     if "text/html" in (request.headers.get("accept") or ""):
         return RedirectResponse("/settings", status_code=303)
     return get_settings()
