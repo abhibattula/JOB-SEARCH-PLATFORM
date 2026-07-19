@@ -6,7 +6,7 @@ from __future__ import annotations
 import importlib
 
 SOURCE_ORDER = [
-    "greenhouse", "lever", "ashby", "smartrecruiters", "workable",
+    "greenhouse", "lever", "ashby", "simplify", "smartrecruiters", "workable",
     "workday", "hn", "jobspy",
 ]
 
@@ -14,6 +14,7 @@ _MODULES = {
     "greenhouse": "engine.ingest.greenhouse",
     "lever": "engine.ingest.lever",
     "ashby": "engine.ingest.ashby",
+    "simplify": "engine.ingest.simplify",
     "smartrecruiters": "engine.ingest.smartrecruiters",
     "workable": "engine.ingest.workable",
     "workday": "engine.ingest.workday",

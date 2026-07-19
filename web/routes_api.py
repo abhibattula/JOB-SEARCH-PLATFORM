@@ -70,6 +70,7 @@ def job_summary(job: dict) -> dict:
         "source": job["source"],
         "sponsorship": job.get("sponsorship") or "UNKNOWN",
         "match_score": job.get("match_score"),
+        "match_method": job.get("match_method"),
         "status": job.get("status") or "none",
         "is_new": job.get("is_new", False),
     }

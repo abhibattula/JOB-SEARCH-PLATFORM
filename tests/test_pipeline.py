@@ -98,3 +98,15 @@ class TestScoringStage:
         jobs, _ = db.query_jobs(window=None, statuses=None, entry_level=True)
         assert len(jobs) == 1
         assert jobs[0]["match_score"] is None
+
+    def test_no_key_falls_back_to_basic_scoring(self, entry_source, monkeypatch):
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        monkeypatch.setattr(
+            pipeline, "_analyze",
+            lambda *a: (_ for _ in ()).throw(AssertionError("LLM must not be called")),
+        )
+        pipeline.run_refresh(trigger="cli")
+        jobs, _ = db.query_jobs(window=None, statuses=None, entry_level=True)
+        assert len(jobs) == 1
+        assert jobs[0]["match_score"] is not None
+        assert jobs[0]["match_method"] == "basic"

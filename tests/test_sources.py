@@ -208,6 +208,52 @@ class TestWorkable:
         assert first.source == "workable"
 
 
+class TestSimplify:
+    def test_parses_active_listings_and_maps_sponsorship(self, monkeypatch):
+        from engine.ingest import simplify
+
+        payload = load_fixture("simplify_listings.json") + [
+            {
+                "title": "Old Role", "company_name": "Gone Inc",
+                "url": "https://x.example/old", "active": False,
+                "is_visible": True, "locations": [], "date_posted": 1700000000,
+                "sponsorship": "Other",
+            },
+            {
+                "title": "Citizens Role", "company_name": "Defense Co",
+                "url": "https://x.example/cit", "active": True,
+                "is_visible": True, "locations": ["Remote in USA"],
+                "date_posted": 1783000000,
+                "sponsorship": "U.S. Citizenship is Required",
+            },
+        ]
+        monkeypatch.setattr(simplify, "polite_get", lambda url, **kw: fake_response(payload))
+        jobs = list(simplify.fetch_jobs([]))
+
+        assert not any(j.title == "Old Role" for j in jobs)  # inactive skipped
+        first = jobs[0]
+        assert first.source == "simplify"
+        assert first.company == "RWS"
+        expected_date = datetime.fromtimestamp(1763766945, tz=timezone.utc).strftime("%Y-%m-%d")
+        assert first.posted_date == expected_date
+
+        citizens = next(j for j in jobs if j.title == "Citizens Role")
+        assert citizens.is_remote is True
+        assert "U.S. Citizenship is Required" in citizens.description
+
+    def test_sponsorship_field_drives_scanner(self):
+        from engine import filters
+
+        flag, phrase = filters.scan_sponsorship("Sponsorship: U.S. Citizenship is Required.")
+        assert flag == -1
+        flag, _ = filters.scan_sponsorship("Sponsorship: Offers Sponsorship.")
+        assert flag == 1
+        flag, _ = filters.scan_sponsorship("Sponsorship: Does Not Offer Sponsorship.")
+        assert flag == -1
+        flag, _ = filters.scan_sponsorship("Sponsorship: Other.")
+        assert flag == 0
+
+
 class TestJobspy:
     def _frame(self):
         pd = pytest.importorskip("pandas")

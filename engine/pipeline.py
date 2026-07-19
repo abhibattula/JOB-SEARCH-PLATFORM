@@ -102,23 +102,34 @@ def _analyze(resume_text: str, title: str, company: str, description: str):
 def _score_new_jobs() -> None:
     """Score unscored entry-level jobs against the resume (FR-012).
 
-    Volume is capped per run and calls are throttled inside the matcher so a
-    huge first refresh cannot exhaust the free-tier daily quota. Failures
-    leave jobs visible and unscored.
+    With an LLM key: full AI analysis (throttled + capped for the free tier),
+    also upgrading any earlier basic-method scores. Without a key: the
+    deterministic local basic matcher — scores appear offline, marked
+    method="basic". Failures leave jobs visible and unscored.
     """
-    from . import matcher, settings
+    import json
+
+    from . import basic_match, matcher, settings
 
     profile = db.get_profile()
-    if not profile or not profile.get("resume_text") or not matcher.llm_available():
+    if not profile or not profile.get("resume_text"):
         return
-    cap = int(settings.get("MAX_SCORE_PER_RUN") or "150")
     resume_text = profile["resume_text"]
-    for job in db.jobs_needing_score(limit=cap):
-        analysis = _analyze(
-            resume_text, job["title"], job["company"], job.get("description") or ""
-        )
-        if analysis is not None:
-            db.set_match(job["id"], analysis.match_score, analysis.model_dump_json())
+    llm = matcher.llm_available()
+    cap = int(settings.get("MAX_SCORE_PER_RUN") or "150") if llm else 2000
+    for job in db.jobs_needing_score(limit=cap, include_basic=llm):
+        description = job.get("description") or ""
+        if llm:
+            analysis = _analyze(resume_text, job["title"], job["company"], description)
+            method = "llm"
+            if analysis is None:
+                continue
+        else:
+            analysis = basic_match.score(resume_text, job["title"], description)
+            method = "basic"
+        payload = analysis.model_dump()
+        payload["method"] = method
+        db.set_match(job["id"], analysis.match_score, json.dumps(payload))
 
 
 def _execute(run_id: int) -> dict:

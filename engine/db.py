@@ -233,6 +233,7 @@ def upsert_job(job: Mapping[str, Any]) -> str:
 _JOB_COLUMNS = (
     "j.id, j.title, j.location, j.is_remote, j.url, j.source, j.posted_date,"
     " j.first_seen, j.is_entry_level, j.sponsorship, j.match_score, j.status,"
+    " json_extract(j.match_json, '$.method') AS match_method,"
     " c.name AS company"
 )
 
@@ -372,12 +373,21 @@ def jobs_needing_classification() -> list[dict]:
     return [dict(row) for row in rows]
 
 
-def jobs_needing_score(limit: int = 150) -> list[dict]:
+def jobs_needing_score(limit: int = 150, include_basic: bool = False) -> list[dict]:
+    """Unscored eligible entry-level jobs; with include_basic=True, also jobs
+    whose stored score came from the local basic matcher (so LLM scoring
+    upgrades them once a key exists)."""
+    score_clause = "j.match_score IS NULL"
+    if include_basic:
+        score_clause = (
+            "(j.match_score IS NULL"
+            " OR json_extract(j.match_json, '$.method') = 'basic')"
+        )
     with _conn() as conn:
         rows = conn.execute(
             "SELECT j.id, j.title, j.description, c.name AS company"
             " FROM jobs j JOIN companies c ON j.company_id = c.id"
-            " WHERE j.is_entry_level = 1 AND j.match_score IS NULL"
+            f" WHERE j.is_entry_level = 1 AND {score_clause}"
             " AND j.sponsorship != 'EXCLUDED'"  # never spend LLM quota on ineligible jobs
             " AND j.status NOT IN ('applied', 'hidden')"
             " ORDER BY COALESCE(j.posted_date, j.first_seen) DESC LIMIT ?",

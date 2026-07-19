@@ -45,7 +45,11 @@
       <section>
         <h2>Match analysis</h2>
         {% if match %}
-        <p class="score-big data">{{ '%d' % match.match_score }}<span>/100</span></p>
+        <p class="score-big data">{{ '~' if match.method == 'basic' }}{{ '%d' % match.match_score }}<span>/100</span></p>
+        {% if match.method == 'basic' %}
+        <p class="muted">Basic keyword match. Add a free AI key in
+          <a href="/settings">Settings</a> for full analysis and better gap advice.</p>
+        {% endif %}
         {% if match.matching_skills %}
         <h3>You have</h3>
         <p class="chips">{% for s in match.matching_skills %}<span class="chip have">{{ s }}</span>{% endfor %}</p>

@@ -76,13 +76,16 @@ _NEGATIVE = [re.compile(p) for p in (
     r"citizenship required", r"not require sponsorship",
     r"no visa sponsorship", r"sponsorship is not available",
     r"not offer sponsorship", r"not provide sponsorship",
-    r"security clearance",
+    r"security clearance", r"citizenship is required",
     r"\bitar\b", r"\bu\.?s\.?\s+persons?\b", r"export control",
     r"export regulations", r"\b(?:active|secret|top secret)\s+clearance",
     r"ts\s*/\s*sci", r"must be a u\.?s\.?\s+citizen",
     r"green card holders?\s+(?:only|will be considered)",
 )]
-_POSITIVE = ["visa sponsorship", "will sponsor", "sponsorship available", "h-1b", "h1b"]
+_POSITIVE = [
+    "visa sponsorship", "will sponsor", "sponsorship available",
+    "offers sponsorship", "h-1b", "h1b",
+]
 _POSITIVE_CASED = [r"\bOPT\b", r"\bCPT\b"]  # uppercase acronyms only
 
 HIGH_APPROVALS_THRESHOLD = 25
