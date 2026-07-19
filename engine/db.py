@@ -392,6 +392,21 @@ def set_stage(job_id: int, stage: str) -> None:
             raise KeyError(f"no job with id {job_id}")
 
 
+def set_tailor(job_id: int, tailor_json: str | None) -> None:
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE jobs SET tailor_json = ? WHERE id = ?", (tailor_json, job_id)
+        )
+        if cur.rowcount == 0:
+            raise KeyError(f"no job with id {job_id}")
+
+
+def clear_all_tailoring() -> None:
+    """Tailored documents are resume-derived; a resume change invalidates them."""
+    with _conn() as conn:
+        conn.execute("UPDATE jobs SET tailor_json = NULL WHERE tailor_json IS NOT NULL")
+
+
 def set_notes(job_id: int, notes: str) -> None:
     with _conn() as conn:
         cur = conn.execute(
@@ -737,6 +752,8 @@ def get_profile() -> dict | None:
 
 def save_profile(**fields: Any) -> None:
     """Create or partially update the single profile row (id=1)."""
+    if "resume_text" in fields:
+        clear_all_tailoring()
     with _conn() as conn:
         existing = conn.execute(
             "SELECT * FROM user_profile WHERE id = 1"

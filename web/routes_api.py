@@ -298,6 +298,34 @@ def analytics():
     return db.application_analytics()
 
 
+@router.post("/jobs/{job_id}/tailor")
+def tailor_job(job_id: int, request: Request):
+    from engine import matcher, tailor
+
+    job = db.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    profile = db.get_profile()
+    if not profile or not profile.get("resume_text"):
+        raise HTTPException(
+            status_code=409, detail="Upload a resume on the Profile page first."
+        )
+    if not matcher.llm_available():
+        raise HTTPException(
+            status_code=409, detail="Add an AI key in Settings to generate tailoring."
+        )
+    result = tailor.tailor_for_job(
+        profile["resume_text"], job["title"], job["company"],
+        job.get("description") or "",
+    )
+    if result is None:
+        raise HTTPException(
+            status_code=502, detail="The AI response was invalid — try again."
+        )
+    db.set_tailor(job_id, result.model_dump_json())
+    return result.model_dump()
+
+
 def _profile_payload() -> dict:
     profile = db.get_profile() or {}
     return {

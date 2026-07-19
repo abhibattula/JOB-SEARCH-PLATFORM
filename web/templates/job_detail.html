@@ -72,6 +72,43 @@
           <a href="/profile">Profile</a> page.</p>
         {% endif %}
       </section>
+
+      <section>
+        <h2>Apply with tailored materials</h2>
+        {% if tailoring %}
+        <h3>Resume headline</h3>
+        <p class="copy-block" onclick="navigator.clipboard.writeText(this.innerText)"
+           title="Click to copy">{{ tailoring.summary_line }}</p>
+        <h3>Tailored bullets <span class="muted">(click any to copy)</span></h3>
+        <ul class="tailor-bullets">
+          {% for bullet in tailoring.tailored_bullets %}
+          <li class="copy-block" onclick="navigator.clipboard.writeText(this.innerText)"
+              title="Click to copy">{{ bullet }}</li>
+          {% endfor %}
+        </ul>
+        <h3>Cover letter</h3>
+        <p class="copy-block jd-text" onclick="navigator.clipboard.writeText(this.innerText)"
+           title="Click to copy">{{ tailoring.cover_letter }}</p>
+        {% if tailoring.ats_keywords %}
+        <h3>ATS keywords to include</h3>
+        <p class="chips">{% for kw in tailoring.ats_keywords %}<span class="chip have">{{ kw }}</span>{% endfor %}</p>
+        {% endif %}
+        <button class="tailor-btn ghost" hx-post="/api/jobs/{{ job.id }}/tailor" hx-swap="none"
+                hx-on::after-request="if(event.detail.successful) window.location.reload()">
+          Regenerate
+        </button>
+        {% else %}
+        <p class="muted">Generate resume bullets and a cover letter written for this
+          specific posting from your real resume (nothing is invented).</p>
+        <button class="tailor-btn" hx-post="/api/jobs/{{ job.id }}/tailor" hx-swap="none"
+                hx-indicator="#tailor-wait"
+                hx-on::after-request="if(event.detail.successful) window.location.reload(); else this.nextElementSibling.nextElementSibling.innerText = JSON.parse(event.detail.xhr.responseText).detail">
+          Tailor for this job
+        </button>
+        <span id="tailor-wait" class="htmx-indicator data">generating…</span>
+        <p class="muted" role="alert"></p>
+        {% endif %}
+      </section>
     </aside>
   </div>
 </article>

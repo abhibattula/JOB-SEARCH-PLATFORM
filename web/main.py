@@ -142,10 +142,11 @@ def create_app() -> FastAPI:
             if job.get("sponsorship_evidence")
             else None
         )
+        tailoring = json.loads(job["tailor_json"]) if job.get("tailor_json") else None
         return templates.TemplateResponse(
             request,
             "job_detail.html",
-            {"job": job, "match": match, "evidence": evidence},
+            {"job": job, "match": match, "evidence": evidence, "tailoring": tailoring},
         )
 
     @app.get("/profile", response_class=HTMLResponse)
