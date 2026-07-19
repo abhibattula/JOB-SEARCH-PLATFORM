@@ -11,12 +11,15 @@
 </div>
 {% endif %}
 
+{% set pipeline_view = status_view == 'applied' %}
 {% if jobs %}
 <table class="feed">
   <thead>
     <tr>
       <th>Role</th><th>Company</th><th>Location</th><th>Posted</th>
-      <th>Sponsor</th><th>Match</th><th></th>
+      <th>Sponsor</th><th>Match</th>
+      {% if pipeline_view %}<th>Stage</th><th>Notes</th>{% endif %}
+      <th></th>
     </tr>
   </thead>
   <tbody>
@@ -26,6 +29,7 @@
         <a href="/jobs/{{ job.id }}">{{ job.title }}</a>
         {% if job.is_new %}<span class="new-flag">new</span>{% endif %}
         {% if job.status == 'saved' %}<span class="saved-flag">saved</span>{% endif %}
+        {% if job.follow_up %}<span class="followup-flag" title="Applied over a week ago with no movement — follow up or move on">⚑ follow up</span>{% endif %}
       </td>
       <td>{{ job.company }}</td>
       <td class="data">{{ 'Remote' if job.is_remote and not job.location else (job.location or '—') }}</td>
@@ -36,6 +40,26 @@
           {{ '~' if job.match_method == 'basic' }}{{ '%d' % job.match_score }}
         {%- else -%}—{%- endif -%}
       </td>
+      {% if pipeline_view %}
+      <td>
+        <select class="stage-select data" name="stage"
+                hx-post="/api/jobs/{{ job.id }}/stage" hx-trigger="change" hx-swap="none"
+                hx-on::after-request="htmx.trigger('#feed-region','refresh-feed')">
+          {% for s in ['applied','oa','interview','offer','rejected'] %}
+          <option value="{{ s }}" {{ 'selected' if job.stage == s }}>{{ s }}</option>
+          {% endfor %}
+        </select>
+      </td>
+      <td class="notes-cell">
+        <details>
+          <summary class="data">{{ '✎ notes' if not job.notes else (job.notes[:18] ~ '…' if job.notes|length > 18 else job.notes) }}</summary>
+          <form hx-post="/api/jobs/{{ job.id }}/notes" hx-swap="none">
+            <textarea name="notes" rows="3">{{ job.notes or '' }}</textarea>
+            <button type="submit">Save</button>
+          </form>
+        </details>
+      </td>
+      {% endif %}
       <td class="actions">
         <button hx-post="/api/jobs/{{ job.id }}/status?status=saved" hx-swap="none"
                 hx-on::after-request="htmx.trigger('#feed-region','refresh-feed')" title="Save">☆</button>

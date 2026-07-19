@@ -131,9 +131,32 @@ def _conn() -> Iterator[sqlite3.Connection]:
         conn.close()
 
 
+APPLICATION_STAGES = ("applied", "oa", "interview", "offer", "rejected")
+FOLLOW_UP_DAYS = 7
+
+# columns added after the original schema; applied idempotently on startup
+_MIGRATIONS = {
+    "jobs": [
+        ("tailor_json", "TEXT"),
+        ("stage", "TEXT"),
+        ("applied_at", "TEXT"),
+        ("stage_updated_at", "TEXT"),
+        ("notes", "TEXT"),
+    ],
+}
+
+
 def init_db() -> None:
     with _conn() as conn:
         conn.executescript(_SCHEMA)
+        for table, columns in _MIGRATIONS.items():
+            existing = {
+                row["name"]
+                for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+            }
+            for column, ddl_type in columns:
+                if column not in existing:
+                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}")
 
 
 def normalize_company(name: str) -> str:
@@ -234,6 +257,7 @@ _JOB_COLUMNS = (
     "j.id, j.title, j.location, j.is_remote, j.url, j.source, j.posted_date,"
     " j.first_seen, j.is_entry_level, j.sponsorship, j.match_score, j.status,"
     " json_extract(j.match_json, '$.method') AS match_method,"
+    " j.stage, j.applied_at, j.stage_updated_at, j.notes,"
     " c.name AS company"
 )
 
@@ -245,6 +269,12 @@ def _row_to_job(row: sqlite3.Row, latest_start: str | None) -> dict:
         job["is_new"] = _parse_ts(job["first_seen"]) >= _parse_ts(latest_start)
     else:
         job["is_new"] = False
+    job["follow_up"] = bool(
+        job.get("stage") == "applied"
+        and job.get("stage_updated_at")
+        and datetime.now(timezone.utc) - _parse_ts(job["stage_updated_at"])
+        > timedelta(days=FOLLOW_UP_DAYS)
+    )
     return job
 
 
@@ -336,6 +366,93 @@ def set_status(job_id: int, status: str) -> None:
         cur = conn.execute("UPDATE jobs SET status = ? WHERE id = ?", (status, job_id))
         if cur.rowcount == 0:
             raise KeyError(f"no job with id {job_id}")
+        if status == "applied":
+            conn.execute(
+                "UPDATE jobs SET stage = COALESCE(stage, 'applied'),"
+                " applied_at = COALESCE(applied_at, ?),"
+                " stage_updated_at = COALESCE(stage_updated_at, ?) WHERE id = ?",
+                (_utcnow(), _utcnow(), job_id),
+            )
+
+
+def set_stage(job_id: int, stage: str) -> None:
+    if stage not in APPLICATION_STAGES:
+        raise ValueError(f"invalid stage {stage!r}")
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE jobs SET stage = ?, stage_updated_at = ?,"
+            " applied_at = COALESCE(applied_at, ?) WHERE id = ?",
+            (stage, _utcnow(), _utcnow(), job_id),
+        )
+        if cur.rowcount == 0:
+            raise KeyError(f"no job with id {job_id}")
+
+
+def set_notes(job_id: int, notes: str) -> None:
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE jobs SET notes = ? WHERE id = ?", (notes, job_id)
+        )
+        if cur.rowcount == 0:
+            raise KeyError(f"no job with id {job_id}")
+
+
+def application_analytics() -> dict:
+    """Aggregates for the analytics page. 'Response' = any stage movement past
+    'applied' (including rejection); 'interview' = interview or offer."""
+    with _conn() as conn:
+        applied = conn.execute(
+            "SELECT COUNT(1) AS n FROM jobs WHERE applied_at IS NOT NULL"
+        ).fetchone()["n"]
+        by_stage = {
+            row["stage"]: row["n"]
+            for row in conn.execute(
+                "SELECT stage, COUNT(1) AS n FROM jobs WHERE stage IS NOT NULL"
+                " GROUP BY stage"
+            ).fetchall()
+        }
+        responses = sum(v for k, v in by_stage.items() if k != "applied")
+        interviews = sum(by_stage.get(k, 0) for k in ("interview", "offer"))
+        by_source = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT j.source, COUNT(1) AS applied,"
+                " SUM(CASE WHEN j.stage != 'applied' THEN 1 ELSE 0 END) AS responses,"
+                " SUM(CASE WHEN j.stage IN ('interview','offer') THEN 1 ELSE 0 END) AS interviews"
+                " FROM jobs j WHERE j.applied_at IS NOT NULL"
+                " GROUP BY j.source ORDER BY applied DESC"
+            ).fetchall()
+        ]
+        by_band = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT CASE WHEN j.match_score IS NULL THEN 'unscored'"
+                " WHEN j.match_score >= 70 THEN '70+'"
+                " WHEN j.match_score >= 50 THEN '50-69' ELSE '<50' END AS band,"
+                " COUNT(1) AS applied,"
+                " SUM(CASE WHEN j.stage != 'applied' THEN 1 ELSE 0 END) AS responses,"
+                " SUM(CASE WHEN j.stage IN ('interview','offer') THEN 1 ELSE 0 END) AS interviews"
+                " FROM jobs j WHERE j.applied_at IS NOT NULL"
+                " GROUP BY band ORDER BY applied DESC"
+            ).fetchall()
+        ]
+        by_week = [
+            dict(row)
+            for row in conn.execute(
+                "SELECT strftime('%Y-W%W', applied_at) AS week, COUNT(1) AS applied"
+                " FROM jobs WHERE applied_at IS NOT NULL"
+                " GROUP BY week ORDER BY week DESC LIMIT 12"
+            ).fetchall()
+        ]
+    return {
+        "total_applied": applied,
+        "by_stage": by_stage,
+        "responses": responses,
+        "interviews": interviews,
+        "by_source": by_source,
+        "by_band": by_band,
+        "by_week": by_week,
+    }
 
 
 def set_match(job_id: int, score: float | None, match_json: str | None) -> None:

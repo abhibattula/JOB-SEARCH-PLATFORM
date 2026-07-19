@@ -179,6 +179,40 @@ class TestExportApi:
         assert "Export Me" not in body  # filter respected
 
 
+class TestStagesApi:
+    def test_stage_roundtrip_and_errors(self, client):
+        job = seed_job()
+        client.post(f"/api/jobs/{job['id']}/status", json={"status": "applied"})
+        ok = client.post(f"/api/jobs/{job['id']}/stage", params={"stage": "interview"})
+        assert ok.status_code == 200
+        assert ok.json()["stage"] == "interview"
+        assert client.post(
+            f"/api/jobs/{job['id']}/stage", params={"stage": "bogus"}
+        ).status_code == 400
+        assert client.post(
+            "/api/jobs/99999/stage", params={"stage": "oa"}
+        ).status_code == 404
+
+    def test_notes_endpoint(self, client):
+        job = seed_job()
+        response = client.post(
+            f"/api/jobs/{job['id']}/notes", data={"notes": "recruiter call Tuesday"}
+        )
+        assert response.status_code == 200
+        detail = client.get(f"/api/jobs/{job['id']}").json()
+        assert detail["notes"] == "recruiter call Tuesday"
+
+    def test_analytics_endpoint_shape(self, client):
+        job = seed_job()
+        client.post(f"/api/jobs/{job['id']}/status", json={"status": "applied"})
+        stats = client.get("/api/analytics").json()
+        assert stats["total_applied"] == 1
+        assert "by_source" in stats and "by_band" in stats
+
+    def test_analytics_page_serves(self, client):
+        assert client.get("/analytics").status_code == 200
+
+
 class TestRefreshApi:
     def test_start_then_cooldown_then_force(self, client):
         first = client.post("/api/refresh")

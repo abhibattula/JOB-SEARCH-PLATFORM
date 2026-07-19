@@ -61,9 +61,20 @@ table.feed { width: 100%; border-collapse: collapse; }
 .feed tr.is-new { background: #f4faf7; }
 .feed .role a { color: var(--ink); font-weight: 600; }
 .feed .role a:hover { color: var(--accent); }
-.new-flag, .saved-flag { font-family: var(--mono); font-size: 0.7rem; margin-left: 0.4rem; padding: 0.05rem 0.3rem; border-radius: 3px; }
+.new-flag, .saved-flag, .followup-flag { font-family: var(--mono); font-size: 0.7rem; margin-left: 0.4rem; padding: 0.05rem 0.3rem; border-radius: 3px; }
 .new-flag { background: var(--green); color: #fff; }
 .saved-flag { border: 1px solid var(--amber); color: var(--amber); }
+.followup-flag { background: var(--amber); color: #fff; }
+
+/* Pipeline (Applied view) */
+.stage-select { padding: 0.15rem 0.3rem; border: 1px solid var(--line); border-radius: 3px; font-size: 0.8rem; }
+.notes-cell details summary { cursor: pointer; color: var(--muted); font-size: 0.78rem; }
+.notes-cell textarea { width: 220px; font: inherit; font-size: 0.8rem; border: 1px solid var(--line); border-radius: 3px; }
+.notes-cell button { display: block; margin-top: 0.2rem; padding: 0.1rem 0.5rem; font-size: 0.75rem; border: 1px solid var(--ink); background: var(--ink); color: #fff; border-radius: 3px; cursor: pointer; }
+.funnel-line { font-size: 1.05rem; }
+.analytics-page section { margin-top: 1.4rem; }
+.analytics-page h2 { font-size: 0.85rem; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: 0.2rem; }
+table.feed.narrow { max-width: 320px; }
 .score { font-weight: 700; }
 .count { color: var(--muted); margin-top: 0.6rem; }
 

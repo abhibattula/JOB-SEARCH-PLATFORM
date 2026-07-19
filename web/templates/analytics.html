@@ -1,0 +1,77 @@
+{% extends "base.html" %}
+{% block title %}Analytics · Job Engine{% endblock %}
+{% block content %}
+<article class="analytics-page">
+  <h1>Application analytics</h1>
+
+  {% if stats.total_applied == 0 %}
+  <div class="empty-state">
+    <p>No applications tracked yet. Mark jobs as <strong>Applied</strong> (✓ in the
+    feed) and your funnel numbers will build up here.</p>
+  </div>
+  {% else %}
+  <section>
+    <h2>Funnel</h2>
+    <p class="data funnel-line">
+      applied {{ stats.total_applied }}
+      → responses {{ stats.responses }}
+      → interviews {{ stats.interviews }}
+      {% if stats.by_stage.offer %} → offers {{ stats.by_stage.offer }}{% endif %}
+    </p>
+    <p class="chips">
+      {% for stage in ['applied','oa','interview','offer','rejected'] %}
+      {% if stats.by_stage.get(stage) %}
+      <span class="chip {{ 'have' if stage in ('interview','offer') else ('miss' if stage == 'rejected' else '') }}">{{ stage }}: {{ stats.by_stage[stage] }}</span>
+      {% endif %}
+      {% endfor %}
+    </p>
+  </section>
+
+  <section>
+    <h2>Where responses come from</h2>
+    <table class="feed">
+      <thead><tr><th>Source</th><th>Applied</th><th>Responses</th><th>Interviews</th></tr></thead>
+      <tbody>
+        {% for row in stats.by_source %}
+        <tr>
+          <td class="data">{{ row.source }}</td>
+          <td class="data">{{ row.applied }}</td>
+          <td class="data">{{ row.responses or 0 }}</td>
+          <td class="data">{{ row.interviews or 0 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Does the match score predict callbacks?</h2>
+    <table class="feed">
+      <thead><tr><th>Score band</th><th>Applied</th><th>Responses</th><th>Interviews</th></tr></thead>
+      <tbody>
+        {% for row in stats.by_band %}
+        <tr>
+          <td class="data">{{ row.band }}</td>
+          <td class="data">{{ row.applied }}</td>
+          <td class="data">{{ row.responses or 0 }}</td>
+          <td class="data">{{ row.interviews or 0 }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>Applications per week</h2>
+    <table class="feed narrow">
+      <thead><tr><th>Week</th><th>Applied</th></tr></thead>
+      <tbody>
+        {% for row in stats.by_week %}
+        <tr><td class="data">{{ row.week }}</td><td class="data">{{ row.applied }}</td></tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </section>
+  {% endif %}
+</article>
+{% endblock %}

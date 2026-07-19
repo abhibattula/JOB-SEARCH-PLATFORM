@@ -151,6 +151,12 @@ def create_app() -> FastAPI:
             request, "profile.html", {"profile": db.get_profile()}
         )
 
+    @app.get("/analytics", response_class=HTMLResponse)
+    def analytics_page(request: Request):
+        return templates.TemplateResponse(
+            request, "analytics.html", {"stats": db.application_analytics()}
+        )
+
     @app.get("/settings", response_class=HTMLResponse)
     def settings_page(request: Request):
         from .routes_api import get_settings

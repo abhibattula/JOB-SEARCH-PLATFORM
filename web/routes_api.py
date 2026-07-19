@@ -72,6 +72,8 @@ def job_summary(job: dict) -> dict:
         "match_score": job.get("match_score"),
         "match_method": job.get("match_method"),
         "status": job.get("status") or "none",
+        "stage": job.get("stage"),
+        "follow_up": job.get("follow_up", False),
         "is_new": job.get("is_new", False),
     }
 
@@ -117,6 +119,8 @@ def job_detail(job_id: int):
         raise HTTPException(status_code=404, detail="job not found")
     payload = job_summary(job)
     payload["description"] = job.get("description") or ""
+    payload["notes"] = job.get("notes")
+    payload["applied_at"] = job.get("applied_at")
     evidence = job.get("sponsorship_evidence")
     payload["sponsorship_evidence"] = json.loads(evidence) if evidence else None
     match = job.get("match_json")
@@ -237,6 +241,47 @@ def test_llm_key(request: Request):
             return HTMLResponse(f"✓ Key works ({result['model']})")
         return HTMLResponse(f"✕ {result['error']}")
     return result
+
+
+@router.post("/jobs/{job_id}/stage")
+async def set_job_stage(job_id: int, request: Request, stage: str | None = None):
+    if stage is None:
+        try:
+            form = await request.form()
+            stage = form.get("stage")
+        except Exception:
+            stage = None
+    if stage is None:
+        raise HTTPException(status_code=400, detail="stage is required")
+    try:
+        db.set_stage(job_id, stage)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return job_summary(db.get_job(job_id))
+
+
+@router.post("/jobs/{job_id}/notes")
+async def set_job_notes(job_id: int, request: Request):
+    form = await request.form()
+    notes = form.get("notes")
+    if notes is None:
+        try:
+            body = await request.json()
+            notes = body.get("notes", "")
+        except Exception:
+            notes = ""
+    try:
+        db.set_notes(job_id, notes or "")
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {"ok": True}
+
+
+@router.get("/analytics")
+def analytics():
+    return db.application_analytics()
 
 
 def _profile_payload() -> dict:
