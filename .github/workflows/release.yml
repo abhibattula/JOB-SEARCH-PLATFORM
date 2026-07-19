@@ -1,0 +1,42 @@
+name: Release installers
+
+on:
+  push:
+    tags: ["v*"]
+
+permissions:
+  contents: write
+
+jobs:
+  windows-installer:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt pyinstaller
+      - run: python -m pytest -q
+      - run: pyinstaller packaging/jobengine.spec
+      - run: choco install innosetup -y --no-progress
+      - run: iscc packaging\windows.iss
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: packaging/Output/JobEngine-Setup-*.exe
+
+  mac-dmg:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+      - run: pip install -r requirements.txt pyinstaller
+      - run: python -m pytest -q
+      - run: pyinstaller packaging/jobengine.spec
+      - run: bash packaging/make_dmg.sh "${GITHUB_REF_NAME#v}"
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/JobEngine-*.dmg

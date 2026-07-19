@@ -52,15 +52,17 @@ This is the daily-use manual. For first-time setup, follow
 
 ## Your profile (unlocks scoring)
 
-1. Get a free API key at **console.groq.com** (no card) and put it in `.env`
-   as `LLM_API_KEY=...`. Any OpenAI-compatible endpoint works — change
-   `LLM_BASE_URL`/`LLM_MODEL` to swap providers (e.g., local Ollama:
-   `LLM_BASE_URL=http://localhost:11434/v1`).
+1. Get a free API key at **console.groq.com** (no card required), then open
+   **Settings** in the app, paste it, and click **Test key** to confirm it
+   works. (Advanced: the Settings page can point at any OpenAI-compatible
+   provider — e.g., local Ollama at `http://localhost:11434/v1`.) A `.env`
+   file still works as a developer override.
 2. Open **Profile**, upload your resume PDF, optionally set preferred
    locations (they pre-fill the location filter, never exclude jobs).
 3. Scores and gap analysis appear on newly refreshed entry-level jobs. Scoring
-   is throttled (~28 calls/min) and capped per refresh (`MAX_SCORE_PER_RUN`,
-   default 150) to stay inside the free tier.
+   is throttled (~28 calls/min) and capped per refresh to stay inside the
+   free tier. Use the **Best matches** tab (or the "Match: 70+" toolbar
+   filter) to browse only strong fits.
 
 Your resume text never leaves your machine except inside the scoring calls to
 the LLM provider you configured.

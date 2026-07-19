@@ -13,7 +13,10 @@ from engine import db, paths
 
 from .routes_api import parse_feed_params, router as api_router
 
+from engine import APP_VERSION
+
 templates = Jinja2Templates(directory=paths.resource_path("web/templates"))
+templates.env.globals["app_version"] = APP_VERSION
 
 
 def _bootstrap_sponsorship() -> None:

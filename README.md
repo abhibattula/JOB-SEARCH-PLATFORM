@@ -32,7 +32,22 @@ entirely on your machine for $0.
 - **A feed that stays actionable**: mark jobs Saved / Applied / Hidden —
   handled jobs never re-clutter the default view. Export any view as CSV.
 
-## Quick start
+## Install (for users)
+
+Grab the latest installer from the **GitHub Releases** page once the repo is
+published (see [docs/RELEASING.md](docs/RELEASING.md)):
+
+- **Windows**: `JobEngine-Setup-<version>.exe` — SmartScreen will warn because
+  the app is unsigned; click *More info → Run anyway* the first time.
+- **macOS**: `JobEngine-<version>.dmg` — drag *Job Engine* to Applications;
+  first launch needs *right-click → Open → Open* (unsigned app).
+
+First run: the app opens with a 3-step welcome — upload your resume, paste a
+free Groq AI key on the Settings page (guided link, no card needed), hit
+Refresh. Sponsorship data ships preloaded. All data stays on your computer
+(`%LOCALAPPDATA%\JobEngine` / `~/Library/Application Support/JobEngine`).
+
+## Quick start (from source)
 
 **Windows**
 ```powershell

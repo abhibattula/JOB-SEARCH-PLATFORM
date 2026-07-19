@@ -9,6 +9,10 @@ dist/
 build/
 .pytest_cache/
 
+# Installer build output
+packaging/Output/
+*.spec.bak
+
 # Secrets & local config
 .env
 

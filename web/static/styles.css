@@ -105,6 +105,9 @@ table.feed { width: 100%; border-collapse: collapse; }
 .gaps li { margin-bottom: 0.45rem; line-height: 1.4; }
 .evidence { padding-left: 1.1rem; }
 
+/* Footer */
+.appfooter { color: var(--muted); font-size: 0.72rem; text-align: center; padding: 1.2rem 0 0.8rem; }
+
 /* Welcome / onboarding */
 .welcome { border: 1px solid var(--green); background: #ecf7f2; border-radius: 6px; padding: 1rem 1.4rem; margin: 0.6rem 0 1rem; }
 .welcome h2 { margin: 0 0 0.5rem; font-size: 1.05rem; }

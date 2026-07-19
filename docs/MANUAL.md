@@ -295,6 +295,8 @@ everything (next run rebuilds it, but statuses are lost).
 | `POST /api/jobs/{id}/status` | Set `saved\|applied\|hidden\|none` (query param or JSON body). |
 | `GET /api/export` | The current filtered view as a CSV download. |
 | `GET/POST /api/profile` | Read/update resume + preferences (multipart upload). |
+| `GET/POST /api/settings` | Read (masked key) / save the AI key, provider, and toggles — the packaged-app replacement for `.env`. |
+| `POST /api/settings/test` | Live 1-token LLM call to validate the saved key. |
 
 Interactive docs are auto-generated at **http://127.0.0.1:8000/docs** while
 the app runs.
