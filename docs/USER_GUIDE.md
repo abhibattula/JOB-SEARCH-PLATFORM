@@ -32,9 +32,11 @@ This is the daily-use manual. For first-time setup, follow
     USCIS data)
   - The **evidence** (approval count, exact JD phrase) is on the job's detail
     page.
-- **Match** — 0–100 resume fit, sorted best-first by default. `—` means not
-  scored yet (no resume uploaded, no LLM key, or the model output failed
-  validation — the job stays visible either way).
+- **Match** — 0–100 resume fit, sorted best-first by default. `~62` (with a
+  tilde) is the built-in **basic keyword match** — it works with no AI key and
+  upgrades automatically to a full AI score once you add one. `—` means not
+  scored yet (no resume uploaded, or the model output failed validation — the
+  job stays visible either way).
 
 ## Filters and views
 
@@ -44,10 +46,20 @@ This is the daily-use manual. For first-time setup, follow
   silently hidden by your saved preferences.
 - **Entry-level only / All levels** — the default feed hides senior roles;
   switch to All levels to see everything a source returned.
+- **New today** (top navigation) — everything the engine discovered in the
+  last 24 hours, best matches first. Pair it with desktop notifications
+  (Settings) and you'll be among the first applicants.
 - **Saved / Applied / Hidden** (top navigation) — your marked jobs.
   Marking **Applied** or **Hidden** removes a job from the default feed
   permanently (refreshes never reset statuses). **Saved** keeps it in the feed
   with a marker.
+- **Applied is your pipeline**: each row gets a stage dropdown
+  (applied → OA → interview → offer/rejected) and inline notes; rows quiet for
+  7+ days get a ⚑ **follow up** flag. **Analytics** shows your funnel and
+  which sources and score bands actually produce callbacks.
+- **Tailor for this job** (on a job's detail page) — generates resume bullets
+  rewritten in that posting's language, a short cover letter, and ATS keywords,
+  from your real resume only. Click any block to copy it.
 - **CSV ↓** — downloads exactly the current filtered view.
 
 ## Your profile (unlocks scoring)

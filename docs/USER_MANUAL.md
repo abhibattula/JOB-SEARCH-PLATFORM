@@ -235,6 +235,10 @@ faces over the same engine — anything the app can do, a script can do.
 | `ingest/workday.py` | Workday CxS endpoint with pagination and relative-date parsing ("Posted 3 Days Ago"). Implemented + tested, but no default seeds — Workday blocks non-browser clients (Cloudflare) as of 2026-07. | `fetch_jobs(entries)`, `parse_posted_on` |
 | `ingest/hn.py` | Latest "Ask HN: Who is hiring?" thread via the Algolia API. Parses the conventional `Company \| Role \| Location` first line; each comment's own timestamp is the posting date. | `fetch_jobs([])` |
 | `ingest/jobspy_source.py` | Indeed (and optionally LinkedIn) via the python-jobspy library, searching entry-level SWE/hardware terms. Best-effort by design. | `fetch_jobs([])` |
+| `basic_match.py` | Deterministic local scorer (curated SWE/hardware skill dictionary): powers `~NN` scores with no AI key; upgraded to LLM scores automatically. |
+| `alerts.py` | Post-refresh "new strong matches" computation + desktop notification (plyer, best-effort, toggleable). |
+| `tailor.py` | Per-job tailored bullets/cover letter/ATS keywords via the LLM, no-invention prompt guard, cached in `jobs.tailor_json` until the resume changes. |
+| `updates.py` | GitHub Releases version check (silent when offline). |
 | `filters.py` | The two classifiers. Entry-level: seniority markers always lose, then entry markers / hardware families / description scan — and the title must be an engineering role at all. Eligibility: negative wording ("unable to sponsor", citizens-only, security clearance, ITAR/"U.S. person" — word-boundary regexes so "military" never matches ITAR) beats positive wording (visa sponsorship, H-1B, OPT/CPT) → EXCLUDED, which is hidden from all normal views and never scored. | `classify_entry_level`, `scan_sponsorship`, `rate_sponsorship` |
 | `sponsorship.py` | Loads USCIS CSVs (approval counts per employer) and DOL LCA files (job titles, filtered to engineering SOC codes), stores them, and joins company names to records with three-stage matching. | `load_all`, `match_employer`, `apply_to_companies` |
 | `matcher.py` | LLM calls through the OpenAI-compatible client (Groq by default — swap providers via `.env` only). Output must validate against the `MatchAnalysis` schema; one retry, then the job stays unscored. Throttled for free-tier limits. | `analyze_match`, `extract_skills`, `MatchAnalysis` |
@@ -302,6 +306,11 @@ everything (next run rebuilds it, but statuses are lost).
 | `GET /api/jobs` | The feed as JSON. Params: `window=7d\|24h\|all`, `status`, `location`, `remote=1`, `entry_level=all`, `ineligible=1` (audit view of excluded jobs), `sort=score\|date`, `limit`, `offset`. EXCLUDED jobs are hidden unless `ineligible=1`. |
 | `GET /api/jobs/{id}` | Full job incl. description, sponsorship evidence, parsed match analysis. |
 | `POST /api/jobs/{id}/status` | Set `saved\|applied\|hidden\|none` (query param or JSON body). |
+| `POST /api/jobs/{id}/stage` | Move an application through `applied\|oa\|interview\|offer\|rejected`. |
+| `POST /api/jobs/{id}/notes` | Save free-text notes on an application. |
+| `POST /api/jobs/{id}/tailor` | Generate tailored bullets + cover letter (409 without resume/key). |
+| `GET /api/analytics` | Funnel + response-rate aggregates. |
+| `POST /api/settings/check-update` | Compare the running version against GitHub Releases. |
 | `GET /api/export` | The current filtered view as a CSV download. |
 | `GET/POST /api/profile` | Read/update resume + preferences (multipart upload). |
 | `GET/POST /api/settings` | Read (masked key) / save the AI key, provider, and toggles — the packaged-app replacement for `.env`. |

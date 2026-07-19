@@ -35,11 +35,18 @@ entirely on your machine for $0.
   citizens only, ITAR "U.S. persons" — are detected and **hidden from the
   feed entirely** (an Ineligible view lets you audit them with the exact
   trigger phrase).
-- **Resume matching (free LLM)**: upload a PDF once; new entry-level jobs get a
-  0–100 score, matching/missing skills, and concrete "add X to your resume"
-  actions via the Groq free tier (any OpenAI-compatible endpoint works).
-- **A feed that stays actionable**: mark jobs Saved / Applied / Hidden —
-  handled jobs never re-clutter the default view. Export any view as CSV.
+- **Resume matching that always works**: scores appear instantly via a built-in
+  local matcher (no account needed, shown as `~NN`), and upgrade to full AI
+  analysis — matching/missing skills and "add X to your resume" actions — once
+  you paste a free Groq key (any OpenAI-compatible endpoint works).
+- **Apply fast, apply well**: desktop notifications when a refresh finds new
+  70+ matches, a "New today" view of everything just discovered, and one-click
+  **tailored resume bullets + cover letter** per job (generated from your real
+  resume only — nothing invented).
+- **A pipeline, not just a list**: Applied jobs track stages (OA → interview →
+  offer), notes, and 7-day follow-up nudges; the Analytics page shows your
+  funnel and which sources/score-bands actually produce callbacks. Export any
+  view as CSV.
 
 ## Install (for users)
 

@@ -236,6 +236,25 @@ async def save_settings(
     return get_settings()
 
 
+@router.post("/settings/check-update")
+def check_update(request: Request):
+    from fastapi.responses import HTMLResponse
+
+    from engine import updates
+
+    result = updates.check()
+    if request.headers.get("hx-request"):
+        if result is None:
+            return HTMLResponse("✕ Couldn't reach GitHub — check your connection.")
+        if result["newer"]:
+            return HTMLResponse(
+                f'⬆ Version {result["latest"]} is available — '
+                f'<a href="{result["url"]}" target="_blank" rel="noopener">download it</a>.'
+            )
+        return HTMLResponse("✓ You're on the latest version.")
+    return result or {"error": "check failed"}
+
+
 @router.post("/settings/test")
 def test_llm_key(request: Request):
     from fastapi.responses import HTMLResponse

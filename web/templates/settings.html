@@ -51,5 +51,14 @@
       </div>
     </form>
   </section>
+
+  <section class="settings-section">
+    <h2>Updates</h2>
+    <div class="settings-actions">
+      <button type="button" class="ghost" hx-post="/api/settings/check-update"
+              hx-target="#update-result" hx-swap="innerHTML">Check for updates</button>
+      <span id="update-result" class="data"></span>
+    </div>
+  </section>
 </article>
 {% endblock %}

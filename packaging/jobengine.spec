@@ -43,6 +43,9 @@ hiddenimports = (
         "apscheduler.schedulers.background",
         "apscheduler.triggers.cron",
     ]
+    # plyer resolves its notification backend dynamically per platform
+    + (["plyer.platforms.win.notification"] if sys.platform == "win32" else [])
+    + (["plyer.platforms.macosx.notification"] if sys.platform == "darwin" else [])
 )
 
 a = Analysis(
@@ -79,6 +82,6 @@ if sys.platform == "darwin":
         bundle_identifier="dev.abhinav.jobengine",
         info_plist={
             "NSHighResolutionCapable": True,
-            "CFBundleShortVersionString": "0.3.0",
+            "CFBundleShortVersionString": "0.4.0",
         },
     )
