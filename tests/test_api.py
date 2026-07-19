@@ -82,6 +82,20 @@ class TestJobsApi:
         assert audit["total"] == 1
         assert audit["jobs"][0]["sponsorship"] == "EXCLUDED"
 
+    def test_min_score_filter(self, client):
+        high = seed_job(url="https://example.com/hi", title="High Match")
+        seed_job(url="https://example.com/lo", title="Low Match")
+        seed_job(url="https://example.com/un", title="Unscored")
+        db.set_match(high["id"], 88.0, "{}")
+        jobs, _ = db.query_jobs(window=None, statuses=None)
+        low = next(j for j in jobs if j["url"].endswith("/lo"))
+        db.set_match(low["id"], 40.0, "{}")
+
+        filtered = client.get("/api/jobs", params={"min_score": 70}).json()
+        assert filtered["total"] == 1
+        assert filtered["jobs"][0]["title"] == "High Match"
+        assert client.get("/api/jobs").json()["total"] == 3  # no threshold
+
     def test_job_detail_and_404(self, client):
         job = seed_job()
         detail = client.get(f"/api/jobs/{job['id']}")

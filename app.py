@@ -14,7 +14,10 @@ import uvicorn
 
 def maybe_start_scheduler() -> None:
     """Start the nightly auto-refresh when SCHEDULE_REFRESH=1 (shared with desktop.py)."""
-    if os.environ.get("SCHEDULE_REFRESH") != "1":
+    from engine import db, settings
+
+    db.init_db()
+    if settings.get("SCHEDULE_REFRESH") != "1":
         return
     from apscheduler.schedulers.background import BackgroundScheduler
 

@@ -40,7 +40,9 @@ class MatchAnalysis(BaseModel):
 
 
 def llm_available() -> bool:
-    return bool(os.environ.get("LLM_API_KEY"))
+    from . import settings
+
+    return bool(settings.get("LLM_API_KEY"))
 
 
 def _min_interval() -> float:
@@ -57,12 +59,14 @@ def _chat(messages: list[dict]) -> str:
         _last_call = time.monotonic()
     from openai import OpenAI
 
+    from . import settings
+
     client = OpenAI(
-        base_url=os.environ.get("LLM_BASE_URL", DEFAULT_BASE_URL),
-        api_key=os.environ["LLM_API_KEY"],
+        base_url=settings.get("LLM_BASE_URL") or DEFAULT_BASE_URL,
+        api_key=settings.get("LLM_API_KEY"),
     )
     completion = client.chat.completions.create(
-        model=os.environ.get("LLM_MODEL", DEFAULT_MODEL),
+        model=settings.get("LLM_MODEL") or DEFAULT_MODEL,
         messages=messages,
         temperature=0.2,
     )

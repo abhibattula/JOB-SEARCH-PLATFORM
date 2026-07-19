@@ -23,7 +23,13 @@ log = logging.getLogger(__name__)
 
 
 def load_companies() -> list[dict]:
-    path = Path(os.environ.get("COMPANIES_PATH", "companies.yml"))
+    override = os.environ.get("COMPANIES_PATH")
+    if override:
+        path = Path(override)
+    else:
+        from . import paths
+
+        path = paths.resource_path("companies.yml")
     if not path.exists():
         return []
     doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
@@ -100,12 +106,12 @@ def _score_new_jobs() -> None:
     huge first refresh cannot exhaust the free-tier daily quota. Failures
     leave jobs visible and unscored.
     """
-    from . import matcher
+    from . import matcher, settings
 
     profile = db.get_profile()
     if not profile or not profile.get("resume_text") or not matcher.llm_available():
         return
-    cap = int(os.environ.get("MAX_SCORE_PER_RUN", "150"))
+    cap = int(settings.get("MAX_SCORE_PER_RUN") or "150")
     resume_text = profile["resume_text"]
     for job in db.jobs_needing_score(limit=cap):
         analysis = _analyze(

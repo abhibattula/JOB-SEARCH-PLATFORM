@@ -9,12 +9,27 @@ from fastapi.responses import HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
-from engine import db
+from engine import db, paths
 
 from .routes_api import parse_feed_params, router as api_router
 
-WEB_DIR = Path(__file__).parent
-templates = Jinja2Templates(directory=WEB_DIR / "templates")
+templates = Jinja2Templates(directory=paths.resource_path("web/templates"))
+
+
+def _bootstrap_sponsorship() -> None:
+    """Load the bundled USCIS data on first run so installed users get
+    sponsor badges with zero setup. No-op once the table has rows."""
+    from engine import sponsorship
+
+    if db.h1b_employer_count() > 0:
+        return
+    bundled = paths.resource_path("assets/uscis")
+    if not bundled.exists():
+        return
+    employers, _ = sponsorship.load_uscis_dir(bundled)
+    if employers:
+        sponsorship.store_employers(employers)
+        sponsorship.apply_to_companies()
 
 
 def _feed_context(
@@ -26,14 +41,19 @@ def _feed_context(
     sort: str = "score",
     entry_level: str | None = None,
     ineligible: int = 0,
+    min_score: float | None = None,
 ) -> dict:
     params = parse_feed_params(
-        window, status, location, remote, sort, entry_level, ineligible=ineligible
+        window, status, location, remote, sort, entry_level,
+        ineligible=ineligible, min_score=min_score,
     )
     jobs, total = db.query_jobs(**params)
     run = db.get_run_status()
     profile = db.get_profile()
+    from engine import matcher
+
     return {
+        "has_llm_key": matcher.llm_available(),
         "request": request,
         "jobs": jobs,
         "total": total,
@@ -46,18 +66,26 @@ def _feed_context(
         "has_profile": bool(profile and profile.get("resume_text")),
         "entry_level": entry_level or "",
         "ineligible": bool(ineligible),
+        "min_score": int(min_score) if min_score else 0,
         "query_string": request.url.query,
     }
 
 
 def create_app() -> FastAPI:
     app = FastAPI(title="Personalized AI Job Engine")
-    app.mount("/static", StaticFiles(directory=WEB_DIR / "static"), name="static")
+    app.mount(
+        "/static",
+        StaticFiles(directory=paths.resource_path("web/static")),
+        name="static",
+    )
     app.include_router(api_router)
 
     @app.on_event("startup")
     def _startup() -> None:
+        import threading
+
         db.init_db()
+        threading.Thread(target=_bootstrap_sponsorship, daemon=True).start()
 
     @app.get("/", response_class=HTMLResponse)
     def index(
@@ -69,9 +97,11 @@ def create_app() -> FastAPI:
         sort: str = "score",
         entry_level: str | None = None,
         ineligible: int = 0,
+        min_score: float | None = None,
     ):
         context = _feed_context(
-            request, window, status, location, remote, sort, entry_level, ineligible
+            request, window, status, location, remote, sort, entry_level,
+            ineligible, min_score,
         )
         return templates.TemplateResponse(request, "feed.html", context)
 
@@ -85,9 +115,11 @@ def create_app() -> FastAPI:
         sort: str = "score",
         entry_level: str | None = None,
         ineligible: int = 0,
+        min_score: float | None = None,
     ):
         context = _feed_context(
-            request, window, status, location, remote, sort, entry_level, ineligible
+            request, window, status, location, remote, sort, entry_level,
+            ineligible, min_score,
         )
         return templates.TemplateResponse(request, "partials/feed_table.html", context)
 
@@ -114,6 +146,14 @@ def create_app() -> FastAPI:
     def profile_page(request: Request):
         return templates.TemplateResponse(
             request, "profile.html", {"profile": db.get_profile()}
+        )
+
+    @app.get("/settings", response_class=HTMLResponse)
+    def settings_page(request: Request):
+        from .routes_api import get_settings
+
+        return templates.TemplateResponse(
+            request, "settings.html", {"settings": get_settings()}
         )
 
     return app

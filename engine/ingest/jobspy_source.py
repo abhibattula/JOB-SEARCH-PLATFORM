@@ -38,8 +38,10 @@ def _scrape(**kwargs):
 def fetch_jobs(entries: list[dict]) -> Iterator[RawJob]:  # entries unused
     import pandas as pd
 
+    from engine import settings
+
     sites = ["indeed"]
-    if os.environ.get("JOBSPY_LINKEDIN") == "1":
+    if settings.get("JOBSPY_LINKEDIN") == "1":
         sites.append("linkedin")
     seen: set[str] = set()
     for term in SEARCH_TERMS:

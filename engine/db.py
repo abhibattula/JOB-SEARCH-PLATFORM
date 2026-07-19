@@ -78,6 +78,11 @@ CREATE TABLE IF NOT EXISTS refresh_runs (
     source_status TEXT DEFAULT '{}'
 );
 
+CREATE TABLE IF NOT EXISTS settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
+
 CREATE TABLE IF NOT EXISTS h1b_employers (
     normalized_name TEXT PRIMARY KEY,
     display_name TEXT,
@@ -88,7 +93,12 @@ CREATE TABLE IF NOT EXISTS h1b_employers (
 
 
 def get_db_path() -> Path:
-    return Path(os.environ.get("JOBS_DB_PATH", "data/jobs.db"))
+    override = os.environ.get("JOBS_DB_PATH")
+    if override:
+        return Path(override)
+    from . import paths
+
+    return paths.data_dir() / "jobs.db"
 
 
 def _utcnow() -> str:
@@ -248,6 +258,7 @@ def query_jobs(
     offset: int = 0,
     ineligible: bool = False,
     include_ineligible: bool = False,
+    min_score: float | None = None,
 ) -> tuple[list[dict], int]:
     where, params = [], []
     # Sponsorship-ineligible (EXCLUDED) jobs never appear in normal views;
@@ -275,6 +286,9 @@ def query_jobs(
         params.append(f"%{location}%")
     if remote:
         where.append("j.is_remote = 1")
+    if min_score is not None:
+        where.append("j.match_score >= ?")
+        params.append(min_score)
     clause = f" WHERE {' AND '.join(where)}" if where else ""
     order = (
         " ORDER BY j.match_score IS NULL, j.match_score DESC,"
@@ -370,6 +384,33 @@ def jobs_needing_score(limit: int = 150) -> list[dict]:
             (limit,),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def get_setting(key: str) -> str | None:
+    try:
+        with _conn() as conn:
+            row = conn.execute(
+                "SELECT value FROM settings WHERE key = ?", (key,)
+            ).fetchone()
+    except sqlite3.OperationalError:  # pre-003 database without the table yet
+        init_db()
+        return None
+    return row["value"] if row else None
+
+
+def set_setting(key: str, value: str) -> None:
+    init_db()  # tolerate pre-003 databases
+    with _conn() as conn:
+        conn.execute(
+            "INSERT INTO settings (key, value) VALUES (?, ?)"
+            " ON CONFLICT(key) DO UPDATE SET value = excluded.value",
+            (key, value),
+        )
+
+
+def h1b_employer_count() -> int:
+    with _conn() as conn:
+        return conn.execute("SELECT COUNT(1) AS n FROM h1b_employers").fetchone()["n"]
 
 
 def prune_old_jobs(days: int = 45) -> int:

@@ -206,6 +206,28 @@ class TestEligibility:
         assert len(candidates) == 2  # the two eligible entry-level jobs only
 
 
+class TestMinScore:
+    def _seed_scored(self):
+        for i, score in enumerate([90.0, 72.0, 45.0, None]):
+            db.upsert_job(make_job(url=f"s{i}", title=f"Scored {i}"))
+        jobs, _ = db.query_jobs(window=None, statuses=None)
+        for job, score in zip(sorted(jobs, key=lambda j: j["url"]),
+                              [90.0, 72.0, 45.0, None]):
+            if score is not None:
+                db.set_match(job["id"], score, "{}")
+
+    def test_threshold_filters_and_drops_unscored(self, tmp_db):
+        self._seed_scored()
+        jobs, total = db.query_jobs(window=None, min_score=70)
+        assert total == 2
+        assert {j["url"] for j in jobs} == {"s0", "s1"}
+
+    def test_no_threshold_keeps_unscored(self, tmp_db):
+        self._seed_scored()
+        _, total = db.query_jobs(window=None)
+        assert total == 4
+
+
 class TestPrune:
     def test_prunes_stale_untouched_jobs_only(self, tmp_db):
         db.upsert_job(make_job(url="fresh", posted_date=iso_days_ago(2)))

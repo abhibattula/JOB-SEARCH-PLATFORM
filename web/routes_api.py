@@ -6,7 +6,7 @@ import json
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, RedirectResponse
 
-from engine import db, pipeline
+from engine import db, pipeline, settings
 from engine.resume import NoTextError, extract_text
 
 MAX_RESUME_BYTES = 10 * 1024 * 1024
@@ -30,6 +30,7 @@ def parse_feed_params(
     limit: int = 100,
     offset: int = 0,
     ineligible: int = 0,
+    min_score: float | None = None,
 ) -> dict:
     statuses: tuple[str, ...] | list[str] | None
     if status:
@@ -52,6 +53,7 @@ def parse_feed_params(
         "limit": max(1, min(limit, 500)),
         "offset": max(0, offset),
         "ineligible": bool(ineligible),
+        "min_score": min_score if min_score and min_score > 0 else None,
     }
 
 
@@ -97,9 +99,11 @@ def list_jobs(
     limit: int = 100,
     offset: int = 0,
     ineligible: int = 0,
+    min_score: float | None = None,
 ):
     params = parse_feed_params(
-        window, status, location, remote, sort, entry_level, limit, offset, ineligible
+        window, status, location, remote, sort, entry_level, limit, offset,
+        ineligible, min_score,
     )
     jobs, total = db.query_jobs(**params)
     return {"jobs": [job_summary(j) for j in jobs], "total": total}
@@ -147,6 +151,7 @@ def export_csv(
     sort: str = "score",
     entry_level: str | None = None,
     ineligible: int = 0,
+    min_score: float | None = None,
 ):
     import csv
     import io
@@ -155,7 +160,7 @@ def export_csv(
 
     params = parse_feed_params(
         window, status, location, remote, sort, entry_level,
-        limit=500, ineligible=ineligible,
+        limit=500, ineligible=ineligible, min_score=min_score,
     )
     jobs, _ = db.query_jobs(**params)
     buffer = io.StringIO()
@@ -172,6 +177,65 @@ def export_csv(
         media_type="text/csv",
         headers={"Content-Disposition": "attachment; filename=jobs.csv"},
     )
+
+
+@router.get("/settings")
+def get_settings():
+    key = settings.get("LLM_API_KEY") or ""
+    return {
+        "llm_key_set": bool(key),
+        "llm_api_key_masked": settings.mask_key(key),
+        "llm_base_url": settings.get("LLM_BASE_URL"),
+        "llm_model": settings.get("LLM_MODEL"),
+        "jobspy_linkedin": settings.get("JOBSPY_LINKEDIN") == "1",
+        "schedule_refresh": settings.get("SCHEDULE_REFRESH") == "1",
+        "max_score_per_run": int(settings.get("MAX_SCORE_PER_RUN") or "150"),
+    }
+
+
+@router.post("/settings")
+async def save_settings(
+    request: Request,
+    llm_api_key: str | None = Form(None),
+    llm_base_url: str | None = Form(None),
+    llm_model: str | None = Form(None),
+    jobspy_linkedin: str | None = Form(None),
+    schedule_refresh: str | None = Form(None),
+):
+    if llm_api_key:  # blank never clears an existing key
+        settings.set("LLM_API_KEY", llm_api_key.strip())
+    if llm_base_url:
+        settings.set("LLM_BASE_URL", llm_base_url.strip())
+    if llm_model:
+        settings.set("LLM_MODEL", llm_model.strip())
+    if jobspy_linkedin is not None:
+        settings.set("JOBSPY_LINKEDIN", "1" if jobspy_linkedin == "1" else "0")
+    if schedule_refresh is not None:
+        settings.set("SCHEDULE_REFRESH", "1" if schedule_refresh == "1" else "0")
+    if "text/html" in (request.headers.get("accept") or ""):
+        return RedirectResponse("/settings", status_code=303)
+    return get_settings()
+
+
+@router.post("/settings/test")
+def test_llm_key(request: Request):
+    from fastapi.responses import HTMLResponse
+
+    from engine import matcher
+
+    if not matcher.llm_available():
+        result = {"ok": False, "error": "No API key saved yet."}
+    else:
+        try:
+            matcher._chat([{"role": "user", "content": "Reply with the word: pong"}])
+            result = {"ok": True, "model": settings.get("LLM_MODEL")}
+        except Exception as exc:
+            result = {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:300]}
+    if request.headers.get("hx-request"):
+        if result["ok"]:
+            return HTMLResponse(f"✓ Key works ({result['model']})")
+        return HTMLResponse(f"✕ {result['error']}")
+    return result
 
 
 def _profile_payload() -> dict:

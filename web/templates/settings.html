@@ -1,0 +1,50 @@
+{% extends "base.html" %}
+{% block title %}Settings · Job Engine{% endblock %}
+{% block content %}
+<article class="profile">
+  <h1>Settings</h1>
+
+  <section class="settings-section">
+    <h2>AI matching</h2>
+    {% if settings.llm_key_set %}
+    <p>API key on file: <span class="data">{{ settings.llm_api_key_masked }}</span></p>
+    {% else %}
+    <p class="muted">No API key yet — match scores and gap analysis are disabled.
+      Get a free key at <a href="https://console.groq.com" target="_blank" rel="noopener">console.groq.com</a>
+      (no card required), then paste it below.</p>
+    {% endif %}
+
+    <form class="profile-form" method="post" action="/api/settings">
+      <label>Groq API key {% if settings.llm_key_set %}(leave blank to keep the current one){% endif %}
+        <input type="password" name="llm_api_key" placeholder="gsk_…" autocomplete="off">
+      </label>
+      <details>
+        <summary class="muted">Advanced: different AI provider</summary>
+        <label>Base URL (any OpenAI-compatible endpoint; Ollama: http://localhost:11434/v1)
+          <input type="text" name="llm_base_url" value="{{ settings.llm_base_url }}">
+        </label>
+        <label>Model
+          <input type="text" name="llm_model" value="{{ settings.llm_model }}">
+        </label>
+      </details>
+      <label class="check">
+        <input type="hidden" name="jobspy_linkedin" value="0">
+        <input type="checkbox" name="jobspy_linkedin" value="1" {{ 'checked' if settings.jobspy_linkedin }}>
+        Also search LinkedIn (often bot-blocked; Indeed always runs)
+      </label>
+      <label class="check">
+        <input type="hidden" name="schedule_refresh" value="0">
+        <input type="checkbox" name="schedule_refresh" value="1" {{ 'checked' if settings.schedule_refresh }}>
+        Auto-refresh nightly at 7:00 while the app is running
+      </label>
+      <div class="settings-actions">
+        <button type="submit">Save settings</button>
+        <button type="button" class="ghost" hx-post="/api/settings/test" hx-target="#key-test-result" hx-swap="innerHTML">
+          Test key
+        </button>
+        <span id="key-test-result" class="data"></span>
+      </div>
+    </form>
+  </section>
+</article>
+{% endblock %}

@@ -52,8 +52,11 @@ def main() -> None:
     port = pick_port()
     url = f"http://127.0.0.1:{port}"
 
+    # Import the app object directly (a "module:attr" string breaks under PyInstaller)
+    from web.main import app as web_app
+
     server = uvicorn.Server(
-        uvicorn.Config("web.main:app", host="127.0.0.1", port=port, log_level="warning")
+        uvicorn.Config(web_app, host="127.0.0.1", port=port, log_level="warning")
     )
     server_thread = threading.Thread(target=server.run, daemon=True)
     server_thread.start()

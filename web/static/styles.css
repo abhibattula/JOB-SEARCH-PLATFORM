@@ -105,6 +105,18 @@ table.feed { width: 100%; border-collapse: collapse; }
 .gaps li { margin-bottom: 0.45rem; line-height: 1.4; }
 .evidence { padding-left: 1.1rem; }
 
+/* Welcome / onboarding */
+.welcome { border: 1px solid var(--green); background: #ecf7f2; border-radius: 6px; padding: 1rem 1.4rem; margin: 0.6rem 0 1rem; }
+.welcome h2 { margin: 0 0 0.5rem; font-size: 1.05rem; }
+.welcome ol { margin: 0.3rem 0; padding-left: 1.3rem; }
+.welcome li { margin-bottom: 0.35rem; }
+
+/* Settings */
+.settings-section h2 { font-size: 0.9rem; font-family: var(--mono); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); border-bottom: 1px solid var(--line); padding-bottom: 0.25rem; }
+.settings-actions { display: flex; gap: 0.6rem; align-items: center; }
+.settings-actions .ghost { background: #fff; color: var(--ink); border: 1px solid var(--ink); border-radius: 4px; padding: 0.45rem 0.9rem; cursor: pointer; font: inherit; }
+details summary { cursor: pointer; margin: 0.2rem 0; }
+
 /* Profile */
 .profile-form { display: grid; gap: 0.9rem; max-width: 540px; margin-top: 1rem; }
 .profile-form label { display: grid; gap: 0.3rem; font-weight: 600; }

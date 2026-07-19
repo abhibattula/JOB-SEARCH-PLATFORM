@@ -51,9 +51,17 @@ def main() -> int:
     refresh.add_argument("--force", action="store_true", help="bypass the 30-min cooldown")
     refresh.set_defaults(func=cmd_refresh)
 
+    from engine import paths
+
     load = sub.add_parser("load-sponsorship", help="load USCIS/DOL data into the DB")
-    load.add_argument("--uscis", default="data/uscis", help="dir with USCIS Data Hub CSVs")
-    load.add_argument("--dol", default="data/dol", help="dir with DOL LCA disclosure files")
+    load.add_argument(
+        "--uscis", default=str(paths.data_dir() / "uscis"),
+        help="dir with USCIS Data Hub CSVs",
+    )
+    load.add_argument(
+        "--dol", default=str(paths.data_dir() / "dol"),
+        help="dir with DOL LCA disclosure files",
+    )
     load.set_defaults(func=cmd_load_sponsorship)
 
     args = parser.parse_args()
