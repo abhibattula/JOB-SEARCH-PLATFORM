@@ -259,11 +259,13 @@ viewed again through any part of the app after saving.
   sign-on/social-login buttons such as "Sign in with Google"), or any
   control that itself submits the application or completes a login. The
   human MUST always perform the actual submission and the actual login.
-  This does NOT prohibit the system from advancing between pages of a
-  multi-step application form using non-submitting "Next"/"Continue"
-  controls that only reveal the next section — the prohibition is
-  specifically on the action that submits the application or completes
-  authentication, not on intra-form page navigation.
+  The prohibition is specifically on the action that submits the
+  application or completes authentication. This phase does not automate
+  intra-form page navigation either (e.g., "Next"/"Continue" between pages
+  of a multi-step application) — the human advances multi-page forms
+  themselves, the same as any other judgment call this feature leaves to
+  the user; automating page-to-page navigation may be considered in a
+  future phase but is explicitly out of scope here (see Assumptions).
 - **FR-009**: When the system cannot recognize at least the page's core
   identity fields (name, email, and a resume-upload control, if present) —
   including but not limited to pages known to actively block automated
@@ -367,9 +369,11 @@ viewed again through any part of the app after saving.
 - **SC-004**: After a question has been answered and confirmed once, it is
   never presented again for manual re-typing on a subsequent job where the
   same or a clearly equivalent question appears.
-- **SC-005**: 100% of work-authorization/sponsorship-requirement answers
-  used in any filled application trace back to a user-confirmed answer, with
-  zero instances of an unreviewed AI draft being used for these fields.
+- **SC-005**: 100% of answers used for any legally-significant question
+  (work authorization, sponsorship requirement, or any EEO-disclosure-style
+  question per FR-012) in any filled application trace back to a
+  user-confirmed answer, with zero instances of an unreviewed AI draft being
+  used for these fields.
 - **SC-006**: A user can go from "select shortlisted jobs" to "move to the
   next application" with no manual setup step in between beyond reviewing
   and submitting the current one.

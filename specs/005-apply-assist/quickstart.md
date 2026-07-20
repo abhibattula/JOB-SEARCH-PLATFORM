@@ -20,6 +20,9 @@
    `data-model.md`/`plan.md` for the exact tier tag).
 4. Add a cloud API key afterward → next scoring pass should prefer cloud and
    upgrade previously local-scored jobs automatically (FR-003).
+5. Confirm no separate "model update" UI exists anywhere — a future
+   improved local model ships only via the existing Check-for-Updates flow
+   pointing at a new app version (FR-004).
 
 ## Apply Assist — first use
 
@@ -69,9 +72,12 @@ next application" still advances the queue (FR-009).
       login button is ever clicked by the app itself.
 - [ ] SC-004: answer a question once; it's never asked again on a later job
       with the same/equivalent wording.
-- [ ] SC-005: every sponsorship/work-authorization answer used traces back
-      to a confirmed answer bank entry — check `application_answers` for a
-      session and confirm none reference an unconfirmed draft.
+- [ ] SC-005: every sponsorship/work-authorization/EEO-disclosure-style
+      answer used traces back to a confirmed answer bank entry — check
+      `application_answers` for a session and confirm none reference an
+      unconfirmed draft.
+- [ ] SC-004b (FR-004): no separate model-update path exists; a local-model
+      improvement only ever appears via Check-for-Updates on a new version.
 - [ ] SC-006: selecting jobs → "Done, next" is the entire manual loop; no
       extra setup step appears between applications.
 - [ ] SC-007: point Apply Assist at a known-difficult site (e.g., a Workday

@@ -95,6 +95,7 @@ field taxonomy backs both US2's fill logic and US3's reuse logic).
 ### Tests for User Story 2
 
 - [ ] T022 [P] [US2] Test: `tests/test_browser_controller.py` — queue start/current_job/advance/stop state machine, with Playwright fully mocked (no real browser in unit tests)
+- [ ] T022a [P] [US2] Test: `tests/test_browser_controller.py` — explicit regression test for FR-008/FR-016 (analyze finding C1): with a mocked Playwright page, assert that no code path in `browser_controller.py` ever invokes a click (or equivalent) on an element classified as a submission or login-completion control, across every method (`start_queue`, `advance`, `stop_queue`, and the field-fill routine) — this is the single most safety-critical invariant in the feature and must be verified by a real failing-then-passing test, not left true only "by construction"
 - [ ] T023 [P] [US2] Test: `tests/test_answer_bank.py` — `lookup()` exact-then-fuzzy match, `save()` only reachable via explicit confirmation call, `suggest()` reuses the `matcher._chat` tier dispatcher from US1 (mock `_chat`)
 
 ### Implementation for User Story 2
@@ -235,11 +236,16 @@ Task: "engine/local_llm.py - Llama singleton, available(), chat()"
   build-time assertion AND its own `smoke_test.py` extension in the same
   phase it's introduced — never batched into Polish — per the v0.4.0
   tls_client lesson (`specs/004-get-hired/patch-0.4.1.md`).
-- Two residual risks accepted at checklist time (`checklists/safety.md`
-  CHK002, CHK004) are implementation-level, not requirements gaps: T026
-  should avoid auto-filling a page's last remaining required field on a
-  form suspected of JS auto-submit-on-completion behavior (CHK002), and
-  T044's full verification pass should include a manual check that no
-  submit/login click occurred across a full session (CHK004) even though
-  no dedicated audit-log task was added for that specific concern this
-  phase.
+- One residual risk accepted at checklist time (`checklists/safety.md`
+  CHK002) remains implementation-level, not a requirements gap: T026 should
+  avoid auto-filling a page's last remaining required field on a form
+  suspected of JS auto-submit-on-completion behavior. CHK004 (an
+  after-the-fact way to verify no submit/login click ever occurred) is now
+  addressed directly by T022a, added during `/speckit.analyze` (finding C1)
+  rather than left as a manual-verification-only concern.
+- `/speckit.analyze` (2026-07-20) also resolved: FR-008's "Next"/"Continue"
+  allowance narrowed to match what's actually built (T026 automates no
+  button clicks at all — intra-form page navigation stays manual this
+  phase); the `eeo_disclosure` category broadened across SC-005/data-model.md
+  for consistency with FR-012; a quickstart.md verification item added for
+  FR-004 (model updates ride Check-for-Updates, no separate downloader).

@@ -19,7 +19,7 @@ The reusable "answered once, reused everywhere" store (spec FR-010–FR-013).
 | question_normalized | TEXT | UNIQUE NOT NULL | casefolded/whitespace-collapsed form — exact-match key |
 | question_raw | TEXT | NOT NULL | original wording, for display |
 | answer | TEXT | NOT NULL | current confirmed answer |
-| category | TEXT | NULL | one of the `engine/autofill/fields.py` taxonomy tags, e.g. `work_authorization`, `sponsorship_requirement`, `years_experience`, `how_heard`, `free_text_unknown` |
+| category | TEXT | NULL | one of the `engine/autofill/fields.py` taxonomy tags, e.g. `work_authorization`, `sponsorship_requirement`, `eeo_disclosure`, `years_experience`, `how_heard`, `free_text_unknown` |
 | source | TEXT | DEFAULT 'user' | `user` (typed directly) \| `llm_suggested_confirmed` (AI-drafted, then user-confirmed) — **never** a third "unconfirmed" state, since a row only exists here once confirmed (FR-011) |
 | confirmed_at | TEXT | NOT NULL | ISO datetime of first confirmation |
 | updated_at | TEXT | NOT NULL | ISO datetime of last edit |
