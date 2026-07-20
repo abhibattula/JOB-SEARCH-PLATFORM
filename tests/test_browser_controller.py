@@ -141,6 +141,83 @@ class TestNeverClicksAnything:
         assert ":not([type=button])" in query
 
 
+class TestPendingConfirmation:
+    """005-T035: unrecognized/no-saved-answer Q&A fields draft a suggestion
+    and pause for review (FR-011) rather than being auto-filled."""
+
+    def test_unanswered_question_sets_pending_and_returns_no_value(self, tmp_db, monkeypatch):
+        from engine import matcher
+
+        monkeypatch.setattr(matcher, "_chat", lambda messages: "Drafted answer")
+        monkeypatch.setenv("LLM_API_KEY", "test-key")
+        bc._state.pending = None
+
+        raw = {"tag": "input", "type": "text", "name": "how_heard", "id": "hh",
+               "label_text": "How did you hear about us?", "placeholder": "",
+               "aria_label": "", "autocomplete": ""}
+        value = bc._value_for_tag("how_heard", raw, {"resume_text": "..."}, job_id=1)
+
+        assert value is None  # never auto-filled from an unreviewed draft
+        assert bc._state.pending is not None
+        assert bc._state.pending["question_raw"] == "How did you hear about us?"
+        assert bc._state.pending["drafted_answer"] == "Drafted answer"
+
+    def test_only_one_pending_confirmation_tracked_at_a_time(self, tmp_db, monkeypatch):
+        from engine import matcher
+
+        monkeypatch.setattr(matcher, "_chat", lambda messages: "First draft")
+        monkeypatch.setenv("LLM_API_KEY", "test-key")
+        bc._state.pending = None
+
+        raw1 = {"tag": "input", "type": "text", "name": "q1", "id": "q1",
+                "label_text": "Question one?", "placeholder": "", "aria_label": "", "autocomplete": ""}
+        raw2 = {"tag": "input", "type": "text", "name": "q2", "id": "q2",
+                "label_text": "Question two?", "placeholder": "", "aria_label": "", "autocomplete": ""}
+        bc._value_for_tag("how_heard", raw1, {}, job_id=1)
+        bc._value_for_tag("how_heard", raw2, {}, job_id=1)
+
+        assert bc._state.pending["question_raw"] == "Question one?"
+
+    def test_existing_answer_bank_entry_does_not_set_pending(self, tmp_db, monkeypatch):
+        from engine.autofill import answer_bank
+
+        answer_bank.save("Known question?", "Known answer", category="how_heard")
+        bc._state.pending = None
+        raw = {"tag": "input", "type": "text", "name": "q", "id": "q",
+               "label_text": "Known question?", "placeholder": "", "aria_label": "", "autocomplete": ""}
+
+        value = bc._value_for_tag("how_heard", raw, {}, job_id=1)
+
+        assert value == "Known answer"
+        assert bc._state.pending is None
+
+
+class TestResolvePending:
+    def test_resolve_pending_fills_live_field_and_clears_state(self, monkeypatch):
+        bc._state.pending = {"job_id": 1, "question_raw": "Q?", "category": "how_heard",
+                              "drafted_answer": "draft", "field_id": "hh", "field_name": "how_heard"}
+        element = FakeElement()
+
+        class FakePage:
+            def query_selector(self, selector):
+                assert selector == "#hh"
+                return element
+
+        bc._page = FakePage()
+
+        bc.resolve_pending("Confirmed answer")
+
+        assert element.calls == [("fill", "Confirmed answer")]
+        assert bc._state.pending is None
+        bc._page = None
+
+    def test_resolve_pending_is_noop_when_nothing_pending(self):
+        bc._state.pending = None
+        bc._page = None
+        bc.resolve_pending("anything")  # must not raise
+        assert bc._state.pending is None
+
+
 class TestGracefulFallback:
     def test_no_core_identity_fields_triggers_fallback(self):
         classified_tags = ["how_heard", "salary_expectation", "free_text_unknown"]

@@ -44,6 +44,10 @@ class _State:
         self.index: int = -1
         self.running: bool = False
         self.fell_back: set[int] = set()
+        # At most one pending confirmation tracked at a time (FR-011): an
+        # unrecognized/no-saved-answer question pauses for review rather
+        # than being auto-filled from an unreviewed AI draft.
+        self.pending: dict | None = None
 
 
 _state = _State()
@@ -212,7 +216,20 @@ def _value_for_tag(tag: str, raw: dict, profile: dict, job_id: int):
     if not question:
         return None
     existing = answer_bank.lookup(question)
-    return existing["answer"] if existing else None
+    if existing:
+        return existing["answer"]
+    with _lock:
+        if _state.pending is None:
+            draft = answer_bank.suggest(question, tag, profile)
+            _state.pending = {
+                "job_id": job_id,
+                "question_raw": question,
+                "category": tag,
+                "drafted_answer": draft,
+                "field_id": raw.get("id"),
+                "field_name": raw.get("name"),
+            }
+    return None
 
 
 def start_queue(job_ids: list[int]) -> dict | None:
@@ -221,6 +238,7 @@ def start_queue(job_ids: list[int]) -> dict | None:
         _state.index = 0 if job_ids else -1
         _state.running = bool(job_ids)
         _state.fell_back = set()
+        _state.pending = None
     if job_ids:
         _open_job(job_ids[0])
     return current_job()
@@ -232,11 +250,42 @@ def current_job() -> dict | None:
             return None
         job_id = _state.job_ids[_state.index]
         remaining = len(_state.job_ids) - _state.index - 1
+        pending = None
+        if _state.pending is not None:
+            pending = {
+                "question_raw": _state.pending["question_raw"],
+                "category": _state.pending["category"],
+                "drafted_answer": _state.pending["drafted_answer"],
+            }
         return {
             "job_id": job_id,
             "remaining": remaining,
             "fell_back": job_id in _state.fell_back,
+            "pending": pending,
         }
+
+
+def resolve_pending(answer: str) -> None:
+    """Called after the user confirms/edits a drafted answer (the caller —
+    web/routes_autofill.py's confirm route — has already saved it to
+    answer_bank). Fills the actual paused field on the still-open live
+    page, if any, and clears the pending state."""
+    global _page
+    with _lock:
+        pending = _state.pending
+        _state.pending = None
+    if pending is None or _page is None:
+        return
+    try:
+        selector = (
+            f"#{pending['field_id']}" if pending.get("field_id")
+            else f"[name='{pending.get('field_name')}']"
+        )
+        handle = _page.query_selector(selector)
+        if handle is not None:
+            _apply_field_value(handle, "free_text_unknown", "text", answer)
+    except Exception:
+        log.debug("could not fill resolved pending field", exc_info=True)
 
 
 def advance() -> dict | None:
@@ -246,6 +295,7 @@ def advance() -> dict | None:
         if not _state.running:
             return None
         _state.index += 1
+        _state.pending = None  # a pending confirmation belongs to the job just left
         if _state.index >= len(_state.job_ids):
             _state.running = False
             return None
@@ -281,4 +331,5 @@ def stop_queue() -> None:
         _state.job_ids = []
         _state.index = -1
         _state.fell_back = set()
+        _state.pending = None
     _page = None

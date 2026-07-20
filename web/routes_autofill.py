@@ -90,4 +90,5 @@ def confirm_answer(body: ConfirmAnswerRequest):
         answer_bank.record_application_answer(
             current["job_id"], body.question_raw, bank_id, body.answer
         )
+    browser_controller.resolve_pending(body.answer)
     return {"saved": True}
