@@ -16,3 +16,11 @@ apscheduler==3.11.3
 pywebview==6.2.1
 plyer==2.1.0
 pytest==9.1.1
+
+# Apply Assist (feature 005) — local LLM + browser automation + credential vault.
+# llama-cpp-python has no default PyPI prebuilt wheel; install with:
+#   pip install -r requirements.txt --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+diskcache==5.6.3
+llama-cpp-python==0.3.34
+playwright==1.61.0
+keyring==25.7.0

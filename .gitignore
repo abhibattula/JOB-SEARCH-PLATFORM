@@ -19,6 +19,11 @@ packaging/Output/
 # Local data (jobs DB, USCIS/DOL downloads, uploaded resume)
 data/
 
+# Apply Assist: bundled model asset (fetched by packaging/fetch_model.py,
+# not committed) and locally-installed Playwright browser binaries
+models/
+.playwright-browsers/
+
 # Editor / OS
 .vscode/
 .idea/
