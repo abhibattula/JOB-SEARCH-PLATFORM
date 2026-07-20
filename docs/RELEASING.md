@@ -47,6 +47,22 @@ one by hand (that needs a Mac; the CI runner is one).
 ```powershell
 .venv\Scripts\python.exe -m pip install pyinstaller
 .venv\Scripts\pyinstaller.exe packaging/jobengine.spec --noconfirm
-dist\JobEngine\JobEngine.exe          # smoke-test the frozen app
+python packaging/smoke_test.py dist/JobEngine/JobEngine.exe   # must print PASS
 # with Inno Setup installed:  iscc packaging\windows.iss
 ```
+
+## Why there's a smoke test
+
+v0.4.0 shipped with every `jobspy` (Indeed) search silently failing on
+installed copies: PyInstaller doesn't know to bundle a native DLL that
+`jobspy`'s `tls_client` dependency loads via `ctypes` at a computed path
+(invisible to static import analysis) — with no PyInstaller hook for that
+package, the file was dropped, and every user saw "the specified module
+could not be found" the moment a refresh ran. It never showed up in local
+testing because dev-mode Python isn't frozen. **`packaging/smoke_test.py`
+now runs as part of every CI release build** (`release.yml`) — it actually
+launches the frozen exe, forces a refresh, and fails the build if the log
+contains a missing-module signature. If you add a new dependency that loads
+native binaries via `ctypes`/similar (check with
+`find .venv/Lib/site-packages -iname "*.dll" -o -iname "*.so"`), add its data
+files to `packaging/jobengine.spec` the same way (`collect_data_files`).

@@ -365,7 +365,16 @@ the app runs.
   you've downloaded count. Add more year files to `data/uscis/` and re-run
   `python cli.py load-sponsorship`.
 
-## 11. Troubleshooting
+## 11. Known issues (fixed)
+
+- **v0.4.0 installer**: "the specified module could not be found" on any
+  refresh (jobspy/Indeed searches always failed). Caused by a native DLL
+  (`tls_client`) that PyInstaller didn't bundle. **Fixed in v0.4.1** — if
+  you have v0.4.0 installed, download v0.4.1 from the Releases page (Settings
+  → Check for updates will also tell you). CI now runs a real smoke test on
+  every release build so this class of bug can't ship silently again.
+
+## 12. Troubleshooting
 
 See the table at the end of [USER_GUIDE.md](USER_GUIDE.md#troubleshooting).
 The two most common: empty feed = wait for the first refresh to finish;

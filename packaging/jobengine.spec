@@ -4,7 +4,7 @@
 import os
 import sys
 
-from PyInstaller.utils.hooks import collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
 # collect_submodules imports the package at build time; the repo root is not on
@@ -17,6 +17,18 @@ datas = [
     (os.path.join(ROOT, "companies.yml"), "."),
     (os.path.join(ROOT, "assets", "uscis"), "assets/uscis"),
 ]
+
+# jobspy's tls_client dependency loads a native dll/so/dylib via ctypes at a
+# path computed from its own package location — invisible to PyInstaller's
+# static import analysis, so it's silently dropped without this. Confirmed
+# live: every jobspy search failed frozen with "the specified module could
+# not be found" (WinError / FileNotFoundError loading tls-client-64.dll)
+# until this was added.
+_tls_client_data = collect_data_files("tls_client")
+assert any(src.lower().endswith((".dll", ".so", ".dylib")) for src, _ in _tls_client_data), (
+    f"tls_client native libs not found: {_tls_client_data}"
+)
+datas += _tls_client_data
 
 # The engine loads sources via importlib with string names, and imports pandas/
 # jobspy/matcher lazily inside functions — all invisible to static analysis, so
@@ -82,6 +94,6 @@ if sys.platform == "darwin":
         bundle_identifier="dev.abhinav.jobengine",
         info_plist={
             "NSHighResolutionCapable": True,
-            "CFBundleShortVersionString": "0.4.0",
+            "CFBundleShortVersionString": "0.4.1",
         },
     )

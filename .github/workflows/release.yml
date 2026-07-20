@@ -19,6 +19,8 @@ jobs:
       - run: pip install -r requirements.txt pyinstaller
       - run: python -m pytest -q
       - run: pyinstaller packaging/jobengine.spec
+      - name: Smoke test the frozen build
+        run: python packaging/smoke_test.py dist/JobEngine/JobEngine.exe
       - run: choco install innosetup -y --no-progress
       - run: iscc packaging\windows.iss
       - uses: softprops/action-gh-release@v2
@@ -36,6 +38,8 @@ jobs:
       - run: pip install -r requirements.txt pyinstaller
       - run: python -m pytest -q
       - run: pyinstaller packaging/jobengine.spec
+      - name: Smoke test the frozen build
+        run: python packaging/smoke_test.py "dist/Job Engine.app/Contents/MacOS/JobEngine"
       - run: bash packaging/make_dmg.sh "${GITHUB_REF_NAME#v}"
       - uses: softprops/action-gh-release@v2
         with:
