@@ -71,11 +71,29 @@ class TestTailorEngine:
 
 
 class TestTailorApi:
-    def test_requires_resume_then_key(self, client):
+    def test_requires_resume_then_key(self, client, monkeypatch):
+        """005: tailoring can also proceed via the bundled local model (FR-001
+        covers content drafting, not just scoring), so the "no key" 409 case
+        must isolate "neither cloud key nor local model available"."""
+        from engine import matcher
+
         job_id = seed_job()
         assert client.post(f"/api/jobs/{job_id}/tailor").status_code == 409  # no resume
         db.save_profile(resume_text="resume", resume_filename="r.pdf")
-        assert client.post(f"/api/jobs/{job_id}/tailor").status_code == 409  # no key
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: False)
+        assert client.post(f"/api/jobs/{job_id}/tailor").status_code == 409  # no tier at all
+
+    def test_tailor_succeeds_via_local_tier_without_cloud_key(self, client, monkeypatch):
+        """005-T011..T014: tailoring works offline through the local tier,
+        same as scoring — no cloud key required."""
+        from engine import matcher
+
+        job_id = seed_job()
+        db.save_profile(resume_text="resume", resume_filename="r.pdf")
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: True)
+        monkeypatch.setattr(tailor.matcher, "_chat", lambda m: VALID)
+        resp = client.post(f"/api/jobs/{job_id}/tailor")
+        assert resp.status_code == 200
 
     def test_tailor_stored_and_returned(self, client, monkeypatch):
         job_id = seed_job()

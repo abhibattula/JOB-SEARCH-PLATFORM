@@ -261,7 +261,12 @@ def test_llm_key(request: Request):
 
     from engine import matcher
 
-    if not matcher.llm_available():
+    # 005: this button specifically validates a pasted cloud API key — the
+    # local tier has nothing to "test" (it's a synchronous file-presence
+    # check, not a network round-trip), so this must not fall through to
+    # matcher.llm_available()'s tier-inclusive check, which would silently
+    # attempt an expensive local model load with no cloud key configured.
+    if not settings.get("LLM_API_KEY"):
         result = {"ok": False, "error": "No API key saved yet."}
     else:
         try:
@@ -390,3 +395,21 @@ async def save_profile(
     if "text/html" in (request.headers.get("accept") or ""):
         return RedirectResponse("/profile", status_code=303)
     return _profile_payload()
+
+
+@router.get("/diagnostics/local-llm-selftest")
+def local_llm_selftest():
+    """005: a real inference call against the bundled model, not just an
+    import check — packaging/smoke_test.py depends on this being genuine
+    (the exact class of blind spot that let the v0.4.0 tls_client bug ship).
+    Always 200; success/failure is signaled via the "ok" field so a missing
+    local model doesn't itself look like a server error."""
+    from engine import local_llm
+
+    try:
+        reply = local_llm.chat(
+            [{"role": "user", "content": "Reply with a short greeting."}]
+        )
+        return {"ok": True, "reply": reply}
+    except Exception:
+        return {"ok": False, "reply": ""}

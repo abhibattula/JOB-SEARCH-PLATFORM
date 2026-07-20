@@ -17,9 +17,12 @@ class TestPrecedence:
         assert settings.get("NOT_A_SETTING", "fallback") == "fallback"
 
     def test_llm_available_reads_db_key(self, tmp_db, monkeypatch):
+        """005: llm_available() is also true via the bundled local model, so
+        isolate the cloud-key-specific behavior by forcing local unavailable."""
         from engine import matcher
 
         monkeypatch.delenv("LLM_API_KEY", raising=False)
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: False)
         assert matcher.llm_available() is False
         settings.set("LLM_API_KEY", "gsk_dbkey123")
         assert matcher.llm_available() is True
