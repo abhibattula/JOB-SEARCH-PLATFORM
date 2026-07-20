@@ -89,6 +89,28 @@ CREATE TABLE IF NOT EXISTS h1b_employers (
     approvals INTEGER DEFAULT 0,
     lca_titles TEXT
 );
+
+CREATE TABLE IF NOT EXISTS answer_bank (
+    id INTEGER PRIMARY KEY,
+    question_normalized TEXT UNIQUE NOT NULL,
+    question_raw TEXT NOT NULL,
+    answer TEXT NOT NULL,
+    category TEXT,
+    source TEXT DEFAULT 'user',
+    confirmed_at TEXT NOT NULL,
+    updated_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_answer_bank_norm ON answer_bank(question_normalized);
+
+CREATE TABLE IF NOT EXISTS application_answers (
+    id INTEGER PRIMARY KEY,
+    job_id INTEGER NOT NULL REFERENCES jobs(id),
+    answer_bank_id INTEGER REFERENCES answer_bank(id),
+    question_raw TEXT NOT NULL,
+    answer_used TEXT NOT NULL,
+    answered_at TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS idx_application_answers_job ON application_answers(job_id);
 """
 
 
@@ -142,6 +164,10 @@ _MIGRATIONS = {
         ("applied_at", "TEXT"),
         ("stage_updated_at", "TEXT"),
         ("notes", "TEXT"),
+    ],
+    "user_profile": [
+        ("authorized_without_sponsorship", "TEXT"),
+        ("visa_status", "TEXT"),
     ],
 }
 
@@ -761,6 +787,7 @@ def save_profile(**fields: Any) -> None:
         current = dict(existing) if existing else {
             "resume_text": None, "resume_filename": None, "skills": None,
             "target_locations": None, "preferences": None,
+            "authorized_without_sponsorship": None, "visa_status": None,
         }
         for key, value in fields.items():
             if key in _PROFILE_JSON_FIELDS and value is not None:
@@ -768,18 +795,23 @@ def save_profile(**fields: Any) -> None:
             current[key] = value
         conn.execute(
             "INSERT INTO user_profile (id, resume_text, resume_filename, skills,"
-            " target_locations, preferences, updated_at)"
-            " VALUES (1, ?, ?, ?, ?, ?, ?)"
+            " target_locations, preferences, authorized_without_sponsorship,"
+            " visa_status, updated_at)"
+            " VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)"
             " ON CONFLICT(id) DO UPDATE SET resume_text=excluded.resume_text,"
             " resume_filename=excluded.resume_filename, skills=excluded.skills,"
             " target_locations=excluded.target_locations,"
-            " preferences=excluded.preferences, updated_at=excluded.updated_at",
+            " preferences=excluded.preferences,"
+            " authorized_without_sponsorship=excluded.authorized_without_sponsorship,"
+            " visa_status=excluded.visa_status, updated_at=excluded.updated_at",
             (
                 current["resume_text"],
                 current["resume_filename"],
                 current["skills"],
                 current["target_locations"],
                 current["preferences"],
+                current.get("authorized_without_sponsorship"),
+                current.get("visa_status"),
                 _utcnow(),
             ),
         )

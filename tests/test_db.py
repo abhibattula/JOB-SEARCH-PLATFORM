@@ -259,3 +259,69 @@ class TestProfile:
         profile = db.get_profile()
         assert profile["target_locations"] == ["TX"]
         assert profile["resume_text"] == "text"  # partial update preserved
+
+    def test_profile_sponsorship_and_visa_fields_roundtrip(self, tmp_db):
+        """005-T008: user_profile gains authorized_without_sponsorship/visa_status
+        so answer_bank.suggest() can ground drafts in facts the user provided."""
+        db.save_profile(
+            resume_text="text",
+            authorized_without_sponsorship="no",
+            visa_status="OPT",
+        )
+        profile = db.get_profile()
+        assert profile["authorized_without_sponsorship"] == "no"
+        assert profile["visa_status"] == "OPT"
+        db.save_profile(visa_status="H-1B")
+        assert db.get_profile()["visa_status"] == "H-1B"
+
+
+class TestAnswerBank:
+    """005-T008: answer_bank + application_answers tables (data-model.md)."""
+
+    def test_answer_bank_schema_has_expected_columns(self, tmp_db):
+        with db._conn() as conn:
+            cols = {row["name"] for row in conn.execute("PRAGMA table_info(answer_bank)")}
+        assert cols == {
+            "id", "question_normalized", "question_raw", "answer",
+            "category", "source", "confirmed_at", "updated_at",
+        }
+
+    def test_answer_bank_question_normalized_is_unique(self, tmp_db):
+        with db._conn() as conn:
+            conn.execute(
+                "INSERT INTO answer_bank (question_normalized, question_raw, answer,"
+                " category, source, confirmed_at, updated_at) VALUES (?,?,?,?,?,?,?)",
+                ("authorized to work", "Are you authorized to work?", "Yes",
+                 "work_authorization", "user", "2026-07-20 00:00:00.000",
+                 "2026-07-20 00:00:00.000"),
+            )
+        with db._conn() as conn:
+            with pytest.raises(Exception):
+                conn.execute(
+                    "INSERT INTO answer_bank (question_normalized, question_raw, answer,"
+                    " category, source, confirmed_at, updated_at) VALUES (?,?,?,?,?,?,?)",
+                    ("authorized to work", "dup", "dup", None, "user",
+                     "2026-07-20 00:00:00.000", "2026-07-20 00:00:00.000"),
+                )
+
+    def test_application_answers_schema_and_fk(self, tmp_db):
+        db.upsert_job(make_job())
+        jobs, _ = db.query_jobs()
+        job_id = jobs[0]["id"]
+        with db._conn() as conn:
+            cols = {row["name"] for row in conn.execute("PRAGMA table_info(application_answers)")}
+            assert cols == {
+                "id", "job_id", "answer_bank_id", "question_raw",
+                "answer_used", "answered_at",
+            }
+            conn.execute(
+                "INSERT INTO application_answers (job_id, answer_bank_id, question_raw,"
+                " answer_used, answered_at) VALUES (?,?,?,?,?)",
+                (job_id, None, "Are you authorized to work?", "Yes",
+                 "2026-07-20 00:00:00.000"),
+            )
+        with db._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM application_answers WHERE job_id = ?", (job_id,)
+            ).fetchone()
+        assert row["answer_used"] == "Yes"
