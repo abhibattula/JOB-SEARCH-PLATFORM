@@ -1,23 +1,23 @@
 <!--
 Sync Impact Report
 ==================
-Version change: (template) → 1.0.0
-Modified principles: n/a (initial ratification)
-Added sections:
-  - Core Principles (5): Speed-to-Value First; Zero-Subscription Cost;
-    API-First, Polite Ingestion; Reusable Core, Thin Web Layer;
-    Tested Core Logic
-  - Additional Constraints (stack, privacy)
-  - Development Workflow
-  - Governance
+Version change: 1.0.0 → 1.1.0
+Modified principles:
+  - I. Speed-to-Value First — narrowed the deferred/MUST-NOT-build list: "local
+    LLM" and "Playwright scraping" removed (feature 005 "Apply Assist" plan
+    approved, requires both — a bundled local model for offline Q&A/drafting
+    and app-driven headed-browser automation for application autofill).
+    "auth/multi-user", "hosted deployment", "CLI/MCP layer" remain deferred.
+Added sections: none
 Removed sections: none
 Templates status:
-  - .specify/templates/plan-template.md ✅ compatible (generic Constitution Check gate;
-    gates below apply as written)
-  - .specify/templates/spec-template.md ✅ compatible (no constitution-specific fields)
-  - .specify/templates/tasks-template.md ⚠ note: template marks tests as OPTIONAL;
-    per Principle V, test tasks are REQUIRED for engine/ logic (classifier, dedup,
-    recency queries, sponsorship join). Include them when generating tasks.md.
+  - .specify/templates/plan-template.md ✅ compatible (generic Constitution Check
+    gate; local LLM / Playwright no longer trip it for feature 005)
+  - .specify/templates/spec-template.md ✅ compatible (no constitution-specific
+    fields)
+  - .specify/templates/tasks-template.md ⚠ note (unchanged from 1.0.0): template
+    marks tests as OPTIONAL; per Principle V, test tasks are REQUIRED for engine/
+    logic. Include them when generating tasks.md.
 Follow-up TODOs: none
 -->
 
@@ -29,10 +29,15 @@ Follow-up TODOs: none
 
 The purpose of this project is to get its user hired. Every feature, refactor, and
 dependency MUST be justified by "does this surface applyable jobs sooner or rank them
-better?" Each milestone MUST end in a runnable state that delivers user-visible value.
-Speculative abstraction is prohibited (YAGNI): capabilities listed as deferred in the
-approved plan (auth/multi-user, hosted deployment, local LLM, CLI/MCP layer, Playwright
-scraping) MUST NOT be built in v1 unless the plan is amended first.
+better, or help the user complete and submit applications faster?" Each milestone
+MUST end in a runnable state that delivers user-visible value. Speculative
+abstraction is prohibited (YAGNI): capabilities listed as deferred in the approved
+plan (auth/multi-user, hosted deployment, CLI/MCP layer) MUST NOT be built in v1
+unless the plan is amended first. A bundled local LLM and app-driven browser
+automation (Playwright) are permitted as of the approved feature 005 plan, subject
+to the constraints in Principle II (no size veto beyond what that plan accepts) and
+Principle III (automation MUST NOT bypass bot protection or auto-submit on the
+user's behalf — the human always performs the final submit/login action).
 
 ### II. Zero-Subscription Cost
 
@@ -106,4 +111,4 @@ templates listed there. Plans and task lists MUST pass the Constitution Check ga
 deviations discovered during implementation MUST be either corrected or recorded in
 Complexity Tracking before the milestone is declared done.
 
-**Version**: 1.0.0 | **Ratified**: 2026-07-18 | **Last Amended**: 2026-07-18
+**Version**: 1.1.0 | **Ratified**: 2026-07-18 | **Last Amended**: 2026-07-20
