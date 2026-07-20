@@ -1,14 +1,17 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`specs/001-ai-job-engine/plan.md`
+`specs/005-apply-assist/plan.md`
 
 Supporting design artifacts for the active feature:
-- Spec: `specs/001-ai-job-engine/spec.md`
-- Research decisions: `specs/001-ai-job-engine/research.md`
-- Data model: `specs/001-ai-job-engine/data-model.md`
-- HTTP contract: `specs/001-ai-job-engine/contracts/http-api.md`
-- Quickstart: `specs/001-ai-job-engine/quickstart.md`
+- Spec: `specs/005-apply-assist/spec.md`
+- Research decisions: `specs/005-apply-assist/research.md`
+- Data model: `specs/005-apply-assist/data-model.md`
+- HTTP contract: `specs/005-apply-assist/contracts/http-api.md`
+- Quickstart: `specs/005-apply-assist/quickstart.md`
 
-Project principles are governed by `.specify/memory/constitution.md` (v1.0.0).
+Prior feature (001-ai-job-engine, shipped) plan/spec/artifacts remain under
+`specs/001-ai-job-engine/` for reference; likewise 002/003/004.
+
+Project principles are governed by `.specify/memory/constitution.md` (v1.1.0).
 <!-- SPECKIT END -->
