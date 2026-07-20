@@ -136,10 +136,12 @@ handles — so it's fully unit-testable with literal fixture dicts, no real
 browser needed in tests, matching `engine/filters.py`'s classifier style.
 `browser_controller.py` is the only module that serializes real DOM fields
 (via a JS `querySelectorAll` + attribute-extraction eval) and hands the
-result to `fields.classify()`. Legally-sensitive tags
-(`work_authorization`, `sponsorship_requirement`) are matched before generic
-yes/no catch-alls, to avoid a sponsorship question being misfiled as a
-generic boolean. `login_email`/`login_password` require corroborating
+result to `fields.classify()`. Legally-sensitive tags — `work_authorization`, `sponsorship_requirement`,
+and `eeo_disclosure` (disability/veteran/demographic self-identification
+questions, the kind commonly present for compliance/EEO purposes; per
+spec.md FR-012 this category is open/extensible, not fixed to two items) —
+are matched before generic yes/no catch-alls, to avoid a sponsorship or
+EEO-style question being misfiled as a generic boolean. `login_email`/`login_password` require corroborating
 context (password `type`, nearby login-page markers) so a saved credential
 is never routed into an unrelated field.
 

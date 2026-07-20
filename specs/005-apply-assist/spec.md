@@ -106,11 +106,14 @@ lands on a submit or apply button anywhere in the flow.
    has reviewed and submitted it themselves and clicks "Done, next
    application," **Then** the app opens the next shortlisted job's
    application page without further setup (Story 4).
-3. **Given** an application page the field-reader cannot confidently
-   interpret (e.g., a heavily dynamic multi-step application system, or one
+3. **Given** an application page where the system cannot recognize at
+   least the core identity fields — name, email, and a resume upload if
+   present (e.g., a heavily dynamic multi-step application system, or one
    already known to block automated access), **When** Apply Assist reaches
-   it, **Then** the page still opens for the user to complete manually, and
-   the queue still advances afterward — it does not get stuck or fail loudly.
+   it, **Then** the page still opens for the user to complete manually, the
+   user sees a clear indication this job fell back to manual mode (rather
+   than it looking like a normal, silent autofill), and the queue still
+   advances afterward — it does not get stuck or fail loudly.
 4. **Given** any application page in any state, **When** Apply Assist is
    running, **Then** at no point does the app itself click a final submit,
    apply, or login button — only the human does.
@@ -195,15 +198,28 @@ viewed again through any part of the app after saving.
 - What happens on an application page requiring a one-time code, CAPTCHA, or
   other step only a human can complete? Apply Assist MUST leave those to the
   user like any other unrecognized field, never attempt to bypass them.
+- What happens when the OS-level secure storage itself is unavailable, locked,
+  or denies access when saving or retrieving a credential (distinct from the
+  credential simply not existing yet)? The system MUST surface this clearly
+  to the user rather than silently failing to save, or worse, falling back
+  to a less secure storage location.
 - What happens if the same question is asked with slightly different wording
   across two different job sites (e.g., "Are you legally authorized to work in
   the US?" vs. "Do you require visa sponsorship now or in the future?")? These
   MUST be treated as related-but-distinct — near-identical phrasing may reuse
   a saved answer, but meaningfully different questions MUST still trigger a
   fresh review rather than silently reusing an answer to a different question.
-- What happens if disk space is insufficient for the one-time browser-engine
-  download Apply Assist needs on first use? The user MUST see a clear message
-  rather than a silent failure or partial, broken install.
+- What happens if disk space is insufficient, or the download is interrupted
+  partway, for the one-time browser-engine or the bundled model asset? The
+  user MUST see a clear message rather than a silent failure or a partial,
+  broken install — a partial download MUST NOT be treated as a successful
+  install.
+- What happens if the user neither confirms nor edits a paused drafted
+  answer (Story 3) — e.g., navigates away or leaves it indefinitely? Apply
+  Assist MUST keep that field/question paused rather than guessing or
+  silently skipping it — an unreviewed legally-significant question MUST
+  never be left filled with an unconfirmed draft merely because the user
+  didn't respond right away.
 
 ## Requirements *(mandatory)*
 
@@ -239,13 +255,23 @@ viewed again through any part of the app after saving.
   about us," cover letter/free-text) from the user's saved profile and the
   answer bank (FR-010–FR-013).
 - **FR-008**: The system MUST NEVER, under any circumstance, automatically
-  click a final submit/apply button or a login button on the user's behalf.
-  The human MUST always perform the actual submission and the actual login.
-- **FR-009**: When the system cannot confidently recognize a page's fields
-  (including but not limited to pages known to actively block automated
-  access), it MUST still open the page for the user to complete manually and
-  MUST still allow the session to continue to the next job — it MUST NOT
-  fail the whole session or leave it stuck.
+  click a final submit/apply button, a login button (including single-
+  sign-on/social-login buttons such as "Sign in with Google"), or any
+  control that itself submits the application or completes a login. The
+  human MUST always perform the actual submission and the actual login.
+  This does NOT prohibit the system from advancing between pages of a
+  multi-step application form using non-submitting "Next"/"Continue"
+  controls that only reveal the next section — the prohibition is
+  specifically on the action that submits the application or completes
+  authentication, not on intra-form page navigation.
+- **FR-009**: When the system cannot recognize at least the page's core
+  identity fields (name, email, and a resume-upload control, if present) —
+  including but not limited to pages known to actively block automated
+  access — it MUST treat the page as unreadable, still open it for the
+  user to complete manually, and MUST still allow the session to continue
+  to the next job — it MUST NOT fail the whole session or leave it stuck.
+  The system MUST also make it visible to the user, distinct from a normal
+  successful autofill, that a given job fell back to manual completion.
 - **FR-010**: The system MUST maintain a reusable store of previously
   answered application questions ("answer bank") and MUST reuse a matching
   or clearly-equivalent previously-confirmed answer automatically on later
@@ -255,10 +281,16 @@ viewed again through any part of the app after saving.
   MUST pause for the user to explicitly confirm or edit it — the draft MUST
   NOT be saved to the answer bank or typed into any form field until the
   user has done so.
-- **FR-012**: Work-authorization and sponsorship-requirement questions
-  specifically MUST only ever be filled from an answer the user has
-  previously and explicitly confirmed — an AI-drafted-but-unreviewed answer
-  MUST NEVER be used for these fields under any circumstance.
+- **FR-012**: Work-authorization and sponsorship-requirement questions, and
+  any other legally-significant personal-disclosure question the system
+  encounters (including but not limited to disability status, veteran
+  status, or race/ethnicity/gender self-identification questions of the
+  kind commonly present on job applications for compliance/EEO purposes),
+  MUST only ever be filled from an answer the user has previously and
+  explicitly confirmed — an AI-drafted-but-unreviewed answer MUST NEVER be
+  used for these fields under any circumstance. The field classifier's
+  taxonomy (see plan.md) MUST treat this as an open category it can extend,
+  not a fixed two-item list.
 - **FR-013**: The system MUST distinguish, near-identical wording aside,
   between genuinely different questions, and MUST NOT silently apply an
   answer to a question it was not actually confirmed for.
@@ -276,8 +308,9 @@ viewed again through any part of the app after saving.
 - **FR-016**: The system MUST NEVER automatically submit a login form; the
   user MUST always click the login action themselves.
 - **FR-017**: Once a login credential's secret has been saved, the system
-  MUST NOT display that secret again anywhere in the application afterward
-  (write-only, view/edit of the identifier only).
+  MUST NOT display, log, or otherwise surface that secret again anywhere —
+  including diagnostic output and log files, not only the normal
+  settings-page UI (write-only, view/edit of the identifier only).
 - **FR-018**: The system MUST allow the user to view which sites have a
   saved credential, and to update or delete a saved credential.
 - **FR-019**: The system MUST NOT attempt to defeat, evade, or work around
