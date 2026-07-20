@@ -142,6 +142,6 @@ if sys.platform == "darwin":
         bundle_identifier="dev.abhinav.jobengine",
         info_plist={
             "NSHighResolutionCapable": True,
-            "CFBundleShortVersionString": "0.4.2",
+            "CFBundleShortVersionString": "0.5.0",
         },
     )
