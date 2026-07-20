@@ -84,3 +84,17 @@ class TestSettingsApi:
 
     def test_settings_page_serves(self, client):
         assert client.get("/settings").status_code == 200
+
+    def test_settings_page_renders_saved_credential_without_password(self, client, monkeypatch):
+        """005-T040: the credentials section must render a saved domain and
+        never leak the password into the page."""
+        from engine import credentials
+
+        monkeypatch.setattr(
+            credentials, "list_domains",
+            lambda: [{"domain": "jobs.example.com", "email": "me@example.com"}],
+        )
+        resp = client.get("/settings")
+        assert resp.status_code == 200
+        assert "jobs.example.com" in resp.text
+        assert "me@example.com" in resp.text

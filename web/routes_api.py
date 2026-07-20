@@ -5,6 +5,7 @@ import json
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
 from fastapi.responses import JSONResponse, RedirectResponse
+from pydantic import BaseModel
 
 from engine import db, pipeline, settings
 from engine.resume import NoTextError, extract_text
@@ -421,6 +422,37 @@ def local_llm_selftest():
         return {"ok": True, "reply": reply}
     except Exception:
         return {"ok": False, "reply": ""}
+
+
+class SaveCredentialRequest(BaseModel):
+    domain: str
+    email: str
+    password: str
+
+
+@router.post("/credentials")
+def save_credential(body: SaveCredentialRequest):
+    """Write-only, like a real password manager — the password is never
+    echoed back in this or any other response (FR-017)."""
+    from engine import credentials
+
+    credentials.save(body.domain, body.email, body.password)
+    return {"saved": True}
+
+
+@router.get("/credentials")
+def list_credentials():
+    from engine import credentials
+
+    return {"domains": credentials.list_domains()}
+
+
+@router.delete("/credentials/{domain}")
+def delete_credential(domain: str):
+    from engine import credentials
+
+    credentials.delete(domain)
+    return {"deleted": True}
 
 
 @router.get("/diagnostics/chromium-launch-selftest")

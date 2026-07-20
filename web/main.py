@@ -165,10 +165,14 @@ def create_app() -> FastAPI:
 
     @app.get("/settings", response_class=HTMLResponse)
     def settings_page(request: Request):
+        from engine import credentials
+
         from .routes_api import get_settings
 
         return templates.TemplateResponse(
-            request, "settings.html", {"settings": get_settings()}
+            request,
+            "settings.html",
+            {"settings": get_settings(), "credential_domains": credentials.list_domains()},
         )
 
     @app.get("/autofill", response_class=HTMLResponse)

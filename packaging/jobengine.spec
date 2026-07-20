@@ -95,11 +95,16 @@ hiddenimports = (
         "llama_cpp",
         "diskcache",
         "playwright.sync_api",
-        "keyring.backends",
     ]
     # plyer resolves its notification backend dynamically per platform
     + (["plyer.platforms.win.notification"] if sys.platform == "win32" else [])
     + (["plyer.platforms.macosx.notification"] if sys.platform == "darwin" else [])
+    # keyring (feature 005, credential vault) does not reliably auto-detect
+    # its backend inside a frozen app — engine/credentials.py calls
+    # keyring.set_keyring() explicitly when frozen, so the concrete backend
+    # module must be declared here or that call fails with ImportError.
+    + (["keyring.backends.Windows"] if sys.platform == "win32" else [])
+    + (["keyring.backends.macOS"] if sys.platform == "darwin" else [])
 )
 
 a = Analysis(

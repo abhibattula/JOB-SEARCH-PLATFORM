@@ -52,6 +52,58 @@
     </form>
   </section>
 
+  <section class="settings-section" id="credentials-section">
+    <h2>Saved logins (Apply Assist)</h2>
+    <p class="muted">Stored in your OS's own credential store (Windows
+      Credential Manager / macOS Keychain) — never in this app's database.
+      Passwords are write-only: once saved, this page never displays them
+      again. Apply Assist fills recognized login fields for a matching
+      domain, but never clicks the login button itself — you always do.</p>
+
+    {% if credential_domains %}
+    <table class="feed-table">
+      <tbody>
+        {% for cred in credential_domains %}
+        <tr>
+          <td class="data">{{ cred.domain }}</td>
+          <td class="data">{{ cred.email }}</td>
+          <td>
+            <button type="button" class="ghost"
+                    onclick="fetch('/api/credentials/{{ cred.domain }}', {method:'DELETE'}).then(() => location.reload())">
+              Delete
+            </button>
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+    <p class="muted">No saved logins yet.</p>
+    {% endif %}
+
+    <form id="add-credential-form">
+      <label>Domain <input type="text" id="cred-domain" placeholder="jobs.example.com" required></label>
+      <label>Email <input type="email" id="cred-email" required></label>
+      <label>Password <input type="password" id="cred-password" autocomplete="off" required></label>
+      <button type="submit">Save login</button>
+    </form>
+    <script>
+      document.getElementById('add-credential-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await fetch('/api/credentials', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            domain: document.getElementById('cred-domain').value,
+            email: document.getElementById('cred-email').value,
+            password: document.getElementById('cred-password').value,
+          }),
+        });
+        location.reload();
+      });
+    </script>
+  </section>
+
   <section class="settings-section">
     <h2>Updates</h2>
     <div class="settings-actions">
