@@ -19,6 +19,23 @@ can't confidently handle falls back gracefully to manual completion. This phase 
 folds in a bug-sweep/regression pass across the existing shipped application before
 new work begins."
 
+## Clarifications
+
+### Session 2026-07-20
+
+- Q: How should Apply Assist know a job application is "finished" so it can
+  auto-advance to the next one? → A: An explicit "Done, next application"
+  control the user clicks — not automatic detection of a success/confirmation
+  page, which varies too much across sites to be reliable.
+- Q: Should Apply Assist automate inside a separate, dedicated browser
+  profile, or the user's regular everyday browser? → A: A separate, dedicated
+  profile — isolated from the user's normal browsing, with its own cookies
+  and logins (first-time site logins go through the saved-credential flow).
+- Q: Beyond the general answer bank, should there be a record of exactly
+  which answer was used on which specific application? → A: Yes — a
+  lightweight per-application record of the confirmed answers actually used,
+  in addition to the general reusable answer bank.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Works offline, no signup, out of the box (Priority: P1)
@@ -58,11 +75,15 @@ existing cloud-AI results and the existing basic/no-AI results.
 ### User Story 2 - Apply Assist opens and pre-fills applications, human submits (Priority: P2)
 
 The user shortlists several jobs, then starts "Apply Assist." The app opens each
-job's real application page, one at a time, in a normal visible browser window,
-and fills in the fields it recognizes (name, contact info, resume, links, common
-yes/no and short-answer questions) using the user's saved profile. The user
-reviews what was filled, makes any corrections, and clicks the actual apply/submit
-button themselves — the app never does this on their behalf.
+job's real application page, one at a time, in a visible browser window running
+in its own dedicated, isolated profile (separate from the user's everyday
+browser — see Clarifications), and fills in the fields it recognizes (name,
+contact info, resume, links, common yes/no and short-answer questions) using the
+user's saved profile. The user reviews what was filled, makes any corrections,
+and clicks the actual apply/submit button themselves — the app never does this
+on their behalf. When done (or choosing to skip), the user clicks an explicit
+"Done, next application" control to move on (see Clarifications) — the app does
+not try to guess completion from the page itself.
 
 **Why this priority**: This is the core "apply co-pilot" value the user asked
 for — the repetitive typing goes away, but the user stays in control of every
@@ -82,9 +103,9 @@ lands on a submit or apply button anywhere in the flow.
    salary expectation, how-heard, cover letter) are filled from the user's
    profile and the answer bank (Story 3).
 2. **Given** the application page has been fully processed, **When** the user
-   has reviewed and submitted it themselves, **Then** the app automatically
-   opens the next shortlisted job's application page without further setup
-   (Story 4).
+   has reviewed and submitted it themselves and clicks "Done, next
+   application," **Then** the app opens the next shortlisted job's
+   application page without further setup (Story 4).
 3. **Given** an application page the field-reader cannot confidently
    interpret (e.g., a heavily dynamic multi-step application system, or one
    already known to block automated access), **When** Apply Assist reaches
@@ -208,7 +229,9 @@ viewed again through any part of the app after saving.
 - **FR-006**: For each job in the session, the system MUST open that job's
   real, live application page in a visible, user-controllable browser window
   (not hidden/headless), so the user can see, take over, or correct anything
-  at any time.
+  at any time. This window MUST run in a separate, dedicated browser profile
+  isolated from the user's regular everyday browser (its own cookies/session
+  state), not the user's default browser.
 - **FR-007**: The system MUST attempt to recognize and fill common
   application-form fields (full/first/last name, email, phone, resume
   upload, LinkedIn/portfolio links, work authorization, sponsorship
@@ -240,9 +263,11 @@ viewed again through any part of the app after saving.
   between genuinely different questions, and MUST NOT silently apply an
   answer to a question it was not actually confirmed for.
 - **FR-014**: After the user finishes (submits) or abandons the current
-  job's application, the system MUST automatically open the next
-  shortlisted job's application page without requiring the user to
-  manually restart the session.
+  job's application and explicitly signals completion via a "Done, next
+  application" control, the system MUST open the next shortlisted job's
+  application page without requiring the user to manually restart the
+  session. The system MUST NOT attempt to automatically detect completion
+  from the page itself (e.g., guessing at a confirmation/success page).
 - **FR-015**: The system MUST let the user save a login credential
   (identifier + secret) per site/domain, store it securely on the user's own
   machine (not in the application's regular data store in plain form), and
@@ -263,6 +288,12 @@ viewed again through any part of the app after saving.
   automated test pass and a manual pass through every existing page/action,
   and any issues found MUST be resolved first, so later problems can be
   attributed to new work rather than a pre-existing regression.
+- **FR-021**: In addition to the reusable answer bank (FR-010), the system
+  MUST keep a lightweight per-application record of which confirmed answer
+  was actually used for which question on each specific job application,
+  distinct from the answer bank's "current answer per question" record —
+  so the user has a reference of exactly what was submitted where, even if
+  the general answer bank entry is later edited.
 
 ### Key Entities
 
@@ -277,8 +308,14 @@ viewed again through any part of the app after saving.
   secret, with save/update/delete lifecycle; secret is never re-displayed
   after saving.
 - **Apply Session / Queue**: An ordered set of shortlisted jobs being
-  processed by Apply Assist, with a notion of "current job" and the ability
-  to advance to the next one, start, and stop.
+  processed by Apply Assist, with a notion of "current job," an explicit
+  user-driven advance to the next one (not automatic detection), start, and
+  stop. Runs in its own dedicated, isolated browser profile separate from
+  the user's everyday browser.
+- **Application Answer Record**: A per-application record of exactly which
+  confirmed answer (from the answer bank) was used for which question on a
+  specific job's application — distinct from the answer bank's single
+  current-answer-per-question record, and not affected by later edits to it.
 
 ## Success Criteria *(mandatory)*
 
