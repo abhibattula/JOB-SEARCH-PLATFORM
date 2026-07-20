@@ -12,6 +12,7 @@ from fastapi.templating import Jinja2Templates
 from engine import db, paths
 
 from .routes_api import parse_feed_params, router as api_router
+from .routes_autofill import router as autofill_router
 
 from engine import APP_VERSION
 
@@ -83,6 +84,7 @@ def create_app() -> FastAPI:
         name="static",
     )
     app.include_router(api_router)
+    app.include_router(autofill_router)
 
     @app.on_event("startup")
     def _startup() -> None:
@@ -167,6 +169,28 @@ def create_app() -> FastAPI:
 
         return templates.TemplateResponse(
             request, "settings.html", {"settings": get_settings()}
+        )
+
+    @app.get("/autofill", response_class=HTMLResponse)
+    def autofill_page(request: Request):
+        from engine.autofill import browser_setup
+
+        jobs, _ = db.query_jobs(
+            window=None, statuses=("saved",), entry_level=True
+        )
+        return templates.TemplateResponse(
+            request,
+            "autofill.html",
+            {"jobs": jobs, "chromium_installed": browser_setup.is_installed()},
+        )
+
+    @app.get("/partials/autofill/status", response_class=HTMLResponse)
+    def autofill_status_partial(request: Request):
+        from engine.autofill import browser_controller
+
+        current = browser_controller.current_job()
+        return templates.TemplateResponse(
+            request, "partials/autofill_status.html", {"current": current}
         )
 
     return app

@@ -1,0 +1,58 @@
+{% extends "base.html" %}
+{% block title %}Apply Assist · Job Engine{% endblock %}
+{% block content %}
+<article class="autofill-page">
+  <h1>Apply Assist</h1>
+  <p class="muted">Opens each saved job's real application page in its own
+    dedicated browser window and fills recognized fields from your profile
+    and answer bank. You always review and click the actual apply/submit
+    button yourself — this never happens automatically.</p>
+
+  {% if not chromium_installed %}
+  <div class="empty-state" id="autofill-setup">
+    <p>First-time setup: a one-time browser component download
+      (~150-280MB) is needed before Apply Assist can open application
+      pages.</p>
+    <button hx-post="/api/autofill/setup" hx-target="#autofill-setup" hx-swap="outerHTML">
+      Enable Apply Assist
+    </button>
+  </div>
+  {% else %}
+  <section id="autofill-queue" hx-get="/partials/autofill/status" hx-trigger="load, every 3s" hx-swap="innerHTML"></section>
+
+  <section>
+    <h2>Saved jobs</h2>
+    {% if jobs %}
+    <table class="feed-table">
+      <tbody>
+        {% for job in jobs %}
+        <tr>
+          <td><input type="checkbox" class="autofill-job-check" value="{{ job.id }}" checked></td>
+          <td>{{ job.title }}</td>
+          <td class="data">{{ job.company }}</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+    <button id="autofill-start-btn" type="button">Start Apply Assist</button>
+    <script>
+      document.getElementById('autofill-start-btn').addEventListener('click', async () => {
+        const job_ids = Array.from(document.querySelectorAll('.autofill-job-check:checked'))
+          .map(el => parseInt(el.value, 10));
+        if (!job_ids.length) return;
+        await fetch('/api/autofill/queue', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({job_ids}),
+        });
+        htmx.trigger('#autofill-queue', 'load');
+      });
+    </script>
+    {% else %}
+    <p class="muted">No saved jobs yet. Save jobs from the feed (☆) to queue
+      them here.</p>
+    {% endif %}
+  </section>
+  {% endif %}
+</article>
+{% endblock %}

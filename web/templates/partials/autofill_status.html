@@ -1,0 +1,24 @@
+{% if current %}
+<div class="autofill-active">
+  <p>
+    Working on job <strong>#{{ current.job_id }}</strong>
+    {% if current.fell_back %}
+    <span class="badge unknown" title="This page's fields couldn't be confidently read — complete it manually in the open browser window.">manual completion needed</span>
+    {% endif %}
+    &middot; {{ current.remaining }} remaining after this one
+  </p>
+  <p class="muted">Review the filled application in the browser window, make
+    any corrections, and click the site's own submit button yourself. When
+    you're done (or want to skip this one), click below.</p>
+  <button hx-post="/api/autofill/next" hx-swap="none"
+          hx-on::after-request="htmx.trigger('#autofill-queue','load')">
+    Done, next application
+  </button>
+  <button hx-post="/api/autofill/stop" hx-swap="none"
+          hx-on::after-request="htmx.trigger('#autofill-queue','load')">
+    Stop
+  </button>
+</div>
+{% else %}
+<p class="muted">No Apply Assist session running.</p>
+{% endif %}
