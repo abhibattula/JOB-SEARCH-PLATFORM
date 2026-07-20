@@ -190,9 +190,28 @@ def _open_job(job_id: int) -> None:
             log.debug("could not fill field %s", raw, exc_info=True)
 
 
+def _domain_for_job(job_id: int) -> str | None:
+    from urllib.parse import urlparse
+
+    url = _job_url(job_id)
+    if not url:
+        return None
+    return urlparse(url).netloc or None
+
+
 def _value_for_tag(tag: str, raw: dict, profile: dict, job_id: int):
     from . import answer_bank
 
+    if tag in ("login_email", "login_password"):
+        from .. import credentials
+
+        domain = _domain_for_job(job_id)
+        if not domain:
+            return None
+        saved = credentials.get(domain)
+        if not saved:
+            return None
+        return saved["email"] if tag == "login_email" else saved["password"]
     if tag in ("full_name",):
         return profile.get("full_name")
     if tag == "email":
@@ -205,8 +224,6 @@ def _value_for_tag(tag: str, raw: dict, profile: dict, job_id: int):
         return profile.get("linkedin_url")
     if tag in ("portfolio_url",):
         return profile.get("portfolio_url")
-    if tag in ("login_email", "login_password"):
-        return None  # filled by the credential-vault wiring (US4)
     # Everything else (work_authorization, sponsorship_requirement,
     # eeo_disclosure, years_experience, salary_expectation, how_heard,
     # cover_letter, free_text_unknown) goes through the answer bank —

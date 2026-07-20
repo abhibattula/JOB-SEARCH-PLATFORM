@@ -218,6 +218,54 @@ class TestResolvePending:
         assert bc._state.pending is None
 
 
+class TestLoginFieldCredentials:
+    """005-T041: recognized login fields fill from a saved credential,
+    matched by the current job's domain — never auto-submitted (that
+    invariant is covered by TestNeverClicksAnything)."""
+
+    def test_login_email_fills_from_saved_credential(self, tmp_db, monkeypatch):
+        from engine import credentials
+
+        job_id = seed_job("https://jobs.example.com/apply/123")
+        monkeypatch.setattr(
+            credentials, "get",
+            lambda domain: {"email": "me@example.com", "password": "hunter2"}
+            if domain == "jobs.example.com" else None,
+        )
+        raw = {"tag": "input", "type": "email", "name": "email", "id": "email",
+               "label_text": "Email", "placeholder": "", "aria_label": "", "autocomplete": ""}
+
+        value = bc._value_for_tag("login_email", raw, {}, job_id)
+
+        assert value == "me@example.com"
+
+    def test_login_password_fills_from_saved_credential(self, tmp_db, monkeypatch):
+        from engine import credentials
+
+        job_id = seed_job("https://jobs.example.com/apply/123")
+        monkeypatch.setattr(
+            credentials, "get",
+            lambda domain: {"email": "me@example.com", "password": "hunter2"}
+            if domain == "jobs.example.com" else None,
+        )
+        raw = {"tag": "input", "type": "password", "name": "password", "id": "password",
+               "label_text": "Password", "placeholder": "", "aria_label": "", "autocomplete": ""}
+
+        value = bc._value_for_tag("login_password", raw, {}, job_id)
+
+        assert value == "hunter2"
+
+    def test_login_fields_return_none_without_saved_credential(self, tmp_db, monkeypatch):
+        from engine import credentials
+
+        job_id = seed_job("https://unknown.example.com/apply/1")
+        monkeypatch.setattr(credentials, "get", lambda domain: None)
+        raw = {"tag": "input", "type": "email", "name": "email", "id": "email",
+               "label_text": "Email", "placeholder": "", "aria_label": "", "autocomplete": ""}
+
+        assert bc._value_for_tag("login_email", raw, {}, job_id) is None
+
+
 class TestGracefulFallback:
     def test_no_core_identity_fields_triggers_fallback(self):
         classified_tags = ["how_heard", "salary_expectation", "free_text_unknown"]
