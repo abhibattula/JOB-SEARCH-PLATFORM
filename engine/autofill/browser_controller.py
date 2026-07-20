@@ -254,6 +254,26 @@ def advance() -> dict | None:
     return current_job()
 
 
+def chromium_selftest() -> bool:
+    """Launches a real headed Chromium instance and navigates to about:blank
+    — used by GET /api/diagnostics/chromium-launch-selftest and
+    packaging/smoke_test.py to catch a silently-dropped Playwright driver
+    (the same tls_client-shaped risk as the local LLM's native lib)."""
+    import os
+
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(_browsers_path())
+    from playwright.sync_api import sync_playwright
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        try:
+            page = browser.new_page()
+            page.goto("about:blank")
+        finally:
+            browser.close()
+    return True
+
+
 def stop_queue() -> None:
     global _page
     with _lock:

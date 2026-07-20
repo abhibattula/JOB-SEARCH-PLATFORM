@@ -56,6 +56,18 @@ assert os.path.exists(_model_path) and os.path.getsize(_model_path) > 500_000_00
 )
 datas.append((_model_path, "models"))
 
+# Playwright (feature 005, Apply Assist) loads its Node.js-based driver at
+# runtime from a path relative to its own package's __file__ — package data,
+# not a Python import, so invisible to static analysis. Playwright's own
+# PyInstaller hook is documented as unreliable on recent PyInstaller for
+# macOS, so this is bundled explicitly rather than trusted to "just work" —
+# the same defensive posture as tls_client and llama_cpp above.
+_playwright_data = collect_data_files("playwright")
+assert any(
+    src.lower().endswith(("node.exe", os.path.sep + "node")) for src, _ in _playwright_data
+), f"playwright driver executable not found: {[s for s, _ in _playwright_data][:5]}"
+datas += _playwright_data
+
 # The engine loads sources via importlib with string names, and imports pandas/
 # jobspy/matcher lazily inside functions — all invisible to static analysis, so
 # everything engine-adjacent must be declared explicitly.
@@ -82,6 +94,8 @@ hiddenimports = (
         "apscheduler.triggers.cron",
         "llama_cpp",
         "diskcache",
+        "playwright.sync_api",
+        "keyring.backends",
     ]
     # plyer resolves its notification backend dynamically per platform
     + (["plyer.platforms.win.notification"] if sys.platform == "win32" else [])

@@ -413,3 +413,17 @@ def local_llm_selftest():
         return {"ok": True, "reply": reply}
     except Exception:
         return {"ok": False, "reply": ""}
+
+
+@router.get("/diagnostics/chromium-launch-selftest")
+def chromium_launch_selftest():
+    """005: a real Chromium launch, not just an import check — catches a
+    silently-dropped Playwright driver the same way local-llm-selftest
+    catches a dropped llama_cpp native lib."""
+    from engine.autofill import browser_controller
+
+    try:
+        ok = browser_controller.chromium_selftest()
+        return {"ok": bool(ok)}
+    except Exception:
+        return {"ok": False}

@@ -16,9 +16,22 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -r requirements.txt pyinstaller
+      - run: pip install -r requirements.txt pyinstaller --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+      - name: llama-cpp-python install canary
+        run: python -c "import llama_cpp; print(llama_cpp.__version__)"
       - run: python -m pytest -q
+      - name: Cache bundled model
+        uses: actions/cache@v4
+        with:
+          path: models
+          key: qwen2.5-1.5b-instruct-q4_k_m-gguf-v1
+      - run: python packaging/fetch_model.py
       - run: pyinstaller packaging/jobengine.spec
+      - name: Install Chromium for the smoke test
+        shell: bash
+        run: |
+          export PLAYWRIGHT_BROWSERS_PATH="$RUNNER_TEMP/jobengine-smoke-data/browsers"
+          python -m playwright install chromium
       - name: Smoke test the frozen build
         run: python packaging/smoke_test.py dist/JobEngine/JobEngine.exe
       - run: choco install innosetup -y --no-progress
@@ -35,9 +48,21 @@ jobs:
         with:
           python-version: "3.12"
           cache: pip
-      - run: pip install -r requirements.txt pyinstaller
+      - run: pip install -r requirements.txt pyinstaller --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+      - name: llama-cpp-python install canary
+        run: python -c "import llama_cpp; print(llama_cpp.__version__)"
       - run: python -m pytest -q
+      - name: Cache bundled model
+        uses: actions/cache@v4
+        with:
+          path: models
+          key: qwen2.5-1.5b-instruct-q4_k_m-gguf-v1
+      - run: python packaging/fetch_model.py
       - run: pyinstaller packaging/jobengine.spec
+      - name: Install Chromium for the smoke test
+        run: |
+          export PLAYWRIGHT_BROWSERS_PATH="$RUNNER_TEMP/jobengine-smoke-data/browsers"
+          python -m playwright install chromium
       - name: Smoke test the frozen build
         run: python packaging/smoke_test.py "dist/Job Engine.app/Contents/MacOS/JobEngine"
       - run: bash packaging/make_dmg.sh "${GITHUB_REF_NAME#v}"

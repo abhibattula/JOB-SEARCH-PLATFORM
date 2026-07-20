@@ -36,10 +36,28 @@ def read_port(port_file: str) -> int | None:
         return None
 
 
+def _clear_stale_state(data_dir: str) -> None:
+    """Wipe everything except browsers/ — Chromium is installed there as a
+    separate CI step *before* this runs (it's a slow, cacheable download,
+    unrelated to whether the rest of the run is "fresh"). Nuking the whole
+    dir would silently discard that install and this step's Chromium check
+    would never actually exercise a real driver."""
+    if not os.path.isdir(data_dir):
+        return
+    for name in os.listdir(data_dir):
+        if name == "browsers":
+            continue
+        path = os.path.join(data_dir, name)
+        if os.path.isdir(path):
+            shutil.rmtree(path, ignore_errors=True)
+        else:
+            os.remove(path)
+
+
 def main() -> int:
     exe = sys.argv[1]
     data_dir = os.path.join(os.environ.get("RUNNER_TEMP", "."), "jobengine-smoke-data")
-    shutil.rmtree(data_dir, ignore_errors=True)
+    _clear_stale_state(data_dir)
     env = {**os.environ, "JOBS_DATA_DIR": data_dir}
 
     proc = subprocess.Popen([exe], env=env)
@@ -89,6 +107,19 @@ def main() -> int:
     if not selftest.get("ok") or not selftest.get("reply"):
         proc.terminate()
         print(f"FAIL: local-llm-selftest did not return ok+reply: {selftest}")
+        return 1
+
+    # 005: same reasoning, for the Playwright driver — only run this if
+    # Chromium is actually installed (it's an opt-in first-use download,
+    # not part of the base install, so CI installs it before this check).
+    chromium_body = urllib.request.urlopen(
+        base + "/api/diagnostics/chromium-launch-selftest", timeout=60
+    ).read()
+    chromium_selftest = json.loads(chromium_body)
+    print(f"chromium-launch-selftest -> {chromium_selftest}")
+    if not chromium_selftest.get("ok"):
+        proc.terminate()
+        print(f"FAIL: chromium-launch-selftest did not return ok: {chromium_selftest}")
         return 1
 
     proc.terminate()

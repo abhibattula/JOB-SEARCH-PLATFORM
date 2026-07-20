@@ -43,3 +43,28 @@ class TestLocalLlmSelftest:
         body = resp.json()
         assert body["ok"] is False
         assert body["reply"] == ""
+
+
+class TestChromiumLaunchSelftest:
+    """005-T030: packaging/smoke_test.py needs a real Chromium-launch check
+    (not just an import check) so a dropped Playwright driver fails loudly,
+    the same reasoning as the local-llm-selftest route above."""
+
+    def test_ok_true_when_chromium_launches(self, client, monkeypatch):
+        from engine.autofill import browser_controller
+
+        monkeypatch.setattr(browser_controller, "chromium_selftest", lambda: True)
+        resp = client.get("/api/diagnostics/chromium-launch-selftest")
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is True
+
+    def test_ok_false_when_chromium_launch_fails(self, client, monkeypatch):
+        from engine.autofill import browser_controller
+
+        def _boom():
+            raise RuntimeError("driver missing")
+
+        monkeypatch.setattr(browser_controller, "chromium_selftest", _boom)
+        resp = client.get("/api/diagnostics/chromium-launch-selftest")
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is False
