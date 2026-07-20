@@ -3,7 +3,9 @@
 Everything about this program in one place: what it is, how to run and test
 it, how every module works, and how the pieces connect. For a short daily-use
 reference see [USER_GUIDE.md](USER_GUIDE.md); for the original requirements
-and design see [../specs/001-ai-job-engine/](../specs/001-ai-job-engine/).
+and design see [../specs/001-ai-job-engine/](../specs/001-ai-job-engine/)
+(core engine) and [../specs/005-apply-assist/](../specs/005-apply-assist/)
+(local AI + Apply Assist).
 
 ---
 
@@ -274,7 +276,7 @@ faces over the same engine — anything the app can do, a script can do.
 
 ## 6. The database (data/jobs.db)
 
-Five tables, created automatically on first run:
+Seven tables, created automatically on first run:
 
 - **jobs** — one row per posting: title, company link, location, description,
   URL, source, `posted_date` (from the source) + `first_seen` (when this app
@@ -288,10 +290,18 @@ Five tables, created automatically on first run:
 - **h1b_employers** — the loaded USCIS/DOL records (~28,000 employers), kept
   so companies discovered later can still be matched.
 - **user_profile** — a single row: your resume text, extracted skills,
-  preferred locations.
+  preferred locations, and (feature 005) the work-authorization/visa facts
+  used to ground Apply Assist's drafted answers.
 - **refresh_runs** — one row per refresh with per-source progress JSON;
   powers the channel strip, the cooldown, and crash recovery (an unfinished
   run older than 30 minutes is treated as crashed and superseded).
+- **answer_bank** (feature 005) — one row per confirmed application
+  question/answer, reused automatically across jobs by exact-or-fuzzy match.
+- **application_answers** (feature 005) — a per-application snapshot of
+  exactly which confirmed answer was used where, independent of
+  `answer_bank` so later edits don't rewrite history. Saved-login secrets
+  are never in this database at all — only in your OS's own credential
+  store, via the `keyring` package.
 
 Rules that protect your data: updates from refreshes never overwrite
 `first_seen`, `status`, or match results; deleting `data/jobs.db` resets
@@ -312,6 +322,10 @@ everything (next run rebuilds it, but statuses are lost).
 | `GET /api/analytics` | Funnel + response-rate aggregates. |
 | `POST /api/settings/check-update` | Compare the running version against GitHub Releases. |
 | `GET /api/export` | The current filtered view as a CSV download. |
+| `POST /api/autofill/setup` \| `queue` \| `next` \| `stop` \| `GET .../status` | Apply Assist session control — see [contracts/http-api.md](../specs/005-apply-assist/contracts/http-api.md). |
+| `POST /api/autofill/answers/confirm` | The only write path into the answer bank — always requires explicit confirmation. |
+| `POST /api/credentials` \| `GET` \| `DELETE /{domain}` | Saved-login vault; password never appears in any response. |
+| `GET /api/diagnostics/local-llm-selftest` \| `chromium-launch-selftest` | Real (not just import-check) health checks used by the release smoke test. |
 | `GET/POST /api/profile` | Read/update resume + preferences (multipart upload). |
 | `GET/POST /api/settings` | Read (masked key) / save the AI key, provider, and toggles — the packaged-app replacement for `.env`. |
 | `POST /api/settings/test` | Live 1-token LLM call to validate the saved key. |
@@ -365,7 +379,77 @@ the app runs.
   you've downloaded count. Add more year files to `data/uscis/` and re-run
   `python cli.py load-sponsorship`.
 
-## 11. Known issues (fixed)
+## 11. Apply Assist & the offline AI model (feature 005)
+
+### 11.1 The bundled local AI model
+
+Starting with this release, a small AI model (Qwen2.5-1.5B-Instruct,
+Apache 2.0 licensed) ships **inside the installer** — no download, no
+account, no API key needed. Scoring precedence, best tier first:
+
+1. **Cloud** — if you've pasted a Groq (or other OpenAI-compatible) key in
+   Settings, that's always used first. Scores show plain (no prefix).
+2. **Local** — the bundled model, used automatically whenever no cloud key
+   is set. Fully offline. Scores show a `•` prefix.
+3. **Basic** — the original deterministic keyword matcher, used only if
+   somehow neither AI tier is available (e.g. the model file is missing).
+   Scores show a `~` prefix.
+
+Jobs scored by a lower tier are automatically re-scored by a better tier the
+moment it becomes available (e.g. adding a cloud key later upgrades every
+`•` and `~` score without you doing anything). A future improved model
+ships as part of a normal app update — Settings → **Check for updates** —
+there is no separate "update the model" step.
+
+### 11.2 Apply Assist
+
+Once you've shortlisted jobs (marked **Saved**), the **Apply Assist** page
+lets the app do the repetitive part of applying:
+
+1. Click **Enable Apply Assist** the first time — this downloads Chromium
+   (~150-280MB, one-time, needs internet for this step only).
+2. Select which saved jobs to include and click **Start Apply Assist**. A
+   separate, dedicated browser window opens (not your everyday browser) on
+   the first job's real application page.
+3. Recognized fields (name, email, phone, resume upload, LinkedIn/portfolio
+   links, work authorization, sponsorship, years of experience, salary
+   expectation, "how did you hear about us," cover letter) are filled in
+   automatically from your Profile and the answer bank.
+4. **The app never clicks submit, apply, or login for you — ever, under any
+   circumstance.** Review what was filled, make corrections, and click the
+   site's own button yourself.
+5. If a question is new or legally significant (work authorization,
+   sponsorship, EEO-style disclosures), the queue pauses and shows an
+   AI-drafted suggestion for you to confirm or edit — nothing is saved or
+   typed until you do. Once confirmed, the same question is answered
+   automatically on every later job.
+6. When you're done with a job (or want to skip it), click **Done, next
+   application** — the next one opens automatically. Nothing advances on
+   its own; that button is the only thing that moves the queue forward.
+7. On a site the field-reader can't confidently handle (a heavy multi-step
+   application system, or one — like Workday — already known to block
+   automated access), the tab just opens for you to complete manually and
+   the queue still advances afterward.
+
+**A note on Terms of Service**: even though a human always performs the
+actual submission and login, automating page navigation and field-filling
+on third-party sites may still touch the edges of some sites' Terms of
+Service. Use your own judgment per site — this is a co-pilot that saves you
+retyping, not a bot that applies on your behalf.
+
+### 11.3 Answer bank & saved logins
+
+- **Profile page**: two new fields (work-authorization-without-sponsorship,
+  visa status) ground the AI's drafted answers in facts you've actually
+  provided — it never invents anything.
+- **Settings page → Saved logins**: save an email/password per domain once;
+  Apply Assist fills matching login pages automatically, but — same rule as
+  everywhere else — never clicks the login button. Passwords are stored in
+  your OS's own credential store (Windows Credential Manager / macOS
+  Keychain), never in this app's database, and are never displayed again
+  once saved (write-only, like a real password manager).
+
+## 12. Known issues (fixed)
 
 - **v0.4.0 installer**: "the specified module could not be found" on any
   refresh (jobspy/Indeed searches always failed). Caused by a native DLL
@@ -374,7 +458,7 @@ the app runs.
   → Check for updates will also tell you). CI now runs a real smoke test on
   every release build so this class of bug can't ship silently again.
 
-## 12. Troubleshooting
+## 13. Troubleshooting
 
 See the table at the end of [USER_GUIDE.md](USER_GUIDE.md#troubleshooting).
 The two most common: empty feed = wait for the first refresh to finish;

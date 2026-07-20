@@ -32,11 +32,12 @@ This is the daily-use manual. For first-time setup, follow
     USCIS data)
   - The **evidence** (approval count, exact JD phrase) is on the job's detail
     page.
-- **Match** — 0–100 resume fit, sorted best-first by default. `~62` (with a
-  tilde) is the built-in **basic keyword match** — it works with no AI key and
-  upgrades automatically to a full AI score once you add one. `—` means not
-  scored yet (no resume uploaded, or the model output failed validation — the
-  job stays visible either way).
+- **Match** — 0–100 resume fit, sorted best-first by default. `~62` (tilde) is
+  the built-in **basic keyword match**; `•71` (dot) is the **bundled offline
+  AI model** — both work with zero setup and upgrade automatically to a full
+  cloud score once you add a key. `—` means not scored yet (no resume
+  uploaded, or the model output failed validation — the job stays visible
+  either way).
 
 ## Filters and views
 
@@ -64,20 +65,49 @@ This is the daily-use manual. For first-time setup, follow
 
 ## Your profile (unlocks scoring)
 
-1. Get a free API key at **console.groq.com** (no card required), then open
-   **Settings** in the app, paste it, and click **Test key** to confirm it
+1. Open **Profile**, upload your resume PDF, optionally set preferred
+   locations (they pre-fill the location filter, never exclude jobs).
+   Scores and gap analysis appear on newly refreshed entry-level jobs
+   immediately — the bundled offline AI model needs no setup at all.
+2. Optional: get a free API key at **console.groq.com** (no card required),
+   then open **Settings**, paste it, and click **Test key** to confirm it
    works. (Advanced: the Settings page can point at any OpenAI-compatible
    provider — e.g., local Ollama at `http://localhost:11434/v1`.) A `.env`
-   file still works as a developer override.
-2. Open **Profile**, upload your resume PDF, optionally set preferred
-   locations (they pre-fill the location filter, never exclude jobs).
-3. Scores and gap analysis appear on newly refreshed entry-level jobs. Scoring
-   is throttled (~28 calls/min) and capped per refresh to stay inside the
-   free tier. Use the **Best matches** tab (or the "Match: 70+" toolbar
-   filter) to browse only strong fits.
+   file still works as a developer override. This upgrades every score to
+   full cloud-quality analysis automatically — you don't lose anything by
+   adding a key later.
+3. Scoring is throttled (~28 calls/min for the cloud tier) and capped per
+   refresh to stay inside the free tier. Use the **Best matches** tab (or
+   the "Match: 70+" toolbar filter) to browse only strong fits.
 
-Your resume text never leaves your machine except inside the scoring calls to
-the LLM provider you configured.
+Your resume text never leaves your machine except inside scoring calls to a
+cloud provider you've explicitly configured — the bundled model runs fully
+offline.
+
+## Apply Assist (auto-fill applications)
+
+1. Save jobs you want to apply to (☆ in the feed), then open **Apply
+   Assist** from the top nav.
+2. First time only: click **Enable Apply Assist** — a one-time browser
+   component download (~150-280MB, needs internet).
+3. Pick your saved jobs and **Start Apply Assist**. A dedicated browser
+   window (separate from your everyday browser) opens on the first job's
+   application page with recognized fields already filled from your Profile
+   and answer bank.
+4. **You always click the site's own submit/login button — the app never
+   does.** Review, correct anything, submit it yourself.
+5. New or sensitive questions (work authorization, sponsorship, EEO-style)
+   pause the queue with an AI-drafted suggestion for you to confirm or
+   edit — nothing is saved or typed until you do. Answer once, reused
+   automatically after that.
+6. Click **Done, next application** to move to the next job — nothing
+   advances on its own.
+7. On a site the app can't confidently read (including Workday), it just
+   opens the tab for you to finish manually and still advances afterward.
+
+Optional: **Settings → Saved logins** stores a domain/email/password once
+(in your OS's own credential store, never this app's database) so Apply
+Assist can fill matching login pages — again, never clicking login itself.
 
 ## Sponsorship data (unlocks HIGH/MEDIUM badges)
 
@@ -122,3 +152,6 @@ the LLM provider you configured.
 | Resume upload rejected (422) | The PDF has no text layer (scanned image) — export a text PDF from your editor |
 | `database is locked` / WAL errors | `JOBS_DB_PATH` must point to a **local** disk, not a network drive |
 | Refresh button says "cooldown" | A refresh finished < 30 min ago — use **Refresh now** (it bypasses the cooldown) |
+| Scores show `~` even though you expected `•` or a cloud score | The bundled model file may be missing/corrupted — the app degrades to the basic matcher rather than crashing; reinstalling fixes it |
+| Apply Assist "Enable" step fails | Needs internet for the one-time Chromium download; check your connection and try again |
+| Apply Assist opened a job but nothing got filled | The page couldn't be confidently read (common on Workday and similar heavy-JS sites) — fill it manually, then click **Done, next application** |
