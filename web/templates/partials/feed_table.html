@@ -35,9 +35,9 @@
       <td class="data">{{ 'Remote' if job.is_remote and not job.location else (job.location or '—') }}</td>
       <td class="data">{{ (job.posted_date or job.first_seen)[:10] }}</td>
       <td><span class="badge {{ job.sponsorship|lower }}">{{ job.sponsorship }}</span></td>
-      <td class="data score" {% if job.match_method == 'basic' %}title="Basic keyword match — add an AI key in Settings for full analysis"{% endif %}>
+      <td class="data score" {% if job.match_method == 'basic' %}title="Basic keyword match — add an AI key in Settings for full analysis"{% elif job.match_method == 'local' %}title="Scored by the bundled offline AI model — add a cloud AI key in Settings for the highest-quality analysis"{% endif %}>
         {%- if job.match_score is not none -%}
-          {{ '~' if job.match_method == 'basic' }}{{ '%d' % job.match_score }}
+          {{ '~' if job.match_method == 'basic' }}{{ '•' if job.match_method == 'local' }}{{ '%d' % job.match_score }}
         {%- else -%}—{%- endif -%}
       </td>
       {% if pipeline_view %}
