@@ -4,7 +4,7 @@
 import os
 import sys
 
-from PyInstaller.utils.hooks import collect_data_files, collect_submodules
+from PyInstaller.utils.hooks import collect_data_files, collect_dynamic_libs, collect_submodules
 
 ROOT = os.path.abspath(os.path.join(SPECPATH, ".."))
 # collect_submodules imports the package at build time; the repo root is not on
@@ -17,6 +17,7 @@ datas = [
     (os.path.join(ROOT, "companies.yml"), "."),
     (os.path.join(ROOT, "assets", "uscis"), "assets/uscis"),
 ]
+binaries = []
 
 # jobspy's tls_client dependency loads a native dll/so/dylib via ctypes at a
 # path computed from its own package location — invisible to PyInstaller's
@@ -29,6 +30,31 @@ assert any(src.lower().endswith((".dll", ".so", ".dylib")) for src, _ in _tls_cl
     f"tls_client native libs not found: {_tls_client_data}"
 )
 datas += _tls_client_data
+
+# llama-cpp-python (feature 005, local LLM tier) loads its compiled llama.cpp
+# core via ctypes at a path relative to its own package location — the exact
+# same invisible-to-static-analysis shape as tls_client above. Without this,
+# the app would import fine but every local-model chat() call would fail
+# with a missing-DLL error, silently, in production only — precisely the
+# v0.4.0 tls_client incident repeating itself. collect_dynamic_libs (not
+# collect_data_files) is correct here since these are genuine compiled
+# binaries, not package data.
+_llama_cpp_libs = collect_dynamic_libs("llama_cpp")
+assert any(src.lower().endswith((".dll", ".so", ".dylib")) for src, _ in _llama_cpp_libs), (
+    f"llama_cpp native libs not found: {_llama_cpp_libs}"
+)
+binaries += _llama_cpp_libs
+
+# The bundled local model (feature 005) — fetched by packaging/fetch_model.py
+# before this spec runs; never committed to git (see .gitignore). Build-time
+# assertion here means a missing/incomplete fetch fails the build loudly
+# instead of shipping an installer with no offline AI tier.
+_model_path = os.path.join(ROOT, "models", "qwen2.5-1.5b-instruct-q4_k_m.gguf")
+assert os.path.exists(_model_path) and os.path.getsize(_model_path) > 500_000_000, (
+    f"bundled model missing or too small at {_model_path} — run"
+    " packaging/fetch_model.py first"
+)
+datas.append((_model_path, "models"))
 
 # The engine loads sources via importlib with string names, and imports pandas/
 # jobspy/matcher lazily inside functions — all invisible to static analysis, so
@@ -54,6 +80,8 @@ hiddenimports = (
         "openai",
         "apscheduler.schedulers.background",
         "apscheduler.triggers.cron",
+        "llama_cpp",
+        "diskcache",
     ]
     # plyer resolves its notification backend dynamically per platform
     + (["plyer.platforms.win.notification"] if sys.platform == "win32" else [])
@@ -64,6 +92,7 @@ a = Analysis(
     [os.path.join(ROOT, "desktop.py")],
     pathex=[ROOT],
     datas=datas,
+    binaries=binaries,
     hiddenimports=hiddenimports,
     excludes=["tkinter"],
     noarchive=False,

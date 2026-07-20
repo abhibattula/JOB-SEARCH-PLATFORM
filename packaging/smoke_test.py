@@ -9,6 +9,7 @@ Usage: python packaging/smoke_test.py path/to/JobEngine(.exe)
 """
 from __future__ import annotations
 
+import json
 import os
 import shutil
 import subprocess
@@ -20,6 +21,11 @@ FATAL_LOG_PATTERNS = (
     "could not be found",
     "PyInstallerImportError",
     "ModuleNotFoundError",
+    # 005: llama-cpp-python / Playwright native-dependency failure modes —
+    # same risk class as the tls_client DLL that shipped broken in v0.4.0.
+    "failed to load model",
+    "error loading model",
+    "DLL load failed",
 )
 
 
@@ -69,6 +75,21 @@ def main() -> int:
     req = urllib.request.Request(base + "/api/refresh?force=1", method="POST", data=b"")
     urllib.request.urlopen(req, timeout=10)
     time.sleep(45)
+
+    # 005: a genuine local-model inference call, not just an import check —
+    # this is the same blind spot that let tls_client ship broken in v0.4.0
+    # (the failure was swallowed into a per-source "found: 0" that looked
+    # like normal behavior). llama-cpp-python's native lib being silently
+    # dropped would surface here as ok=False, not as a process crash.
+    selftest_body = urllib.request.urlopen(
+        base + "/api/diagnostics/local-llm-selftest", timeout=60
+    ).read()
+    selftest = json.loads(selftest_body)
+    print(f"local-llm-selftest -> {selftest}")
+    if not selftest.get("ok") or not selftest.get("reply"):
+        proc.terminate()
+        print(f"FAIL: local-llm-selftest did not return ok+reply: {selftest}")
+        return 1
 
     proc.terminate()
     time.sleep(2)
