@@ -10,7 +10,6 @@ Usage: python packaging/smoke_test.py path/to/JobEngine(.exe)
 from __future__ import annotations
 
 import os
-import re
 import shutil
 import subprocess
 import sys
@@ -24,19 +23,11 @@ FATAL_LOG_PATTERNS = (
 )
 
 
-def find_listening_port(pid: int) -> int | None:
-    if sys.platform == "win32":
-        out = subprocess.run(["netstat", "-ano"], capture_output=True, text=True).stdout
-        for match in re.finditer(
-            r"127\.0\.0\.1:(\d+)\s+\S+\s+LISTENING\s+" + str(pid) + r"\b", out
-        ):
-            return int(match.group(1))
+def read_port(port_file: str) -> int | None:
+    try:
+        return int(open(port_file, encoding="utf-8").read().strip())
+    except (FileNotFoundError, ValueError):
         return None
-    out = subprocess.run(
-        ["lsof", "-a", "-p", str(pid), "-iTCP", "-sTCP:LISTEN"], capture_output=True, text=True
-    ).stdout
-    match = re.search(r":(\d+)\s+\(LISTEN\)", out)
-    return int(match.group(1)) if match else None
 
 
 def main() -> int:
@@ -46,6 +37,7 @@ def main() -> int:
     env = {**os.environ, "JOBS_DATA_DIR": data_dir}
 
     proc = subprocess.Popen([exe], env=env)
+    port_file = os.path.join(data_dir, "port.txt")
     port = None
     deadline = time.time() + 60
     while time.time() < deadline and port is None:
@@ -53,11 +45,14 @@ def main() -> int:
         if proc.poll() is not None:
             print(f"FAIL: process exited early, rc={proc.returncode}")
             return 1
-        port = find_listening_port(proc.pid)
+        port = read_port(port_file)
 
     if port is None:
         proc.terminate()
-        print("FAIL: app never started listening within 60s")
+        print(f"FAIL: {port_file} was never written within 60s (app.log below if present)")
+        logpath = os.path.join(data_dir, "app.log")
+        if os.path.exists(logpath):
+            print(open(logpath, encoding="utf-8", errors="replace").read()[-3000:])
         return 1
 
     base = f"http://127.0.0.1:{port}"

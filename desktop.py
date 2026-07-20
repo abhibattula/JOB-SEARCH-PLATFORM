@@ -70,6 +70,16 @@ def main() -> None:
     port = pick_port()
     url = f"http://127.0.0.1:{port}"
 
+    # Written for tooling (packaging/smoke_test.py) to discover the port
+    # without parsing netstat/lsof output, which is fragile and platform-
+    # specific — this file is the single source of truth for "what port did
+    # this instance actually bind."
+    from engine import paths
+
+    port_file = paths.data_dir()
+    port_file.mkdir(parents=True, exist_ok=True)
+    (port_file / "port.txt").write_text(str(port), encoding="utf-8")
+
     # Import the app object directly (a "module:attr" string breaks under PyInstaller)
     from web.main import app as web_app
 
