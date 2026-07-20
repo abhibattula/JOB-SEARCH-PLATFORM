@@ -16,6 +16,8 @@ import time
 
 from pydantic import BaseModel, Field, ValidationError
 
+from . import local_llm
+
 log = logging.getLogger(__name__)
 
 DEFAULT_BASE_URL = "https://api.groq.com/openai/v1"
@@ -42,7 +44,20 @@ class MatchAnalysis(BaseModel):
 def llm_available() -> bool:
     from . import settings
 
-    return bool(settings.get("LLM_API_KEY"))
+    return bool(settings.get("LLM_API_KEY")) or local_llm.available()
+
+
+def scoring_tier() -> str:
+    """Which tier will actually serve the next call: cloud > local > basic.
+    'basic' means neither an LLM tier is available; callers fall back to
+    engine/basic_match.py entirely (no _chat call at all) in that case."""
+    from . import settings
+
+    if settings.get("LLM_API_KEY"):
+        return "cloud"
+    if local_llm.available():
+        return "local"
+    return "basic"
 
 
 def _min_interval() -> float:
@@ -50,7 +65,7 @@ def _min_interval() -> float:
     return float(os.environ.get("LLM_MIN_INTERVAL", "2.2"))
 
 
-def _chat(messages: list[dict]) -> str:
+def _chat_cloud(messages: list[dict]) -> str:
     global _last_call
     with _throttle_lock:
         wait = _min_interval() - (time.monotonic() - _last_call)
@@ -71,6 +86,24 @@ def _chat(messages: list[dict]) -> str:
         temperature=0.2,
     )
     return completion.choices[0].message.content or ""
+
+
+def _chat_local(messages: list[dict]) -> str:
+    return local_llm.chat(messages)
+
+
+def _chat(messages: list[dict]) -> str:
+    """Tier dispatcher: cloud (Groq/OpenAI-compatible API) > local (bundled
+    model) > raise. Existing callers (analyze_match, extract_skills) already
+    try/except around _chat and degrade gracefully on failure, so no call
+    site needs to change for the new tier."""
+    from . import settings
+
+    if settings.get("LLM_API_KEY"):
+        return _chat_cloud(messages)
+    if local_llm.available():
+        return _chat_local(messages)
+    raise RuntimeError("no LLM tier available (no cloud key, no local model)")
 
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.S)

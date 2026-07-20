@@ -65,8 +65,10 @@ class TestAnalyzeMatch:
         assert "MY RESUME TEXT" in captured["text"]
         assert "THE JOB DESCRIPTION" in captured["text"]
 
-    def test_no_api_key_returns_none_without_calling(self, monkeypatch):
+    def test_no_tier_available_returns_none_without_calling(self, monkeypatch):
+        """005: no cloud key AND no local model — neither tier available."""
         monkeypatch.delenv("LLM_API_KEY")
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: False)
         monkeypatch.setattr(
             matcher, "_chat", lambda messages: pytest.fail("must not call LLM")
         )
@@ -85,5 +87,56 @@ class TestExtractSkills:
         assert matcher.extract_skills("resume") == []
 
     def test_no_key_degrades_to_empty(self, monkeypatch):
+        """005: no cloud key AND no local model — neither tier available."""
         monkeypatch.delenv("LLM_API_KEY")
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: False)
         assert matcher.extract_skills("resume") == []
+
+
+class TestScoringTierDispatch:
+    """005-T012: matcher._chat becomes a cloud -> local -> raise dispatcher;
+    scoring_tier() reports which tier is currently active."""
+
+    def test_scoring_tier_prefers_cloud_when_key_present(self, monkeypatch):
+        monkeypatch.setenv("LLM_API_KEY", "test-key")
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: True)
+        assert matcher.scoring_tier() == "cloud"
+
+    def test_scoring_tier_falls_back_to_local_without_key(self, monkeypatch):
+        monkeypatch.delenv("LLM_API_KEY")
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: True)
+        assert matcher.scoring_tier() == "local"
+
+    def test_scoring_tier_is_basic_when_neither_available(self, monkeypatch):
+        monkeypatch.delenv("LLM_API_KEY")
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: False)
+        assert matcher.scoring_tier() == "basic"
+
+    def test_chat_dispatches_to_cloud_when_key_present(self, monkeypatch):
+        monkeypatch.setenv("LLM_API_KEY", "test-key")
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: True)
+        calls = []
+        monkeypatch.setattr(matcher, "_chat_cloud", lambda messages: calls.append("cloud") or "ok")
+        monkeypatch.setattr(matcher, "_chat_local", lambda messages: calls.append("local") or "ok")
+        assert matcher._chat([{"role": "user", "content": "hi"}]) == "ok"
+        assert calls == ["cloud"]
+
+    def test_chat_dispatches_to_local_when_no_key(self, monkeypatch):
+        monkeypatch.delenv("LLM_API_KEY")
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: True)
+        calls = []
+        monkeypatch.setattr(matcher, "_chat_cloud", lambda messages: calls.append("cloud") or "ok")
+        monkeypatch.setattr(matcher, "_chat_local", lambda messages: calls.append("local") or "ok")
+        assert matcher._chat([{"role": "user", "content": "hi"}]) == "ok"
+        assert calls == ["local"]
+
+    def test_chat_raises_when_neither_tier_available(self, monkeypatch):
+        monkeypatch.delenv("LLM_API_KEY")
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: False)
+        with pytest.raises(Exception):
+            matcher._chat([{"role": "user", "content": "hi"}])
+
+    def test_llm_available_true_via_local_tier_alone(self, monkeypatch):
+        monkeypatch.delenv("LLM_API_KEY")
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: True)
+        assert matcher.llm_available() is True
