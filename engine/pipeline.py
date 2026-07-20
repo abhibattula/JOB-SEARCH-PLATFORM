@@ -110,10 +110,12 @@ def _analyze(resume_text: str, title: str, company: str, description: str):
 def _score_new_jobs() -> None:
     """Score unscored entry-level jobs against the resume (FR-012).
 
-    With an LLM key: full AI analysis (throttled + capped for the free tier),
-    also upgrading any earlier basic-method scores. Without a key: the
-    deterministic local basic matcher — scores appear offline, marked
-    method="basic". Failures leave jobs visible and unscored.
+    Three-tier precedence (005): cloud LLM key > bundled local model > the
+    deterministic basic matcher. Cloud/local calls are throttled + capped
+    for the free tier; basic is unlimited (no external cost). Whichever tier
+    just became available also upgrades jobs scored by a lower tier
+    (db.jobs_needing_score's upgrade_methods). Failures leave jobs visible
+    and unscored.
     """
     import json
 
@@ -123,15 +125,16 @@ def _score_new_jobs() -> None:
     if not profile or not profile.get("resume_text"):
         return
     resume_text = profile["resume_text"]
-    llm = matcher.llm_available()
-    cap = int(settings.get("MAX_SCORE_PER_RUN") or "150") if llm else 2000
-    for job in db.jobs_needing_score(limit=cap, include_basic=llm):
+    tier = matcher.scoring_tier()  # "cloud" | "local" | "basic"
+    upgrade_methods = {"cloud": ("basic", "local"), "local": ("basic",), "basic": ()}[tier]
+    cap = int(settings.get("MAX_SCORE_PER_RUN") or "150") if tier != "basic" else 2000
+    for job in db.jobs_needing_score(limit=cap, upgrade_methods=upgrade_methods):
         description = job.get("description") or ""
-        if llm:
+        if tier in ("cloud", "local"):
             analysis = _analyze(resume_text, job["title"], job["company"], description)
-            method = "llm"
             if analysis is None:
                 continue
+            method = "llm" if tier == "cloud" else "local"
         else:
             analysis = basic_match.score(resume_text, job["title"], description)
             method = "basic"

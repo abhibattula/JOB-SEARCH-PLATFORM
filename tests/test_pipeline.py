@@ -100,7 +100,11 @@ class TestScoringStage:
         assert jobs[0]["match_score"] is None
 
     def test_no_key_falls_back_to_basic_scoring(self, entry_source, monkeypatch):
+        """005: neither cloud key nor local model available -> basic tier."""
+        from engine import matcher
+
         monkeypatch.delenv("LLM_API_KEY", raising=False)
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: False)
         monkeypatch.setattr(
             pipeline, "_analyze",
             lambda *a: (_ for _ in ()).throw(AssertionError("LLM must not be called")),
@@ -110,3 +114,21 @@ class TestScoringStage:
         assert len(jobs) == 1
         assert jobs[0]["match_score"] is not None
         assert jobs[0]["match_method"] == "basic"
+
+    def test_local_tier_used_when_no_key_but_model_available(self, entry_source, monkeypatch):
+        """005-T015: no cloud key, local model available -> local tier used,
+        tagged method='local' (distinct from both 'llm' and 'basic')."""
+        from engine import matcher
+
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: True)
+        monkeypatch.setattr(
+            pipeline,
+            "_analyze",
+            lambda *a: matcher.MatchAnalysis(match_score=64, reasoning="local tier"),
+        )
+        pipeline.run_refresh(trigger="cli")
+        jobs, _ = db.query_jobs(window=None, statuses=None, entry_level=True)
+        assert len(jobs) == 1
+        assert jobs[0]["match_score"] == 64
+        assert jobs[0]["match_method"] == "local"

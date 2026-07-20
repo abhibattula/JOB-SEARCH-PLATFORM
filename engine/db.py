@@ -535,15 +535,30 @@ def jobs_needing_classification() -> list[dict]:
     return [dict(row) for row in rows]
 
 
-def jobs_needing_score(limit: int = 150, include_basic: bool = False) -> list[dict]:
-    """Unscored eligible entry-level jobs; with include_basic=True, also jobs
-    whose stored score came from the local basic matcher (so LLM scoring
-    upgrades them once a key exists)."""
+def jobs_needing_score(
+    limit: int = 150,
+    include_basic: bool = False,
+    upgrade_methods: tuple[str, ...] | None = None,
+) -> list[dict]:
+    """Unscored eligible entry-level jobs, plus jobs already scored by a
+    lower tier that a better tier can now upgrade (005: three-tier
+    basic -> local -> cloud).
+
+    `upgrade_methods` takes precedence when given — e.g. `("basic","local")`
+    when the cloud tier just became available upgrades both; `("basic",)`
+    when only the local tier is available upgrades basic-scored jobs only
+    (a local-scored job has nothing better to upgrade to locally). Bare
+    `include_basic=True` (pre-005 callers) is equivalent to
+    `upgrade_methods=("basic",)`.
+    """
+    if upgrade_methods is None:
+        upgrade_methods = ("basic",) if include_basic else ()
     score_clause = "j.match_score IS NULL"
-    if include_basic:
+    if upgrade_methods:
+        placeholders = ", ".join("?" for _ in upgrade_methods)
         score_clause = (
             "(j.match_score IS NULL"
-            " OR json_extract(j.match_json, '$.method') = 'basic')"
+            f" OR json_extract(j.match_json, '$.method') IN ({placeholders}))"
         )
     with _conn() as conn:
         rows = conn.execute(
@@ -553,7 +568,7 @@ def jobs_needing_score(limit: int = 150, include_basic: bool = False) -> list[di
             " AND j.sponsorship != 'EXCLUDED'"  # never spend LLM quota on ineligible jobs
             " AND j.status NOT IN ('applied', 'hidden')"
             " ORDER BY COALESCE(j.posted_date, j.first_seen) DESC LIMIT ?",
-            (limit,),
+            (*upgrade_methods, limit),
         ).fetchall()
     return [dict(row) for row in rows]
 

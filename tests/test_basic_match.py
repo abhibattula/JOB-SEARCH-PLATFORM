@@ -82,3 +82,22 @@ class TestUpgradePath:
     def test_default_query_skips_all_scored(self, tmp_db):
         self._seed("basic")
         assert db.jobs_needing_score() == []
+
+    def test_upgrade_methods_basic_and_local_when_cloud_tier_arrives(self, tmp_db):
+        """005-T016: cloud tier available -> both basic- and local-scored
+        jobs are eligible for rescoring; llm-scored jobs are never redone."""
+        basic_id = self._seed("basic")
+        local_id = self._seed("local")
+        self._seed("llm")
+        upgradable = db.jobs_needing_score(upgrade_methods=("basic", "local"))
+        ids = {j["id"] for j in upgradable}
+        assert ids == {basic_id, local_id}
+
+    def test_upgrade_methods_basic_only_when_local_tier_arrives(self, tmp_db):
+        """005-T016: local tier available (no cloud key) -> only basic-scored
+        jobs are eligible; local-scored jobs stay (nothing better locally)."""
+        basic_id = self._seed("basic")
+        self._seed("local")
+        upgradable = db.jobs_needing_score(upgrade_methods=("basic",))
+        ids = {j["id"] for j in upgradable}
+        assert ids == {basic_id}
