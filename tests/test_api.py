@@ -53,6 +53,22 @@ class TestPages:
         assert client.get(f"/jobs/{job['id']}").status_code == 200
         assert client.get("/jobs/99999").status_code == 404
 
+    def test_profile_page_serves_empty(self, client):
+        assert client.get("/profile").status_code == 200
+
+    def test_profile_page_serves_with_sponsorship_fields_set(self, client):
+        """005-T036: profile.html must render the Apply Assist fields
+        section without error for a populated profile."""
+        from engine import db
+
+        db.save_profile(
+            resume_text="resume", resume_filename="r.pdf",
+            authorized_without_sponsorship="no", visa_status="OPT",
+        )
+        resp = client.get("/profile")
+        assert resp.status_code == 200
+        assert "OPT" in resp.text
+
 
 class TestJobsApi:
     def test_list_shape_and_filters(self, client):
@@ -164,6 +180,21 @@ class TestProfileApi:
             files={"resume": ("scan.pdf", b"not a pdf", "application/pdf")},
         )
         assert response.status_code == 422
+
+    def test_sponsorship_and_visa_fields_saved(self, client):
+        """005-T036: Profile page collects the facts answer_bank.suggest()
+        needs to ground drafted sponsorship/work-authorization answers."""
+        response = client.post(
+            "/api/profile",
+            data={
+                "authorized_without_sponsorship": "no",
+                "visa_status": "OPT",
+            },
+        )
+        assert response.status_code == 200
+        payload = client.get("/api/profile").json()
+        assert payload["authorized_without_sponsorship"] == "no"
+        assert payload["visa_status"] == "OPT"
 
 
 class TestExportApi:

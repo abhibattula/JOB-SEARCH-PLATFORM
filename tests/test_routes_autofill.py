@@ -189,3 +189,46 @@ class TestPage:
     def test_autofill_page_serves(self, client):
         resp = client.get("/autofill")
         assert resp.status_code == 200
+
+    def test_status_partial_serves_with_no_active_queue(self, client):
+        resp = client.get("/partials/autofill/status")
+        assert resp.status_code == 200
+
+    def test_status_partial_renders_pending_confirmation(self, client, monkeypatch):
+        """005-T035: the confirm-before-use UI must render without error
+        when a pending drafted answer is present."""
+        from engine.autofill import browser_controller
+
+        monkeypatch.setattr(
+            browser_controller, "current_job",
+            lambda: {
+                "job_id": 1, "remaining": 0, "fell_back": False,
+                "pending": {
+                    "question_raw": "How did you hear about us?",
+                    "category": "how_heard",
+                    "drafted_answer": "Found it on LinkedIn",
+                },
+            },
+        )
+        resp = client.get("/partials/autofill/status")
+        assert resp.status_code == 200
+        assert "How did you hear about us?" in resp.text
+        assert "unreviewed" in resp.text
+
+    def test_status_partial_renders_sensitive_pending_badge(self, client, monkeypatch):
+        from engine.autofill import browser_controller
+
+        monkeypatch.setattr(
+            browser_controller, "current_job",
+            lambda: {
+                "job_id": 1, "remaining": 0, "fell_back": False,
+                "pending": {
+                    "question_raw": "Do you require visa sponsorship?",
+                    "category": "sponsorship_requirement",
+                    "drafted_answer": "",
+                },
+            },
+        )
+        resp = client.get("/partials/autofill/status")
+        assert resp.status_code == 200
+        assert "sensitive" in resp.text

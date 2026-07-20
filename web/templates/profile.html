@@ -22,6 +22,25 @@
              value="{{ profile.target_locations | join(', ') if profile and profile.target_locations }}"
              placeholder="e.g. CA, TX, Remote">
     </label>
+
+    <h2>Apply Assist facts</h2>
+    <p class="muted">Used only to ground AI-drafted suggestions for
+      application questions (Apply Assist) — every sponsorship/work-
+      authorization answer is still shown to you for review before it's
+      ever saved or typed into an application.</p>
+    <label>Authorized to work in the US without sponsorship?
+      <select name="authorized_without_sponsorship">
+        <option value="" {% if not profile or not profile.authorized_without_sponsorship %}selected{% endif %}>Not set</option>
+        <option value="yes" {% if profile and profile.authorized_without_sponsorship == 'yes' %}selected{% endif %}>Yes</option>
+        <option value="no" {% if profile and profile.authorized_without_sponsorship == 'no' %}selected{% endif %}>No</option>
+      </select>
+    </label>
+    <label>Visa status (optional, for your own reference)
+      <input type="text" name="visa_status"
+             value="{{ profile.visa_status if profile and profile.visa_status else '' }}"
+             placeholder="e.g. OPT, H-1B, Citizen">
+    </label>
+
     <button type="submit">Save profile</button>
   </form>
 </article>

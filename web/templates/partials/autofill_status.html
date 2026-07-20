@@ -10,6 +10,47 @@
   <p class="muted">Review the filled application in the browser window, make
     any corrections, and click the site's own submit button yourself. When
     you're done (or want to skip this one), click below.</p>
+
+  {% if current.pending %}
+  <div class="autofill-pending" id="autofill-pending-form">
+    <p>
+      <strong>Question needs your review</strong>
+      {% if current.pending.category in ('work_authorization', 'sponsorship_requirement', 'eeo_disclosure') %}
+      <span class="badge excluded" title="This question is legally significant — it will only ever be filled from an answer you've confirmed.">sensitive</span>
+      {% endif %}
+    </p>
+    <p class="data">{{ current.pending.question_raw }}</p>
+    <p class="muted">
+      {% if current.pending.drafted_answer %}
+      AI-drafted, <strong>unreviewed</strong> — edit if needed, then confirm:
+      {% else %}
+      No AI draft available — type an answer to save and use it:
+      {% endif %}
+    </p>
+    <textarea id="pending-answer-text" rows="3">{{ current.pending.drafted_answer or '' }}</textarea>
+    <button type="button" id="pending-confirm-btn">Confirm &amp; fill</button>
+  </div>
+  <script>
+    (function () {
+      const btn = document.getElementById('pending-confirm-btn');
+      if (!btn) return;
+      btn.addEventListener('click', async () => {
+        const answer = document.getElementById('pending-answer-text').value;
+        await fetch('/api/autofill/answers/confirm', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            question_raw: {{ current.pending.question_raw | tojson }},
+            answer: answer,
+            category: {{ current.pending.category | tojson }},
+          }),
+        });
+        htmx.trigger('#autofill-queue', 'load');
+      });
+    })();
+  </script>
+  {% endif %}
+
   <button hx-post="/api/autofill/next" hx-swap="none"
           hx-on::after-request="htmx.trigger('#autofill-queue','load')">
     Done, next application

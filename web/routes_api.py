@@ -358,6 +358,8 @@ def _profile_payload() -> dict:
         "target_locations": profile.get("target_locations") or [],
         "preferences": profile.get("preferences") or {},
         "updated_at": profile.get("updated_at"),
+        "authorized_without_sponsorship": profile.get("authorized_without_sponsorship"),
+        "visa_status": profile.get("visa_status"),
     }
 
 
@@ -371,6 +373,8 @@ async def save_profile(
     request: Request,
     resume: UploadFile | None = File(None),
     target_locations: str | None = Form(None),
+    authorized_without_sponsorship: str | None = Form(None),
+    visa_status: str | None = Form(None),
 ):
     fields: dict = {}
     if resume is not None and resume.filename:
@@ -390,6 +394,10 @@ async def save_profile(
         fields["target_locations"] = [
             part.strip() for part in target_locations.split(",") if part.strip()
         ]
+    if authorized_without_sponsorship is not None:
+        fields["authorized_without_sponsorship"] = authorized_without_sponsorship
+    if visa_status is not None:
+        fields["visa_status"] = visa_status
     if fields:
         db.save_profile(**fields)
     if "text/html" in (request.headers.get("accept") or ""):
