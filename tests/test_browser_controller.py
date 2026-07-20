@@ -21,13 +21,6 @@ def seed_job(url):
     return next(j for j in jobs if j["url"] == url)["id"]
 
 
-@pytest.fixture(autouse=True)
-def _reset_state():
-    bc.stop_queue()
-    yield
-    bc.stop_queue()
-
-
 class TestQueueStateMachine:
     def test_start_queue_opens_first_job(self, tmp_db, monkeypatch):
         opened = []

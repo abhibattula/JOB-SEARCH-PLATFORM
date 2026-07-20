@@ -134,6 +134,57 @@ class TestQueueRoutes:
         assert body["current_job_id"] == j1
 
 
+class TestConfirmAnswerRoute:
+    """005-T034: the only write path into answer_bank (FR-011)."""
+
+    def test_confirm_saves_to_answer_bank(self, client):
+        from engine.autofill import answer_bank
+
+        resp = client.post(
+            "/api/autofill/answers/confirm",
+            json={"question_raw": "How did you hear about us?",
+                  "answer": "LinkedIn", "category": "how_heard"},
+        )
+        assert resp.status_code == 200
+        assert resp.json()["saved"] is True
+        assert answer_bank.lookup("How did you hear about us?")["answer"] == "LinkedIn"
+
+    def test_confirm_records_per_application_snapshot_for_current_job(self, client, monkeypatch):
+        from engine import db
+        from engine.autofill import browser_controller, browser_setup
+
+        monkeypatch.setattr(browser_setup, "is_installed", lambda: True)
+        monkeypatch.setattr(browser_controller, "_open_job", lambda job_id: None)
+        job_id = seed_job()
+        client.post("/api/autofill/queue", json={"job_ids": [job_id]})
+
+        client.post(
+            "/api/autofill/answers/confirm",
+            json={"question_raw": "How did you hear about us?",
+                  "answer": "LinkedIn", "category": "how_heard"},
+        )
+
+        with db._conn() as conn:
+            row = conn.execute(
+                "SELECT * FROM application_answers WHERE job_id = ?", (job_id,)
+            ).fetchone()
+        assert row is not None
+        assert row["answer_used"] == "LinkedIn"
+
+    def test_confirm_without_active_queue_still_saves_to_bank(self, client):
+        """Confirming from the Profile-driven answer bank management UI
+        (not just mid-queue) must still work — no active job required."""
+        from engine.autofill import answer_bank
+
+        resp = client.post(
+            "/api/autofill/answers/confirm",
+            json={"question_raw": "Years of Python experience?",
+                  "answer": "3", "category": "years_experience"},
+        )
+        assert resp.status_code == 200
+        assert answer_bank.lookup("Years of Python experience?") is not None
+
+
 class TestPage:
     def test_autofill_page_serves(self, client):
         resp = client.get("/autofill")

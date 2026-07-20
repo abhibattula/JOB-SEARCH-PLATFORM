@@ -69,3 +69,25 @@ def autofill_status():
         "remaining": current["remaining"] if current else 0,
         "fell_back": current["fell_back"] if current else False,
     }
+
+
+class ConfirmAnswerRequest(BaseModel):
+    question_raw: str
+    answer: str
+    category: str | None = None
+
+
+@router.post("/answers/confirm")
+def confirm_answer(body: ConfirmAnswerRequest):
+    """The only write path into answer_bank (FR-011) — a drafted suggestion
+    is never saved until the user explicitly confirms/edits it here. Also
+    records the per-application snapshot (FR-021) if a queue is active."""
+    from engine.autofill import answer_bank, browser_controller
+
+    bank_id = answer_bank.save(body.question_raw, body.answer, category=body.category)
+    current = browser_controller.current_job()
+    if current is not None:
+        answer_bank.record_application_answer(
+            current["job_id"], body.question_raw, bank_id, body.answer
+        )
+    return {"saved": True}
