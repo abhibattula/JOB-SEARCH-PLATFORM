@@ -20,7 +20,18 @@ pytest==9.1.1
 # Apply Assist (feature 005) — local LLM + browser automation + credential vault.
 # llama-cpp-python has no default PyPI prebuilt wheel; install with:
 #   pip install -r requirements.txt --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+#
+# llama-cpp-python is pinned PER PLATFORM, not to one version, because
+# abetlen/llama-cpp-python's macOS arm64 wheel has shipped genuinely
+# corrupted (zip CRC-32 failures reproduced independently via direct
+# download, not a network/CDN fluke) in several consecutive releases —
+# confirmed for 0.3.34/0.3.33/0.3.32/0.3.30/0.3.28/0.3.27; 0.3.34's Windows
+# wheel is fine and already verified end-to-end (real inference, real
+# frozen build), so Windows stays there. 0.3.29 is the newest macOS wheel
+# that verifies zip-clean (0.3.26 also clean, kept as a documented
+# fallback if 0.3.29 ever regresses). See specs/005-apply-assist/patch-0.5.5.md.
 diskcache==5.6.3
-llama-cpp-python==0.3.34
+llama-cpp-python==0.3.34; sys_platform == "win32"
+llama-cpp-python==0.3.29; sys_platform == "darwin"
 playwright==1.61.0
 keyring==25.7.0
