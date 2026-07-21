@@ -195,6 +195,30 @@ class TestProfileApi:
         )
         assert response.status_code == 422
 
+    def test_manual_skills_saved_without_resume(self, client):
+        """006-E: editing the skills field directly (no resume upload in
+        this request) must save exactly what was typed."""
+        response = client.post("/api/profile", data={"skills": "Python, Rust, i2c"})
+        assert response.status_code == 200
+        payload = client.get("/api/profile").json()
+        assert payload["skills"] == ["Python", "Rust", "i2c"]
+
+    def test_resume_upload_extraction_merges_with_manual_skills(self, client):
+        """006-E: if a resume is uploaded in the same request as an edited
+        skills field, nothing should be lost — union of both, manual first."""
+        response = client.post(
+            "/api/profile",
+            files={"resume": ("resume.pdf", self._pdf(), "application/pdf")},
+            data={"skills": "Rust, Go"},
+        )
+        assert response.status_code == 200
+        payload = client.get("/api/profile").json()
+        assert "Rust" in payload["skills"]
+        assert "Go" in payload["skills"]
+        # extraction itself may find nothing without an LLM key — the point
+        # is the manual entries are never dropped
+        assert payload["skills"][:2] == ["Rust", "Go"]
+
     def test_identity_fields_saved(self, client):
         """006-A: first/last name, email, phone, LinkedIn, portfolio — the
         fields Apply Assist needs but the schema never had until now."""

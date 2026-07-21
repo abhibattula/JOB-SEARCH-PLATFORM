@@ -69,8 +69,18 @@ def extract_skills(text: str) -> set[str]:
     return {name for name, pattern in _COMPILED.items() if pattern.search(text)}
 
 
-def score(resume_text: str, title: str, description: str) -> MatchAnalysis:
+def score(
+    resume_text: str, title: str, description: str, extra_skills: set[str] | None = None
+) -> MatchAnalysis:
+    """`extra_skills` (006-E): the user's explicit Profile skills list, on
+    top of what regex extraction finds in the raw resume text — a skill
+    the user knows but phrased differently (or omitted) in their resume
+    still counts, which matters most for no-cloud-key basic-tier users."""
     resume_skills = extract_skills(resume_text)
+    if extra_skills:
+        # Only accept names from the canonical dictionary — extra_skills
+        # may contain arbitrary free-text the user typed in Profile.
+        resume_skills |= {s.lower() for s in extra_skills if s.lower() in _SKILLS}
     jd_text = f"{title}\n{description}"
     jd_skills = extract_skills(jd_text)
 

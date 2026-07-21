@@ -125,6 +125,10 @@ def _score_new_jobs() -> None:
     if not profile or not profile.get("resume_text"):
         return
     resume_text = profile["resume_text"]
+    # 006-E: the user's explicit Profile skills list boosts basic-tier
+    # matching alongside whatever regex extraction finds in the raw resume
+    # text — matters most for no-cloud-key users.
+    profile_skills = set(profile.get("skills") or [])
     tier = matcher.scoring_tier()  # "cloud" | "local" | "basic"
     upgrade_methods = {"cloud": ("basic", "local"), "local": ("basic",), "basic": ()}[tier]
     cap = int(settings.get("MAX_SCORE_PER_RUN") or "150") if tier != "basic" else 2000
@@ -136,7 +140,9 @@ def _score_new_jobs() -> None:
                 continue
             method = "llm" if tier == "cloud" else "local"
         else:
-            analysis = basic_match.score(resume_text, job["title"], description)
+            analysis = basic_match.score(
+                resume_text, job["title"], description, extra_skills=profile_skills
+            )
             method = "basic"
         payload = analysis.model_dump()
         payload["method"] = method

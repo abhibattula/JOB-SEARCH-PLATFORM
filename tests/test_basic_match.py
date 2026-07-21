@@ -53,6 +53,24 @@ class TestScoring:
         result = basic_match.score(RESUME, "Engineer", "Great culture. Apply now.")
         assert 30 <= result.match_score <= 55
 
+    def test_extra_skills_from_profile_boost_matching(self):
+        """006-E: a skill the user explicitly lists in their Profile (but
+        that the resume-text regex extraction missed or phrased
+        differently) should still count as a match, improving accuracy for
+        no-cloud-key users."""
+        without_extra = basic_match.score(RESUME, "Hardware Engineer", HW_JD)
+        assert "i2c" in [s.lower() for s in without_extra.missing_skills]
+
+        with_extra = basic_match.score(RESUME, "Hardware Engineer", HW_JD, extra_skills={"i2c"})
+        assert "i2c" in [s.lower() for s in with_extra.matching_skills]
+        assert "i2c" not in [s.lower() for s in with_extra.missing_skills]
+        assert with_extra.match_score >= without_extra.match_score
+
+    def test_extra_skills_none_behaves_same_as_omitted(self):
+        a = basic_match.score(RESUME, "Hardware Engineer", HW_JD)
+        b = basic_match.score(RESUME, "Hardware Engineer", HW_JD, extra_skills=None)
+        assert a.match_score == b.match_score
+
 
 class TestUpgradePath:
     def _seed(self, method):

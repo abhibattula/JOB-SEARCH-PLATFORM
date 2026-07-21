@@ -115,6 +115,26 @@ class TestScoringStage:
         assert jobs[0]["match_score"] is not None
         assert jobs[0]["match_method"] == "basic"
 
+    def test_basic_scoring_passes_profile_skills_as_extra_skills(self, entry_source, monkeypatch):
+        """006-E: the user's explicit Profile skills list feeds into basic
+        scoring alongside whatever the resume-text regex extraction finds."""
+        from engine import basic_match, matcher
+
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: False)
+        db.save_profile(skills=["i2c", "rust"])
+        calls = []
+
+        def fake_score(resume_text, title, description, extra_skills=None):
+            calls.append(extra_skills)
+            return matcher.MatchAnalysis(match_score=50, reasoning="basic")
+
+        monkeypatch.setattr(basic_match, "score", fake_score)
+        pipeline.run_refresh(trigger="cli")
+
+        assert len(calls) == 1
+        assert calls[0] == {"i2c", "rust"}
+
     def test_local_tier_used_when_no_key_but_model_available(self, entry_source, monkeypatch):
         """005-T015: no cloud key, local model available -> local tier used,
         tagged method='local' (distinct from both 'llm' and 'basic')."""

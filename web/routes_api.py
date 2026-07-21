@@ -380,6 +380,7 @@ async def save_profile(
     request: Request,
     resume: UploadFile | None = File(None),
     target_locations: str | None = Form(None),
+    skills: str | None = Form(None),
     authorized_without_sponsorship: str | None = Form(None),
     visa_status: str | None = Form(None),
     first_name: str | None = Form(None),
@@ -407,6 +408,17 @@ async def save_profile(
         fields["target_locations"] = [
             part.strip() for part in target_locations.split(",") if part.strip()
         ]
+    if skills is not None:
+        manual_skills = [part.strip() for part in skills.split(",") if part.strip()]
+        # If a resume was ALSO uploaded in this same request, union rather
+        # than overwrite (006-E) — never lose either the fresh extraction
+        # or an explicit manual edit, regardless of which the user did.
+        extracted = fields.get("skills")
+        fields["skills"] = (
+            list(dict.fromkeys(manual_skills + list(extracted)))
+            if extracted is not None
+            else manual_skills
+        )
     for key, value in {
         "authorized_without_sponsorship": authorized_without_sponsorship,
         "visa_status": visa_status,
