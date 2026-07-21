@@ -3,7 +3,7 @@
 ; Produces packaging\Output\JobEngine-Setup-<version>.exe
 
 #define MyAppName "Job Engine"
-#define MyAppVersion "0.5.6"
+#define MyAppVersion "0.6.0"
 #define MyAppExeName "JobEngine.exe"
 
 [Setup]

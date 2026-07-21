@@ -237,7 +237,7 @@ faces over the same engine — anything the app can do, a script can do.
 | `ingest/workday.py` | Workday CxS endpoint with pagination and relative-date parsing ("Posted 3 Days Ago"). Implemented + tested, but no default seeds — Workday blocks non-browser clients (Cloudflare) as of 2026-07. | `fetch_jobs(entries)`, `parse_posted_on` |
 | `ingest/hn.py` | Latest "Ask HN: Who is hiring?" thread via the Algolia API. Parses the conventional `Company \| Role \| Location` first line; each comment's own timestamp is the posting date. | `fetch_jobs([])` |
 | `ingest/jobspy_source.py` | Indeed (and optionally LinkedIn) via the python-jobspy library, searching entry-level SWE/hardware terms. Best-effort by design. | `fetch_jobs([])` |
-| `basic_match.py` | Deterministic local scorer (curated SWE/hardware skill dictionary): powers `~NN` scores with no AI key; upgraded to LLM scores automatically. |
+| `basic_match.py` | Deterministic local scorer (curated SWE/hardware skill dictionary): powers `~NN` scores with no AI key; upgraded to LLM scores automatically. Also accepts the user's explicit Profile skills list (`extra_skills`) alongside resume-text regex extraction. |
 | `alerts.py` | Post-refresh "new strong matches" computation + desktop notification (plyer, best-effort, toggleable). |
 | `tailor.py` | Per-job tailored bullets/cover letter/ATS keywords via the LLM, no-invention prompt guard, cached in `jobs.tailor_json` until the resume changes. |
 | `updates.py` | GitHub Releases version check (silent when offline). |
@@ -256,7 +256,7 @@ faces over the same engine — anything the app can do, a script can do.
 | `templates/feed.html` | Toolbar (time window, location, remote, sort, seniority, Refresh now, CSV) + the auto-refresh trigger + the polled feed region. |
 | `templates/partials/feed_table.html` | The channel strip + job table itself — re-rendered every 5s poll. |
 | `templates/job_detail.html` | Description on the left; sponsorship evidence, match score, matching/missing skills, and gap actions on the right. |
-| `templates/profile.html` | Resume upload + preferred locations form. |
+| `templates/profile.html` | Sectioned "one form" profile: Basic info (name/email/phone/LinkedIn/portfolio), Work authorization, Common Questions + EEO disclosures (`partials/profile_answer_bank.html`), Resume & job search (resume upload, editable skills list, preferred locations). |
 | `static/htmx.min.js` | Vendored HTMX (no CDN, works offline). |
 | `static/styles.css` | The "datasheet" look: monospace data values, instrument-colored badges. |
 
@@ -289,9 +289,10 @@ Seven tables, created automatically on first run:
   approval count and company-level sponsor score after the USCIS join.
 - **h1b_employers** — the loaded USCIS/DOL records (~28,000 employers), kept
   so companies discovered later can still be matched.
-- **user_profile** — a single row: your resume text, extracted skills,
-  preferred locations, and (feature 005) the work-authorization/visa facts
-  used to ground Apply Assist's drafted answers.
+- **user_profile** — a single row: your resume text, extracted + manually
+  edited skills, preferred locations, work-authorization/visa facts, and
+  (feature 006) identity fields (name, email, phone, LinkedIn, portfolio)
+  Apply Assist fills directly.
 - **refresh_runs** — one row per refresh with per-source progress JSON;
   powers the channel strip, the cooldown, and crash recovery (an unfinished
   run older than 30 minutes is treated as crashed and superseded).
@@ -324,7 +325,9 @@ everything (next run rebuilds it, but statuses are lost).
 | `GET /api/export` | The current filtered view as a CSV download. |
 | `POST /api/autofill/setup` \| `queue` \| `next` \| `stop` \| `GET .../status` | Apply Assist session control — see [contracts/http-api.md](../specs/005-apply-assist/contracts/http-api.md). |
 | `POST /api/autofill/answers/confirm` | The only write path into the answer bank — always requires explicit confirmation. |
-| `POST /api/credentials` \| `GET` \| `DELETE /{domain}` | Saved-login vault; password never appears in any response. |
+| `GET /api/autofill/answers` \| `DELETE /{bank_id}` | List/delete saved Common Questions answers (Profile page management). |
+| `POST /api/credentials` \| `GET` \| `DELETE /{domain}` | Per-domain saved-login vault; password never appears in any response. |
+| `POST /api/credentials/default` \| `DELETE /default` | The default login used when no per-domain override exists (registered before `/{domain}` to avoid route collision). |
 | `GET /api/diagnostics/local-llm-selftest` \| `chromium-launch-selftest` | Real (not just import-check) health checks used by the release smoke test. |
 | `GET/POST /api/profile` | Read/update resume + preferences (multipart upload). |
 | `GET/POST /api/settings` | Read (masked key) / save the AI key, provider, and toggles — the packaged-app replacement for `.env`. |
@@ -437,17 +440,48 @@ on third-party sites may still touch the edges of some sites' Terms of
 Service. Use your own judgment per site — this is a co-pilot that saves you
 retyping, not a bot that applies on your behalf.
 
-### 11.3 Answer bank & saved logins
+### 11.3 Profile: fill it once, reuse everywhere
 
-- **Profile page**: two new fields (work-authorization-without-sponsorship,
-  visa status) ground the AI's drafted answers in facts you've actually
-  provided — it never invents anything.
-- **Settings page → Saved logins**: save an email/password per domain once;
-  Apply Assist fills matching login pages automatically, but — same rule as
-  everywhere else — never clicks the login button. Passwords are stored in
-  your OS's own credential store (Windows Credential Manager / macOS
-  Keychain), never in this app's database, and are never displayed again
-  once saved (write-only, like a real password manager).
+The Profile page is one sectioned form, designed so filling it in once feeds
+every later application and improves matching, not just Apply Assist:
+
+- **Basic info** — first/last name, email, phone, LinkedIn, portfolio/GitHub
+  URL. These back the `full_name`/`email`/`phone`/`linkedin_url`/
+  `portfolio_url` fields Apply Assist fills directly, no confirmation needed
+  (they're facts, not judgment calls).
+- **Work authorization** — authorized-without-sponsorship + visa status,
+  grounding the AI's drafted sponsorship/work-authorization answers. It never
+  invents anything beyond what you've entered here.
+- **Common Questions** — every confirmed answer bank entry (sponsorship,
+  years of experience, salary expectation, "how did you hear about us,"
+  etc.) is listed with an edit/delete control, so you can pre-fill answers
+  *before* Apply Assist ever asks, not just react to its pauses. An
+  **EEO disclosures (optional)** subsection lets you pre-set the standard
+  voluntary gender/race/veteran/disability questions many US applications
+  include — entirely optional, and used only if you fill it in.
+- **Resume & job search** — resume upload, an editable **skills** list, and
+  preferred locations. The skills list isn't just cosmetic: it's unioned
+  with whatever the resume-text extraction finds (your entries listed
+  first, duplicates removed) and fed into the deterministic basic matcher,
+  so a skill you know but phrased differently — or not at all — in your
+  resume still counts when scoring jobs without a cloud AI key.
+
+### 11.4 Saved logins: one default, per-site overrides
+
+Realistically the same email/password covers most job-site logins, so
+**Settings → Saved logins** now has two tiers:
+
+- **Default login** — set once, used for any domain without its own
+  override.
+- **Per-site overrides** — save a different email/password for a specific
+  domain when it needs one; it wins over the default for that domain only.
+
+Apply Assist fills matching login pages from whichever applies — default,
+or the domain's override if one exists — but, same rule as everywhere else,
+never clicks the login button. Passwords are stored in your OS's own
+credential store (Windows Credential Manager / macOS Keychain), never in
+this app's database, and are never displayed again once saved (write-only,
+like a real password manager).
 
 ## 12. Known issues (fixed)
 
@@ -465,6 +499,11 @@ retyping, not a bot that applies on your behalf.
   real rebuilt installer (a genuine Chromium window was confirmed opening).
   Failures anywhere in Apply Assist now also show a visible error message
   instead of silently doing nothing.
+- **v0.5.x**: Profile had no identity fields (name/email/phone/links), so
+  Apply Assist could never fill them despite the field-classifier already
+  recognizing those tags; no in-app way to pre-fill or manage Common
+  Questions answers; one shared login required a separate save per domain.
+  **Fixed in v0.6.0** — see §11.3/§11.4.
 
 ## 13. Troubleshooting
 

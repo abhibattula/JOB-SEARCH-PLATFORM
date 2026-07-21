@@ -63,20 +63,31 @@ This is the daily-use manual. For first-time setup, follow
   from your real resume only. Click any block to copy it.
 - **CSV ↓** — downloads exactly the current filtered view.
 
-## Your profile (unlocks scoring)
+## Your profile (fill it once, reuse everywhere)
 
-1. Open **Profile**, upload your resume PDF, optionally set preferred
-   locations (they pre-fill the location filter, never exclude jobs).
-   Scores and gap analysis appear on newly refreshed entry-level jobs
-   immediately — the bundled offline AI model needs no setup at all.
-2. Optional: get a free API key at **console.groq.com** (no card required),
+1. Open **Profile** — one page, sectioned: Basic info (name, email, phone,
+   LinkedIn, portfolio), Work authorization, Common Questions (+ optional
+   EEO disclosures), and Resume & job search. Fill it in once; Apply Assist
+   and the matcher both reuse it from then on.
+2. Upload your resume PDF and optionally edit the **skills** field —
+   anything the automatic extraction missed still counts toward matching,
+   especially without a cloud AI key. Set preferred locations (they pre-fill
+   the location filter, never exclude jobs). Scores and gap analysis appear
+   on newly refreshed entry-level jobs immediately — the bundled offline AI
+   model needs no setup at all.
+3. Pre-fill **Common Questions** (sponsorship, years of experience, salary
+   expectation, how you heard about the role, and — optionally — the
+   standard EEO gender/race/veteran/disability questions) so Apply Assist
+   has answers ready instead of pausing to ask on your first few
+   applications.
+4. Optional: get a free API key at **console.groq.com** (no card required),
    then open **Settings**, paste it, and click **Test key** to confirm it
    works. (Advanced: the Settings page can point at any OpenAI-compatible
    provider — e.g., local Ollama at `http://localhost:11434/v1`.) A `.env`
    file still works as a developer override. This upgrades every score to
    full cloud-quality analysis automatically — you don't lose anything by
    adding a key later.
-3. Scoring is throttled (~28 calls/min for the cloud tier) and capped per
+5. Scoring is throttled (~28 calls/min for the cloud tier) and capped per
    refresh to stay inside the free tier. Use the **Best matches** tab (or
    the "Match: 70+" toolbar filter) to browse only strong fits.
 
@@ -105,9 +116,12 @@ offline.
 7. On a site the app can't confidently read (including Workday), it just
    opens the tab for you to finish manually and still advances afterward.
 
-Optional: **Settings → Saved logins** stores a domain/email/password once
-(in your OS's own credential store, never this app's database) so Apply
-Assist can fill matching login pages — again, never clicking login itself.
+Optional: **Settings → Saved logins** — set one **default** email/password
+(realistically the same login covers most job sites) and, only where a site
+needs something different, a **per-site override** for that domain (in your
+OS's own credential store, never this app's database). Apply Assist fills
+matching login pages from whichever applies — again, never clicking login
+itself.
 
 ## Sponsorship data (unlocks HIGH/MEDIUM badges)
 
