@@ -30,6 +30,14 @@ if paths.is_frozen():
         keyring.set_keyring(macOS.Keyring())
 
 _SETTING_PREFIX = "cred_email:"
+# The default login (006-D): most users reuse the same email/password
+# across most job sites, so a single default applies to any domain
+# without its own override. A distinct reserved keyring service name and
+# settings key — never a real domain string, and deliberately outside the
+# cred_email: prefix so it never appears in list_domains()'s per-domain
+# override listing.
+_DEFAULT_SERVICE = "__default__"
+_DEFAULT_SETTING_KEY = "cred_default_email"
 
 
 def _setting_key(domain: str) -> str:
@@ -41,14 +49,43 @@ def save(domain: str, email: str, password: str) -> None:
     db.set_setting(_setting_key(domain), email)
 
 
-def get(domain: str) -> dict | None:
-    email = db.get_setting(_setting_key(domain))
+def save_default(email: str, password: str) -> None:
+    keyring.set_password(_DEFAULT_SERVICE, email, password)
+    db.set_setting(_DEFAULT_SETTING_KEY, email)
+
+
+def get_default() -> dict | None:
+    email = db.get_setting(_DEFAULT_SETTING_KEY)
     if not email:
         return None
-    password = keyring.get_password(domain, email)
+    password = keyring.get_password(_DEFAULT_SERVICE, email)
     if password is None:
         return None
     return {"email": email, "password": password}
+
+
+def delete_default() -> None:
+    email = db.get_setting(_DEFAULT_SETTING_KEY)
+    if email:
+        try:
+            keyring.delete_password(_DEFAULT_SERVICE, email)
+        except Exception:
+            pass
+    with db._conn() as conn:
+        conn.execute("DELETE FROM settings WHERE key = ?", (_DEFAULT_SETTING_KEY,))
+
+
+def get(domain: str) -> dict | None:
+    """A domain-specific saved login always wins; otherwise falls back to
+    the default login (006-D), so most sites work with zero per-domain
+    setup — only sites that genuinely use different credentials need an
+    explicit override via save()."""
+    email = db.get_setting(_setting_key(domain))
+    if email:
+        password = keyring.get_password(domain, email)
+        if password is not None:
+            return {"email": email, "password": password}
+    return get_default()
 
 
 def delete(domain: str) -> None:

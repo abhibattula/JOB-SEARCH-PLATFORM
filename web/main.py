@@ -173,10 +173,15 @@ def create_app() -> FastAPI:
 
         from .routes_api import get_settings
 
+        default_cred = credentials.get_default()
         return templates.TemplateResponse(
             request,
             "settings.html",
-            {"settings": get_settings(), "credential_domains": credentials.list_domains()},
+            {
+                "settings": get_settings(),
+                "credential_domains": credentials.list_domains(),
+                "default_credential_email": default_cred["email"] if default_cred else None,
+            },
         )
 
     @app.get("/autofill", response_class=HTMLResponse)

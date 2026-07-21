@@ -55,11 +55,54 @@ class TestListCredentials:
         resp = client.get("/api/credentials")
         assert resp.status_code == 200
         body = resp.json()
-        assert body == {"domains": [{"domain": "jobs.example.com", "email": "me@example.com"}]}
+        assert body["domains"] == [{"domain": "jobs.example.com", "email": "me@example.com"}]
+        assert body["default"] is None
         assert "hunter2" not in resp.text
 
     def test_list_empty_by_default(self, client):
-        assert client.get("/api/credentials").json() == {"domains": []}
+        body = client.get("/api/credentials").json()
+        assert body["domains"] == []
+        assert body["default"] is None
+
+
+class TestDefaultCredentialRoutes:
+    """006-D: one default login used for any domain without its own
+    override, so most sites need zero per-domain setup."""
+
+    def test_save_default_returns_ok_never_echoes_password(self, client):
+        resp = client.post(
+            "/api/credentials/default",
+            json={"email": "me@example.com", "password": "hunter2"},
+        )
+        assert resp.status_code == 200
+        assert resp.json() == {"saved": True}
+        assert "hunter2" not in resp.text
+
+    def test_list_credentials_reports_default_set_without_password(self, client):
+        client.post(
+            "/api/credentials/default",
+            json={"email": "me@example.com", "password": "hunter2"},
+        )
+        resp = client.get("/api/credentials")
+        body = resp.json()
+        assert body["default"] == {"email": "me@example.com"}
+        assert "hunter2" not in resp.text
+
+    def test_list_credentials_default_null_when_unset(self, client):
+        assert client.get("/api/credentials").json()["default"] is None
+
+    def test_delete_default_route_does_not_collide_with_domain_route(self, client):
+        """Regression: DELETE /api/credentials/default must hit the
+        dedicated default-clearing route, not be swallowed by
+        DELETE /api/credentials/{domain} with domain='default'."""
+        client.post(
+            "/api/credentials/default",
+            json={"email": "me@example.com", "password": "hunter2"},
+        )
+        resp = client.delete("/api/credentials/default")
+        assert resp.status_code == 200
+        assert resp.json() == {"deleted": True}
+        assert client.get("/api/credentials").json()["default"] is None
 
 
 class TestDeleteCredential:
@@ -71,4 +114,4 @@ class TestDeleteCredential:
         resp = client.delete("/api/credentials/jobs.example.com")
         assert resp.status_code == 200
         assert resp.json() == {"deleted": True}
-        assert client.get("/api/credentials").json() == {"domains": []}
+        assert client.get("/api/credentials").json()["domains"] == []

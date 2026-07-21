@@ -450,6 +450,32 @@ class SaveCredentialRequest(BaseModel):
     password: str
 
 
+class SaveDefaultCredentialRequest(BaseModel):
+    email: str
+    password: str
+
+
+@router.post("/credentials/default")
+def save_default_credential(body: SaveDefaultCredentialRequest):
+    """006-D: one default login used for any domain without its own
+    override — most job sites reuse the same email/password, so this
+    avoids requiring a per-domain save for every new site."""
+    from engine import credentials
+
+    credentials.save_default(body.email, body.password)
+    return {"saved": True}
+
+
+@router.delete("/credentials/default")
+def delete_default_credential():
+    # Registered before /credentials/{domain} — a dynamic path parameter
+    # would otherwise greedily match the literal string "default" too.
+    from engine import credentials
+
+    credentials.delete_default()
+    return {"deleted": True}
+
+
 @router.post("/credentials")
 def save_credential(body: SaveCredentialRequest):
     """Write-only, like a real password manager — the password is never
@@ -464,7 +490,11 @@ def save_credential(body: SaveCredentialRequest):
 def list_credentials():
     from engine import credentials
 
-    return {"domains": credentials.list_domains()}
+    default = credentials.get_default()
+    return {
+        "domains": credentials.list_domains(),
+        "default": {"email": default["email"]} if default else None,
+    }
 
 
 @router.delete("/credentials/{domain}")

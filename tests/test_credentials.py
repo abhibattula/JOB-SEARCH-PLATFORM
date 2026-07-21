@@ -74,6 +74,54 @@ class TestDelete:
         credentials.delete("never-saved.example.com")  # must not raise
 
 
+class TestDefaultCredential:
+    """006-D: most users reuse the same email/password across most job
+    sites — a single default login, with per-domain overrides only for
+    sites that genuinely differ, instead of requiring a save per domain."""
+
+    def test_save_default_then_get_default(self, tmp_db, fake_keyring):
+        credentials.save_default("me@example.com", "hunter2")
+        assert credentials.get_default() == {"email": "me@example.com", "password": "hunter2"}
+
+    def test_get_default_none_when_never_set(self, tmp_db, fake_keyring):
+        assert credentials.get_default() is None
+
+    def test_domain_lookup_falls_back_to_default(self, tmp_db, fake_keyring):
+        credentials.save_default("me@example.com", "hunter2")
+
+        result = credentials.get("some-job-site.example.com")
+
+        assert result == {"email": "me@example.com", "password": "hunter2"}
+
+    def test_domain_specific_override_wins_over_default(self, tmp_db, fake_keyring):
+        credentials.save_default("me@example.com", "hunter2")
+        credentials.save("special.example.com", "work@example.com", "different-pw")
+
+        result = credentials.get("special.example.com")
+
+        assert result == {"email": "work@example.com", "password": "different-pw"}
+        # the default is unaffected and still applies elsewhere
+        assert credentials.get("anywhere-else.example.com") == {
+            "email": "me@example.com", "password": "hunter2",
+        }
+
+    def test_delete_default_clears_it(self, tmp_db, fake_keyring):
+        credentials.save_default("me@example.com", "hunter2")
+        credentials.delete_default()
+        assert credentials.get_default() is None
+        assert credentials.get("anywhere.example.com") is None
+
+    def test_default_never_appears_in_list_domains(self, tmp_db, fake_keyring):
+        """list_domains() is specifically the per-domain override list — the
+        default has its own separate UI/API surface."""
+        credentials.save_default("me@example.com", "hunter2")
+        credentials.save("special.example.com", "work@example.com", "pw")
+
+        domains = credentials.list_domains()
+
+        assert domains == [{"domain": "special.example.com", "email": "work@example.com"}]
+
+
 class TestListDomains:
     def test_list_domains_never_includes_password(self, tmp_db, fake_keyring):
         credentials.save("a.example.com", "a@example.com", "secret-a")

@@ -98,3 +98,12 @@ class TestSettingsApi:
         assert resp.status_code == 200
         assert "jobs.example.com" in resp.text
         assert "me@example.com" in resp.text
+
+    def test_settings_page_renders_default_credential_email(self, client, monkeypatch):
+        """006-D: default-login section must render without error."""
+        from engine import credentials
+
+        monkeypatch.setattr(credentials, "get_default", lambda: {"email": "default@example.com", "password": "x"})
+        resp = client.get("/settings")
+        assert resp.status_code == 200
+        assert "default@example.com" in resp.text

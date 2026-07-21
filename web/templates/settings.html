@@ -60,6 +60,43 @@
       again. Apply Assist fills recognized login fields for a matching
       domain, but never clicks the login button itself — you always do.</p>
 
+    <h3>Default login</h3>
+    <p class="muted">Most job sites reuse the same email/password — set it
+      once here and it's used automatically for any site below without its
+      own specific entry.</p>
+    {% if default_credential_email %}
+    <p>Default set for: <span class="data">{{ default_credential_email }}</span>
+      <button type="button" class="ghost"
+              onclick="fetch('/api/credentials/default', {method:'DELETE'}).then(() => location.reload())">
+        Remove default
+      </button>
+    </p>
+    {% else %}
+    <p class="muted">No default set yet.</p>
+    {% endif %}
+    <form id="add-default-credential-form">
+      <label>Email <input type="email" id="default-cred-email" required></label>
+      <label>Password <input type="password" id="default-cred-password" autocomplete="off" required></label>
+      <button type="submit">Save default login</button>
+    </form>
+    <script>
+      document.getElementById('add-default-credential-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        await fetch('/api/credentials/default', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            email: document.getElementById('default-cred-email').value,
+            password: document.getElementById('default-cred-password').value,
+          }),
+        });
+        location.reload();
+      });
+    </script>
+
+    <h3>Per-site overrides</h3>
+    <p class="muted">Only needed for a site that uses different credentials
+      than your default.</p>
     {% if credential_domains %}
     <table class="feed-table">
       <tbody>
