@@ -62,6 +62,27 @@ class TestQueueRoutes:
         resp = client.post("/api/autofill/queue", json={"job_ids": [job_id]})
         assert resp.status_code == 409
 
+    def test_queue_reports_error_instead_of_silently_failing(self, client, monkeypatch):
+        """Regression: a real failure inside browser_controller.start_queue
+        (e.g. Chromium launch failing) must surface as a clear error the
+        frontend can show, not a bare 500 the button's fetch() call ignores."""
+        from engine.autofill import browser_controller, browser_setup
+
+        monkeypatch.setattr(browser_setup, "is_installed", lambda: True)
+
+        def _boom(job_ids):
+            raise RuntimeError("Executable doesn't exist at .../chromium/headless_shell.exe")
+
+        monkeypatch.setattr(browser_controller, "start_queue", _boom)
+        job_id = seed_job()
+
+        resp = client.post("/api/autofill/queue", json={"job_ids": [job_id]})
+
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["started"] is False
+        assert "error" in body and body["error"]
+
     def test_queue_starts_and_returns_current_job(self, client, monkeypatch):
         from engine.autofill import browser_controller, browser_setup
 

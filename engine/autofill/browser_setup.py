@@ -13,8 +13,9 @@ from __future__ import annotations
 import logging
 import os
 import subprocess
-import sys
 import threading
+
+from playwright._impl._driver import compute_driver_executable, get_driver_env
 
 log = logging.getLogger(__name__)
 
@@ -44,14 +45,23 @@ def _set_status(value: str) -> None:
 
 
 def _run_install() -> None:
+    """Invokes Playwright's bundled Node.js driver directly via
+    compute_driver_executable() — NOT `[sys.executable, "-m", "playwright",
+    ...]`. Inside a frozen PyInstaller app, sys.executable is the app's own
+    .exe, not a Python interpreter, so that invocation silently does not
+    install anything (it just tries to relaunch the app). The driver
+    executable is a real binary bundled alongside the package (see
+    packaging/jobengine.spec's collect_data_files("playwright")), so this
+    works identically in dev and frozen builds."""
     _set_status("installing")
     path = _browsers_path()
     path.mkdir(parents=True, exist_ok=True)
-    env = {**os.environ, "PLAYWRIGHT_BROWSERS_PATH": str(path)}
+    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(path)
     try:
+        driver_executable, driver_cli = compute_driver_executable()
         result = subprocess.run(
-            [sys.executable, "-m", "playwright", "install", "chromium"],
-            env=env,
+            [driver_executable, driver_cli, "install", "chromium"],
+            env=get_driver_env(),
             capture_output=True,
             text=True,
         )

@@ -8,6 +8,8 @@
     and answer bank. You always review and click the actual apply/submit
     button yourself — this never happens automatically.</p>
 
+  <div id="autofill-error" class="error-banner" style="display:none"></div>
+
   {% if not chromium_installed %}
   <div class="empty-state" id="autofill-setup">
     <p class="muted"><strong>Before you enable this:</strong> Apply Assist
@@ -20,9 +22,38 @@
     <p>First-time setup: a one-time browser component download
       (~150-280MB) is needed before Apply Assist can open application
       pages.</p>
-    <button hx-post="/api/autofill/setup" hx-target="#autofill-setup" hx-swap="outerHTML">
-      Enable Apply Assist
-    </button>
+    <button id="autofill-enable-btn" type="button">Enable Apply Assist</button>
+    <p id="autofill-setup-status" class="muted"></p>
+    <script>
+      document.getElementById('autofill-enable-btn').addEventListener('click', async (e) => {
+        const btn = e.target;
+        const statusEl = document.getElementById('autofill-setup-status');
+        const errEl = document.getElementById('autofill-error');
+        errEl.style.display = 'none';
+        btn.disabled = true;
+        statusEl.textContent = 'Downloading (this can take a minute)...';
+        try {
+          const resp = await fetch('/api/autofill/setup', {method: 'POST'});
+          const body = await resp.json();
+          if (!resp.ok) {
+            throw new Error(body.detail || `Setup failed (HTTP ${resp.status})`);
+          }
+          statusEl.textContent = 'Installing in the background — this page will refresh automatically.';
+          const poll = setInterval(async () => {
+            const s = await (await fetch('/api/autofill/status')).json();
+            if (s.chromium_installed) {
+              clearInterval(poll);
+              location.reload();
+            }
+          }, 3000);
+        } catch (err) {
+          errEl.textContent = 'Enable Apply Assist failed: ' + err.message;
+          errEl.style.display = 'block';
+          btn.disabled = false;
+          statusEl.textContent = '';
+        }
+      });
+    </script>
   </div>
   {% else %}
   <section id="autofill-queue" hx-get="/partials/autofill/status" hx-trigger="load, every 3s" hx-swap="innerHTML"></section>
@@ -43,16 +74,31 @@
     </table>
     <button id="autofill-start-btn" type="button">Start Apply Assist</button>
     <script>
-      document.getElementById('autofill-start-btn').addEventListener('click', async () => {
+      document.getElementById('autofill-start-btn').addEventListener('click', async (e) => {
+        const btn = e.target;
+        const errEl = document.getElementById('autofill-error');
+        errEl.style.display = 'none';
         const job_ids = Array.from(document.querySelectorAll('.autofill-job-check:checked'))
           .map(el => parseInt(el.value, 10));
         if (!job_ids.length) return;
-        await fetch('/api/autofill/queue', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({job_ids}),
-        });
-        htmx.trigger('#autofill-queue', 'load');
+        btn.disabled = true;
+        try {
+          const resp = await fetch('/api/autofill/queue', {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify({job_ids}),
+          });
+          const body = await resp.json();
+          if (!resp.ok || body.error || !body.started) {
+            throw new Error(body.error || body.detail || 'Apply Assist did not start.');
+          }
+          htmx.trigger('#autofill-queue', 'load');
+        } catch (err) {
+          errEl.textContent = 'Start failed: ' + err.message;
+          errEl.style.display = 'block';
+        } finally {
+          btn.disabled = false;
+        }
       });
     </script>
     {% else %}

@@ -77,3 +77,38 @@ class TestStartInstall:
         started = browser_setup.start_install(background=False)
 
         assert started is False
+
+    def test_install_uses_playwright_driver_executable_not_sys_executable(self, tmp_db, monkeypatch):
+        """Regression test: sys.executable is the frozen app's own .exe inside
+        a packaged build, not a Python interpreter — `[sys.executable, "-m",
+        "playwright", ...]` silently does not install anything there (it just
+        tries to relaunch the app). The real fix uses Playwright's own
+        compute_driver_executable(), which resolves to its bundled Node.js
+        driver directly and works identically in dev and frozen builds."""
+        monkeypatch.setattr(
+            browser_setup, "compute_driver_executable",
+            lambda: ("/fake/node", "/fake/cli.js"),
+        )
+        calls = []
+
+        def fake_run(cmd, **kwargs):
+            calls.append(cmd)
+
+            class Result:
+                returncode = 0
+                stderr = ""
+
+            return Result()
+
+        monkeypatch.setattr(browser_setup.subprocess, "run", fake_run)
+
+        browser_setup.start_install(background=False)
+
+        assert len(calls) == 1
+        cmd = calls[0]
+        assert cmd[0] == "/fake/node"
+        assert cmd[1] == "/fake/cli.js"
+        assert "install" in cmd
+        assert "chromium" in cmd
+        import sys as sys_mod
+        assert sys_mod.executable not in cmd

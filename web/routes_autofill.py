@@ -3,8 +3,12 @@ automation logic lives in engine/autofill/browser_controller.py and
 browser_setup.py (Constitution IV: Reusable Core, Thin Web Layer)."""
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
+
+log = logging.getLogger(__name__)
 
 router = APIRouter(prefix="/api/autofill")
 
@@ -32,7 +36,11 @@ def start_queue(body: QueueRequest):
             status_code=409,
             detail="Chromium not installed yet — run setup first.",
         )
-    current = browser_controller.start_queue(body.job_ids)
+    try:
+        current = browser_controller.start_queue(body.job_ids)
+    except Exception as exc:
+        log.warning("Apply Assist failed to start", exc_info=True)
+        return {"started": False, "current_job_id": None, "error": str(exc)[:300]}
     return {
         "started": current is not None,
         "current_job_id": current["job_id"] if current else None,
@@ -43,7 +51,11 @@ def start_queue(body: QueueRequest):
 def next_job():
     from engine.autofill import browser_controller
 
-    current = browser_controller.advance()
+    try:
+        current = browser_controller.advance()
+    except Exception as exc:
+        log.warning("Apply Assist failed to advance", exc_info=True)
+        return {"current_job_id": None, "finished": False, "error": str(exc)[:300]}
     if current is None:
         return {"current_job_id": None, "finished": True}
     return {"current_job_id": current["job_id"]}

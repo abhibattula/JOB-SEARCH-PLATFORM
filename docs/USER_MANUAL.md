@@ -457,6 +457,14 @@ retyping, not a bot that applies on your behalf.
   you have v0.4.0 installed, download v0.4.1 from the Releases page (Settings
   → Check for updates will also tell you). CI now runs a real smoke test on
   every release build so this class of bug can't ship silently again.
+- **v0.5.0–v0.5.5 installers**: clicking "Start Apply Assist" did nothing —
+  no browser window opened, no error shown. The Chromium installer used
+  `sys.executable` to invoke Playwright's setup, which inside the installed
+  app is `JobEngine.exe` itself, not a Python interpreter — Chromium was
+  never actually being downloaded. **Fixed in v0.5.6**, verified against a
+  real rebuilt installer (a genuine Chromium window was confirmed opening).
+  Failures anywhere in Apply Assist now also show a visible error message
+  instead of silently doing nothing.
 
 ## 13. Troubleshooting
 
