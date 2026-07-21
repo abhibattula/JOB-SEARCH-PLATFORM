@@ -51,7 +51,16 @@ jobs:
           python-version: "3.12"
           cache: pip
       - run: python -m pip install --upgrade pip
-      - run: python -m pip install -r requirements.txt --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu
+      - name: Install Python dependencies (with diagnostic output on failure)
+        run: |
+          set +e
+          python -m pip install -r requirements.txt --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu 2>&1 | tee /tmp/pip-install.log
+          code=${PIPESTATUS[0]}
+          if [ "$code" -ne 0 ]; then
+            msg=$(tail -c 3000 /tmp/pip-install.log | tr '\n' ' ' | tr '"' "'")
+            echo "::error::pip install failed (exit $code): $msg"
+            exit "$code"
+          fi
       - run: python -m pip install pyinstaller
       - name: llama-cpp-python install canary
         run: python -c "import llama_cpp; print(llama_cpp.__version__)"
