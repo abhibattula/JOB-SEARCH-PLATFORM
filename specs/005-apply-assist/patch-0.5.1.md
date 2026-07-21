@@ -1,3 +1,10 @@
+> **Correction (see `patch-0.5.3.md`)**: the PATH-ambiguity theory below was
+> wrong — `python -m pip` did not fix v0.5.1's mac-dmg build, which failed
+> identically. The real cause was a corrupted wheel download
+> (`zipfile.BadZipFile: Bad CRC-32`), found after adding a diagnostic
+> annotation in v0.5.2. Kept here for the record of what was tried and
+> ruled out, not as the actual explanation.
+
 # Patch 0.5.1: Fix macOS release-build dependency install failure
 
 **Reported**: 2026-07-20 — the v0.5.0 tag's "Release installers" workflow
