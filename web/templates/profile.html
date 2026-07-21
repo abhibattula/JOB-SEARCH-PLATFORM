@@ -3,27 +3,33 @@
 {% block content %}
 <article class="profile">
   <h1>Profile</h1>
-  {% if profile and profile.resume_filename %}
-  <p>Resume on file: <span class="data">{{ profile.resume_filename }}</span>
-    (updated {{ profile.updated_at[:10] if profile.updated_at }})</p>
-  {% if profile.skills %}
-  <p class="chips">{% for s in profile.skills %}<span class="chip have">{{ s }}</span>{% endfor %}</p>
-  {% endif %}
-  {% else %}
-  <p class="muted">No resume yet. Upload one to unlock match scores and gap analysis.</p>
-  {% endif %}
+  <p class="muted">Fill this in once — Apply Assist reuses everything here
+    across every application, and only ever pauses to ask about something
+    genuinely new.</p>
 
   <form class="profile-form" method="post" action="/api/profile" enctype="multipart/form-data">
-    <label>Resume (PDF)
-      <input type="file" name="resume" accept="application/pdf">
+    <h2>Basic info</h2>
+    <label>First name
+      <input type="text" name="first_name" value="{{ profile.first_name if profile and profile.first_name else '' }}">
     </label>
-    <label>Preferred locations (comma-separated — pre-fills the feed filter, never hides jobs)
-      <input type="text" name="target_locations"
-             value="{{ profile.target_locations | join(', ') if profile and profile.target_locations }}"
-             placeholder="e.g. CA, TX, Remote">
+    <label>Last name
+      <input type="text" name="last_name" value="{{ profile.last_name if profile and profile.last_name else '' }}">
+    </label>
+    <label>Email
+      <input type="email" name="email" value="{{ profile.email if profile and profile.email else '' }}">
+    </label>
+    <label>Phone
+      <input type="tel" name="phone" value="{{ profile.phone if profile and profile.phone else '' }}">
+    </label>
+    <label>LinkedIn URL
+      <input type="text" name="linkedin_url" value="{{ profile.linkedin_url if profile and profile.linkedin_url else '' }}"
+             placeholder="https://linkedin.com/in/...">
+    </label>
+    <label>Portfolio / GitHub / personal site URL
+      <input type="text" name="portfolio_url" value="{{ profile.portfolio_url if profile and profile.portfolio_url else '' }}">
     </label>
 
-    <h2>Apply Assist facts</h2>
+    <h2>Work authorization</h2>
     <p class="muted">Used only to ground AI-drafted suggestions for
       application questions (Apply Assist) — every sponsorship/work-
       authorization answer is still shown to you for review before it's
@@ -39,6 +45,30 @@
       <input type="text" name="visa_status"
              value="{{ profile.visa_status if profile and profile.visa_status else '' }}"
              placeholder="e.g. OPT, H-1B, Citizen">
+    </label>
+
+    {% include "partials/profile_answer_bank.html" %}
+
+    <h2>Resume &amp; job search</h2>
+    {% if profile and profile.resume_filename %}
+    <p>Resume on file: <span class="data">{{ profile.resume_filename }}</span>
+      (updated {{ profile.updated_at[:10] if profile.updated_at }})</p>
+    {% else %}
+    <p class="muted">No resume yet. Upload one to unlock match scores and gap analysis.</p>
+    {% endif %}
+    <label>Resume (PDF)
+      <input type="file" name="resume" accept="application/pdf">
+    </label>
+    <label>Skills (comma-separated — extracted automatically from your resume; add
+      anything the extraction missed to improve matching, especially without a cloud AI key)
+      <input type="text" name="skills"
+             value="{{ profile.skills | join(', ') if profile and profile.skills }}"
+             placeholder="e.g. Python, Verilog, FPGA">
+    </label>
+    <label>Preferred locations (comma-separated — pre-fills the feed filter, never hides jobs)
+      <input type="text" name="target_locations"
+             value="{{ profile.target_locations | join(', ') if profile and profile.target_locations }}"
+             placeholder="e.g. CA, TX, Remote">
     </label>
 
     <button type="submit">Save profile</button>

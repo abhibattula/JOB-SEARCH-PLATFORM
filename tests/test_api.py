@@ -181,6 +181,27 @@ class TestProfileApi:
         )
         assert response.status_code == 422
 
+    def test_identity_fields_saved(self, client):
+        """006-A: first/last name, email, phone, LinkedIn, portfolio — the
+        fields Apply Assist needs but the schema never had until now."""
+        response = client.post(
+            "/api/profile",
+            data={
+                "first_name": "Ada", "last_name": "Lovelace",
+                "email": "ada@example.com", "phone": "555-0100",
+                "linkedin_url": "https://linkedin.com/in/ada",
+                "portfolio_url": "https://ada.example.com",
+            },
+        )
+        assert response.status_code == 200
+        payload = client.get("/api/profile").json()
+        assert payload["first_name"] == "Ada"
+        assert payload["last_name"] == "Lovelace"
+        assert payload["email"] == "ada@example.com"
+        assert payload["phone"] == "555-0100"
+        assert payload["linkedin_url"] == "https://linkedin.com/in/ada"
+        assert payload["portfolio_url"] == "https://ada.example.com"
+
     def test_sponsorship_and_visa_fields_saved(self, client):
         """005-T036: Profile page collects the facts answer_bank.suggest()
         needs to ground drafted sponsorship/work-authorization answers."""

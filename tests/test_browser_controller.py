@@ -218,6 +218,41 @@ class TestResolvePending:
         assert bc._state.pending is None
 
 
+class TestNameFields:
+    """006-A regression: full_name/first_name/last_name were either reading
+    a profile column that never existed (full_name) or not handled at all
+    (first_name/last_name — they'd silently fall through to the answer-bank
+    Q&A path, incorrectly pausing the queue to "confirm an answer" to your
+    own name)."""
+
+    def test_full_name_combines_first_and_last(self):
+        raw = {"tag": "input", "type": "text", "name": "name", "id": "name",
+               "label_text": "Full Name", "placeholder": "", "aria_label": "", "autocomplete": ""}
+        value = bc._value_for_tag("full_name", raw, {"first_name": "Ada", "last_name": "Lovelace"}, job_id=1)
+        assert value == "Ada Lovelace"
+
+    def test_full_name_none_when_neither_set(self):
+        raw = {"tag": "input", "type": "text", "name": "name", "id": "name",
+               "label_text": "Full Name", "placeholder": "", "aria_label": "", "autocomplete": ""}
+        assert bc._value_for_tag("full_name", raw, {}, job_id=1) is None
+
+    def test_first_name_fills_directly_not_via_answer_bank(self):
+        raw = {"tag": "input", "type": "text", "name": "fname", "id": "fname",
+               "label_text": "First Name", "placeholder": "", "aria_label": "", "autocomplete": ""}
+        bc._state.pending = None
+        value = bc._value_for_tag("first_name", raw, {"first_name": "Ada"}, job_id=1)
+        assert value == "Ada"
+        assert bc._state.pending is None  # must not treat a name field as a Q&A question
+
+    def test_last_name_fills_directly_not_via_answer_bank(self):
+        raw = {"tag": "input", "type": "text", "name": "lname", "id": "lname",
+               "label_text": "Last Name", "placeholder": "", "aria_label": "", "autocomplete": ""}
+        bc._state.pending = None
+        value = bc._value_for_tag("last_name", raw, {"last_name": "Lovelace"}, job_id=1)
+        assert value == "Lovelace"
+        assert bc._state.pending is None
+
+
 class TestLoginFieldCredentials:
     """005-T041: recognized login fields fill from a saved credential,
     matched by the current job's domain — never auto-submitted (that

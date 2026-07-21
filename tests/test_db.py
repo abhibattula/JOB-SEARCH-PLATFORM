@@ -260,6 +260,30 @@ class TestProfile:
         assert profile["target_locations"] == ["TX"]
         assert profile["resume_text"] == "text"  # partial update preserved
 
+    def test_profile_identity_fields_roundtrip(self, tmp_db):
+        """006-A: first_name/last_name/phone/linkedin_url/portfolio_url —
+        confirmed gap: engine/autofill/browser_controller.py already reads
+        these via profile.get(...), but the schema never had them, so
+        Apply Assist could never fill them."""
+        db.save_profile(
+            first_name="Ada", last_name="Lovelace", phone="555-0100",
+            email="ada@example.com",
+            linkedin_url="https://linkedin.com/in/ada",
+            portfolio_url="https://ada.example.com",
+        )
+        profile = db.get_profile()
+        assert profile["first_name"] == "Ada"
+        assert profile["last_name"] == "Lovelace"
+        assert profile["phone"] == "555-0100"
+        assert profile["email"] == "ada@example.com"
+        assert profile["linkedin_url"] == "https://linkedin.com/in/ada"
+        assert profile["portfolio_url"] == "https://ada.example.com"
+        # A later partial update must not clobber the others
+        db.save_profile(phone="555-0199")
+        profile = db.get_profile()
+        assert profile["phone"] == "555-0199"
+        assert profile["first_name"] == "Ada"
+
     def test_profile_sponsorship_and_visa_fields_roundtrip(self, tmp_db):
         """005-T008: user_profile gains authorized_without_sponsorship/visa_status
         so answer_bank.suggest() can ground drafts in facts the user provided."""

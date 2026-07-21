@@ -212,8 +212,15 @@ def _value_for_tag(tag: str, raw: dict, profile: dict, job_id: int):
         if not saved:
             return None
         return saved["email"] if tag == "login_email" else saved["password"]
-    if tag in ("full_name",):
-        return profile.get("full_name")
+    if tag == "full_name":
+        first = profile.get("first_name") or ""
+        last = profile.get("last_name") or ""
+        combined = f"{first} {last}".strip()
+        return combined or None
+    if tag == "first_name":
+        return profile.get("first_name")
+    if tag == "last_name":
+        return profile.get("last_name")
     if tag == "email":
         return profile.get("email")
     if tag == "phone":

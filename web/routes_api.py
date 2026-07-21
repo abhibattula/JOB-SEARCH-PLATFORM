@@ -361,6 +361,12 @@ def _profile_payload() -> dict:
         "updated_at": profile.get("updated_at"),
         "authorized_without_sponsorship": profile.get("authorized_without_sponsorship"),
         "visa_status": profile.get("visa_status"),
+        "first_name": profile.get("first_name"),
+        "last_name": profile.get("last_name"),
+        "email": profile.get("email"),
+        "phone": profile.get("phone"),
+        "linkedin_url": profile.get("linkedin_url"),
+        "portfolio_url": profile.get("portfolio_url"),
     }
 
 
@@ -376,6 +382,12 @@ async def save_profile(
     target_locations: str | None = Form(None),
     authorized_without_sponsorship: str | None = Form(None),
     visa_status: str | None = Form(None),
+    first_name: str | None = Form(None),
+    last_name: str | None = Form(None),
+    email: str | None = Form(None),
+    phone: str | None = Form(None),
+    linkedin_url: str | None = Form(None),
+    portfolio_url: str | None = Form(None),
 ):
     fields: dict = {}
     if resume is not None and resume.filename:
@@ -395,10 +407,18 @@ async def save_profile(
         fields["target_locations"] = [
             part.strip() for part in target_locations.split(",") if part.strip()
         ]
-    if authorized_without_sponsorship is not None:
-        fields["authorized_without_sponsorship"] = authorized_without_sponsorship
-    if visa_status is not None:
-        fields["visa_status"] = visa_status
+    for key, value in {
+        "authorized_without_sponsorship": authorized_without_sponsorship,
+        "visa_status": visa_status,
+        "first_name": first_name,
+        "last_name": last_name,
+        "email": email,
+        "phone": phone,
+        "linkedin_url": linkedin_url,
+        "portfolio_url": portfolio_url,
+    }.items():
+        if value is not None:
+            fields[key] = value
     if fields:
         db.save_profile(**fields)
     if "text/html" in (request.headers.get("accept") or ""):

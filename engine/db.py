@@ -168,6 +168,12 @@ _MIGRATIONS = {
     "user_profile": [
         ("authorized_without_sponsorship", "TEXT"),
         ("visa_status", "TEXT"),
+        ("first_name", "TEXT"),
+        ("last_name", "TEXT"),
+        ("email", "TEXT"),
+        ("phone", "TEXT"),
+        ("linkedin_url", "TEXT"),
+        ("portfolio_url", "TEXT"),
     ],
 }
 
@@ -776,6 +782,15 @@ def _force_run_started_at(run_id: int, started_at: str) -> None:
 # --- user profile -----------------------------------------------------------
 
 _PROFILE_JSON_FIELDS = ("skills", "target_locations", "preferences")
+# Single source of truth for save_profile()'s INSERT/UPDATE — every
+# user_profile column except id/updated_at (which are handled specially).
+# Adding a new profile field means adding it here AND to _MIGRATIONS above;
+# nowhere else.
+_PROFILE_COLUMNS = (
+    "resume_text", "resume_filename", "skills", "target_locations",
+    "preferences", "authorized_without_sponsorship", "visa_status",
+    "first_name", "last_name", "email", "phone", "linkedin_url", "portfolio_url",
+)
 
 
 def get_profile() -> dict | None:
@@ -799,34 +814,17 @@ def save_profile(**fields: Any) -> None:
         existing = conn.execute(
             "SELECT * FROM user_profile WHERE id = 1"
         ).fetchone()
-        current = dict(existing) if existing else {
-            "resume_text": None, "resume_filename": None, "skills": None,
-            "target_locations": None, "preferences": None,
-            "authorized_without_sponsorship": None, "visa_status": None,
-        }
+        current = {col: (existing[col] if existing else None) for col in _PROFILE_COLUMNS}
         for key, value in fields.items():
             if key in _PROFILE_JSON_FIELDS and value is not None:
                 value = json.dumps(value)
             current[key] = value
+        columns_sql = ", ".join(_PROFILE_COLUMNS)
+        placeholders_sql = ", ".join("?" for _ in _PROFILE_COLUMNS)
+        update_sql = ", ".join(f"{col}=excluded.{col}" for col in _PROFILE_COLUMNS)
         conn.execute(
-            "INSERT INTO user_profile (id, resume_text, resume_filename, skills,"
-            " target_locations, preferences, authorized_without_sponsorship,"
-            " visa_status, updated_at)"
-            " VALUES (1, ?, ?, ?, ?, ?, ?, ?, ?)"
-            " ON CONFLICT(id) DO UPDATE SET resume_text=excluded.resume_text,"
-            " resume_filename=excluded.resume_filename, skills=excluded.skills,"
-            " target_locations=excluded.target_locations,"
-            " preferences=excluded.preferences,"
-            " authorized_without_sponsorship=excluded.authorized_without_sponsorship,"
-            " visa_status=excluded.visa_status, updated_at=excluded.updated_at",
-            (
-                current["resume_text"],
-                current["resume_filename"],
-                current["skills"],
-                current["target_locations"],
-                current["preferences"],
-                current.get("authorized_without_sponsorship"),
-                current.get("visa_status"),
-                _utcnow(),
-            ),
+            f"INSERT INTO user_profile (id, {columns_sql}, updated_at)"
+            f" VALUES (1, {placeholders_sql}, ?)"
+            f" ON CONFLICT(id) DO UPDATE SET {update_sql}, updated_at=excluded.updated_at",
+            (*(current[col] for col in _PROFILE_COLUMNS), _utcnow()),
         )
