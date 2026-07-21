@@ -85,6 +85,35 @@ class TestSuggest:
         assert answer_bank.lookup("Novel question") is None
 
 
+class TestListAllAndDelete:
+    """006-B: Profile page lets the user pre-populate and manage the answer
+    bank directly, rather than only building it up reactively during a live
+    Apply Assist pause."""
+
+    def test_list_all_returns_saved_entries(self, tmp_db):
+        answer_bank.save("Question one?", "Answer one", category="how_heard")
+        answer_bank.save("Question two?", "Answer two", category="years_experience")
+
+        entries = answer_bank.list_all()
+
+        questions = {e["question_raw"] for e in entries}
+        assert questions == {"Question one?", "Question two?"}
+
+    def test_list_all_empty_by_default(self, tmp_db):
+        assert answer_bank.list_all() == []
+
+    def test_delete_removes_entry(self, tmp_db):
+        bank_id = answer_bank.save("Question?", "Answer", category="how_heard")
+
+        answer_bank.delete(bank_id)
+
+        assert answer_bank.list_all() == []
+        assert answer_bank.lookup("Question?") is None
+
+    def test_delete_nonexistent_id_is_a_noop(self, tmp_db):
+        answer_bank.delete(99999)  # must not raise
+
+
 class TestRecordApplicationAnswer:
     def test_record_creates_snapshot_row(self, tmp_db):
         from engine import db

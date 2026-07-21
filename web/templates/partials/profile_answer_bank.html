@@ -1,1 +1,107 @@
-<!-- Placeholder — replaced with the Common Questions (answer bank) CRUD UI in 006-B -->
+<h2>Common application questions</h2>
+<p class="muted">Answer once here and Apply Assist reuses it automatically
+  on every job that asks the same or a clearly equivalent question — it
+  only pauses to ask when something is genuinely new.</p>
+
+<div id="answer-bank-list">
+  {% if answer_bank_entries %}
+  <table class="feed-table">
+    <tbody>
+      {% for entry in answer_bank_entries %}
+      <tr>
+        <td class="data">{{ entry.category or 'general' }}</td>
+        <td>{{ entry.question_raw }}</td>
+        <td>{{ entry.answer }}</td>
+        <td>
+          <button type="button" class="ghost answer-bank-delete" data-id="{{ entry.id }}">Delete</button>
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  {% else %}
+  <p class="muted">No saved answers yet — add one below, or they'll build up
+    automatically as you use Apply Assist.</p>
+  {% endif %}
+</div>
+
+<div class="answer-bank-add">
+  <label>Question
+    <input type="text" id="ab-question" placeholder="e.g. How did you hear about us?">
+  </label>
+  <label>Answer
+    <input type="text" id="ab-answer">
+  </label>
+  <label>Category
+    <select id="ab-category">
+      <option value="how_heard">How did you hear about us</option>
+      <option value="years_experience">Years of experience</option>
+      <option value="salary_expectation">Salary expectation</option>
+      <option value="work_authorization">Work authorization</option>
+      <option value="sponsorship_requirement">Sponsorship requirement</option>
+      <option value="cover_letter">Cover letter / "why us"</option>
+      <option value="free_text_unknown">Other</option>
+    </select>
+  </label>
+  <button type="button" id="ab-add-btn">Add answer</button>
+</div>
+
+<h3>EEO disclosures (optional)</h3>
+<p class="muted">Entirely voluntary. Pre-answering these means Apply Assist
+  won't need to pause and ask when a job application includes them — leave
+  any of these blank if you'd rather answer them yourself each time.</p>
+<div class="answer-bank-eeo">
+  {% set eeo_questions = [
+    ("Gender", "What is your gender?"),
+    ("Race / ethnicity", "What is your race/ethnicity?"),
+    ("Veteran status", "Are you a protected veteran?"),
+    ("Disability status", "Do you have a disability?"),
+  ] %}
+  {% for label, question in eeo_questions %}
+  <label>{{ label }}
+    <input type="text" class="eeo-answer-input" data-question="{{ question }}"
+           value="{{ (answer_bank_entries | selectattr('question_raw', 'equalto', question) | map(attribute='answer') | first) or '' }}">
+  </label>
+  {% endfor %}
+  <button type="button" id="eeo-save-btn">Save EEO answers</button>
+</div>
+
+<script>
+(function () {
+  async function confirmAnswer(question, answer, category) {
+    if (!answer) return;
+    await fetch('/api/autofill/answers/confirm', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({question_raw: question, answer: answer, category: category}),
+    });
+  }
+
+  document.getElementById('ab-add-btn').addEventListener('click', async () => {
+    const q = document.getElementById('ab-question').value.trim();
+    const a = document.getElementById('ab-answer').value.trim();
+    const c = document.getElementById('ab-category').value;
+    if (!q || !a) return;
+    await confirmAnswer(q, a, c);
+    location.reload();
+  });
+
+  document.getElementById('eeo-save-btn').addEventListener('click', async () => {
+    const inputs = document.querySelectorAll('.eeo-answer-input');
+    for (const el of inputs) {
+      const answer = el.value.trim();
+      if (answer) {
+        await confirmAnswer(el.dataset.question, answer, 'eeo_disclosure');
+      }
+    }
+    location.reload();
+  });
+
+  document.querySelectorAll('.answer-bank-delete').forEach((btn) => {
+    btn.addEventListener('click', async () => {
+      await fetch('/api/autofill/answers/' + btn.dataset.id, {method: 'DELETE'});
+      location.reload();
+    });
+  });
+})();
+</script>

@@ -206,6 +206,34 @@ class TestConfirmAnswerRoute:
         assert answer_bank.lookup("Years of Python experience?") is not None
 
 
+class TestAnswerBankManagement:
+    """006-B: Profile page manages the answer bank directly."""
+
+    def test_list_returns_saved_entries(self, client):
+        client.post(
+            "/api/autofill/answers/confirm",
+            json={"question_raw": "How did you hear about us?",
+                  "answer": "LinkedIn", "category": "how_heard"},
+        )
+        resp = client.get("/api/autofill/answers")
+        assert resp.status_code == 200
+        entries = resp.json()["entries"]
+        assert len(entries) == 1
+        assert entries[0]["question_raw"] == "How did you hear about us?"
+
+    def test_delete_removes_entry(self, client):
+        client.post(
+            "/api/autofill/answers/confirm",
+            json={"question_raw": "Q?", "answer": "A", "category": "how_heard"},
+        )
+        bank_id = client.get("/api/autofill/answers").json()["entries"][0]["id"]
+
+        resp = client.delete(f"/api/autofill/answers/{bank_id}")
+
+        assert resp.status_code == 200
+        assert client.get("/api/autofill/answers").json()["entries"] == []
+
+
 class TestPage:
     def test_autofill_page_serves(self, client):
         resp = client.get("/autofill")

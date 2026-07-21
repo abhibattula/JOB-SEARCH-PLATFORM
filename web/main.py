@@ -153,8 +153,12 @@ def create_app() -> FastAPI:
 
     @app.get("/profile", response_class=HTMLResponse)
     def profile_page(request: Request):
+        from engine.autofill import answer_bank
+
         return templates.TemplateResponse(
-            request, "profile.html", {"profile": db.get_profile()}
+            request,
+            "profile.html",
+            {"profile": db.get_profile(), "answer_bank_entries": answer_bank.list_all()},
         )
 
     @app.get("/analytics", response_class=HTMLResponse)

@@ -104,3 +104,20 @@ def confirm_answer(body: ConfirmAnswerRequest):
         )
     browser_controller.resolve_pending(body.answer)
     return {"saved": True}
+
+
+@router.get("/answers")
+def list_answer_bank():
+    """006-B: backs the Profile page's Common Questions management UI —
+    lets the user view/pre-populate the answer bank directly."""
+    from engine.autofill import answer_bank
+
+    return {"entries": answer_bank.list_all()}
+
+
+@router.delete("/answers/{bank_id}")
+def delete_answer_bank_entry(bank_id: int):
+    from engine.autofill import answer_bank
+
+    answer_bank.delete(bank_id)
+    return {"deleted": True}

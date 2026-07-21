@@ -56,6 +56,20 @@ class TestPages:
     def test_profile_page_serves_empty(self, client):
         assert client.get("/profile").status_code == 200
 
+    def test_profile_page_renders_answer_bank_entries(self, client):
+        """006-B/C: the Common Questions + EEO disclosures section must
+        render without error, including when an EEO answer is pre-filled."""
+        from engine.autofill import answer_bank
+
+        answer_bank.save("How did you hear about us?", "LinkedIn", category="how_heard")
+        answer_bank.save("What is your gender?", "Prefer not to say", category="eeo_disclosure")
+
+        resp = client.get("/profile")
+
+        assert resp.status_code == 200
+        assert "How did you hear about us?" in resp.text
+        assert "Prefer not to say" in resp.text
+
     def test_profile_page_serves_with_sponsorship_fields_set(self, client):
         """005-T036: profile.html must render the Apply Assist fields
         section without error for a populated profile."""

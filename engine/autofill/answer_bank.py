@@ -72,6 +72,23 @@ def save(question_raw: str, answer: str, category: str | None = None) -> int:
     return row["id"]
 
 
+def list_all() -> list[dict]:
+    """All confirmed answer-bank entries, newest-updated first — backs the
+    Profile page's Common Questions management UI (006-B): the user can
+    pre-populate answers here directly rather than only ever building the
+    bank up reactively during a live Apply Assist pause."""
+    with db._conn() as conn:
+        rows = conn.execute(
+            "SELECT * FROM answer_bank ORDER BY updated_at DESC"
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def delete(bank_id: int) -> None:
+    with db._conn() as conn:
+        conn.execute("DELETE FROM answer_bank WHERE id = ?", (bank_id,))
+
+
 def suggest(question_raw: str, category: str | None, profile: dict) -> str:
     """Draft a suggested answer via the matcher._chat tier dispatcher
     (cloud -> local). Never writes to the answer bank — the caller must run
