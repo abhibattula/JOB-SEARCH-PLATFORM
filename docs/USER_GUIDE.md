@@ -30,8 +30,16 @@ This is the daily-use manual. For first-time setup, follow
     exclusion, in case you want to audit a call.
   - `UNKNOWN` — no signal either way (also what you get before loading the
     USCIS data)
-  - The **evidence** (approval count, exact JD phrase) is on the job's detail
-    page.
+  - **Sponsor grade** (A–F, next to the badge): a local grade from real
+    USCIS approval/denial history, engineering filings, and DOL wage
+    levels. Only companies with 10+ petitions get graded — below that it
+    stays UNKNOWN rather than guessing. **cap-ex** marks likely cap-exempt
+    employers (universities, nonprofit research, hospitals) that can
+    sponsor year-round outside the H-1B lottery.
+  - **Strong sponsors only** (toolbar) narrows the feed to grade ≥ B or
+    cap-exempt employers.
+  - The **evidence** (approvals, denials, approval rate, wage level,
+    lottery-odds hint, exact JD phrase) is on the job's detail page.
 - **Match** — 0–100 resume fit, sorted best-first by default. `~62` (tilde) is
   the built-in **basic keyword match**; `•71` (dot) is the **bundled offline
   AI model** — both work with zero setup and upgrade automatically to a full
@@ -56,11 +64,18 @@ This is the daily-use manual. For first-time setup, follow
   with a marker.
 - **Applied is your pipeline**: each row gets a stage dropdown
   (applied → OA → interview → offer/rejected) and inline notes; rows quiet for
-  7+ days get a ⚑ **follow up** flag. **Analytics** shows your funnel and
-  which sources and score bands actually produce callbacks.
+  7+ days get a ⚑ **follow up** flag. Switch to the **Board** view for a
+  kanban of stage columns — drag cards between stages or use each card's
+  ◀/▶ buttons. **Analytics** shows your funnel and which sources and score
+  bands actually produce callbacks.
 - **Tailor for this job** (on a job's detail page) — generates resume bullets
   rewritten in that posting's language, a short cover letter, and ATS keywords,
-  from your real resume only. Click any block to copy it.
+  from your real resume only. Click any block to copy it — or download the
+  **tailored resume PDF** and **cover-letter PDF** (ATS-safe, rendered
+  offline from your Resume builder sections + the tailoring).
+- **Theme**: Settings → Theme switches between the light "datasheet" look
+  and the dark "scope screen"; your choice persists and overrides the OS
+  preference.
 - **CSV ↓** — downloads exactly the current filtered view.
 
 ## Your profile (fill it once, reuse everywhere)
@@ -75,6 +90,10 @@ This is the daily-use manual. For first-time setup, follow
    the location filter, never exclude jobs). Scores and gap analysis appear
    on newly refreshed entry-level jobs immediately — the bundled offline AI
    model needs no setup at all.
+   The **Resume builder** section fills itself from your upload (experience,
+   education, projects, skills) — review and correct it once; those sections
+   become your tailored resume PDFs. Re-uploading a new resume later *asks*
+   whether to keep your edits or re-extract; it never overwrites silently.
 3. Pre-fill **Common Questions** (sponsorship, years of experience, salary
    expectation, how you heard about the role, and — optionally — the
    standard EEO gender/race/veteran/disability questions) so Apply Assist
@@ -101,18 +120,25 @@ offline.
    Assist** from the top nav.
 2. First time only: click **Enable Apply Assist** — a one-time browser
    component download (~150-280MB, needs internet).
-3. Pick your saved jobs and **Start Apply Assist**. A dedicated browser
-   window (separate from your everyday browser) opens on the first job's
-   application page with recognized fields already filled from your Profile
-   and answer bank.
-4. **You always click the site's own submit/login button — the app never
-   does.** Review, correct anything, submit it yourself.
+3. Pick your saved jobs (select all/none buttons) and **Start Apply
+   Assist**. A dedicated browser window (separate from your everyday
+   browser) opens on the first job's application page with recognized
+   fields already filled from your Profile and answer bank — including
+   **your resume file** (the job's tailored PDF when one exists), and
+   dropdowns answered by matching the site's own option wording.
+4. **You always click the site's own submit/next/login button — the app
+   never does.** The mission panel shows the whole queue ("3 of 8"), and a
+   per-field report of exactly what was filled (passwords show only as
+   `•••`). When *you* click Next on a multi-page form, the new page fills
+   automatically; **Re-scan this page** covers forms that redraw without
+   navigating.
 5. New or sensitive questions (work authorization, sponsorship, EEO-style)
    pause the queue with an AI-drafted suggestion for you to confirm or
    edit — nothing is saved or typed until you do. Answer once, reused
    automatically after that.
 6. Click **Done, next application** to move to the next job — nothing
-   advances on its own.
+   advances on its own. Closed the browser window by accident? Your spot is
+   saved — click **Resume queue**. A batch summary wraps up every run.
 7. On a site the app can't confidently read (including Workday), it just
    opens the tab for you to finish manually and still advances afterward.
 
