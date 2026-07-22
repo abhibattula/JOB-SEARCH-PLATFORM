@@ -48,6 +48,51 @@ def _bootstrap_sponsorship() -> None:
         sponsorship.apply_to_companies()
 
 
+def _onboarding_state(profile: dict | None) -> dict | None:
+    """FR-027: setup steps derived live from real state — no stored step
+    flags to drift. None (hidden) once dismissed or everything's done."""
+    from engine import matcher, settings
+    from engine.autofill import browser_setup
+
+    if settings.get("ONBOARDING_DISMISSED") == "1":
+        return None
+    steps = [
+        {
+            "label": "Upload your resume",
+            "href": "/profile",
+            "hint": "unlocks match scores and the Resume builder",
+            "done": bool(profile and profile.get("resume_text")),
+        },
+        {
+            "label": "Fill in your profile basics",
+            "href": "/profile",
+            "hint": "name, email, work authorization — Apply Assist fills from these",
+            "done": bool(profile and profile.get("first_name") and profile.get("email")),
+        },
+        {
+            "label": "Load sponsorship data",
+            "href": "/settings",
+            "hint": "turns UNKNOWN badges into grades",
+            "done": db.h1b_employer_count() > 0,
+        },
+        {
+            "label": "Add a free AI key (optional)",
+            "href": "/settings",
+            "hint": "the bundled offline model already works without one",
+            "done": matcher.llm_available(),
+        },
+        {
+            "label": "Enable Apply Assist",
+            "href": "/autofill",
+            "hint": "one-time browser download for application autofill",
+            "done": browser_setup.is_installed(),
+        },
+    ]
+    if all(step["done"] for step in steps):
+        return None
+    return {"steps": steps}
+
+
 def _feed_context(
     request: Request,
     window: str = "7d",
@@ -77,6 +122,7 @@ def _feed_context(
         "jobs": jobs,
         "total": total,
         "run": run,
+        "onboarding": _onboarding_state(profile),
         "window": window if window in ("7d", "24h", "all") else "7d",
         "status_view": status or "",
         "location": location or "",
@@ -121,11 +167,13 @@ def create_app() -> FastAPI:
         min_score: float | None = None,
         seen: str | None = None,
         strong_sponsors: int = 0,
+        view: str | None = None,
     ):
         context = _feed_context(
             request, window, status, location, remote, sort, entry_level,
             ineligible, min_score, seen, strong_sponsors,
         )
+        context["board_view"] = view == "board"
         return templates.TemplateResponse(request, "feed.html", context)
 
     @app.get("/partials/feed", response_class=HTMLResponse)
@@ -141,11 +189,13 @@ def create_app() -> FastAPI:
         min_score: float | None = None,
         seen: str | None = None,
         strong_sponsors: int = 0,
+        view: str | None = None,
     ):
         context = _feed_context(
             request, window, status, location, remote, sort, entry_level,
             ineligible, min_score, seen, strong_sponsors,
         )
+        context["board_view"] = view == "board"
         return templates.TemplateResponse(request, "partials/feed_table.html", context)
 
     @app.get("/jobs/{job_id}", response_class=HTMLResponse)

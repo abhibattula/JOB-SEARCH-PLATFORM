@@ -12,7 +12,10 @@
 {% endif %}
 
 {% set pipeline_view = status_view == 'applied' %}
-{% if jobs %}
+{% if pipeline_view and board_view and jobs %}
+{% include "partials/pipeline_board.html" %}
+<p class="count data">{{ total }} application{{ 's' if total != 1 }} on the board</p>
+{% elif jobs %}
 <table class="feed">
   <thead>
     <tr>
@@ -66,11 +69,14 @@
       {% endif %}
       <td class="actions">
         <button hx-post="/api/jobs/{{ job.id }}/status?status=saved" hx-swap="none"
-                hx-on::after-request="htmx.trigger('#feed-region','refresh-feed')" title="Save">☆</button>
+                hx-on::after-request="htmx.trigger('#feed-region','refresh-feed')"
+                title="Save" aria-label="Save {{ job.title }}" data-toast="Saved">☆</button>
         <button hx-post="/api/jobs/{{ job.id }}/status?status=applied" hx-swap="none"
-                hx-on::after-request="htmx.trigger('#feed-region','refresh-feed')" title="Mark applied">✓</button>
+                hx-on::after-request="htmx.trigger('#feed-region','refresh-feed')"
+                title="Mark applied" aria-label="Mark applied: {{ job.title }}" data-toast="Marked applied">✓</button>
         <button hx-post="/api/jobs/{{ job.id }}/status?status=hidden" hx-swap="none"
-                hx-on::after-request="htmx.trigger('#feed-region','refresh-feed')" title="Hide">✕</button>
+                hx-on::after-request="htmx.trigger('#feed-region','refresh-feed')"
+                title="Hide" aria-label="Hide {{ job.title }}" data-toast="Hidden">✕</button>
       </td>
     </tr>
     {% endfor %}

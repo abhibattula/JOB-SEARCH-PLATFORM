@@ -99,12 +99,12 @@ with US2 before US1 (US1's tailored-PDF attachment consumes US2's output).
 **Goal**: kanban pipeline, onboarding checklist, full restyle, accessibility pass.
 **Independent test**: quickstart §4 in both themes.
 
-- [ ] T038 [US4] TDD: tests/test_api.py — Applied board view renders (stage columns + counts partial), view toggle param; watch fail
-- [ ] T039 [US4] web/templates/partials/pipeline_board.html (NEW) + feed.html toggle + app.js native DnD + per-card ◀/▶ buttons hitting existing POST /api/jobs/{id}/stage with toast (FR-025)
-- [ ] T040 [US4] Onboarding checklist: web/templates/partials/onboarding.html (NEW), server-derived completion state in web/main.py (profile/resume/sponsorship/key/chromium), ONBOARDING_DISMISSED setting; render tests for fresh vs complete states (FR-027)
-- [ ] T041 [US4] Restyle remaining pages on the token system: profile.html (incl. resume drop zone), settings.html, analytics.html, job_detail.html; all page render tests stay green
-- [ ] T042 [US4] Accessibility pass: aria-labels on ☆ ✓ ✕ and all icon-only controls, aria-live="polite" on polled regions, table captions/scope, focus states audit; render tests assert accessible names present (FR-028)
-- [ ] T043 [US4] Both-themes verification: parametrized render smoke across all pages with THEME=light/dark; fix any hardcoded-color leftovers
+- [X] T038 [US4] TDD: tests/test_api.py — Applied board view renders (stage columns + counts partial), view toggle param; watch fail
+- [X] T039 [US4] web/templates/partials/pipeline_board.html (NEW) + feed.html toggle + app.js native DnD + per-card ◀/▶ buttons hitting existing POST /api/jobs/{id}/stage with toast (FR-025)
+- [X] T040 [US4] Onboarding checklist: web/templates/partials/onboarding.html (NEW), server-derived completion state in web/main.py (profile/resume/sponsorship/key/chromium), ONBOARDING_DISMISSED setting; render tests for fresh vs complete states (FR-027)
+- [X] T041 [US4] Restyle remaining pages on the token system: profile.html (incl. resume drop zone), settings.html, analytics.html, job_detail.html; all page render tests stay green
+- [X] T042 [US4] Accessibility pass: aria-labels on ☆ ✓ ✕ and all icon-only controls, aria-live="polite" on polled regions, table captions/scope, focus states audit; render tests assert accessible names present (FR-028)
+- [X] T043 [US4] Both-themes verification: parametrized render smoke across all pages with THEME=light/dark; fix any hardcoded-color leftovers
 
 **Checkpoint**: US4 deliverable — quickstart §4 passes in both themes.
 

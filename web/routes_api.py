@@ -272,6 +272,7 @@ async def save_settings(
     alerts_enabled: str | None = Form(None),
     theme: str | None = Form(None),
     autofill_use_tailored_pdf: str | None = Form(None),
+    onboarding_dismissed: str | None = Form(None),
 ):
     if llm_api_key:  # blank never clears an existing key
         settings.set("LLM_API_KEY", llm_api_key.strip())
@@ -292,6 +293,8 @@ async def save_settings(
             "AUTOFILL_USE_TAILORED_PDF",
             "1" if autofill_use_tailored_pdf == "1" else "0",
         )
+    if onboarding_dismissed == "1":
+        settings.set("ONBOARDING_DISMISSED", "1")
     if "text/html" in (request.headers.get("accept") or ""):
         return RedirectResponse("/settings", status_code=303)
     return get_settings()

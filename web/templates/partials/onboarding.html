@@ -1,0 +1,32 @@
+{# 007 US4 (FR-027) — first-run checklist. Every step's state is derived
+   live from real data (never stored flags), so it can't drift; the card
+   stops appearing once every step is done or it's dismissed. #}
+{% if onboarding %}
+<section class="welcome" id="onboarding-checklist" aria-label="Setup checklist">
+  <h2>Set up your job engine</h2>
+  <ol class="ob-steps">
+    {% for step in onboarding.steps %}
+    <li class="ob-step {{ 'done' if step.done }}">
+      <span class="glyph data" aria-hidden="true">{{ '✓' if step.done else '·' }}</span>
+      {% if step.done %}{{ step.label }}{% else %}<a href="{{ step.href }}">{{ step.label }}</a>{% endif %}
+      {% if step.hint and not step.done %}<span class="muted"> — {{ step.hint }}</span>{% endif %}
+    </li>
+    {% endfor %}
+  </ol>
+  <p class="muted">Everything stays on this computer.
+    <button type="button" class="ghost ob-dismiss" id="ob-dismiss-btn">Dismiss</button>
+  </p>
+  <script>
+    (function () {
+      const btn = document.getElementById("ob-dismiss-btn");
+      if (!btn) return;
+      btn.addEventListener("click", async function () {
+        const body = new FormData();
+        body.append("onboarding_dismissed", "1");
+        await fetch("/api/settings", { method: "POST", body: body });
+        document.getElementById("onboarding-checklist").remove();
+      });
+    })();
+  </script>
+</section>
+{% endif %}

@@ -119,6 +119,73 @@ class TestPages:
         assert "Re-extract" in resp.text
         assert "keep" in resp.text.lower()
 
+    def test_applied_board_view_renders_stage_columns(self, client):
+        """007-T038 (FR-025): the Applied view offers a stage-column board
+        with counts; the table stays available as a toggle."""
+        job = seed_job()
+        client.post(f"/api/jobs/{job['id']}/status", json={"status": "applied"})
+        client.post(f"/api/jobs/{job['id']}/stage", params={"stage": "interview"})
+
+        board = client.get("/", params={"status": "applied", "view": "board"})
+        assert board.status_code == 200
+        assert 'class="board"' in board.text
+        for stage in ("applied", "oa", "interview", "offer", "rejected"):
+            assert f'data-stage="{stage}"' in board.text
+        assert "Software Engineer, New Grad" in board.text
+        # move buttons (the keyboard/AT path) present on cards
+        assert "board-move" in board.text
+
+        table = client.get("/", params={"status": "applied"})
+        assert 'class="board"' not in table.text  # table remains the default
+        assert "view=board" in table.text  # toggle offered
+
+    def test_onboarding_checklist_reflects_real_state(self, client):
+        """007-T040 (FR-027): checklist derives from actual completion
+        state — no stored step flags that can drift from reality."""
+        from engine import db
+
+        fresh = client.get("/")
+        assert "onboarding-checklist" in fresh.text
+        assert "Upload your resume" in fresh.text
+
+        db.save_profile(resume_text="resume", resume_filename="r.pdf")
+        after_resume = client.get("/")
+        # the resume step now renders as done (✓) — state is derived live
+        assert 'class="ob-step done"' in after_resume.text
+
+    def test_onboarding_checklist_dismissible(self, client):
+        from engine import settings
+
+        settings.set("ONBOARDING_DISMISSED", "1")
+        resp = client.get("/")
+        assert "onboarding-checklist" not in resp.text
+
+    def test_feed_action_buttons_have_accessible_names(self, client):
+        """007-T042 (FR-028): icon-only ☆ ✓ ✕ controls expose aria-labels."""
+        seed_job()
+        resp = client.get("/")
+        assert 'aria-label="Save' in resp.text
+        assert 'aria-label="Mark applied' in resp.text
+        assert 'aria-label="Hide' in resp.text
+
+    def test_polled_regions_are_aria_live(self, client):
+        resp = client.get("/")
+        assert 'aria-live="polite"' in resp.text
+
+    @pytest.mark.parametrize("theme", ["light", "dark"])
+    def test_all_pages_render_in_both_themes(self, client, theme):
+        """007-T043 (FR-021): every page renders under both themes with the
+        chosen theme stamped on the document."""
+        from engine import settings
+
+        settings.set("THEME", theme)
+        job = seed_job()
+        for path in ("/", "/analytics", "/profile", "/settings", "/autofill",
+                     f"/jobs/{job['id']}"):
+            resp = client.get(path)
+            assert resp.status_code == 200, path
+            assert f'data-theme="{theme}"' in resp.text, path
+
     def test_profile_page_serves_with_sponsorship_fields_set(self, client):
         """005-T036: profile.html must render the Apply Assist fields
         section without error for a populated profile."""
