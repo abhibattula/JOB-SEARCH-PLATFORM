@@ -23,8 +23,9 @@ def _normalize(question: str) -> str:
 
 
 def _utcnow() -> str:
+    # Microsecond precision, matching engine/db.py (v0.6.1 collision fix).
     now = datetime.now(timezone.utc)
-    return now.strftime("%Y-%m-%d %H:%M:%S.") + f"{now.microsecond // 1000:03d}"
+    return now.strftime("%Y-%m-%d %H:%M:%S.") + f"{now.microsecond:06d}"
 
 
 def lookup(question_raw: str) -> dict | None:
