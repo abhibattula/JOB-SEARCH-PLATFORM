@@ -25,13 +25,13 @@ with US2 before US1 (US1's tailored-PDF attachment consumes US2's output).
 
 ## Phase 2: Foundational (blocking all stories)
 
-- [ ] T004 TDD: tests/test_db.py — roundtrip tests for new columns: user_profile (resume_file_path, resume_sections JSON, sections_edited_at), companies (h1b_denials, wage_level_median, wage_offered_median, cap_exempt, sponsor_grade), h1b_employers (denials, wage medians); watch fail
-- [ ] T005 engine/db.py — extend _MIGRATIONS, _PROFILE_COLUMNS, _PROFILE_JSON_FIELDS per data-model.md; tests green
-- [ ] T006 TDD: tests/test_settings.py + tests/test_api.py — THEME setting save/read via existing settings path; base template stamps `data-theme` from setting; watch fail → implement in web/routes_api.py + web/main.py + web/templates/base.html (incl. pre-paint inline theme script)
-- [ ] T007 web/static/styles.css — rebuild as full token system (semantic palette, spacing scale, type scale) with light "datasheet" default + `[data-theme="dark"]` scope theme + `prefers-color-scheme` fallback block; style the orphaned `.feed-table` class; WCAG 2.1 AA contrast in both themes (FR-021/FR-028)
-- [ ] T008 web/static/app.js (NEW) — toast component, `pollingAllowed()` gate, theme toggle, htmx loading/disabled hooks; wire into base.html
-- [ ] T009 web/templates/base.html — grouped nav (Search / Pipeline / Apply / Setup) with `aria-current` active state (FR-022)
-- [ ] T010 Poll-clobber fix (FR-024): conditional `hx-trigger="every 5s [pollingAllowed()]"` on feed/autofill polled regions + `hx-preserve` on stage/notes editors in web/templates/partials/feed_table.html; render test asserts gating/preserve attributes present
+- [X] T004 TDD: tests/test_db.py — roundtrip tests for new columns: user_profile (resume_file_path, resume_sections JSON, sections_edited_at), companies (h1b_denials, wage_level_median, wage_offered_median, cap_exempt, sponsor_grade), h1b_employers (denials, wage medians); watch fail
+- [X] T005 engine/db.py — extend _MIGRATIONS, _PROFILE_COLUMNS, _PROFILE_JSON_FIELDS per data-model.md; tests green
+- [X] T006 TDD: tests/test_settings.py + tests/test_api.py — THEME setting save/read via existing settings path; base template stamps `data-theme` from setting; watch fail → implement in web/routes_api.py + web/main.py + web/templates/base.html (incl. pre-paint inline theme script)
+- [X] T007 web/static/styles.css — rebuild as full token system (semantic palette, spacing scale, type scale) with light "datasheet" default + `[data-theme="dark"]` scope theme + `prefers-color-scheme` fallback block; style the orphaned `.feed-table` class; WCAG 2.1 AA contrast in both themes (FR-021/FR-028)
+- [X] T008 web/static/app.js (NEW) — toast component, `pollingAllowed()` gate, theme toggle, htmx loading/disabled hooks; wire into base.html
+- [X] T009 web/templates/base.html — grouped nav (Search / Pipeline / Apply / Setup) with `aria-current` active state (FR-022)
+- [X] T010 Poll-clobber fix (FR-024): conditional `hx-trigger="every 5s [pollingAllowed()]"` on feed/autofill polled regions + `hx-preserve` on stage/notes editors in web/templates/partials/feed_table.html; render test asserts gating/preserve attributes present
 
 **Checkpoint**: suite green; app runs in both themes; polling no longer clobbers open editors.
 

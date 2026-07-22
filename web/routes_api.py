@@ -207,6 +207,7 @@ def get_settings():
         "schedule_refresh": settings.get("SCHEDULE_REFRESH") == "1",
         "alerts_enabled": settings.get("ALERTS_ENABLED") != "0",
         "max_score_per_run": int(settings.get("MAX_SCORE_PER_RUN") or "150"),
+        "theme": settings.get("THEME") or "",
     }
 
 
@@ -219,6 +220,7 @@ async def save_settings(
     jobspy_linkedin: str | None = Form(None),
     schedule_refresh: str | None = Form(None),
     alerts_enabled: str | None = Form(None),
+    theme: str | None = Form(None),
 ):
     if llm_api_key:  # blank never clears an existing key
         settings.set("LLM_API_KEY", llm_api_key.strip())
@@ -232,6 +234,8 @@ async def save_settings(
         settings.set("SCHEDULE_REFRESH", "1" if schedule_refresh == "1" else "0")
     if alerts_enabled is not None:
         settings.set("ALERTS_ENABLED", "1" if alerts_enabled == "1" else "0")
+    if theme in ("light", "dark"):
+        settings.set("THEME", theme)
     if "text/html" in (request.headers.get("accept") or ""):
         return RedirectResponse("/settings", status_code=303)
     return get_settings()

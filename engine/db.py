@@ -176,6 +176,23 @@ _MIGRATIONS = {
         ("phone", "TEXT"),
         ("linkedin_url", "TEXT"),
         ("portfolio_url", "TEXT"),
+        # 007: resume builder + stored original upload
+        ("resume_file_path", "TEXT"),
+        ("resume_sections", "TEXT"),
+        ("sections_edited_at", "TEXT"),
+    ],
+    # 007: sponsorship intelligence
+    "companies": [
+        ("h1b_denials", "INTEGER DEFAULT 0"),
+        ("wage_level_median", "TEXT"),
+        ("wage_offered_median", "REAL"),
+        ("cap_exempt", "INTEGER DEFAULT 0"),
+        ("sponsor_grade", "TEXT"),
+    ],
+    "h1b_employers": [
+        ("denials", "INTEGER DEFAULT 0"),
+        ("wage_level_median", "TEXT"),
+        ("wage_offered_median", "REAL"),
     ],
 }
 
@@ -783,7 +800,7 @@ def _force_run_started_at(run_id: int, started_at: str) -> None:
 
 # --- user profile -----------------------------------------------------------
 
-_PROFILE_JSON_FIELDS = ("skills", "target_locations", "preferences")
+_PROFILE_JSON_FIELDS = ("skills", "target_locations", "preferences", "resume_sections")
 # Single source of truth for save_profile()'s INSERT/UPDATE — every
 # user_profile column except id/updated_at (which are handled specially).
 # Adding a new profile field means adding it here AND to _MIGRATIONS above;
@@ -792,6 +809,7 @@ _PROFILE_COLUMNS = (
     "resume_text", "resume_filename", "skills", "target_locations",
     "preferences", "authorized_without_sponsorship", "visa_status",
     "first_name", "last_name", "email", "phone", "linkedin_url", "portfolio_url",
+    "resume_file_path", "resume_sections", "sections_edited_at",
 )
 
 
@@ -805,6 +823,9 @@ def get_profile() -> dict | None:
         profile[field] = json.loads(profile[field]) if profile[field] else []
     if not isinstance(profile["preferences"], dict):
         profile["preferences"] = {}
+    # resume_sections is an object (or absent), never a list
+    if not profile["resume_sections"]:
+        profile["resume_sections"] = None
     return profile
 
 

@@ -56,7 +56,7 @@
     </script>
   </div>
   {% else %}
-  <section id="autofill-queue" hx-get="/partials/autofill/status" hx-trigger="load, every 3s" hx-swap="innerHTML"></section>
+  <section id="autofill-queue" hx-get="/partials/autofill/status" hx-trigger="load, every 3s [pollingAllowed()]" hx-swap="innerHTML"></section>
 
   <section>
     <h2>Saved jobs</h2>

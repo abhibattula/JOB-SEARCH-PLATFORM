@@ -59,7 +59,7 @@
 
 <div id="feed-region"
      hx-get="/partials/feed?{{ query_string }}"
-     hx-trigger="every 5s, refresh-feed from:body"
+     hx-trigger="every 5s [pollingAllowed()], refresh-feed from:body"
      hx-swap="innerHTML">
   {% include "partials/feed_table.html" %}
 </div>

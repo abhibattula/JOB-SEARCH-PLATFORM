@@ -70,6 +70,22 @@ class TestPages:
         assert "How did you hear about us?" in resp.text
         assert "Prefer not to say" in resp.text
 
+    def test_feed_polling_is_gated_and_editors_preserved(self, client):
+        """007-T010 (FR-024): the 5s feed poll must be conditional on
+        pollingAllowed() so background refreshes never clobber an open
+        notes/stage editor mid-edit."""
+        resp = client.get("/")
+        assert resp.status_code == 200
+        assert "every 5s [pollingAllowed()]" in resp.text
+        # base page loads the shared module that defines the gate
+        assert "/static/app.js" in resp.text
+
+    def test_nav_marks_current_page(self, client):
+        """007-T009 (FR-022): grouped nav with aria-current active state."""
+        resp = client.get("/profile")
+        assert 'aria-current="page"' in resp.text
+        assert resp.text.count('aria-current="page"') == 1
+
     def test_profile_page_serves_with_sponsorship_fields_set(self, client):
         """005-T036: profile.html must render the Apply Assist fields
         section without error for a populated profile."""

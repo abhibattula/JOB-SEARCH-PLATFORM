@@ -20,6 +20,18 @@ templates = Jinja2Templates(directory=paths.resource_path("web/templates"))
 templates.env.globals["app_version"] = APP_VERSION
 
 
+def _current_theme() -> str:
+    """Explicit user choice ('light'/'dark') or '' when unset — '' lets the
+    CSS prefers-color-scheme fallback decide (FR-021)."""
+    from engine import settings
+
+    value = settings.get("THEME") or ""
+    return value if value in ("light", "dark") else ""
+
+
+templates.env.globals["current_theme"] = _current_theme
+
+
 def _bootstrap_sponsorship() -> None:
     """Load the bundled USCIS data on first run so installed users get
     sponsor badges with zero setup. No-op once the table has rows."""

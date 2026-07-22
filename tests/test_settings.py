@@ -85,6 +85,25 @@ class TestSettingsApi:
     def test_settings_page_serves(self, client):
         assert client.get("/settings").status_code == 200
 
+    def test_theme_setting_roundtrip(self, client):
+        """007-T006 (FR-021): explicit theme choice persists via the
+        settings path and is reported by GET /api/settings."""
+        assert client.get("/api/settings").json()["theme"] == ""  # unset
+        response = client.post("/api/settings", data={"theme": "dark"})
+        assert response.status_code == 200
+        assert settings.get("THEME") == "dark"
+        assert client.get("/api/settings").json()["theme"] == "dark"
+        client.post("/api/settings", data={"theme": "light"})
+        assert settings.get("THEME") == "light"
+
+    def test_pages_stamp_data_theme_from_setting(self, client):
+        """007-T006 (FR-021): base template stamps the persisted choice
+        onto <html> so CSS [data-theme] scoping applies before first
+        paint; unset renders without a forced attribute value."""
+        settings.set("THEME", "dark")
+        resp = client.get("/settings")
+        assert 'data-theme="dark"' in resp.text
+
     def test_settings_page_renders_saved_credential_without_password(self, client, monkeypatch):
         """005-T040: the credentials section must render a saved domain and
         never leak the password into the page."""
