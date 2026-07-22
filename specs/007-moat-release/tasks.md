@@ -82,13 +82,13 @@ with US2 before US1 (US1's tailored-PDF attachment consumes US2's output).
 **Goal**: local A–F sponsor grades, cap-exempt badges, wage/lottery insight, strong-sponsors filter.
 **Independent test**: quickstart §3 with real USCIS/DOL files.
 
-- [ ] T031 [US3] TDD: tests/test_sponsorship.py — wage-level/offered-wage column capture from fixture frames (with and without those columns → FR-010 tolerance), denial-column summing, per-employer medians; watch fail
-- [ ] T032 [US3] engine/sponsorship.py — extend load_dol_dir/load_uscis_dir/store_employers for denials + wage data
-- [ ] T033 [US3] TDD: tests/test_sponsor_grade.py (NEW) — grade formula bands (A≥85…F), ≥10-petition floor → None below (FR-011), cap-exempt heuristic true/false cases incl. word-boundary non-matches ("Universal Instruments" ≠ university), lottery hint from median wage level; watch fail
-- [ ] T034 [US3] engine/sponsorship.py — grade(), cap_exempt(), lottery hint; recompute inside apply_to_companies(); tests green
-- [ ] T035 [US3] TDD: tests/test_api.py — feed rows carry sponsor_grade/cap_exempt, strong_sponsors=1 filter (grade ≥ B or cap-exempt, composes with existing params), detail sponsor_evidence object per contracts; watch fail
-- [ ] T036 [US3] engine/db.py query_jobs strong_sponsors param + payload fields; web/routes_api.py param + detail evidence
-- [ ] T037 [US3] web/templates/partials/feed_table.html + job_detail.html + feed.html — grade badge, cap-exempt badge, evidence panel (approvals/denials/rate/wage/lottery hint/grade reasons, estimate labeling per FR-013), "Strong sponsors only" toggle
+- [X] T031 [US3] TDD: tests/test_sponsorship.py — wage-level/offered-wage column capture from fixture frames (with and without those columns → FR-010 tolerance), denial-column summing, per-employer medians; watch fail
+- [X] T032 [US3] engine/sponsorship.py — extend load_dol_dir/load_uscis_dir/store_employers for denials + wage data
+- [X] T033 [US3] TDD: tests/test_sponsor_grade.py (NEW) — grade formula bands (A≥85…F), ≥10-petition floor → None below (FR-011), cap-exempt heuristic true/false cases incl. word-boundary non-matches ("Universal Instruments" ≠ university), lottery hint from median wage level; watch fail
+- [X] T034 [US3] engine/sponsorship.py — grade(), cap_exempt(), lottery hint; recompute inside apply_to_companies(); tests green
+- [X] T035 [US3] TDD: tests/test_api.py — feed rows carry sponsor_grade/cap_exempt, strong_sponsors=1 filter (grade ≥ B or cap-exempt, composes with existing params), detail sponsor_evidence object per contracts; watch fail
+- [X] T036 [US3] engine/db.py query_jobs strong_sponsors param + payload fields; web/routes_api.py param + detail evidence
+- [X] T037 [US3] web/templates/partials/feed_table.html + job_detail.html + feed.html — grade badge, cap-exempt badge, evidence panel (approvals/denials/rate/wage/lottery hint/grade reasons, estimate labeling per FR-013), "Strong sponsors only" toggle
 
 **Checkpoint**: US3 independently deliverable (quickstart §3 passes against real data).
 

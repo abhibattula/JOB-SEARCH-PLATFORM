@@ -34,6 +34,7 @@ def parse_feed_params(
     ineligible: int = 0,
     min_score: float | None = None,
     seen: str | None = None,
+    strong_sponsors: int = 0,
 ) -> dict:
     seen_since = None
     if seen == "24h":
@@ -65,6 +66,7 @@ def parse_feed_params(
         "ineligible": bool(ineligible),
         "min_score": min_score if min_score and min_score > 0 else None,
         "seen_since": seen_since,
+        "strong_sponsors": bool(strong_sponsors),
     }
 
 
@@ -86,6 +88,8 @@ def job_summary(job: dict) -> dict:
         "stage": job.get("stage"),
         "follow_up": job.get("follow_up", False),
         "is_new": job.get("is_new", False),
+        "sponsor_grade": job.get("sponsor_grade"),
+        "cap_exempt": bool(job.get("cap_exempt")),
     }
 
 
@@ -115,10 +119,11 @@ def list_jobs(
     ineligible: int = 0,
     min_score: float | None = None,
     seen: str | None = None,
+    strong_sponsors: int = 0,
 ):
     params = parse_feed_params(
         window, status, location, remote, sort, entry_level, limit, offset,
-        ineligible, min_score, seen,
+        ineligible, min_score, seen, strong_sponsors,
     )
     jobs, total = db.query_jobs(**params)
     return {"jobs": [job_summary(j) for j in jobs], "total": total}
@@ -137,7 +142,50 @@ def job_detail(job_id: int):
     payload["sponsorship_evidence"] = json.loads(evidence) if evidence else None
     match = job.get("match_json")
     payload["match"] = json.loads(match) if match else None
+    payload["sponsor_evidence"] = sponsor_evidence_for(job)
     return payload
+
+
+def sponsor_evidence_for(job: dict) -> dict:
+    """007 (FR-015): the sponsor-intelligence evidence panel — nulls where
+    data is absent, never fabricated values. Shared by the JSON detail and
+    the job page template."""
+    from engine import sponsorship
+
+    approvals = job.get("h1b_approvals") or 0
+    denials = job.get("h1b_denials") or 0
+    total = approvals + denials
+    return {
+        "approvals": approvals,
+        "denials": denials,
+        "approval_rate": round(approvals / total, 3) if total else None,
+        "wage_level_median": job.get("wage_level_median"),
+        "wage_offered_median": job.get("wage_offered_median"),
+        "lottery_hint": sponsorship.lottery_hint(job.get("wage_level_median")),
+        "cap_exempt": bool(job.get("cap_exempt")),
+        "grade": job.get("sponsor_grade"),
+        "grade_reasons": _grade_reasons(job),
+    }
+
+
+def _grade_reasons(job: dict) -> list[str]:
+    """Plain-language evidence lines for the grade panel (FR-015)."""
+    from engine.sponsorship import GRADE_MIN_PETITIONS
+
+    approvals = job.get("h1b_approvals") or 0
+    denials = job.get("h1b_denials") or 0
+    reasons = []
+    if approvals or denials:
+        reasons.append(f"{approvals} H-1B approvals, {denials} denials in loaded years")
+    if (approvals + denials) and (approvals + denials) < GRADE_MIN_PETITIONS:
+        reasons.append(
+            f"Below the {GRADE_MIN_PETITIONS}-petition evidence floor — shown as UNKNOWN"
+        )
+    if job.get("wage_level_median"):
+        reasons.append(f"Median engineering wage level: {job['wage_level_median']}")
+    if job.get("cap_exempt"):
+        reasons.append("Likely cap-exempt: can sponsor year-round outside the lottery")
+    return reasons
 
 
 @router.post("/jobs/{job_id}/status")

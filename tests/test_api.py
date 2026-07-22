@@ -198,6 +198,67 @@ class TestJobsApi:
         )
 
 
+class TestSponsorIntelligenceApi:
+    def _grade_company(self, name, grade=None, cap=0, wage=None, offered=None, denials=0):
+        with db._conn() as conn:
+            cid = db._get_or_create_company(conn, name)
+            conn.execute(
+                "UPDATE companies SET sponsor_grade=?, cap_exempt=?,"
+                " wage_level_median=?, wage_offered_median=?, h1b_denials=?"
+                " WHERE id=?",
+                (grade, cap, wage, offered, denials, cid),
+            )
+
+    def test_feed_rows_carry_grade_and_cap_exempt(self, client):
+        """007-T035 (FR-011/012): grade + cap-exempt in the jobs payload."""
+        seed_job(url="https://example.com/g1", company="GradeCo")
+        self._grade_company("GradeCo", grade="A", cap=0)
+        seed_job(url="https://example.com/u1", company="State University")
+        self._grade_company("State University", grade=None, cap=1)
+
+        payload = client.get("/api/jobs").json()
+        by_company = {j["company"]: j for j in payload["jobs"]}
+        assert by_company["GradeCo"]["sponsor_grade"] == "A"
+        assert by_company["GradeCo"]["cap_exempt"] is False
+        assert by_company["State University"]["sponsor_grade"] is None
+        assert by_company["State University"]["cap_exempt"] is True
+
+    def test_strong_sponsors_filter(self, client):
+        """007-T035 (FR-014): grade >= B or cap-exempt; composes with
+        existing filters."""
+        seed_job(url="https://example.com/a", title="A Job", company="ACo")
+        self._grade_company("ACo", grade="A")
+        seed_job(url="https://example.com/c", title="C Job", company="CCo")
+        self._grade_company("CCo", grade="C")
+        seed_job(url="https://example.com/u", title="Uni Job", company="State University")
+        self._grade_company("State University", cap=1)
+        seed_job(url="https://example.com/n", title="No Data Job", company="NoCo")
+
+        narrowed = client.get("/api/jobs", params={"strong_sponsors": 1}).json()
+        titles = {j["title"] for j in narrowed["jobs"]}
+        assert titles == {"A Job", "Uni Job"}
+        # composes with existing params
+        composed = client.get(
+            "/api/jobs", params={"strong_sponsors": 1, "location": "San Francisco"}
+        ).json()
+        assert composed["total"] == 2  # both seeded in SF by default
+
+    def test_detail_includes_sponsor_evidence(self, client):
+        """007-T035 (FR-015): the evidence panel object."""
+        job = seed_job(url="https://example.com/e1", company="GradeCo")
+        self._grade_company("GradeCo", grade="B", cap=0, wage="III",
+                            offered=150000.0, denials=12)
+
+        detail = client.get(f"/api/jobs/{job['id']}").json()
+        evidence = detail["sponsor_evidence"]
+        assert evidence["grade"] == "B"
+        assert evidence["denials"] == 12
+        assert evidence["wage_level_median"] == "III"
+        assert evidence["wage_offered_median"] == 150000.0
+        assert evidence["cap_exempt"] is False
+        assert "lottery_hint" in evidence
+
+
 class TestProfileApi:
     def _pdf(self):
         import fitz

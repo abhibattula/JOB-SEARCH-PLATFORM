@@ -59,10 +59,12 @@ def _feed_context(
     ineligible: int = 0,
     min_score: float | None = None,
     seen: str | None = None,
+    strong_sponsors: int = 0,
 ) -> dict:
     params = parse_feed_params(
         window, status, location, remote, sort, entry_level,
         ineligible=ineligible, min_score=min_score, seen=seen,
+        strong_sponsors=strong_sponsors,
     )
     jobs, total = db.query_jobs(**params)
     run = db.get_run_status()
@@ -84,6 +86,7 @@ def _feed_context(
         "entry_level": entry_level or "",
         "ineligible": bool(ineligible),
         "min_score": int(min_score) if min_score else 0,
+        "strong_sponsors": bool(strong_sponsors),
         "query_string": request.url.query,
     }
 
@@ -117,10 +120,11 @@ def create_app() -> FastAPI:
         ineligible: int = 0,
         min_score: float | None = None,
         seen: str | None = None,
+        strong_sponsors: int = 0,
     ):
         context = _feed_context(
             request, window, status, location, remote, sort, entry_level,
-            ineligible, min_score, seen,
+            ineligible, min_score, seen, strong_sponsors,
         )
         return templates.TemplateResponse(request, "feed.html", context)
 
@@ -136,10 +140,11 @@ def create_app() -> FastAPI:
         ineligible: int = 0,
         min_score: float | None = None,
         seen: str | None = None,
+        strong_sponsors: int = 0,
     ):
         context = _feed_context(
             request, window, status, location, remote, sort, entry_level,
-            ineligible, min_score, seen,
+            ineligible, min_score, seen, strong_sponsors,
         )
         return templates.TemplateResponse(request, "partials/feed_table.html", context)
 
@@ -157,10 +162,14 @@ def create_app() -> FastAPI:
             else None
         )
         tailoring = json.loads(job["tailor_json"]) if job.get("tailor_json") else None
+        from .routes_api import sponsor_evidence_for
+
+        sponsor_intel = sponsor_evidence_for(job)
         return templates.TemplateResponse(
             request,
             "job_detail.html",
-            {"job": job, "match": match, "evidence": evidence, "tailoring": tailoring},
+            {"job": job, "match": match, "evidence": evidence,
+             "tailoring": tailoring, "sponsor_intel": sponsor_intel},
         )
 
     @app.get("/profile", response_class=HTMLResponse)
