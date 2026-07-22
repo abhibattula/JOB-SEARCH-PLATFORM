@@ -8,6 +8,26 @@
 Approved design doc: `docs/superpowers/specs/2026-07-22-feature-008-design.md`
 (root causes confirmed by the 2026-07-22 audit with file:line evidence).
 
+## Clarifications
+
+### Session 2026-07-22
+
+- Q: Which version was the user running when reporting the defects? → A:
+  v0.7.0 (footer-confirmed) — all complaints are real defects in the
+  shipped desktop shell and defaults, not a stale install.
+- Q: Apply Assist browser engine? → A: Drive the user's installed
+  Edge/Chrome (isolated app profile); remove the downloaded-browser flow
+  entirely.
+- Q: LinkedIn posture given $0 rate-limit reality? → A: Opt-in scraping
+  with explicit warning + always-available "Search on LinkedIn" link-outs.
+- Q: Release shape? → A: One v0.8.0 launch release containing everything.
+- Defaults adopted without further questions (project precedent: core
+  scoring assets are bundled, opt-in assets are downloaded): the semantic
+  ranking model ships in the installer; the obsolete downloaded-Chromium
+  directory is left on disk with a "reclaim space" cleanup offered in
+  Diagnostics; delisted jobs stay visible only in the "all" window with a
+  delisted badge.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Apply Assist that visibly works or visibly explains (Priority: P1)
