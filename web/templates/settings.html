@@ -42,6 +42,19 @@
         <input type="checkbox" name="alerts_enabled" value="1" {{ 'checked' if settings.alerts_enabled }}>
         Desktop notification when a refresh finds new 70+ matches
       </label>
+      <label class="check">
+        <input type="hidden" name="autofill_use_tailored_pdf" value="0">
+        <input type="checkbox" name="autofill_use_tailored_pdf" value="1" {{ 'checked' if settings.autofill_use_tailored_pdf }}>
+        Apply Assist attaches each job's tailored resume PDF when one exists
+        (off = always the original upload)
+      </label>
+      <label>Theme
+        <select name="theme">
+          <option value="" {{ 'selected' if not settings.theme }}>Follow system</option>
+          <option value="light" {{ 'selected' if settings.theme == 'light' }}>Light — datasheet</option>
+          <option value="dark" {{ 'selected' if settings.theme == 'dark' }}>Dark — scope screen</option>
+        </select>
+      </label>
       <div class="settings-actions">
         <button type="submit">Save settings</button>
         <button type="button" class="ghost" hx-post="/api/settings/test" hx-target="#key-test-result" hx-swap="innerHTML">

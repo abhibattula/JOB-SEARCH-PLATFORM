@@ -96,6 +96,15 @@ class TestSettingsApi:
         client.post("/api/settings", data={"theme": "light"})
         assert settings.get("THEME") == "light"
 
+    def test_autofill_tailored_pdf_toggle_roundtrip(self, client):
+        """007-T030 (FR-002): default on; explicit off persists."""
+        assert client.get("/api/settings").json()["autofill_use_tailored_pdf"] is True
+        client.post("/api/settings", data={"autofill_use_tailored_pdf": "0"})
+        assert settings.get("AUTOFILL_USE_TAILORED_PDF") == "0"
+        assert client.get("/api/settings").json()["autofill_use_tailored_pdf"] is False
+        client.post("/api/settings", data={"autofill_use_tailored_pdf": "1"})
+        assert client.get("/api/settings").json()["autofill_use_tailored_pdf"] is True
+
     def test_pages_stamp_data_theme_from_setting(self, client):
         """007-T006 (FR-021): base template stamps the persisted choice
         onto <html> so CSS [data-theme] scoping applies before first

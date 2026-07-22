@@ -209,6 +209,7 @@ def get_settings():
         "alerts_enabled": settings.get("ALERTS_ENABLED") != "0",
         "max_score_per_run": int(settings.get("MAX_SCORE_PER_RUN") or "150"),
         "theme": settings.get("THEME") or "",
+        "autofill_use_tailored_pdf": settings.get("AUTOFILL_USE_TAILORED_PDF") != "0",
     }
 
 
@@ -222,6 +223,7 @@ async def save_settings(
     schedule_refresh: str | None = Form(None),
     alerts_enabled: str | None = Form(None),
     theme: str | None = Form(None),
+    autofill_use_tailored_pdf: str | None = Form(None),
 ):
     if llm_api_key:  # blank never clears an existing key
         settings.set("LLM_API_KEY", llm_api_key.strip())
@@ -237,6 +239,11 @@ async def save_settings(
         settings.set("ALERTS_ENABLED", "1" if alerts_enabled == "1" else "0")
     if theme in ("light", "dark"):
         settings.set("THEME", theme)
+    if autofill_use_tailored_pdf is not None:
+        settings.set(
+            "AUTOFILL_USE_TAILORED_PDF",
+            "1" if autofill_use_tailored_pdf == "1" else "0",
+        )
     if "text/html" in (request.headers.get("accept") or ""):
         return RedirectResponse("/settings", status_code=303)
     return get_settings()

@@ -155,6 +155,69 @@ class TestQueueRoutes:
         assert body["current_job_id"] == j1
 
 
+class TestDepthRoutes:
+    """007-T027: extended status payload + rescan + resume-queue routes."""
+
+    def _start_queue(self, client, monkeypatch, job_ids):
+        from engine.autofill import browser_controller, browser_setup
+
+        monkeypatch.setattr(browser_setup, "is_installed", lambda: True)
+        monkeypatch.setattr(browser_controller, "_open_job", lambda jid: None)
+        resp = client.post("/api/autofill/queue", json={"job_ids": job_ids})
+        assert resp.json()["started"] is True
+
+    def test_status_includes_queue_progress_and_current_title(self, client, monkeypatch):
+        j1 = seed_job("https://x.example/1")
+        j2 = seed_job("https://x.example/2")
+        self._start_queue(client, monkeypatch, [j1, j2])
+
+        body = client.get("/api/autofill/status").json()
+
+        assert body["progress"] == {"done": 0, "total": 2}
+        states = {e["job_id"]: e["state"] for e in body["queue"]}
+        assert states[j1] == "current" and states[j2] == "pending"
+        current_entry = next(e for e in body["queue"] if e["state"] == "current")
+        assert current_entry["title"] == "SWE"
+        assert current_entry["company"] == "TestCo"
+        assert body["fill_report"] == []
+        assert body["interrupted"] is False
+        assert body["summary"] is None
+
+    def test_status_reports_summary_after_queue_ends(self, client, monkeypatch):
+        j1 = seed_job("https://x.example/1")
+        self._start_queue(client, monkeypatch, [j1])
+        client.post("/api/autofill/next")  # past the end
+
+        body = client.get("/api/autofill/status").json()
+
+        assert body["summary"] is not None
+        assert body["summary"]["per_job"][0]["job_id"] == j1
+
+    def test_rescan_route_and_409_without_session(self, client, monkeypatch):
+        from engine.autofill import browser_controller
+
+        assert client.post("/api/autofill/rescan").status_code == 409
+
+        j1 = seed_job("https://x.example/1")
+        self._start_queue(client, monkeypatch, [j1])
+        monkeypatch.setattr(
+            browser_controller, "rescan", lambda: {"rescanned": True, "filled": 3}
+        )
+        body = client.post("/api/autofill/rescan").json()
+        assert body == {"rescanned": True, "filled": 3}
+
+    def test_resume_queue_route_and_409_without_interruption(self, client, monkeypatch):
+        from engine.autofill import browser_controller
+
+        assert client.post("/api/autofill/resume-queue").status_code == 409
+
+        j1 = seed_job("https://x.example/1")
+        self._start_queue(client, monkeypatch, [j1])
+        browser_controller._mark_interrupted()
+        body = client.post("/api/autofill/resume-queue").json()
+        assert body["resumed"] is True
+
+
 class TestConfirmAnswerRoute:
     """005-T034: the only write path into answer_bank (FR-011)."""
 

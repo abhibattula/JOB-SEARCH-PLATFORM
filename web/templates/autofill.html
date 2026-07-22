@@ -61,6 +61,10 @@
   <section>
     <h2>Saved jobs</h2>
     {% if jobs %}
+    <p class="settings-actions">
+      <button type="button" class="ghost" id="autofill-select-all">Select all</button>
+      <button type="button" class="ghost" id="autofill-select-none">Select none</button>
+    </p>
     <table class="feed-table">
       <tbody>
         {% for job in jobs %}
@@ -74,6 +78,12 @@
     </table>
     <button id="autofill-start-btn" type="button">Start Apply Assist</button>
     <script>
+      document.getElementById('autofill-select-all').addEventListener('click', () => {
+        document.querySelectorAll('.autofill-job-check').forEach(el => el.checked = true);
+      });
+      document.getElementById('autofill-select-none').addEventListener('click', () => {
+        document.querySelectorAll('.autofill-job-check').forEach(el => el.checked = false);
+      });
       document.getElementById('autofill-start-btn').addEventListener('click', async (e) => {
         const btn = e.target;
         const errEl = document.getElementById('autofill-error');

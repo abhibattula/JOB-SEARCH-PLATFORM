@@ -217,9 +217,19 @@ def create_app() -> FastAPI:
     def autofill_status_partial(request: Request):
         from engine.autofill import browser_controller
 
+        snapshot = browser_controller.queue_snapshot()
         current = browser_controller.current_job()
+        current_title = None
+        if current is not None:
+            entry = next(
+                (e for e in snapshot["queue"] if e["job_id"] == current["job_id"]), None
+            )
+            if entry:
+                current_title = f'{entry["title"]} — {entry["company"]}'
         return templates.TemplateResponse(
-            request, "partials/autofill_status.html", {"current": current}
+            request,
+            "partials/autofill_status.html",
+            {"current": current, "snapshot": snapshot, "current_title": current_title},
         )
 
     return app

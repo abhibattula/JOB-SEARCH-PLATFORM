@@ -74,13 +74,48 @@ def autofill_status():
     from engine.autofill import browser_controller, browser_setup
 
     current = browser_controller.current_job()
+    snapshot = browser_controller.queue_snapshot()
     return {
         "chromium_installed": browser_setup.is_installed(),
         "queue_active": current is not None,
         "current_job_id": current["job_id"] if current else None,
         "remaining": current["remaining"] if current else 0,
         "fell_back": current["fell_back"] if current else False,
+        # 007 mission-control payload (FR-026)
+        "queue": snapshot["queue"],
+        "progress": snapshot["progress"],
+        "fill_report": snapshot["fill_report"],
+        "interrupted": snapshot["interrupted"],
+        "summary": snapshot["summary"],
     }
+
+
+@router.post("/rescan")
+def rescan_current_page():
+    """007 (FR-003 fallback): manual re-classify-and-fill of the current
+    page, for SPA re-renders that never navigate."""
+    from engine.autofill import browser_controller
+
+    result = browser_controller.rescan()
+    if result is None:
+        raise HTTPException(status_code=409, detail="no active Apply Assist session")
+    return result
+
+
+@router.post("/resume-queue")
+def resume_queue():
+    """007 (FR-008): relaunch the browser at the current queue position
+    after the window was closed."""
+    from engine.autofill import browser_controller
+
+    try:
+        current = browser_controller.resume_queue()
+    except Exception as exc:
+        log.warning("Apply Assist failed to resume", exc_info=True)
+        return {"resumed": False, "error": str(exc)[:300]}
+    if current is None:
+        raise HTTPException(status_code=409, detail="nothing to resume")
+    return {"resumed": True, "current_job_id": current["job_id"]}
 
 
 class ConfirmAnswerRequest(BaseModel):

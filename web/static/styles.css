@@ -250,6 +250,23 @@ a.tailor-btn:hover, a.tailor-btn:focus-visible { text-decoration: none; filter: 
 .profile-form input { padding: 0.4rem var(--s2); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-raised); color: var(--ink); font: inherit; }
 .profile-form button { justify-self: start; padding: 0.45rem var(--s4); background: var(--ink); color: var(--surface); border: 0; border-radius: var(--r-md); font: inherit; cursor: pointer; }
 
+/* ---------- Apply Assist mission control (007 US1/US4) ---------- */
+.mission-panel { border: 1px solid var(--line); border-radius: var(--r-lg); padding: var(--s4); background: var(--surface-raised); display: grid; gap: var(--s3); margin-bottom: var(--s4); }
+.mission-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--s3); flex-wrap: wrap; }
+.mission-head p { margin: 0; }
+.mission-progress { font-size: var(--fs-lg); font-weight: 700; }
+.mission-queue { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.2rem; font-size: var(--fs-sm); }
+.mission-queue .glyph { display: inline-block; width: 1.2em; }
+.mission-queue .q-done { color: var(--muted); }
+.mission-queue .q-done .glyph { color: var(--ok); }
+.mission-queue .q-current { font-weight: 600; }
+.mission-queue .q-current .glyph { color: var(--accent); }
+.mission-queue .q-pending { color: var(--muted); }
+.fill-report summary { font-family: var(--mono); font-size: var(--fs-sm); color: var(--muted); }
+.autofill-pending { border: 2px solid var(--warn); border-radius: var(--r-md); padding: var(--s3); display: grid; gap: var(--s2); background: var(--warn-tint); }
+.autofill-pending textarea { font: inherit; font-size: var(--fs-sm); border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface-raised); color: var(--ink); padding: var(--s2); }
+.autofill-pending button { justify-self: start; padding: 0.4rem 0.9rem; background: var(--ink); color: var(--surface); border: 0; border-radius: var(--r-md); font: inherit; cursor: pointer; }
+
 /* ---------- resume builder (007 US2) ---------- */
 .resume-builder { display: grid; gap: var(--s3); margin: var(--s3) 0 var(--s4); }
 .resume-builder h3 { margin: var(--s2) 0 0; font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
