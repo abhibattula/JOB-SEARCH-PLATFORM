@@ -296,6 +296,31 @@ class TestProfile:
         assert profile["phone"] == "555-0199"
         assert profile["first_name"] == "Ada"
 
+    def test_profile_resume_builder_fields_roundtrip(self, tmp_db):
+        """007-T004: resume_file_path (stored original upload),
+        resume_sections (structured JSON), sections_edited_at (drives the
+        keep-vs-re-extract prompt)."""
+        sections = {
+            "experience": [{"title": "Intern", "organization": "Acme",
+                            "start": "2025-05", "end": "2025-08",
+                            "bullets": ["Built firmware"]}],
+            "education": [], "projects": [], "skills": ["python"],
+        }
+        db.save_profile(
+            resume_file_path="C:/data/resume/r.pdf",
+            resume_sections=sections,
+            sections_edited_at="2026-07-21 12:00:00.000000",
+        )
+        profile = db.get_profile()
+        assert profile["resume_file_path"] == "C:/data/resume/r.pdf"
+        assert profile["resume_sections"] == sections  # JSON roundtrip
+        assert profile["sections_edited_at"] == "2026-07-21 12:00:00.000000"
+        # partial update must not clobber the sections
+        db.save_profile(resume_file_path="C:/data/resume/r2.pdf")
+        profile = db.get_profile()
+        assert profile["resume_sections"] == sections
+        assert profile["resume_file_path"] == "C:/data/resume/r2.pdf"
+
     def test_profile_sponsorship_and_visa_fields_roundtrip(self, tmp_db):
         """005-T008: user_profile gains authorized_without_sponsorship/visa_status
         so answer_bank.suggest() can ground drafts in facts the user provided."""
@@ -309,6 +334,45 @@ class TestProfile:
         assert profile["visa_status"] == "OPT"
         db.save_profile(visa_status="H-1B")
         assert db.get_profile()["visa_status"] == "H-1B"
+
+
+class TestSponsorIntelColumns:
+    """007-T004: sponsorship-intelligence columns land via _MIGRATIONS —
+    companies (denials, wage medians, cap_exempt, sponsor_grade) and
+    h1b_employers (denials, wage medians)."""
+
+    def test_companies_gain_grade_columns(self, tmp_db):
+        with db._conn() as conn:
+            cid = db._get_or_create_company(conn, "GradeCo")
+            conn.execute(
+                "UPDATE companies SET h1b_denials=?, wage_level_median=?,"
+                " wage_offered_median=?, cap_exempt=?, sponsor_grade=?"
+                " WHERE id=?",
+                (7, "III", 145000.0, 0, "B", cid),
+            )
+            row = conn.execute(
+                "SELECT * FROM companies WHERE id=?", (cid,)
+            ).fetchone()
+        assert row["h1b_denials"] == 7
+        assert row["wage_level_median"] == "III"
+        assert row["wage_offered_median"] == 145000.0
+        assert row["cap_exempt"] == 0
+        assert row["sponsor_grade"] == "B"
+
+    def test_h1b_employers_gain_wage_denial_columns(self, tmp_db):
+        with db._conn() as conn:
+            conn.execute(
+                "INSERT INTO h1b_employers (normalized_name, display_name,"
+                " approvals, denials, wage_level_median, wage_offered_median)"
+                " VALUES (?, ?, ?, ?, ?, ?)",
+                ("gradeco", "GradeCo", 40, 5, "IV", 160000.0),
+            )
+            row = conn.execute(
+                "SELECT * FROM h1b_employers WHERE normalized_name='gradeco'"
+            ).fetchone()
+        assert row["denials"] == 5
+        assert row["wage_level_median"] == "IV"
+        assert row["wage_offered_median"] == 160000.0
 
 
 class TestAnswerBank:

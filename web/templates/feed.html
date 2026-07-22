@@ -4,25 +4,7 @@
 <!-- Kick a background refresh on open; server no-ops inside the 30-min cooldown -->
 <div hx-post="/api/refresh" hx-trigger="load" hx-swap="none"></div>
 
-{% if not has_profile and not has_llm_key %}
-<div class="welcome">
-  <h2>Welcome — three steps to a personalized job feed</h2>
-  <ol>
-    <li><a href="/profile">Upload your resume</a> so jobs can be scored against it.</li>
-    <li><a href="/settings">Add your free AI key</a> (from console.groq.com — no card). Basic keyword scores work right away; the key upgrades them to full AI analysis with gap advice.</li>
-    <li>Hit <strong>Refresh now</strong> below — jobs stream in from 8 sources within a few minutes.</li>
-  </ol>
-  <p class="muted">The feed already works without steps 1–2; they add scoring. Everything stays on this computer.</p>
-</div>
-{% elif not has_profile %}
-<div class="notice">
-  Add your resume on the <a href="/profile">Profile</a> page to unlock match scores and gap analysis.
-</div>
-{% elif not has_llm_key %}
-<div class="notice">
-  Add your free AI key in <a href="/settings">Settings</a> to unlock match scores for your resume.
-</div>
-{% endif %}
+{% include "partials/onboarding.html" %}
 
 <form class="toolbar" method="get" action="/">
   <div class="segmented" role="group" aria-label="Time window">
@@ -34,6 +16,9 @@
   <input type="hidden" name="status" value="{{ status_view }}">
   <input type="search" name="location" value="{{ location }}" placeholder="Location contains…">
   <label class="check"><input type="checkbox" name="remote" value="1" {{ 'checked' if remote }}> Remote only</label>
+  <label class="check" title="Sponsor grade B or better, or likely cap-exempt employers (universities/nonprofits that skip the H-1B lottery)">
+    <input type="checkbox" name="strong_sponsors" value="1" {{ 'checked' if strong_sponsors }}> Strong sponsors only
+  </label>
   <select name="sort">
     <option value="score" {{ 'selected' if sort == 'score' }}>Sort: match score</option>
     <option value="date" {{ 'selected' if sort == 'date' }}>Sort: newest</option>
@@ -48,6 +33,12 @@
     <option value="70" {{ 'selected' if min_score == 70 }}>Match: 70+</option>
     <option value="85" {{ 'selected' if min_score == 85 }}>Match: 85+</option>
   </select>
+  {% if status_view == 'applied' %}
+  <div class="segmented" role="group" aria-label="Pipeline view">
+    <a class="{{ 'on' if not board_view }}" href="/?status=applied&window={{ window }}">Table</a>
+    <a class="{{ 'on' if board_view }}" href="/?status=applied&window={{ window }}&view=board">Board</a>
+  </div>
+  {% endif %}
   <button type="submit">Apply filters</button>
   <button type="button" class="ghost" title="Bypass the cooldown and pull all sources now"
           hx-post="/api/refresh?force=1" hx-swap="none"
@@ -57,9 +48,9 @@
   <a class="export-link data" href="/api/export?{{ query_string }}" title="Download the current view as CSV">CSV ↓</a>
 </form>
 
-<div id="feed-region"
+<div id="feed-region" aria-live="polite"
      hx-get="/partials/feed?{{ query_string }}"
-     hx-trigger="every 5s, refresh-feed from:body"
+     hx-trigger="every 5s [pollingAllowed()], refresh-feed from:body"
      hx-swap="innerHTML">
   {% include "partials/feed_table.html" %}
 </div>

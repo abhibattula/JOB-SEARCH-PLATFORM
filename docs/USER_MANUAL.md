@@ -238,11 +238,13 @@ faces over the same engine — anything the app can do, a script can do.
 | `ingest/hn.py` | Latest "Ask HN: Who is hiring?" thread via the Algolia API. Parses the conventional `Company \| Role \| Location` first line; each comment's own timestamp is the posting date. | `fetch_jobs([])` |
 | `ingest/jobspy_source.py` | Indeed (and optionally LinkedIn) via the python-jobspy library, searching entry-level SWE/hardware terms. Best-effort by design. | `fetch_jobs([])` |
 | `basic_match.py` | Deterministic local scorer (curated SWE/hardware skill dictionary): powers `~NN` scores with no AI key; upgraded to LLM scores automatically. Also accepts the user's explicit Profile skills list (`extra_skills`) alongside resume-text regex extraction. |
+| `resume_extract.py` | (007) LLM extraction of the uploaded resume into structured sections (experience/education/projects/skills) via the tier dispatcher — schema-validated, bounded retry, None without an AI tier (manual forms take over). User review in the Resume builder is the quality gate. |
+| `resume_pdf.py` | (007) ATS-safe resume + cover-letter PDF rendering (fpdf2 + bundled DejaVu fonts, fully offline). Per-job tailored variants lead with `tailor.py`'s output; a fingerprint cache re-renders whenever sections or tailoring change — a stale PDF can never be served. |
 | `alerts.py` | Post-refresh "new strong matches" computation + desktop notification (plyer, best-effort, toggleable). |
 | `tailor.py` | Per-job tailored bullets/cover letter/ATS keywords via the LLM, no-invention prompt guard, cached in `jobs.tailor_json` until the resume changes. |
 | `updates.py` | GitHub Releases version check (silent when offline). |
 | `filters.py` | The two classifiers. Entry-level: seniority markers always lose, then entry markers / hardware families / description scan — and the title must be an engineering role at all. Eligibility: negative wording ("unable to sponsor", citizens-only, security clearance, ITAR/"U.S. person" — word-boundary regexes so "military" never matches ITAR) beats positive wording (visa sponsorship, H-1B, OPT/CPT) → EXCLUDED, which is hidden from all normal views and never scored. | `classify_entry_level`, `scan_sponsorship`, `rate_sponsorship` |
-| `sponsorship.py` | Loads USCIS CSVs (approval counts per employer) and DOL LCA files (job titles, filtered to engineering SOC codes), stores them, and joins company names to records with three-stage matching. | `load_all`, `match_employer`, `apply_to_companies` |
+| `sponsorship.py` | Loads USCIS CSVs (approval **and denial** counts per employer) and DOL LCA files (engineering job titles **plus wage levels and offered wages**), stores them, and joins company names to records with three-stage matching. (007) Also computes the local A–F sponsor grade (≥10-petition floor, else UNKNOWN), the word-boundary cap-exempt heuristic, and the wage-weighted lottery hint. | `load_all`, `match_employer`, `apply_to_companies`, `grade`, `cap_exempt`, `lottery_hint` |
 | `matcher.py` | LLM calls through the OpenAI-compatible client (Groq by default — swap providers via `.env` only). Output must validate against the `MatchAnalysis` schema; one retry, then the job stays unscored. Throttled for free-tier limits. | `analyze_match`, `extract_skills`, `MatchAnalysis` |
 | `resume.py` | PDF → text with PyMuPDF. Raises `NoTextError` for scanned/garbage files. | `extract_text` |
 
@@ -323,12 +325,15 @@ everything (next run rebuilds it, but statuses are lost).
 | `GET /api/analytics` | Funnel + response-rate aggregates. |
 | `POST /api/settings/check-update` | Compare the running version against GitHub Releases. |
 | `GET /api/export` | The current filtered view as a CSV download. |
-| `POST /api/autofill/setup` \| `queue` \| `next` \| `stop` \| `GET .../status` | Apply Assist session control — see [contracts/http-api.md](../specs/005-apply-assist/contracts/http-api.md). |
+| `POST /api/autofill/setup` \| `queue` \| `next` \| `stop` \| `GET .../status` | Apply Assist session control. (007) `status` also returns the full queue with per-job state, N-of-M progress, the per-field fill report (passwords pre-masked), the interrupted flag, and the batch summary. |
+| `POST /api/autofill/rescan` \| `resume-queue` | (007) Re-fill the current page manually (SPA fallback) / relaunch the browser at the saved queue position after the window was closed. |
+| `PUT /api/profile/resume-sections` \| `POST /api/profile/reextract` | (007) Resume builder: full structured-sections replace (manual edit path) / explicit-consent re-extraction from the stored resume. |
+| `GET /api/jobs/{id}/resume-pdf` \| `cover-letter-pdf` | (007) Tailored (or untailored) resume PDF and cover-letter PDF downloads. |
 | `POST /api/autofill/answers/confirm` | The only write path into the answer bank — always requires explicit confirmation. |
 | `GET /api/autofill/answers` \| `DELETE /{bank_id}` | List/delete saved Common Questions answers (Profile page management). |
 | `POST /api/credentials` \| `GET` \| `DELETE /{domain}` | Per-domain saved-login vault; password never appears in any response. |
 | `POST /api/credentials/default` \| `DELETE /default` | The default login used when no per-domain override exists (registered before `/{domain}` to avoid route collision). |
-| `GET /api/diagnostics/local-llm-selftest` \| `chromium-launch-selftest` | Real (not just import-check) health checks used by the release smoke test. |
+| `GET /api/diagnostics/local-llm-selftest` \| `chromium-launch-selftest` \| `pdf-selftest` | Real (not just import-check) health checks used by the release smoke test — the pdf one renders an actual unicode document with the bundled fonts. |
 | `GET/POST /api/profile` | Read/update resume + preferences (multipart upload). |
 | `GET/POST /api/settings` | Read (masked key) / save the AI key, provider, and toggles — the packaged-app replacement for `.env`. |
 | `POST /api/settings/test` | Live 1-token LLM call to validate the saved key. |
@@ -414,13 +419,23 @@ lets the app do the repetitive part of applying:
 2. Select which saved jobs to include and click **Start Apply Assist**. A
    separate, dedicated browser window opens (not your everyday browser) on
    the first job's real application page.
-3. Recognized fields (name, email, phone, resume upload, LinkedIn/portfolio
-   links, work authorization, sponsorship, years of experience, salary
-   expectation, "how did you hear about us," cover letter) are filled in
-   automatically from your Profile and the answer bank.
-4. **The app never clicks submit, apply, or login for you — ever, under any
-   circumstance.** Review what was filled, make corrections, and click the
-   site's own button yourself.
+3. Recognized fields (name, email, phone, **your resume file** — the job's
+   tailored PDF when one exists, LinkedIn/portfolio links, work
+   authorization, sponsorship, years of experience, salary expectation,
+   "how did you hear about us," cover letter) are filled in automatically
+   from your Profile and the answer bank. Dropdowns and radio buttons are
+   answered by matching your confirmed answer to the site's own option
+   wording — and left untouched (reported, never guessed) when nothing
+   matches confidently.
+4. **The app never clicks submit, apply, next, or login for you — ever,
+   under any circumstance.** Review what was filled (the mission panel
+   lists every field and value; passwords show only as `•••`), make
+   corrections, and click the site's own button yourself. When *you* click
+   Next on a multi-page application, the newly loaded page is scanned and
+   filled automatically; a "Re-scan this page" button covers sites that
+   redraw their form without navigating. If you close the automation
+   browser window mid-run, your queue position is kept — Resume queue
+   reopens it right where you were, and a batch summary wraps up every run.
 5. If a question is new or legally significant (work authorization,
    sponsorship, EEO-style disclosures), the queue pauses and shows an
    AI-drafted suggestion for you to confirm or edit — nothing is saved or
@@ -482,6 +497,33 @@ never clicks the login button. Passwords are stored in your OS's own
 credential store (Windows Credential Manager / macOS Keychain), never in
 this app's database, and are never displayed again once saved (write-only,
 like a real password manager).
+
+## 11.5 The Moat Release (feature 007, v0.7.0)
+
+- **Resume builder** (Profile): the uploaded resume is parsed into editable
+  structured sections — experience, education, projects, skills — by the
+  AI tier (manual forms without one). You review/correct once; your edits
+  always win (re-uploading a new resume *asks* keep-vs-re-extract, never
+  silently overwrites). These sections power the PDFs below.
+- **Tailored resume + cover-letter PDFs** (job detail page): ATS-safe
+  single-column PDFs rendered fully offline — identity header, the job's
+  tailored summary/bullets, then your reviewed sections. Apply Assist
+  attaches the tailored PDF automatically (Settings toggle, default on).
+- **Sponsor grades**: each company with ≥10 H-1B petitions on record gets a
+  local A–F grade from approval rate, volume, engineering filings, and
+  wage levels — below the floor it stays UNKNOWN, never guessed. University/
+  nonprofit/hospital employers get a **cap-exempt** badge (they sponsor
+  year-round outside the lottery). The job page shows the full evidence:
+  approvals, denials, approval rate, median engineering wage, and a
+  wage-weighted lottery-odds hint (all labeled estimates). Toolbar filter:
+  **Strong sponsors only** (grade ≥ B or cap-exempt).
+- **Instrument UI**: light "datasheet" theme by default with a dark "scope
+  screen" alternate (Settings → Theme; your choice persists and beats the
+  OS preference). Grouped navigation with a visible current page, toast
+  confirmation on every action, a kanban **Board** view of the Applied
+  pipeline (drag cards or use the ◀/▶ buttons), a first-run setup
+  checklist driven by real state, and background refreshes that never
+  clobber an open editor.
 
 ## 12. Known issues (fixed)
 

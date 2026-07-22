@@ -50,6 +50,7 @@
     {% include "partials/profile_answer_bank.html" %}
 
     <h2>Resume &amp; job search</h2>
+    {% include "partials/resume_builder.html" %}
     {% if profile and profile.resume_filename %}
     <p>Resume on file: <span class="data">{{ profile.resume_filename }}</span>
       (updated {{ profile.updated_at[:10] if profile.updated_at }})</p>
@@ -57,8 +58,32 @@
     <p class="muted">No resume yet. Upload one to unlock match scores and gap analysis.</p>
     {% endif %}
     <label>Resume (PDF)
-      <input type="file" name="resume" accept="application/pdf">
+      <div class="drop-zone" id="resume-drop-zone">
+        <input type="file" name="resume" accept="application/pdf" id="resume-file-input">
+        <p class="muted" aria-hidden="true">…or drag a PDF here</p>
+      </div>
     </label>
+    <script>
+      (function () {
+        const zone = document.getElementById("resume-drop-zone");
+        const input = document.getElementById("resume-file-input");
+        ["dragover", "dragenter"].forEach(function (name) {
+          zone.addEventListener(name, function (evt) {
+            evt.preventDefault();
+            zone.classList.add("drop-target");
+          });
+        });
+        zone.addEventListener("dragleave", function () { zone.classList.remove("drop-target"); });
+        zone.addEventListener("drop", function (evt) {
+          evt.preventDefault();
+          zone.classList.remove("drop-target");
+          if (evt.dataTransfer.files.length) {
+            input.files = evt.dataTransfer.files;
+            window.toast("Resume attached — click Save profile to upload");
+          }
+        });
+      })();
+    </script>
     <label>Skills (comma-separated — extracted automatically from your resume; add
       anything the extraction missed to improve matching, especially without a cloud AI key)
       <input type="text" name="skills"

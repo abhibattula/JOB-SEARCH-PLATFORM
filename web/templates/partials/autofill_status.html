@@ -1,12 +1,69 @@
+{# 007 US1/US4 — Apply Assist mission control (FR-026): queue list with
+   per-job state, N-of-M progress, current job by title (never a raw id),
+   the per-field fill report (passwords pre-masked upstream), interruption
+   recovery, and the end-of-queue batch summary. #}
+{% if snapshot and snapshot.interrupted %}
+<div class="error-banner">
+  The Apply Assist browser window was closed. Your queue position is saved —
+  resume when ready.
+  <button type="button" hx-post="/api/autofill/resume-queue" hx-swap="none"
+          hx-on::after-request="htmx.trigger('#autofill-queue','load')"
+          data-toast="Resuming queue">Resume queue</button>
+</div>
+{% endif %}
+
 {% if current %}
-<div class="autofill-active">
-  <p>
-    Working on job <strong>#{{ current.job_id }}</strong>
-    {% if current.fell_back %}
-    <span class="badge unknown" title="This page's fields couldn't be confidently read — complete it manually in the open browser window.">manual completion needed</span>
+<div class="autofill-active mission-panel">
+  <div class="mission-head">
+    <p>
+      Working on <strong>{{ current_title or ('#' ~ current.job_id) }}</strong>
+      {% if current.fell_back %}
+      <span class="badge unknown" title="This page's fields couldn't be confidently read — complete it manually in the open browser window.">manual completion needed</span>
+      {% endif %}
+    </p>
+    {% if snapshot %}
+    <p class="data mission-progress" aria-label="Queue progress">
+      {{ snapshot.progress.done + 1 }} of {{ snapshot.progress.total }}
+    </p>
     {% endif %}
-    &middot; {{ current.remaining }} remaining after this one
-  </p>
+  </div>
+
+  {% if snapshot and snapshot.queue %}
+  <ul class="mission-queue" aria-label="Application queue">
+    {% for entry in snapshot.queue %}
+    <li class="q-{{ entry.state }}">
+      <span class="glyph data">{%- if entry.state == 'done' -%}✓{%- elif entry.state == 'current' -%}▸{%- else -%}·{%- endif -%}</span>
+      {{ entry.title }} <span class="muted">{{ entry.company }}</span>
+    </li>
+    {% endfor %}
+  </ul>
+  {% endif %}
+
+  {% if snapshot and snapshot.fill_report %}
+  <details class="fill-report" open>
+    <summary>Filled {{ snapshot.fill_report | selectattr('outcome', 'equalto', 'filled') | list | length }} field{{ 's' if (snapshot.fill_report | selectattr('outcome', 'equalto', 'filled') | list | length) != 1 }} on this page</summary>
+    <table class="feed-table">
+      <thead><tr><th>Field</th><th>Value</th><th>Status</th></tr></thead>
+      <tbody>
+        {% for entry in snapshot.fill_report %}
+        <tr>
+          <td>{{ entry.label or entry.tag }}</td>
+          <td class="data">{{ entry.value_preview }}</td>
+          <td class="data">
+            {%- if entry.outcome == 'filled' -%}✓ filled
+            {%- elif entry.outcome == 'needs_manual' -%}⚠ attach manually
+            {%- elif entry.outcome == 'skipped_existing' -%}· kept your value
+            {%- elif entry.outcome == 'no_match' -%}· no matching option
+            {%- elif entry.outcome == 'paused' -%}▸ awaiting your answer
+            {%- else -%}{{ entry.outcome }}{%- endif -%}
+          </td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
+  {% endif %}
+
   <p class="muted">Review the filled application in the browser window, make
     any corrections, and click the site's own submit button yourself. When
     you're done (or want to skip this one), click below.</p>
@@ -51,14 +108,41 @@
   </script>
   {% endif %}
 
-  <button hx-post="/api/autofill/next" hx-swap="none"
-          hx-on::after-request="htmx.trigger('#autofill-queue','load')">
-    Done, next application
-  </button>
-  <button hx-post="/api/autofill/stop" hx-swap="none"
-          hx-on::after-request="htmx.trigger('#autofill-queue','load')">
-    Stop
-  </button>
+  <div class="settings-actions">
+    <button hx-post="/api/autofill/next" hx-swap="none" data-toast="Next application"
+            hx-on::after-request="htmx.trigger('#autofill-queue','load')">
+      Done, next application
+    </button>
+    <button class="ghost" hx-post="/api/autofill/rescan" hx-swap="none"
+            data-toast="Page re-scanned"
+            title="Re-read and fill this page — useful when the site redrew its form without navigating"
+            hx-on::after-request="htmx.trigger('#autofill-queue','load')">
+      Re-scan this page
+    </button>
+    <button class="ghost" hx-post="/api/autofill/stop" hx-swap="none" data-toast="Stopped"
+            hx-on::after-request="htmx.trigger('#autofill-queue','load')">
+      Stop
+    </button>
+  </div>
+</div>
+{% elif snapshot and snapshot.summary %}
+<div class="mission-panel">
+  <h2>Batch complete</h2>
+  <p class="data">
+    {{ snapshot.summary.filled }} filled ·
+    {{ snapshot.summary.manual }} manual ·
+    {{ snapshot.summary.skipped }} skipped
+  </p>
+  <ul class="mission-queue">
+    {% for entry in snapshot.summary.per_job %}
+    {% set qentry = (snapshot.queue | selectattr('job_id', 'equalto', entry.job_id) | list | first) %}
+    <li>
+      <span class="glyph data">{%- if entry.outcome == 'filled' -%}✓{%- elif entry.outcome == 'manual' -%}⚠{%- else -%}·{%- endif -%}</span>
+      {{ qentry.title if qentry else '#' ~ entry.job_id }}
+      <span class="muted">{{ entry.outcome }}</span>
+    </li>
+    {% endfor %}
+  </ul>
 </div>
 {% else %}
 <p class="muted">No Apply Assist session running.</p>

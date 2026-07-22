@@ -1,0 +1,78 @@
+{# 007 US4 (FR-025) — the Applied pipeline as a stage-column board.
+   Cards move by native HTML5 drag-and-drop AND per-card ◀/▶ buttons (the
+   keyboard/AT path); both hit the same POST /api/jobs/{id}/stage. #}
+{% set stages = ['applied', 'oa', 'interview', 'offer', 'rejected'] %}
+<div class="board" aria-label="Application pipeline board">
+  {% for stage in stages %}
+  {% set stage_jobs = jobs | selectattr('stage', 'equalto', stage) | list %}
+  <section class="board-col" data-stage="{{ stage }}" aria-label="{{ stage }} column">
+    <h3 class="data">{{ stage }} <span class="muted">{{ stage_jobs | length }}</span></h3>
+    <div class="board-cards">
+      {% for job in stage_jobs %}
+      <article class="board-card" draggable="true" data-job-id="{{ job.id }}">
+        <a href="/jobs/{{ job.id }}">{{ job.title }}</a>
+        <p class="muted data">{{ job.company }}</p>
+        {% if job.follow_up %}<span class="followup-flag" title="Applied over a week ago with no movement">⚑ follow up</span>{% endif %}
+        <div class="board-move">
+          {% if not loop.first or stage != 'applied' %}{% endif %}
+          <button type="button" class="board-move-btn" data-dir="-1"
+                  aria-label="Move {{ job.title }} to the previous stage"
+                  {% if stage == stages[0] %}disabled{% endif %}>◀</button>
+          <button type="button" class="board-move-btn" data-dir="1"
+                  aria-label="Move {{ job.title }} to the next stage"
+                  {% if stage == stages[-1] %}disabled{% endif %}>▶</button>
+        </div>
+      </article>
+      {% endfor %}
+    </div>
+  </section>
+  {% endfor %}
+</div>
+<script>
+(function () {
+  "use strict";
+  const stages = ["applied", "oa", "interview", "offer", "rejected"];
+
+  async function setStage(jobId, stage) {
+    const resp = await fetch("/api/jobs/" + jobId + "/stage?stage=" + stage, { method: "POST" });
+    if (resp.ok) {
+      window.toast("Moved to " + stage);
+      htmx.trigger("#feed-region", "refresh-feed");
+    } else {
+      window.toast("Move failed", "error");
+    }
+  }
+
+  document.querySelectorAll(".board-card").forEach(function (card) {
+    card.addEventListener("dragstart", function (evt) {
+      evt.dataTransfer.setData("text/plain", card.getAttribute("data-job-id"));
+      evt.dataTransfer.effectAllowed = "move";
+    });
+  });
+
+  document.querySelectorAll(".board-col").forEach(function (col) {
+    col.addEventListener("dragover", function (evt) {
+      evt.preventDefault();
+      evt.dataTransfer.dropEffect = "move";
+      col.classList.add("drop-target");
+    });
+    col.addEventListener("dragleave", function () { col.classList.remove("drop-target"); });
+    col.addEventListener("drop", function (evt) {
+      evt.preventDefault();
+      col.classList.remove("drop-target");
+      const jobId = evt.dataTransfer.getData("text/plain");
+      if (jobId) { setStage(jobId, col.getAttribute("data-stage")); }
+    });
+  });
+
+  document.querySelectorAll(".board-move-btn").forEach(function (btn) {
+    btn.addEventListener("click", function () {
+      const card = btn.closest(".board-card");
+      const col = btn.closest(".board-col");
+      const idx = stages.indexOf(col.getAttribute("data-stage"));
+      const next = stages[idx + parseInt(btn.getAttribute("data-dir"), 10)];
+      if (next) { setStage(card.getAttribute("data-job-id"), next); }
+    });
+  });
+})();
+</script>

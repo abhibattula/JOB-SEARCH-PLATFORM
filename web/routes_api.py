@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import json
+import os
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel
 
 from engine import db, pipeline, settings
@@ -33,6 +34,7 @@ def parse_feed_params(
     ineligible: int = 0,
     min_score: float | None = None,
     seen: str | None = None,
+    strong_sponsors: int = 0,
 ) -> dict:
     seen_since = None
     if seen == "24h":
@@ -64,6 +66,7 @@ def parse_feed_params(
         "ineligible": bool(ineligible),
         "min_score": min_score if min_score and min_score > 0 else None,
         "seen_since": seen_since,
+        "strong_sponsors": bool(strong_sponsors),
     }
 
 
@@ -85,6 +88,8 @@ def job_summary(job: dict) -> dict:
         "stage": job.get("stage"),
         "follow_up": job.get("follow_up", False),
         "is_new": job.get("is_new", False),
+        "sponsor_grade": job.get("sponsor_grade"),
+        "cap_exempt": bool(job.get("cap_exempt")),
     }
 
 
@@ -114,10 +119,11 @@ def list_jobs(
     ineligible: int = 0,
     min_score: float | None = None,
     seen: str | None = None,
+    strong_sponsors: int = 0,
 ):
     params = parse_feed_params(
         window, status, location, remote, sort, entry_level, limit, offset,
-        ineligible, min_score, seen,
+        ineligible, min_score, seen, strong_sponsors,
     )
     jobs, total = db.query_jobs(**params)
     return {"jobs": [job_summary(j) for j in jobs], "total": total}
@@ -136,7 +142,50 @@ def job_detail(job_id: int):
     payload["sponsorship_evidence"] = json.loads(evidence) if evidence else None
     match = job.get("match_json")
     payload["match"] = json.loads(match) if match else None
+    payload["sponsor_evidence"] = sponsor_evidence_for(job)
     return payload
+
+
+def sponsor_evidence_for(job: dict) -> dict:
+    """007 (FR-015): the sponsor-intelligence evidence panel — nulls where
+    data is absent, never fabricated values. Shared by the JSON detail and
+    the job page template."""
+    from engine import sponsorship
+
+    approvals = job.get("h1b_approvals") or 0
+    denials = job.get("h1b_denials") or 0
+    total = approvals + denials
+    return {
+        "approvals": approvals,
+        "denials": denials,
+        "approval_rate": round(approvals / total, 3) if total else None,
+        "wage_level_median": job.get("wage_level_median"),
+        "wage_offered_median": job.get("wage_offered_median"),
+        "lottery_hint": sponsorship.lottery_hint(job.get("wage_level_median")),
+        "cap_exempt": bool(job.get("cap_exempt")),
+        "grade": job.get("sponsor_grade"),
+        "grade_reasons": _grade_reasons(job),
+    }
+
+
+def _grade_reasons(job: dict) -> list[str]:
+    """Plain-language evidence lines for the grade panel (FR-015)."""
+    from engine.sponsorship import GRADE_MIN_PETITIONS
+
+    approvals = job.get("h1b_approvals") or 0
+    denials = job.get("h1b_denials") or 0
+    reasons = []
+    if approvals or denials:
+        reasons.append(f"{approvals} H-1B approvals, {denials} denials in loaded years")
+    if (approvals + denials) and (approvals + denials) < GRADE_MIN_PETITIONS:
+        reasons.append(
+            f"Below the {GRADE_MIN_PETITIONS}-petition evidence floor — shown as UNKNOWN"
+        )
+    if job.get("wage_level_median"):
+        reasons.append(f"Median engineering wage level: {job['wage_level_median']}")
+    if job.get("cap_exempt"):
+        reasons.append("Likely cap-exempt: can sponsor year-round outside the lottery")
+    return reasons
 
 
 @router.post("/jobs/{job_id}/status")
@@ -207,6 +256,8 @@ def get_settings():
         "schedule_refresh": settings.get("SCHEDULE_REFRESH") == "1",
         "alerts_enabled": settings.get("ALERTS_ENABLED") != "0",
         "max_score_per_run": int(settings.get("MAX_SCORE_PER_RUN") or "150"),
+        "theme": settings.get("THEME") or "",
+        "autofill_use_tailored_pdf": settings.get("AUTOFILL_USE_TAILORED_PDF") != "0",
     }
 
 
@@ -219,6 +270,9 @@ async def save_settings(
     jobspy_linkedin: str | None = Form(None),
     schedule_refresh: str | None = Form(None),
     alerts_enabled: str | None = Form(None),
+    theme: str | None = Form(None),
+    autofill_use_tailored_pdf: str | None = Form(None),
+    onboarding_dismissed: str | None = Form(None),
 ):
     if llm_api_key:  # blank never clears an existing key
         settings.set("LLM_API_KEY", llm_api_key.strip())
@@ -232,6 +286,15 @@ async def save_settings(
         settings.set("SCHEDULE_REFRESH", "1" if schedule_refresh == "1" else "0")
     if alerts_enabled is not None:
         settings.set("ALERTS_ENABLED", "1" if alerts_enabled == "1" else "0")
+    if theme in ("light", "dark"):
+        settings.set("THEME", theme)
+    if autofill_use_tailored_pdf is not None:
+        settings.set(
+            "AUTOFILL_USE_TAILORED_PDF",
+            "1" if autofill_use_tailored_pdf == "1" else "0",
+        )
+    if onboarding_dismissed == "1":
+        settings.set("ONBOARDING_DISMISSED", "1")
     if "text/html" in (request.headers.get("accept") or ""):
         return RedirectResponse("/settings", status_code=303)
     return get_settings()
@@ -367,7 +430,26 @@ def _profile_payload() -> dict:
         "phone": profile.get("phone"),
         "linkedin_url": profile.get("linkedin_url"),
         "portfolio_url": profile.get("portfolio_url"),
+        # 007 resume builder — resume_file_path itself never leaves the
+        # server (local filesystem path), only its existence does.
+        "has_resume_file": bool(profile.get("resume_file_path")),
+        "resume_sections": profile.get("resume_sections"),
+        "sections_edited_at": profile.get("sections_edited_at"),
     }
+
+
+def _store_resume_file(raw: bytes, filename: str) -> str:
+    """Persist the original upload under data_dir()/resume/ (FR-001) —
+    Playwright's set_input_files needs a real file path, and the extracted
+    text alone can't be attached to an application."""
+    from engine import paths
+
+    resume_dir = paths.data_dir() / "resume"
+    resume_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = os.path.basename(filename) or "resume.pdf"
+    target = resume_dir / safe_name
+    target.write_bytes(raw)
+    return str(target)
 
 
 @router.get("/profile")
@@ -391,6 +473,7 @@ async def save_profile(
     portfolio_url: str | None = Form(None),
 ):
     fields: dict = {}
+    extraction_conflict = False
     if resume is not None and resume.filename:
         raw = await resume.read()
         if len(raw) > MAX_RESUME_BYTES:
@@ -399,11 +482,22 @@ async def save_profile(
             text = extract_text(raw)
         except NoTextError as exc:
             raise HTTPException(status_code=422, detail=str(exc))
-        from engine import matcher
+        from engine import matcher, resume_extract
 
         fields["resume_text"] = text
         fields["resume_filename"] = resume.filename
+        fields["resume_file_path"] = _store_resume_file(raw, resume.filename)
         fields["skills"] = matcher.extract_skills(text)  # [] without an LLM key
+        # 007 (FR-016): structured extraction — but user-edited sections
+        # are never silently overwritten; flag the conflict and let the
+        # user choose keep vs re-extract (POST /api/profile/reextract).
+        existing = db.get_profile() or {}
+        if existing.get("sections_edited_at"):
+            extraction_conflict = True
+        else:
+            sections = resume_extract.extract(text)
+            if sections is not None:
+                fields["resume_sections"] = sections.model_dump()
     if target_locations is not None:
         fields["target_locations"] = [
             part.strip() for part in target_locations.split(",") if part.strip()
@@ -434,8 +528,119 @@ async def save_profile(
     if fields:
         db.save_profile(**fields)
     if "text/html" in (request.headers.get("accept") or ""):
-        return RedirectResponse("/profile", status_code=303)
+        target = "/profile?extraction_conflict=1" if extraction_conflict else "/profile"
+        return RedirectResponse(target, status_code=303)
+    return {**_profile_payload(), "extraction_conflict": extraction_conflict}
+
+
+@router.put("/profile/resume-sections")
+async def put_resume_sections(request: Request):
+    """Full replace of the structured resume (FR-017) — the manual-edit
+    path, identical with or without an AI tier. Stamps sections_edited_at,
+    which is what protects these edits from later silent re-extraction."""
+    from engine.resume_extract import ResumeSections
+
+    try:
+        body = await request.json()
+        sections = ResumeSections.model_validate(body)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)[:300])
+    db.save_profile(
+        resume_sections=sections.model_dump(),
+        sections_edited_at=db._utcnow(),
+    )
     return _profile_payload()
+
+
+@router.post("/profile/reextract")
+def reextract_resume_sections():
+    """The explicit-consent path after an extraction_conflict (FR-016):
+    replaces sections from the stored resume text and clears the edit
+    stamp — the ONLY way extraction may overwrite user edits."""
+    from engine import resume_extract
+
+    profile = db.get_profile()
+    if not profile or not profile.get("resume_text"):
+        raise HTTPException(status_code=409, detail="no resume on file")
+    sections = resume_extract.extract(profile["resume_text"])
+    if sections is None:
+        return {"extracted": False, "reason": "no-ai-tier"}
+    db.save_profile(
+        resume_sections=sections.model_dump(),
+        sections_edited_at=None,
+    )
+    return _profile_payload()
+
+
+@router.get("/jobs/{job_id}/resume-pdf")
+def download_resume_pdf(job_id: int):
+    """Tailored resume PDF for this job (untailored render when the job
+    has no tailoring output yet — FR-018/US2-AS6)."""
+    from engine import resume_pdf
+
+    try:
+        path = resume_pdf.tailored_resume_path(job_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="job not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return Response(
+        path.read_bytes(),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename=resume-job{job_id}.pdf"
+        },
+    )
+
+
+@router.get("/jobs/{job_id}/cover-letter-pdf")
+def download_cover_letter_pdf(job_id: int):
+    from engine import resume_pdf
+
+    job = db.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    if not job.get("tailor_json"):
+        raise HTTPException(
+            status_code=409, detail="Generate tailoring for this job first."
+        )
+    try:
+        tailoring = json.loads(job["tailor_json"])
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=409, detail="tailoring output unreadable")
+    profile = db.get_profile() or {}
+    data = resume_pdf.render_cover_letter(
+        {k: profile.get(k) for k in ("first_name", "last_name", "email",
+                                     "phone", "linkedin_url", "portfolio_url")},
+        job["company"], job["title"], tailoring.get("cover_letter") or "",
+    )
+    return Response(
+        data,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename=cover-letter-job{job_id}.pdf"
+        },
+    )
+
+
+@router.get("/diagnostics/pdf-selftest")
+def pdf_selftest():
+    """007: a real fpdf2 render using the bundled DejaVu fonts (unicode
+    included) — packaging/smoke_test.py asserts this in the frozen build,
+    so a dropped font data file fails the release loudly instead of
+    surfacing as broken PDF downloads in production (v0.4.0 lesson)."""
+    from engine import resume_pdf
+
+    try:
+        data = resume_pdf.render_resume(
+            {"experience": [], "education": [], "projects": [],
+             "skills": ["self-test — unicode dash", "résumé"]},
+            {"first_name": "Self", "last_name": "Test"},
+            tailoring=None,
+        )
+        return {"ok": bool(data[:5] == b"%PDF-"), "bytes": len(data)}
+    except Exception as exc:
+        return {"ok": False, "bytes": 0, "error": f"{type(exc).__name__}: {exc}"[:300]}
 
 
 @router.get("/diagnostics/local-llm-selftest")

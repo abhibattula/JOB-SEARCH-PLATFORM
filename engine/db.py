@@ -176,6 +176,23 @@ _MIGRATIONS = {
         ("phone", "TEXT"),
         ("linkedin_url", "TEXT"),
         ("portfolio_url", "TEXT"),
+        # 007: resume builder + stored original upload
+        ("resume_file_path", "TEXT"),
+        ("resume_sections", "TEXT"),
+        ("sections_edited_at", "TEXT"),
+    ],
+    # 007: sponsorship intelligence
+    "companies": [
+        ("h1b_denials", "INTEGER DEFAULT 0"),
+        ("wage_level_median", "TEXT"),
+        ("wage_offered_median", "REAL"),
+        ("cap_exempt", "INTEGER DEFAULT 0"),
+        ("sponsor_grade", "TEXT"),
+    ],
+    "h1b_employers": [
+        ("denials", "INTEGER DEFAULT 0"),
+        ("wage_level_median", "TEXT"),
+        ("wage_offered_median", "REAL"),
     ],
 }
 
@@ -292,13 +309,15 @@ _JOB_COLUMNS = (
     " j.first_seen, j.is_entry_level, j.sponsorship, j.match_score, j.status,"
     " json_extract(j.match_json, '$.method') AS match_method,"
     " j.stage, j.applied_at, j.stage_updated_at, j.notes,"
-    " c.name AS company"
+    " c.name AS company, c.sponsor_grade, c.cap_exempt"
 )
 
 
 def _row_to_job(row: sqlite3.Row, latest_start: str | None) -> dict:
     job = dict(row)
     job["is_remote"] = bool(job.get("is_remote"))
+    if "cap_exempt" in job:
+        job["cap_exempt"] = bool(job.get("cap_exempt"))
     if latest_start is not None and job.get("first_seen"):
         job["is_new"] = _parse_ts(job["first_seen"]) >= _parse_ts(latest_start)
     else:
@@ -325,8 +344,12 @@ def query_jobs(
     include_ineligible: bool = False,
     min_score: float | None = None,
     seen_since: str | None = None,
+    strong_sponsors: bool = False,
 ) -> tuple[list[dict], int]:
     where, params = [], []
+    # 007 (FR-014): grade B or better, or likely cap-exempt (lottery-free)
+    if strong_sponsors:
+        where.append("(c.sponsor_grade IN ('A', 'B') OR c.cap_exempt = 1)")
     # Sponsorship-ineligible (EXCLUDED) jobs never appear in normal views;
     # ineligible=True is the audit view showing only them.
     if ineligible:
@@ -388,7 +411,9 @@ def get_job(job_id: int) -> dict | None:
             "SELECT started_at FROM refresh_runs ORDER BY id DESC LIMIT 1"
         ).fetchone()
         row = conn.execute(
-            "SELECT j.*, c.name AS company, c.h1b_approvals, c.sponsor_score"
+            "SELECT j.*, c.name AS company, c.h1b_approvals, c.sponsor_score,"
+            " c.sponsor_grade, c.cap_exempt, c.h1b_denials,"
+            " c.wage_level_median, c.wage_offered_median"
             " FROM jobs j JOIN companies c ON j.company_id = c.id WHERE j.id = ?",
             (job_id,),
         ).fetchone()
@@ -627,19 +652,27 @@ def get_company_by_name(name: str) -> dict | None:
 
 
 def store_h1b_employers(employers: dict) -> None:
-    """Upsert normalized -> {display_name, approvals, lca_titles} records."""
+    """Upsert normalized -> {display_name, approvals, denials, wage medians,
+    lca_titles} records."""
     with _conn() as conn:
         for normalized, record in employers.items():
             conn.execute(
                 "INSERT INTO h1b_employers (normalized_name, display_name, approvals,"
-                " lca_titles) VALUES (?, ?, ?, ?)"
+                " denials, wage_level_median, wage_offered_median, lca_titles)"
+                " VALUES (?, ?, ?, ?, ?, ?, ?)"
                 " ON CONFLICT(normalized_name) DO UPDATE SET"
                 " display_name=excluded.display_name, approvals=excluded.approvals,"
+                " denials=excluded.denials,"
+                " wage_level_median=COALESCE(excluded.wage_level_median, h1b_employers.wage_level_median),"
+                " wage_offered_median=COALESCE(excluded.wage_offered_median, h1b_employers.wage_offered_median),"
                 " lca_titles=COALESCE(excluded.lca_titles, h1b_employers.lca_titles)",
                 (
                     normalized,
                     record.get("display_name"),
                     int(record.get("approvals") or 0),
+                    int(record.get("denials") or 0),
+                    record.get("wage_level_median"),
+                    record.get("wage_offered_median"),
                     json.dumps(record["lca_titles"]) if record.get("lca_titles") else None,
                 ),
             )
@@ -652,6 +685,9 @@ def load_h1b_employers() -> dict:
         row["normalized_name"]: {
             "display_name": row["display_name"],
             "approvals": row["approvals"],
+            "denials": row["denials"] or 0,
+            "wage_level_median": row["wage_level_median"],
+            "wage_offered_median": row["wage_offered_median"],
             "lca_titles": json.loads(row["lca_titles"]) if row["lca_titles"] else None,
         }
         for row in rows
@@ -671,15 +707,27 @@ def set_company_sponsorship(
     approvals: int,
     sponsor_score: str,
     lca_titles: list | None = None,
+    denials: int = 0,
+    wage_level_median: str | None = None,
+    wage_offered_median: float | None = None,
+    cap_exempt: bool = False,
+    sponsor_grade: str | None = None,
 ) -> None:
     with _conn() as conn:
         conn.execute(
             "UPDATE companies SET h1b_approvals=?, sponsor_score=?,"
-            " lca_titles=COALESCE(?, lca_titles), sponsor_checked=1 WHERE id=?",
+            " lca_titles=COALESCE(?, lca_titles), h1b_denials=?,"
+            " wage_level_median=?, wage_offered_median=?, cap_exempt=?,"
+            " sponsor_grade=?, sponsor_checked=1 WHERE id=?",
             (
                 approvals,
                 sponsor_score,
                 json.dumps(lca_titles) if lca_titles else None,
+                int(denials or 0),
+                wage_level_median,
+                wage_offered_median,
+                1 if cap_exempt else 0,
+                sponsor_grade,
                 company_id,
             ),
         )
@@ -783,7 +831,7 @@ def _force_run_started_at(run_id: int, started_at: str) -> None:
 
 # --- user profile -----------------------------------------------------------
 
-_PROFILE_JSON_FIELDS = ("skills", "target_locations", "preferences")
+_PROFILE_JSON_FIELDS = ("skills", "target_locations", "preferences", "resume_sections")
 # Single source of truth for save_profile()'s INSERT/UPDATE — every
 # user_profile column except id/updated_at (which are handled specially).
 # Adding a new profile field means adding it here AND to _MIGRATIONS above;
@@ -792,6 +840,7 @@ _PROFILE_COLUMNS = (
     "resume_text", "resume_filename", "skills", "target_locations",
     "preferences", "authorized_without_sponsorship", "visa_status",
     "first_name", "last_name", "email", "phone", "linkedin_url", "portfolio_url",
+    "resume_file_path", "resume_sections", "sections_edited_at",
 )
 
 
@@ -805,6 +854,9 @@ def get_profile() -> dict | None:
         profile[field] = json.loads(profile[field]) if profile[field] else []
     if not isinstance(profile["preferences"], dict):
         profile["preferences"] = {}
+    # resume_sections is an object (or absent), never a list
+    if not profile["resume_sections"]:
+        profile["resume_sections"] = None
     return profile
 
 

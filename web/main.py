@@ -20,6 +20,18 @@ templates = Jinja2Templates(directory=paths.resource_path("web/templates"))
 templates.env.globals["app_version"] = APP_VERSION
 
 
+def _current_theme() -> str:
+    """Explicit user choice ('light'/'dark') or '' when unset — '' lets the
+    CSS prefers-color-scheme fallback decide (FR-021)."""
+    from engine import settings
+
+    value = settings.get("THEME") or ""
+    return value if value in ("light", "dark") else ""
+
+
+templates.env.globals["current_theme"] = _current_theme
+
+
 def _bootstrap_sponsorship() -> None:
     """Load the bundled USCIS data on first run so installed users get
     sponsor badges with zero setup. No-op once the table has rows."""
@@ -36,6 +48,51 @@ def _bootstrap_sponsorship() -> None:
         sponsorship.apply_to_companies()
 
 
+def _onboarding_state(profile: dict | None) -> dict | None:
+    """FR-027: setup steps derived live from real state — no stored step
+    flags to drift. None (hidden) once dismissed or everything's done."""
+    from engine import matcher, settings
+    from engine.autofill import browser_setup
+
+    if settings.get("ONBOARDING_DISMISSED") == "1":
+        return None
+    steps = [
+        {
+            "label": "Upload your resume",
+            "href": "/profile",
+            "hint": "unlocks match scores and the Resume builder",
+            "done": bool(profile and profile.get("resume_text")),
+        },
+        {
+            "label": "Fill in your profile basics",
+            "href": "/profile",
+            "hint": "name, email, work authorization — Apply Assist fills from these",
+            "done": bool(profile and profile.get("first_name") and profile.get("email")),
+        },
+        {
+            "label": "Load sponsorship data",
+            "href": "/settings",
+            "hint": "turns UNKNOWN badges into grades",
+            "done": db.h1b_employer_count() > 0,
+        },
+        {
+            "label": "Add a free AI key (optional)",
+            "href": "/settings",
+            "hint": "the bundled offline model already works without one",
+            "done": matcher.llm_available(),
+        },
+        {
+            "label": "Enable Apply Assist",
+            "href": "/autofill",
+            "hint": "one-time browser download for application autofill",
+            "done": browser_setup.is_installed(),
+        },
+    ]
+    if all(step["done"] for step in steps):
+        return None
+    return {"steps": steps}
+
+
 def _feed_context(
     request: Request,
     window: str = "7d",
@@ -47,10 +104,12 @@ def _feed_context(
     ineligible: int = 0,
     min_score: float | None = None,
     seen: str | None = None,
+    strong_sponsors: int = 0,
 ) -> dict:
     params = parse_feed_params(
         window, status, location, remote, sort, entry_level,
         ineligible=ineligible, min_score=min_score, seen=seen,
+        strong_sponsors=strong_sponsors,
     )
     jobs, total = db.query_jobs(**params)
     run = db.get_run_status()
@@ -63,6 +122,7 @@ def _feed_context(
         "jobs": jobs,
         "total": total,
         "run": run,
+        "onboarding": _onboarding_state(profile),
         "window": window if window in ("7d", "24h", "all") else "7d",
         "status_view": status or "",
         "location": location or "",
@@ -72,6 +132,7 @@ def _feed_context(
         "entry_level": entry_level or "",
         "ineligible": bool(ineligible),
         "min_score": int(min_score) if min_score else 0,
+        "strong_sponsors": bool(strong_sponsors),
         "query_string": request.url.query,
     }
 
@@ -105,11 +166,14 @@ def create_app() -> FastAPI:
         ineligible: int = 0,
         min_score: float | None = None,
         seen: str | None = None,
+        strong_sponsors: int = 0,
+        view: str | None = None,
     ):
         context = _feed_context(
             request, window, status, location, remote, sort, entry_level,
-            ineligible, min_score, seen,
+            ineligible, min_score, seen, strong_sponsors,
         )
+        context["board_view"] = view == "board"
         return templates.TemplateResponse(request, "feed.html", context)
 
     @app.get("/partials/feed", response_class=HTMLResponse)
@@ -124,11 +188,14 @@ def create_app() -> FastAPI:
         ineligible: int = 0,
         min_score: float | None = None,
         seen: str | None = None,
+        strong_sponsors: int = 0,
+        view: str | None = None,
     ):
         context = _feed_context(
             request, window, status, location, remote, sort, entry_level,
-            ineligible, min_score, seen,
+            ineligible, min_score, seen, strong_sponsors,
         )
+        context["board_view"] = view == "board"
         return templates.TemplateResponse(request, "partials/feed_table.html", context)
 
     @app.get("/jobs/{job_id}", response_class=HTMLResponse)
@@ -145,10 +212,14 @@ def create_app() -> FastAPI:
             else None
         )
         tailoring = json.loads(job["tailor_json"]) if job.get("tailor_json") else None
+        from .routes_api import sponsor_evidence_for
+
+        sponsor_intel = sponsor_evidence_for(job)
         return templates.TemplateResponse(
             request,
             "job_detail.html",
-            {"job": job, "match": match, "evidence": evidence, "tailoring": tailoring},
+            {"job": job, "match": match, "evidence": evidence,
+             "tailoring": tailoring, "sponsor_intel": sponsor_intel},
         )
 
     @app.get("/profile", response_class=HTMLResponse)
@@ -158,7 +229,11 @@ def create_app() -> FastAPI:
         return templates.TemplateResponse(
             request,
             "profile.html",
-            {"profile": db.get_profile(), "answer_bank_entries": answer_bank.list_all()},
+            {
+                "profile": db.get_profile(),
+                "answer_bank_entries": answer_bank.list_all(),
+                "extraction_conflict": request.query_params.get("extraction_conflict") == "1",
+            },
         )
 
     @app.get("/analytics", response_class=HTMLResponse)
@@ -201,9 +276,19 @@ def create_app() -> FastAPI:
     def autofill_status_partial(request: Request):
         from engine.autofill import browser_controller
 
+        snapshot = browser_controller.queue_snapshot()
         current = browser_controller.current_job()
+        current_title = None
+        if current is not None:
+            entry = next(
+                (e for e in snapshot["queue"] if e["job_id"] == current["job_id"]), None
+            )
+            if entry:
+                current_title = f'{entry["title"]} — {entry["company"]}'
         return templates.TemplateResponse(
-            request, "partials/autofill_status.html", {"current": current}
+            request,
+            "partials/autofill_status.html",
+            {"current": current, "snapshot": snapshot, "current_title": current_title},
         )
 
     return app

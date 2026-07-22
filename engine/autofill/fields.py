@@ -118,3 +118,46 @@ def classify(field: FieldDescriptor) -> str:
         return "cover_letter"
 
     return "free_text_unknown"
+
+
+# --- structured-input option matching (007, FR-006) --------------------------
+
+# Minimum rapidfuzz ratio for a fuzzy option match. Deliberately strict:
+# a wrong structured answer (especially on an authorization dropdown) is
+# worse than an unfilled one, which is merely reported for manual review.
+# Exercised from both sides by tests/test_fields.py::TestMatchOption.
+OPTION_MATCH_CONFIDENCE = 87
+
+
+def match_option(answer: str, options: list[str]) -> str | None:
+    """Pick the option whose text best matches a confirmed answer, or None
+    when no option matches confidently (the field is then left untouched
+    and reported unfilled — never guessed)."""
+    from rapidfuzz import fuzz
+
+    normalized_answer = (answer or "").strip().casefold()
+    if not normalized_answer or not options:
+        return None
+
+    normalized = [(option, (option or "").strip().casefold()) for option in options]
+
+    for option, text in normalized:
+        if text == normalized_answer:
+            return option
+    # "Yes" -> "Yes, I am authorized": the answer as the option's leading
+    # word(s), ending at a word boundary — checked before any fuzzy pass so
+    # yes/no pairs can never cross-match.
+    for option, text in normalized:
+        if text.startswith(normalized_answer):
+            rest = text[len(normalized_answer):]
+            if rest == "" or not rest[:1].isalnum():
+                return option
+
+    best_option, best_score = None, 0.0
+    for option, text in normalized:
+        score = fuzz.ratio(normalized_answer, text)
+        if score > best_score:
+            best_option, best_score = option, score
+    if best_score >= OPTION_MATCH_CONFIDENCE:
+        return best_option
+    return None

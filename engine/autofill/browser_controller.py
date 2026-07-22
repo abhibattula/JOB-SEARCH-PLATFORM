@@ -48,6 +48,14 @@ class _State:
         # unrecognized/no-saved-answer question pauses for review rather
         # than being auto-filled from an unreviewed AI draft.
         self.pending: dict | None = None
+        # 007 depth: per-job fill reports (passwords pre-masked at record
+        # time — the secret never enters this structure), browser-closed
+        # interruption flag, and the end-of-queue batch summary. All
+        # session-scoped by design: an app restart clears them (spec
+        # assumption).
+        self.fill_reports: dict[int, list[dict]] = {}
+        self.interrupted: bool = False
+        self.summary: dict | None = None
 
 
 _state = _State()
@@ -123,7 +131,9 @@ def _job_url(job_id: int) -> str | None:
 def _serialize_fields(page) -> list[dict]:
     """Real-DOM field extraction — the only function that reaches into a
     live page; browser_controller is the sole caller of fields.classify()
-    with real serialized data (fields.py itself stays pure/fixture-testable)."""
+    with real serialized data (fields.py itself stays pure/fixture-testable).
+    007: also captures the current value (idempotency, FR-007) and select
+    option texts (structured-input matching, FR-006)."""
     return page.eval_on_selector_all(
         FIELD_QUERY_SELECTOR,
         """(elements) => elements.map(el => ({
@@ -136,24 +146,65 @@ def _serialize_fields(page) -> list[dict]:
             placeholder: el.placeholder || '',
             aria_label: el.getAttribute('aria-label') || '',
             autocomplete: el.autocomplete || '',
+            value: (el.type === 'checkbox' || el.type === 'radio')
+                ? (el.checked ? 'on' : '')
+                : (el.value || ''),
+            options: el.tagName === 'SELECT'
+                ? Array.from(el.options).map(o => o.text)
+                : null,
         }))""",
     )
 
 
+def _is_closed_error(exc: Exception) -> bool:
+    text = f"{type(exc).__name__} {exc}".lower()
+    return "targetclosed" in text or "has been closed" in text
+
+
+def _mark_interrupted() -> None:
+    """The dedicated browser window was closed under us (FR-008): keep the
+    queue and its position, drop the dead Playwright objects, and let
+    resume_queue() relaunch at the current job."""
+    global _playwright, _context, _page
+    with _lock:
+        _state.interrupted = True
+    _page = None
+    _context = None
+    if _playwright is not None:
+        try:
+            _playwright.stop()
+        except Exception:
+            pass
+        _playwright = None
+
+
 def _open_job(job_id: int) -> None:
-    """Real Playwright work for one job: open its application page and fill
-    recognized fields. Monkeypatched entirely in unit tests
-    (tests/test_browser_controller.py's TestQueueStateMachine)."""
+    """Real Playwright work for one job: open its application page, wire
+    same-tab page-change rescans, and run the fill pass. Monkeypatched
+    entirely in unit tests (TestQueueStateMachine and friends)."""
     global _page
 
     url = _job_url(job_id)
     if not url:
         return
-    context = _ensure_context()
-    _page = context.new_page()
+    try:
+        context = _ensure_context()
+        _page = context.new_page()
+    except Exception as exc:
+        if _is_closed_error(exc):
+            _mark_interrupted()
+        else:
+            log.warning("could not open a browser page — manual fallback", exc_info=True)
+            with _lock:
+                _state.fell_back.add(job_id)
+        return
+    _wire_page_change(_page, job_id)
     try:
         _page.goto(url, timeout=30_000)
-    except Exception:
+    except Exception as exc:
+        if _is_closed_error(exc):
+            _mark_interrupted()
+            return
         log.warning("failed to load %s — falling back to manual", url, exc_info=True)
         with _lock:
             _state.fell_back.add(job_id)
@@ -173,21 +224,146 @@ def _open_job(job_id: int) -> None:
             _state.fell_back.add(job_id)
         return
 
+    _fill_page(job_id)
+
+
+def _wire_page_change(page, job_id: int) -> None:
+    """FR-003: when the human clicks the site's own Next/Continue and the
+    same tab navigates, re-run the fill pass on the settled new page. The
+    app itself never navigates — this only ever REACTS to navigation the
+    user performed. Best-effort: SPA re-renders that never navigate are
+    covered by the manual rescan button (POST /api/autofill/rescan)."""
+    def _on_navigated(frame) -> None:
+        try:
+            if frame != page.main_frame:
+                return
+            page.wait_for_load_state("domcontentloaded", timeout=15_000)
+            _fill_page(job_id)
+        except Exception as exc:
+            if _is_closed_error(exc):
+                _mark_interrupted()
+            else:
+                log.debug("page-change fill pass failed", exc_info=True)
+
+    try:
+        page.on("framenavigated", _on_navigated)
+    except Exception:
+        log.debug("could not wire page-change listener", exc_info=True)
+
+
+def _resume_file_for_job(job_id: int, profile: dict) -> str | None:
+    """FR-001/FR-002: the job's tailored PDF when available and the
+    preference (default on) allows it; otherwise the stored original."""
+    from .. import settings
+
+    if settings.get("AUTOFILL_USE_TAILORED_PDF") != "0":
+        try:
+            from .. import resume_pdf
+
+            return str(resume_pdf.tailored_resume_path(job_id))
+        except Exception:
+            # no sections yet / render failure -> the original upload
+            log.debug("tailored PDF unavailable — using original resume", exc_info=True)
+    return profile.get("resume_file_path") or None
+
+
+def _fill_page(job_id: int) -> int:
+    """One idempotent fill pass over the current page (FR-005/006/007).
+    Safe to run repeatedly: non-empty fields (user-typed or previously
+    filled) are never overwritten. Returns the number of fields filled.
+    Every action lands in the job's fill report; a filled password is
+    recorded pre-masked — the secret never enters controller state."""
     from .. import db
 
+    page = _page
+    if page is None:
+        return 0
+    try:
+        raw_fields = _serialize_fields(page)
+    except Exception as exc:
+        if _is_closed_error(exc):
+            _mark_interrupted()
+        return 0
+
     profile = db.get_profile() or {}
-    for raw, tag in zip(raw_fields, classified):
+    with _lock:
+        report = _state.fill_reports.setdefault(job_id, [])
+    filled_count = 0
+
+    def record(raw: dict, tag: str, value_preview: str, outcome: str) -> None:
+        label = (raw.get("label_text") or raw.get("placeholder")
+                 or raw.get("aria_label") or raw.get("name") or "")
+        with _lock:
+            report.append({
+                "label": label[:120],
+                "tag": tag,
+                "value_preview": value_preview[:60],
+                "outcome": outcome,
+            })
+
+    for raw in raw_fields:
+        tag = fields_mod.classify(raw)
+
+        # FR-007: a value already present is sacred — never overwritten,
+        # never duplicated, for text inputs and file inputs alike.
+        if (raw.get("value") or "").strip():
+            if tag != "free_text_unknown":
+                record(raw, tag, "", "skipped_existing")
+            continue
+
+        selector = f"#{raw['id']}" if raw.get("id") else f"[name='{raw.get('name')}']"
+
+        if tag == "resume_upload":
+            path = _resume_file_for_job(job_id, profile)
+            if not path:
+                continue
+            try:
+                handle = page.query_selector(selector)
+                if handle is None:
+                    continue
+                handle.set_input_files(path)
+                record(raw, tag, path.rsplit("\\", 1)[-1].rsplit("/", 1)[-1], "filled")
+                filled_count += 1
+            except Exception as exc:
+                if _is_closed_error(exc):
+                    _mark_interrupted()
+                    return filled_count
+                # Spec edge case: custom widgets rejecting programmatic
+                # attachment are reported, never fatal — queue continues.
+                record(raw, tag, "", "needs_manual")
+            continue
+
+        pending_before = _state.pending
         value = _value_for_tag(tag, raw, profile, job_id)
         if value is None:
+            if _state.pending is not None and _state.pending is not pending_before:
+                record(raw, tag, "", "paused")
             continue
+
         try:
-            handle = _page.query_selector(
-                f"#{raw['id']}" if raw.get("id") else f"[name='{raw.get('name')}']"
-            )
-            if handle is not None:
+            handle = page.query_selector(selector)
+            if handle is None:
+                continue
+            if raw.get("options"):
+                # FR-006: structured inputs answer by option-text match —
+                # below confidence the input is left untouched, never guessed.
+                matched = fields_mod.match_option(str(value), raw["options"])
+                if matched is None:
+                    record(raw, tag, "", "no_match")
+                    continue
+                handle.select_option(label=matched)
+                record(raw, tag, matched, "filled")
+            else:
                 _apply_field_value(handle, tag, raw.get("type", ""), value)
-        except Exception:
+                preview = "•••" if tag == "login_password" else str(value)
+                record(raw, tag, preview, "filled")
+            filled_count += 1
+        except Exception as exc:
+            if _is_closed_error(exc):
+                _mark_interrupted()
+                return filled_count
             log.debug("could not fill field %s", raw, exc_info=True)
+    return filled_count
 
 
 def _domain_for_job(job_id: int) -> str | None:
@@ -226,7 +402,9 @@ def _value_for_tag(tag: str, raw: dict, profile: dict, job_id: int):
     if tag == "phone":
         return profile.get("phone")
     if tag == "resume_upload":
-        return None  # file path wiring lands with the Profile-driven resume path
+        # handled directly in _fill_page (007: _resume_file_for_job — the
+        # tailored-preferred file attachment path), never through here
+        return None
     if tag in ("linkedin_url",):
         return profile.get("linkedin_url")
     if tag in ("portfolio_url",):
@@ -263,6 +441,9 @@ def start_queue(job_ids: list[int]) -> dict | None:
         _state.running = bool(job_ids)
         _state.fell_back = set()
         _state.pending = None
+        _state.fill_reports = {}
+        _state.interrupted = False
+        _state.summary = None
     if job_ids:
         _open_job(job_ids[0])
     return current_job()
@@ -312,6 +493,16 @@ def resolve_pending(answer: str) -> None:
         log.debug("could not fill resolved pending field", exc_info=True)
 
 
+def _job_outcome(job_id: int) -> str:
+    """Per-job outcome for the batch summary (FR-009). Caller holds _lock."""
+    if job_id in _state.fell_back:
+        return "manual"
+    entries = _state.fill_reports.get(job_id) or []
+    if any(entry["outcome"] == "filled" for entry in entries):
+        return "filled"
+    return "skipped"
+
+
 def advance() -> dict | None:
     """User-driven only ("Done, next application") — never automatic
     completion detection (005 clarify session)."""
@@ -322,10 +513,87 @@ def advance() -> dict | None:
         _state.pending = None  # a pending confirmation belongs to the job just left
         if _state.index >= len(_state.job_ids):
             _state.running = False
+            per_job = [
+                {"job_id": job_id, "outcome": _job_outcome(job_id)}
+                for job_id in _state.job_ids
+            ]
+            _state.summary = {
+                "filled": sum(1 for e in per_job if e["outcome"] == "filled"),
+                "manual": sum(1 for e in per_job if e["outcome"] == "manual"),
+                "skipped": sum(1 for e in per_job if e["outcome"] == "skipped"),
+                "per_job": per_job,
+            }
             return None
         next_job_id = _state.job_ids[_state.index]
     _open_job(next_job_id)
     return current_job()
+
+
+def rescan() -> dict | None:
+    """Manual re-classify-and-fill of the current page (FR-003 fallback
+    for SPA re-renders that never navigate). None when no active session."""
+    with _lock:
+        if not _state.running or not (0 <= _state.index < len(_state.job_ids)):
+            return None
+        job_id = _state.job_ids[_state.index]
+    if _page is None:
+        return None
+    filled = _fill_page(job_id)
+    return {"rescanned": True, "filled": filled}
+
+
+def resume_queue() -> dict | None:
+    """Relaunch the browser at the current queue position after the window
+    was closed (FR-008). Same-app-session only — an app restart clears the
+    queue entirely (spec assumption). None when there is nothing to resume."""
+    with _lock:
+        if not _state.interrupted or not _state.running:
+            return None
+        if not (0 <= _state.index < len(_state.job_ids)):
+            return None
+        _state.interrupted = False
+        job_id = _state.job_ids[_state.index]
+    _open_job(job_id)
+    return current_job()
+
+
+def queue_snapshot() -> dict:
+    """Everything the mission-control panel needs (FR-026): the whole
+    queue with per-job state and titles, progress, the current job's fill
+    report, the interruption flag, and the end-of-queue summary."""
+    from .. import db
+
+    with _lock:
+        job_ids = list(_state.job_ids)
+        index = _state.index
+        running = _state.running
+        interrupted = _state.interrupted
+        summary = _state.summary
+        current_report = []
+        if 0 <= index < len(job_ids):
+            current_report = list(_state.fill_reports.get(job_ids[index]) or [])
+
+    queue = []
+    for i, job_id in enumerate(job_ids):
+        job = db.get_job(job_id) or {}
+        if running:
+            state = "done" if i < index else ("current" if i == index else "pending")
+        else:
+            state = "done"
+        queue.append({
+            "job_id": job_id,
+            "title": job.get("title") or f"#{job_id}",
+            "company": job.get("company") or "",
+            "state": state,
+        })
+    done = index if running else len(job_ids)
+    return {
+        "queue": queue,
+        "progress": {"done": done, "total": len(job_ids)},
+        "fill_report": current_report,
+        "interrupted": interrupted,
+        "summary": summary,
+    }
 
 
 def chromium_selftest() -> bool:
@@ -356,4 +624,7 @@ def stop_queue() -> None:
         _state.index = -1
         _state.fell_back = set()
         _state.pending = None
+        _state.fill_reports = {}
+        _state.interrupted = False
+        _state.summary = None
     _page = None

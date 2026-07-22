@@ -58,13 +58,32 @@ entirely on your machine for $0.
   preferred when set).
 - **Apply Assist**: opens each shortlisted job's real application page in
   its own dedicated browser window and fills in the fields it recognizes —
-  name, contact info, links, work authorization/sponsorship, common
-  short-answer questions — from your profile and a reusable answer bank.
-  **You always click the actual submit/login button yourself; the app never
-  does.** Unrecognized or legally-sensitive questions pause for your review
-  before anything is saved or typed. Saved logins autofill from your OS's own
-  credential store (never this app's database) the same way — filled, never
-  auto-submitted.
+  name, contact info, links, **your resume file itself**, work
+  authorization/sponsorship dropdowns (matched to the site's own option
+  wording), and common short-answer questions — from your profile and a
+  reusable answer bank. Multi-page applications keep filling as *you* click
+  the site's own Next button; a per-field fill report shows exactly what was
+  entered; closing the browser mid-queue is resumable; a batch summary wraps
+  every run. **You always click the actual submit/login button yourself; the
+  app never does.** Unrecognized or legally-sensitive questions pause for
+  your review before anything is saved or typed. Saved logins autofill from
+  your OS's own credential store (never this app's database) the same way —
+  filled, never auto-submitted.
+- **Resume builder + tailored PDFs**: your uploaded resume is parsed into
+  editable structured sections (experience, education, projects, skills) you
+  review once; every job can then export an ATS-safe **tailored resume PDF**
+  and cover-letter PDF — generated fully offline, and attached automatically
+  by Apply Assist when available.
+- **Sponsorship intelligence nobody else has**: a local A–F **sponsor grade**
+  per company computed from real USCIS approval/denial history and DOL wage
+  data, **cap-exempt detection** (universities/nonprofits that skip the H-1B
+  lottery entirely), a wage-weighted lottery-odds hint, and a "Strong
+  sponsors only" feed filter — all free, all offline, no lookups leave your
+  machine.
+- **An instrument, not a webpage**: a full design-token UI with a light
+  "datasheet" theme and a dark "scope screen" theme, a kanban pipeline
+  board, toast feedback on every action, and a first-run checklist that
+  tracks real setup state.
 
 ## Install (for users)
 

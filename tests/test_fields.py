@@ -133,3 +133,38 @@ class TestLoginFieldsRequireCorroboratingContext:
 class TestFallback:
     def test_unrecognized_text_field_is_free_text_unknown(self):
         assert fields.classify(field(label_text="Anything else you'd like to add?")) == "free_text_unknown"
+
+
+class TestMatchOption:
+    """007-T021 (FR-006): structured inputs (select/radio/checkbox) answer
+    by choosing the option whose text best matches the confirmed answer —
+    and stay untouched when no option matches confidently."""
+
+    def test_exact_option_text_matches(self):
+        assert fields.match_option("Yes", ["Yes", "No"]) == "Yes"
+
+    def test_case_and_whitespace_insensitive(self):
+        assert fields.match_option("yes", ["  Yes  ", "No"]) == "  Yes  "
+
+    def test_answer_contained_in_longer_option(self):
+        options = ["Yes, I am authorized", "No, I am not authorized"]
+        assert fields.match_option("Yes", options) == "Yes, I am authorized"
+
+    def test_fuzzy_phrasing_matches(self):
+        options = ["LinkedIn", "Indeed", "Company website", "Other"]
+        assert fields.match_option("Linked In", options) == "LinkedIn"
+
+    def test_no_confident_match_returns_none(self):
+        """Below the confidence threshold the input is left untouched and
+        reported unfilled — never a wrong structured answer (FR-006)."""
+        assert fields.match_option("Purple", ["Yes", "No"]) is None
+
+    def test_yes_no_never_cross_matches(self):
+        """'No' must never fuzzily land on a 'Yes...' option — this is the
+        legally-dangerous failure mode for authorization dropdowns."""
+        options = ["Yes, I am authorized", "No, I am not authorized"]
+        assert fields.match_option("No", options) == "No, I am not authorized"
+
+    def test_empty_inputs(self):
+        assert fields.match_option("", ["Yes", "No"]) is None
+        assert fields.match_option("Yes", []) is None

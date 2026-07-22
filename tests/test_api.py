@@ -9,10 +9,16 @@ from engine import db
 def client(tmp_db, monkeypatch):
     # Refresh runs synchronously (and fetches nothing) so tests are deterministic.
     monkeypatch.setenv("REFRESH_SYNC", "1")
-    from engine import pipeline
+    from engine import matcher, pipeline
 
     monkeypatch.setattr(pipeline, "_source_names", lambda: [])
     monkeypatch.setattr(pipeline, "load_companies", lambda: [])
+    # 007: force the basic tier — a dev machine with the bundled model in
+    # models/ would otherwise run REAL local-LLM extraction on every
+    # unmocked resume upload (slow, nondeterministic). Tests that need
+    # extraction mock engine.resume_extract.extract directly.
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.setattr(matcher.local_llm, "available", lambda: False)
     from web.main import create_app
 
     return TestClient(create_app())
@@ -69,6 +75,116 @@ class TestPages:
         assert resp.status_code == 200
         assert "How did you hear about us?" in resp.text
         assert "Prefer not to say" in resp.text
+
+    def test_feed_polling_is_gated_and_editors_preserved(self, client):
+        """007-T010 (FR-024): the 5s feed poll must be conditional on
+        pollingAllowed() so background refreshes never clobber an open
+        notes/stage editor mid-edit."""
+        resp = client.get("/")
+        assert resp.status_code == 200
+        assert "every 5s [pollingAllowed()]" in resp.text
+        # base page loads the shared module that defines the gate
+        assert "/static/app.js" in resp.text
+
+    def test_nav_marks_current_page(self, client):
+        """007-T009 (FR-022): grouped nav with aria-current active state."""
+        resp = client.get("/profile")
+        assert 'aria-current="page"' in resp.text
+        assert resp.text.count('aria-current="page"') == 1
+
+    def test_profile_page_renders_resume_builder(self, client):
+        """007-T015: the Resume builder section renders populated
+        sections, and empty editable state when none exist."""
+        from engine import db
+
+        empty = client.get("/profile")
+        assert empty.status_code == 200
+        assert "Resume builder" in empty.text
+
+        db.save_profile(resume_sections={
+            "experience": [{"title": "Firmware Intern", "organization": "Acme",
+                            "start": "2025-05", "end": "2025-08",
+                            "bullets": ["Wrote STM32 drivers"]}],
+            "education": [], "projects": [], "skills": ["python"],
+        })
+        populated = client.get("/profile")
+        assert "Firmware Intern" in populated.text
+        assert "Wrote STM32 drivers" in populated.text
+
+    def test_profile_page_shows_reextract_prompt_on_conflict(self, client):
+        """007-T015 (FR-016 clarification): after an upload that skipped
+        extraction because edits exist, the page asks keep vs re-extract."""
+        resp = client.get("/profile?extraction_conflict=1")
+        assert resp.status_code == 200
+        assert "Re-extract" in resp.text
+        assert "keep" in resp.text.lower()
+
+    def test_applied_board_view_renders_stage_columns(self, client):
+        """007-T038 (FR-025): the Applied view offers a stage-column board
+        with counts; the table stays available as a toggle."""
+        job = seed_job()
+        client.post(f"/api/jobs/{job['id']}/status", json={"status": "applied"})
+        client.post(f"/api/jobs/{job['id']}/stage", params={"stage": "interview"})
+
+        board = client.get("/", params={"status": "applied", "view": "board"})
+        assert board.status_code == 200
+        assert 'class="board"' in board.text
+        for stage in ("applied", "oa", "interview", "offer", "rejected"):
+            assert f'data-stage="{stage}"' in board.text
+        assert "Software Engineer, New Grad" in board.text
+        # move buttons (the keyboard/AT path) present on cards
+        assert "board-move" in board.text
+
+        table = client.get("/", params={"status": "applied"})
+        assert 'class="board"' not in table.text  # table remains the default
+        assert "view=board" in table.text  # toggle offered
+
+    def test_onboarding_checklist_reflects_real_state(self, client):
+        """007-T040 (FR-027): checklist derives from actual completion
+        state — no stored step flags that can drift from reality."""
+        from engine import db
+
+        fresh = client.get("/")
+        assert "onboarding-checklist" in fresh.text
+        assert "Upload your resume" in fresh.text
+
+        db.save_profile(resume_text="resume", resume_filename="r.pdf")
+        after_resume = client.get("/")
+        # the resume step now renders as done (✓) — state is derived live
+        assert 'class="ob-step done"' in after_resume.text
+
+    def test_onboarding_checklist_dismissible(self, client):
+        from engine import settings
+
+        settings.set("ONBOARDING_DISMISSED", "1")
+        resp = client.get("/")
+        assert "onboarding-checklist" not in resp.text
+
+    def test_feed_action_buttons_have_accessible_names(self, client):
+        """007-T042 (FR-028): icon-only ☆ ✓ ✕ controls expose aria-labels."""
+        seed_job()
+        resp = client.get("/")
+        assert 'aria-label="Save' in resp.text
+        assert 'aria-label="Mark applied' in resp.text
+        assert 'aria-label="Hide' in resp.text
+
+    def test_polled_regions_are_aria_live(self, client):
+        resp = client.get("/")
+        assert 'aria-live="polite"' in resp.text
+
+    @pytest.mark.parametrize("theme", ["light", "dark"])
+    def test_all_pages_render_in_both_themes(self, client, theme):
+        """007-T043 (FR-021): every page renders under both themes with the
+        chosen theme stamped on the document."""
+        from engine import settings
+
+        settings.set("THEME", theme)
+        job = seed_job()
+        for path in ("/", "/analytics", "/profile", "/settings", "/autofill",
+                     f"/jobs/{job['id']}"):
+            resp = client.get(path)
+            assert resp.status_code == 200, path
+            assert f'data-theme="{theme}"' in resp.text, path
 
     def test_profile_page_serves_with_sponsorship_fields_set(self, client):
         """005-T036: profile.html must render the Apply Assist fields
@@ -149,6 +265,67 @@ class TestJobsApi:
         )
 
 
+class TestSponsorIntelligenceApi:
+    def _grade_company(self, name, grade=None, cap=0, wage=None, offered=None, denials=0):
+        with db._conn() as conn:
+            cid = db._get_or_create_company(conn, name)
+            conn.execute(
+                "UPDATE companies SET sponsor_grade=?, cap_exempt=?,"
+                " wage_level_median=?, wage_offered_median=?, h1b_denials=?"
+                " WHERE id=?",
+                (grade, cap, wage, offered, denials, cid),
+            )
+
+    def test_feed_rows_carry_grade_and_cap_exempt(self, client):
+        """007-T035 (FR-011/012): grade + cap-exempt in the jobs payload."""
+        seed_job(url="https://example.com/g1", company="GradeCo")
+        self._grade_company("GradeCo", grade="A", cap=0)
+        seed_job(url="https://example.com/u1", company="State University")
+        self._grade_company("State University", grade=None, cap=1)
+
+        payload = client.get("/api/jobs").json()
+        by_company = {j["company"]: j for j in payload["jobs"]}
+        assert by_company["GradeCo"]["sponsor_grade"] == "A"
+        assert by_company["GradeCo"]["cap_exempt"] is False
+        assert by_company["State University"]["sponsor_grade"] is None
+        assert by_company["State University"]["cap_exempt"] is True
+
+    def test_strong_sponsors_filter(self, client):
+        """007-T035 (FR-014): grade >= B or cap-exempt; composes with
+        existing filters."""
+        seed_job(url="https://example.com/a", title="A Job", company="ACo")
+        self._grade_company("ACo", grade="A")
+        seed_job(url="https://example.com/c", title="C Job", company="CCo")
+        self._grade_company("CCo", grade="C")
+        seed_job(url="https://example.com/u", title="Uni Job", company="State University")
+        self._grade_company("State University", cap=1)
+        seed_job(url="https://example.com/n", title="No Data Job", company="NoCo")
+
+        narrowed = client.get("/api/jobs", params={"strong_sponsors": 1}).json()
+        titles = {j["title"] for j in narrowed["jobs"]}
+        assert titles == {"A Job", "Uni Job"}
+        # composes with existing params
+        composed = client.get(
+            "/api/jobs", params={"strong_sponsors": 1, "location": "San Francisco"}
+        ).json()
+        assert composed["total"] == 2  # both seeded in SF by default
+
+    def test_detail_includes_sponsor_evidence(self, client):
+        """007-T035 (FR-015): the evidence panel object."""
+        job = seed_job(url="https://example.com/e1", company="GradeCo")
+        self._grade_company("GradeCo", grade="B", cap=0, wage="III",
+                            offered=150000.0, denials=12)
+
+        detail = client.get(f"/api/jobs/{job['id']}").json()
+        evidence = detail["sponsor_evidence"]
+        assert evidence["grade"] == "B"
+        assert evidence["denials"] == 12
+        assert evidence["wage_level_median"] == "III"
+        assert evidence["wage_offered_median"] == 150000.0
+        assert evidence["cap_exempt"] is False
+        assert "lottery_hint" in evidence
+
+
 class TestProfileApi:
     def _pdf(self):
         import fitz
@@ -218,6 +395,153 @@ class TestProfileApi:
         # extraction itself may find nothing without an LLM key — the point
         # is the manual entries are never dropped
         assert payload["skills"][:2] == ["Rust", "Go"]
+
+    def test_resume_upload_stores_original_file(self, client):
+        """007-T013 (FR-001): the original PDF bytes must survive upload —
+        Apply Assist attaches the file itself, not the extracted text."""
+        from engine import db, paths
+
+        response = client.post(
+            "/api/profile",
+            files={"resume": ("resume.pdf", self._pdf(), "application/pdf")},
+        )
+        assert response.status_code == 200
+        payload = client.get("/api/profile").json()
+        assert payload["has_resume_file"] is True
+        stored = db.get_profile()["resume_file_path"]
+        assert stored is not None
+        from pathlib import Path
+
+        stored_path = Path(stored)
+        assert stored_path.exists() and stored_path.stat().st_size > 0
+        assert paths.data_dir() in stored_path.parents
+        # server-local path never leaks into the API payload
+        assert "resume_file_path" not in payload
+
+    def test_upload_extracts_sections_when_tier_available(self, client, monkeypatch):
+        """007-T013 (FR-016): extraction runs on upload and lands in the
+        payload; no prior edits -> no conflict flag."""
+        from engine import resume_extract
+        from engine.resume_extract import ResumeSections
+
+        monkeypatch.setattr(
+            resume_extract, "extract",
+            lambda text: ResumeSections(skills=["python"]),
+        )
+        response = client.post(
+            "/api/profile",
+            files={"resume": ("resume.pdf", self._pdf(), "application/pdf")},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["extraction_conflict"] is False
+        assert body["resume_sections"]["skills"] == ["python"]
+
+    def test_upload_with_edited_sections_flags_conflict(self, client, monkeypatch):
+        """007-T013 (FR-016 + clarification): user-edited sections are
+        never silently overwritten — re-upload flags the conflict and
+        keeps the edits until the user explicitly chooses."""
+        from engine import db, resume_extract
+        from engine.resume_extract import ResumeSections
+
+        db.save_profile(
+            resume_sections={"experience": [], "education": [], "projects": [],
+                             "skills": ["edited-by-hand"]},
+            sections_edited_at="2026-07-21 10:00:00.000000",
+        )
+        monkeypatch.setattr(
+            resume_extract, "extract",
+            lambda text: ResumeSections(skills=["freshly-extracted"]),
+        )
+        response = client.post(
+            "/api/profile",
+            files={"resume": ("resume.pdf", self._pdf(), "application/pdf")},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["extraction_conflict"] is True
+        assert body["resume_sections"]["skills"] == ["edited-by-hand"]  # kept
+
+    def test_put_resume_sections_validates_and_stamps_edit_time(self, client):
+        """007-T013 (FR-017): manual section editing — full replace,
+        schema-validated, sections_edited_at stamped."""
+        good = {"experience": [], "education": [], "projects": [], "skills": ["rust"]}
+        response = client.put("/api/profile/resume-sections", json=good)
+        assert response.status_code == 200
+        payload = client.get("/api/profile").json()
+        assert payload["resume_sections"]["skills"] == ["rust"]
+        assert payload["sections_edited_at"] is not None
+
+        bad = {"experience": "not-a-list"}
+        assert client.put("/api/profile/resume-sections", json=bad).status_code == 422
+
+    def test_reextract_requires_resume_and_consents(self, client, monkeypatch):
+        """007-T013 (FR-016): explicit re-extract replaces edited sections
+        and clears the edit stamp; 409 without a resume; graceful reply
+        without an AI tier."""
+        from engine import db, resume_extract
+        from engine.resume_extract import ResumeSections
+
+        assert client.post("/api/profile/reextract").status_code == 409
+
+        client.post(
+            "/api/profile",
+            files={"resume": ("resume.pdf", self._pdf(), "application/pdf")},
+        )
+        client.put(
+            "/api/profile/resume-sections",
+            json={"experience": [], "education": [], "projects": [], "skills": ["edited"]},
+        )
+        monkeypatch.setattr(
+            resume_extract, "extract",
+            lambda text: ResumeSections(skills=["re-extracted"]),
+        )
+        response = client.post("/api/profile/reextract")
+        assert response.status_code == 200
+        payload = client.get("/api/profile").json()
+        assert payload["resume_sections"]["skills"] == ["re-extracted"]
+        assert payload["sections_edited_at"] is None
+
+        monkeypatch.setattr(resume_extract, "extract", lambda text: None)
+        body = client.post("/api/profile/reextract").json()
+        assert body == {"extracted": False, "reason": "no-ai-tier"}
+
+    def test_resume_pdf_download_and_409(self, client):
+        """007-T018 (FR-018): tailored/untailored resume PDF download;
+        409 when no sections exist yet."""
+        from engine import db
+
+        job = seed_job(url="https://example.com/pdf1")
+        assert client.get(f"/api/jobs/{job['id']}/resume-pdf").status_code == 409
+
+        db.save_profile(
+            first_name="Ada", last_name="Lovelace",
+            resume_sections={"experience": [], "education": [], "projects": [],
+                             "skills": ["python"]},
+        )
+        response = client.get(f"/api/jobs/{job['id']}/resume-pdf")
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("application/pdf")
+        assert "attachment" in response.headers.get("content-disposition", "")
+        assert response.content[:5] == b"%PDF-"
+
+    def test_cover_letter_pdf_download_and_409(self, client):
+        """007-T018: cover-letter PDF needs tailoring output first."""
+        import json as _json
+
+        from engine import db
+
+        job = seed_job(url="https://example.com/pdf2")
+        assert client.get(f"/api/jobs/{job['id']}/cover-letter-pdf").status_code == 409
+
+        db.save_profile(first_name="Ada", last_name="Lovelace")
+        db.set_tailor(job["id"], _json.dumps({
+            "summary_line": "s", "tailored_bullets": ["b"],
+            "cover_letter": "Dear team — I build firmware.", "ats_keywords": [],
+        }))
+        response = client.get(f"/api/jobs/{job['id']}/cover-letter-pdf")
+        assert response.status_code == 200
+        assert response.content[:5] == b"%PDF-"
 
     def test_identity_fields_saved(self, client):
         """006-A: first/last name, email, phone, LinkedIn, portfolio — the
