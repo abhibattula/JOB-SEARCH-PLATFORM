@@ -45,6 +45,30 @@ class TestLocalLlmSelftest:
         assert body["reply"] == ""
 
 
+class TestPdfSelftest:
+    """007-T020: a REAL fpdf2 render with the bundled fonts — the smoke
+    test asserts this in the frozen build so dropped font data files fail
+    loudly (the tls_client lesson, third application)."""
+
+    def test_renders_real_pdf(self, client):
+        resp = client.get("/api/diagnostics/pdf-selftest")
+        assert resp.status_code == 200
+        body = resp.json()
+        assert body["ok"] is True
+        assert body["bytes"] > 1000  # a real document, not a stub
+
+    def test_ok_false_on_render_failure(self, client, monkeypatch):
+        from engine import resume_pdf
+
+        def _boom(*args, **kwargs):
+            raise RuntimeError("font missing")
+
+        monkeypatch.setattr(resume_pdf, "render_resume", _boom)
+        resp = client.get("/api/diagnostics/pdf-selftest")
+        assert resp.status_code == 200
+        assert resp.json()["ok"] is False
+
+
 class TestChromiumLaunchSelftest:
     """005-T030: packaging/smoke_test.py needs a real Chromium-launch check
     (not just an import check) so a dropped Playwright driver fails loudly,

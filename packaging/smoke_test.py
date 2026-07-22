@@ -109,6 +109,19 @@ def main() -> int:
         print(f"FAIL: local-llm-selftest did not return ok+reply: {selftest}")
         return 1
 
+    # 007: same reasoning, for the bundled DejaVu fonts + fpdf2 — a real
+    # render, so dropped font data files fail the release loudly instead
+    # of surfacing as broken PDF downloads in production.
+    pdf_body = urllib.request.urlopen(
+        base + "/api/diagnostics/pdf-selftest", timeout=60
+    ).read()
+    pdf_selftest = json.loads(pdf_body)
+    print(f"pdf-selftest -> {pdf_selftest}")
+    if not pdf_selftest.get("ok") or pdf_selftest.get("bytes", 0) <= 1000:
+        proc.terminate()
+        print(f"FAIL: pdf-selftest did not return ok+bytes: {pdf_selftest}")
+        return 1
+
     # 005: same reasoning, for the Playwright driver — only run this if
     # Chromium is actually installed (it's an opt-in first-use download,
     # not part of the base install, so CI installs it before this check).

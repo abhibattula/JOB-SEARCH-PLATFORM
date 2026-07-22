@@ -9,10 +9,16 @@ from engine import db
 def client(tmp_db, monkeypatch):
     # Refresh runs synchronously (and fetches nothing) so tests are deterministic.
     monkeypatch.setenv("REFRESH_SYNC", "1")
-    from engine import pipeline
+    from engine import matcher, pipeline
 
     monkeypatch.setattr(pipeline, "_source_names", lambda: [])
     monkeypatch.setattr(pipeline, "load_companies", lambda: [])
+    # 007: force the basic tier — a dev machine with the bundled model in
+    # models/ would otherwise run REAL local-LLM extraction on every
+    # unmocked resume upload (slow, nondeterministic). Tests that need
+    # extraction mock engine.resume_extract.extract directly.
+    monkeypatch.delenv("LLM_API_KEY", raising=False)
+    monkeypatch.setattr(matcher.local_llm, "available", lambda: False)
     from web.main import create_app
 
     return TestClient(create_app())
@@ -85,6 +91,33 @@ class TestPages:
         resp = client.get("/profile")
         assert 'aria-current="page"' in resp.text
         assert resp.text.count('aria-current="page"') == 1
+
+    def test_profile_page_renders_resume_builder(self, client):
+        """007-T015: the Resume builder section renders populated
+        sections, and empty editable state when none exist."""
+        from engine import db
+
+        empty = client.get("/profile")
+        assert empty.status_code == 200
+        assert "Resume builder" in empty.text
+
+        db.save_profile(resume_sections={
+            "experience": [{"title": "Firmware Intern", "organization": "Acme",
+                            "start": "2025-05", "end": "2025-08",
+                            "bullets": ["Wrote STM32 drivers"]}],
+            "education": [], "projects": [], "skills": ["python"],
+        })
+        populated = client.get("/profile")
+        assert "Firmware Intern" in populated.text
+        assert "Wrote STM32 drivers" in populated.text
+
+    def test_profile_page_shows_reextract_prompt_on_conflict(self, client):
+        """007-T015 (FR-016 clarification): after an upload that skipped
+        extraction because edits exist, the page asks keep vs re-extract."""
+        resp = client.get("/profile?extraction_conflict=1")
+        assert resp.status_code == 200
+        assert "Re-extract" in resp.text
+        assert "keep" in resp.text.lower()
 
     def test_profile_page_serves_with_sponsorship_fields_set(self, client):
         """005-T036: profile.html must render the Apply Assist fields
@@ -234,6 +267,153 @@ class TestProfileApi:
         # extraction itself may find nothing without an LLM key — the point
         # is the manual entries are never dropped
         assert payload["skills"][:2] == ["Rust", "Go"]
+
+    def test_resume_upload_stores_original_file(self, client):
+        """007-T013 (FR-001): the original PDF bytes must survive upload —
+        Apply Assist attaches the file itself, not the extracted text."""
+        from engine import db, paths
+
+        response = client.post(
+            "/api/profile",
+            files={"resume": ("resume.pdf", self._pdf(), "application/pdf")},
+        )
+        assert response.status_code == 200
+        payload = client.get("/api/profile").json()
+        assert payload["has_resume_file"] is True
+        stored = db.get_profile()["resume_file_path"]
+        assert stored is not None
+        from pathlib import Path
+
+        stored_path = Path(stored)
+        assert stored_path.exists() and stored_path.stat().st_size > 0
+        assert paths.data_dir() in stored_path.parents
+        # server-local path never leaks into the API payload
+        assert "resume_file_path" not in payload
+
+    def test_upload_extracts_sections_when_tier_available(self, client, monkeypatch):
+        """007-T013 (FR-016): extraction runs on upload and lands in the
+        payload; no prior edits -> no conflict flag."""
+        from engine import resume_extract
+        from engine.resume_extract import ResumeSections
+
+        monkeypatch.setattr(
+            resume_extract, "extract",
+            lambda text: ResumeSections(skills=["python"]),
+        )
+        response = client.post(
+            "/api/profile",
+            files={"resume": ("resume.pdf", self._pdf(), "application/pdf")},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["extraction_conflict"] is False
+        assert body["resume_sections"]["skills"] == ["python"]
+
+    def test_upload_with_edited_sections_flags_conflict(self, client, monkeypatch):
+        """007-T013 (FR-016 + clarification): user-edited sections are
+        never silently overwritten — re-upload flags the conflict and
+        keeps the edits until the user explicitly chooses."""
+        from engine import db, resume_extract
+        from engine.resume_extract import ResumeSections
+
+        db.save_profile(
+            resume_sections={"experience": [], "education": [], "projects": [],
+                             "skills": ["edited-by-hand"]},
+            sections_edited_at="2026-07-21 10:00:00.000000",
+        )
+        monkeypatch.setattr(
+            resume_extract, "extract",
+            lambda text: ResumeSections(skills=["freshly-extracted"]),
+        )
+        response = client.post(
+            "/api/profile",
+            files={"resume": ("resume.pdf", self._pdf(), "application/pdf")},
+        )
+        assert response.status_code == 200
+        body = response.json()
+        assert body["extraction_conflict"] is True
+        assert body["resume_sections"]["skills"] == ["edited-by-hand"]  # kept
+
+    def test_put_resume_sections_validates_and_stamps_edit_time(self, client):
+        """007-T013 (FR-017): manual section editing — full replace,
+        schema-validated, sections_edited_at stamped."""
+        good = {"experience": [], "education": [], "projects": [], "skills": ["rust"]}
+        response = client.put("/api/profile/resume-sections", json=good)
+        assert response.status_code == 200
+        payload = client.get("/api/profile").json()
+        assert payload["resume_sections"]["skills"] == ["rust"]
+        assert payload["sections_edited_at"] is not None
+
+        bad = {"experience": "not-a-list"}
+        assert client.put("/api/profile/resume-sections", json=bad).status_code == 422
+
+    def test_reextract_requires_resume_and_consents(self, client, monkeypatch):
+        """007-T013 (FR-016): explicit re-extract replaces edited sections
+        and clears the edit stamp; 409 without a resume; graceful reply
+        without an AI tier."""
+        from engine import db, resume_extract
+        from engine.resume_extract import ResumeSections
+
+        assert client.post("/api/profile/reextract").status_code == 409
+
+        client.post(
+            "/api/profile",
+            files={"resume": ("resume.pdf", self._pdf(), "application/pdf")},
+        )
+        client.put(
+            "/api/profile/resume-sections",
+            json={"experience": [], "education": [], "projects": [], "skills": ["edited"]},
+        )
+        monkeypatch.setattr(
+            resume_extract, "extract",
+            lambda text: ResumeSections(skills=["re-extracted"]),
+        )
+        response = client.post("/api/profile/reextract")
+        assert response.status_code == 200
+        payload = client.get("/api/profile").json()
+        assert payload["resume_sections"]["skills"] == ["re-extracted"]
+        assert payload["sections_edited_at"] is None
+
+        monkeypatch.setattr(resume_extract, "extract", lambda text: None)
+        body = client.post("/api/profile/reextract").json()
+        assert body == {"extracted": False, "reason": "no-ai-tier"}
+
+    def test_resume_pdf_download_and_409(self, client):
+        """007-T018 (FR-018): tailored/untailored resume PDF download;
+        409 when no sections exist yet."""
+        from engine import db
+
+        job = seed_job(url="https://example.com/pdf1")
+        assert client.get(f"/api/jobs/{job['id']}/resume-pdf").status_code == 409
+
+        db.save_profile(
+            first_name="Ada", last_name="Lovelace",
+            resume_sections={"experience": [], "education": [], "projects": [],
+                             "skills": ["python"]},
+        )
+        response = client.get(f"/api/jobs/{job['id']}/resume-pdf")
+        assert response.status_code == 200
+        assert response.headers["content-type"].startswith("application/pdf")
+        assert "attachment" in response.headers.get("content-disposition", "")
+        assert response.content[:5] == b"%PDF-"
+
+    def test_cover_letter_pdf_download_and_409(self, client):
+        """007-T018: cover-letter PDF needs tailoring output first."""
+        import json as _json
+
+        from engine import db
+
+        job = seed_job(url="https://example.com/pdf2")
+        assert client.get(f"/api/jobs/{job['id']}/cover-letter-pdf").status_code == 409
+
+        db.save_profile(first_name="Ada", last_name="Lovelace")
+        db.set_tailor(job["id"], _json.dumps({
+            "summary_line": "s", "tailored_bullets": ["b"],
+            "cover_letter": "Dear team — I build firmware.", "ats_keywords": [],
+        }))
+        response = client.get(f"/api/jobs/{job['id']}/cover-letter-pdf")
+        assert response.status_code == 200
+        assert response.content[:5] == b"%PDF-"
 
     def test_identity_fields_saved(self, client):
         """006-A: first/last name, email, phone, LinkedIn, portfolio — the

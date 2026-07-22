@@ -238,8 +238,9 @@ details summary { cursor: pointer; margin: 0.2rem 0; }
 .copy-block { cursor: copy; border: 1px dashed var(--line); border-radius: var(--r-md); padding: 0.4rem 0.6rem; }
 .copy-block:hover { border-color: var(--accent); background: var(--accent-tint); }
 .tailor-bullets { list-style: none; padding-left: 0; display: grid; gap: 0.35rem; }
-.tailor-btn { padding: 0.45rem 0.9rem; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--ink); color: var(--surface); font: inherit; cursor: pointer; }
+.tailor-btn { display: inline-block; padding: 0.45rem 0.9rem; border-radius: var(--r-md); border: 1px solid var(--line-strong); background: var(--ink); color: var(--surface); font: inherit; cursor: pointer; }
 .tailor-btn.ghost { background: var(--surface-raised); color: var(--ink); }
+a.tailor-btn:hover, a.tailor-btn:focus-visible { text-decoration: none; filter: brightness(1.1); }
 .htmx-indicator { opacity: 0; transition: opacity 0.2s; color: var(--muted); margin-left: var(--s2); }
 .htmx-request .htmx-indicator, .htmx-request.htmx-indicator { opacity: 1; }
 
@@ -248,6 +249,17 @@ details summary { cursor: pointer; margin: 0.2rem 0; }
 .profile-form label { display: grid; gap: 0.3rem; font-weight: 600; }
 .profile-form input { padding: 0.4rem var(--s2); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-raised); color: var(--ink); font: inherit; }
 .profile-form button { justify-self: start; padding: 0.45rem var(--s4); background: var(--ink); color: var(--surface); border: 0; border-radius: var(--r-md); font: inherit; cursor: pointer; }
+
+/* ---------- resume builder (007 US2) ---------- */
+.resume-builder { display: grid; gap: var(--s3); margin: var(--s3) 0 var(--s4); }
+.resume-builder h3 { margin: var(--s2) 0 0; font-size: var(--fs-sm); text-transform: uppercase; letter-spacing: 0.06em; color: var(--muted); }
+.rb-list { display: grid; gap: var(--s2); }
+.rb-entry { display: grid; gap: var(--s1); border: 1px solid var(--line); border-radius: var(--r-md); padding: var(--s2); margin: 0; background: var(--surface-raised); }
+.rb-entry input, .rb-entry textarea { padding: 0.3rem var(--s2); border: 1px solid var(--line); border-radius: var(--r-sm); background: var(--surface); color: var(--ink); font: inherit; font-size: var(--fs-sm); }
+.rb-entry .rb-remove { justify-self: end; border: 1px solid var(--line); background: var(--surface-raised); color: var(--muted); border-radius: var(--r-sm); padding: 0.1rem var(--s2); font-size: var(--fs-xs); cursor: pointer; }
+.rb-entry .rb-remove:hover { color: var(--danger); border-color: var(--danger); }
+.rb-add { justify-self: start; border: 1px dashed var(--line); background: var(--surface-raised); color: var(--muted); border-radius: var(--r-md); padding: 0.3rem 0.7rem; cursor: pointer; font: inherit; font-size: var(--fs-sm); }
+#rb-save { justify-self: start; padding: 0.45rem var(--s4); background: var(--ink); color: var(--surface); border: 0; border-radius: var(--r-md); font: inherit; cursor: pointer; }
 
 /* ---------- answer bank / apply assist ---------- */
 .answer-bank-add, .answer-bank-eeo { display: grid; gap: 0.6rem; max-width: 480px; margin: 0.8rem 0 1.2rem; }

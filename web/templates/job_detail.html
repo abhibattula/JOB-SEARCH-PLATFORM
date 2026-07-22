@@ -97,11 +97,23 @@
         <h3>ATS keywords to include</h3>
         <p class="chips">{% for kw in tailoring.ats_keywords %}<span class="chip have">{{ kw }}</span>{% endfor %}</p>
         {% endif %}
+        <div class="job-actions" style="margin: 0.6rem 0">
+          <a class="tailor-btn" href="/api/jobs/{{ job.id }}/resume-pdf"
+             title="ATS-safe single-column PDF: your reviewed resume sections plus this job's tailored summary and bullets">
+            Download tailored resume (PDF)
+          </a>
+          <a class="tailor-btn ghost" href="/api/jobs/{{ job.id }}/cover-letter-pdf">
+            Cover letter (PDF)
+          </a>
+        </div>
         <button class="tailor-btn ghost" hx-post="/api/jobs/{{ job.id }}/tailor" hx-swap="none"
                 hx-on::after-request="if(event.detail.successful) window.location.reload()">
           Regenerate
         </button>
         {% else %}
+        <p><a class="data" href="/api/jobs/{{ job.id }}/resume-pdf"
+              title="Renders from your Resume builder sections — tailoring adds job-specific highlights once generated">
+          Download resume PDF (untailored)</a></p>
         <p class="muted">Generate resume bullets and a cover letter written for this
           specific posting from your real resume (nothing is invented).</p>
         <button class="tailor-btn" hx-post="/api/jobs/{{ job.id }}/tailor" hx-swap="none"

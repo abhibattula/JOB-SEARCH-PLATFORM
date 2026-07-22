@@ -3,9 +3,12 @@ import pytest
 
 @pytest.fixture(autouse=True)
 def _isolated_db(tmp_path, monkeypatch):
-    """Every test gets its own database path — no test may touch data/jobs.db."""
+    """Every test gets its own database path AND data dir — no test may
+    touch data/jobs.db or write files (stored resumes, tailored PDFs,
+    007) into the real data directory."""
     db_path = tmp_path / "test.db"
     monkeypatch.setenv("JOBS_DB_PATH", str(db_path))
+    monkeypatch.setenv("JOBS_DATA_DIR", str(tmp_path))
     return db_path
 
 

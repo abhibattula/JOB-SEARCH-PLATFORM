@@ -50,6 +50,7 @@
     {% include "partials/profile_answer_bank.html" %}
 
     <h2>Resume &amp; job search</h2>
+    {% include "partials/resume_builder.html" %}
     {% if profile and profile.resume_filename %}
     <p>Resume on file: <span class="data">{{ profile.resume_filename }}</span>
       (updated {{ profile.updated_at[:10] if profile.updated_at }})</p>

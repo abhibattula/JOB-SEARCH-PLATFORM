@@ -2,9 +2,10 @@
 from __future__ import annotations
 
 import json
+import os
 
 from fastapi import APIRouter, File, Form, HTTPException, Request, UploadFile
-from fastapi.responses import JSONResponse, RedirectResponse
+from fastapi.responses import JSONResponse, RedirectResponse, Response
 from pydantic import BaseModel
 
 from engine import db, pipeline, settings
@@ -371,7 +372,26 @@ def _profile_payload() -> dict:
         "phone": profile.get("phone"),
         "linkedin_url": profile.get("linkedin_url"),
         "portfolio_url": profile.get("portfolio_url"),
+        # 007 resume builder — resume_file_path itself never leaves the
+        # server (local filesystem path), only its existence does.
+        "has_resume_file": bool(profile.get("resume_file_path")),
+        "resume_sections": profile.get("resume_sections"),
+        "sections_edited_at": profile.get("sections_edited_at"),
     }
+
+
+def _store_resume_file(raw: bytes, filename: str) -> str:
+    """Persist the original upload under data_dir()/resume/ (FR-001) —
+    Playwright's set_input_files needs a real file path, and the extracted
+    text alone can't be attached to an application."""
+    from engine import paths
+
+    resume_dir = paths.data_dir() / "resume"
+    resume_dir.mkdir(parents=True, exist_ok=True)
+    safe_name = os.path.basename(filename) or "resume.pdf"
+    target = resume_dir / safe_name
+    target.write_bytes(raw)
+    return str(target)
 
 
 @router.get("/profile")
@@ -395,6 +415,7 @@ async def save_profile(
     portfolio_url: str | None = Form(None),
 ):
     fields: dict = {}
+    extraction_conflict = False
     if resume is not None and resume.filename:
         raw = await resume.read()
         if len(raw) > MAX_RESUME_BYTES:
@@ -403,11 +424,22 @@ async def save_profile(
             text = extract_text(raw)
         except NoTextError as exc:
             raise HTTPException(status_code=422, detail=str(exc))
-        from engine import matcher
+        from engine import matcher, resume_extract
 
         fields["resume_text"] = text
         fields["resume_filename"] = resume.filename
+        fields["resume_file_path"] = _store_resume_file(raw, resume.filename)
         fields["skills"] = matcher.extract_skills(text)  # [] without an LLM key
+        # 007 (FR-016): structured extraction — but user-edited sections
+        # are never silently overwritten; flag the conflict and let the
+        # user choose keep vs re-extract (POST /api/profile/reextract).
+        existing = db.get_profile() or {}
+        if existing.get("sections_edited_at"):
+            extraction_conflict = True
+        else:
+            sections = resume_extract.extract(text)
+            if sections is not None:
+                fields["resume_sections"] = sections.model_dump()
     if target_locations is not None:
         fields["target_locations"] = [
             part.strip() for part in target_locations.split(",") if part.strip()
@@ -438,8 +470,119 @@ async def save_profile(
     if fields:
         db.save_profile(**fields)
     if "text/html" in (request.headers.get("accept") or ""):
-        return RedirectResponse("/profile", status_code=303)
+        target = "/profile?extraction_conflict=1" if extraction_conflict else "/profile"
+        return RedirectResponse(target, status_code=303)
+    return {**_profile_payload(), "extraction_conflict": extraction_conflict}
+
+
+@router.put("/profile/resume-sections")
+async def put_resume_sections(request: Request):
+    """Full replace of the structured resume (FR-017) — the manual-edit
+    path, identical with or without an AI tier. Stamps sections_edited_at,
+    which is what protects these edits from later silent re-extraction."""
+    from engine.resume_extract import ResumeSections
+
+    try:
+        body = await request.json()
+        sections = ResumeSections.model_validate(body)
+    except Exception as exc:
+        raise HTTPException(status_code=422, detail=str(exc)[:300])
+    db.save_profile(
+        resume_sections=sections.model_dump(),
+        sections_edited_at=db._utcnow(),
+    )
     return _profile_payload()
+
+
+@router.post("/profile/reextract")
+def reextract_resume_sections():
+    """The explicit-consent path after an extraction_conflict (FR-016):
+    replaces sections from the stored resume text and clears the edit
+    stamp — the ONLY way extraction may overwrite user edits."""
+    from engine import resume_extract
+
+    profile = db.get_profile()
+    if not profile or not profile.get("resume_text"):
+        raise HTTPException(status_code=409, detail="no resume on file")
+    sections = resume_extract.extract(profile["resume_text"])
+    if sections is None:
+        return {"extracted": False, "reason": "no-ai-tier"}
+    db.save_profile(
+        resume_sections=sections.model_dump(),
+        sections_edited_at=None,
+    )
+    return _profile_payload()
+
+
+@router.get("/jobs/{job_id}/resume-pdf")
+def download_resume_pdf(job_id: int):
+    """Tailored resume PDF for this job (untailored render when the job
+    has no tailoring output yet — FR-018/US2-AS6)."""
+    from engine import resume_pdf
+
+    try:
+        path = resume_pdf.tailored_resume_path(job_id)
+    except KeyError:
+        raise HTTPException(status_code=404, detail="job not found")
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return Response(
+        path.read_bytes(),
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename=resume-job{job_id}.pdf"
+        },
+    )
+
+
+@router.get("/jobs/{job_id}/cover-letter-pdf")
+def download_cover_letter_pdf(job_id: int):
+    from engine import resume_pdf
+
+    job = db.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    if not job.get("tailor_json"):
+        raise HTTPException(
+            status_code=409, detail="Generate tailoring for this job first."
+        )
+    try:
+        tailoring = json.loads(job["tailor_json"])
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=409, detail="tailoring output unreadable")
+    profile = db.get_profile() or {}
+    data = resume_pdf.render_cover_letter(
+        {k: profile.get(k) for k in ("first_name", "last_name", "email",
+                                     "phone", "linkedin_url", "portfolio_url")},
+        job["company"], job["title"], tailoring.get("cover_letter") or "",
+    )
+    return Response(
+        data,
+        media_type="application/pdf",
+        headers={
+            "Content-Disposition": f"attachment; filename=cover-letter-job{job_id}.pdf"
+        },
+    )
+
+
+@router.get("/diagnostics/pdf-selftest")
+def pdf_selftest():
+    """007: a real fpdf2 render using the bundled DejaVu fonts (unicode
+    included) — packaging/smoke_test.py asserts this in the frozen build,
+    so a dropped font data file fails the release loudly instead of
+    surfacing as broken PDF downloads in production (v0.4.0 lesson)."""
+    from engine import resume_pdf
+
+    try:
+        data = resume_pdf.render_resume(
+            {"experience": [], "education": [], "projects": [],
+             "skills": ["self-test — unicode dash", "résumé"]},
+            {"first_name": "Self", "last_name": "Test"},
+            tailoring=None,
+        )
+        return {"ok": bool(data[:5] == b"%PDF-"), "bytes": len(data)}
+    except Exception as exc:
+        return {"ok": False, "bytes": 0, "error": f"{type(exc).__name__}: {exc}"[:300]}
 
 
 @router.get("/diagnostics/local-llm-selftest")

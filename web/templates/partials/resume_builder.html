@@ -1,0 +1,160 @@
+{# 007 US2 — Resume builder: structured sections extracted from the
+   uploaded resume (AI tier) or entered manually; the user's review here
+   is the quality gate before any PDF is generated. Edits save the whole
+   structure via PUT /api/profile/resume-sections. #}
+{% set sections = profile.resume_sections if profile and profile.resume_sections else none %}
+<h2>Resume builder</h2>
+<p class="muted">These sections become your tailored resume PDFs. They're
+  extracted automatically from your uploaded resume when an AI tier is
+  available — review and correct them once; your edits always win.</p>
+
+{% if extraction_conflict %}
+<div class="notice" id="reextract-prompt">
+  <strong>New resume uploaded.</strong> You've edited these sections by hand,
+  so nothing was changed automatically. Keep your edited sections, or
+  re-extract from the new resume (replacing them)?
+  <div class="settings-actions" style="margin-top: 0.5rem">
+    <button type="button" class="ghost" onclick="document.getElementById('reextract-prompt').remove()">Keep my edits</button>
+    <button type="button" class="ghost" id="reextract-btn">Re-extract from new resume</button>
+  </div>
+</div>
+{% endif %}
+
+<div id="resume-builder" class="resume-builder">
+  <h3 class="data">Experience</h3>
+  <div id="rb-experience" class="rb-list">
+    {% for entry in (sections.experience if sections else []) %}
+    <fieldset class="rb-entry" data-kind="experience">
+      <input type="text" data-field="title" value="{{ entry.title }}" placeholder="Title" aria-label="Job title">
+      <input type="text" data-field="organization" value="{{ entry.organization }}" placeholder="Company" aria-label="Company">
+      <input type="text" data-field="start" value="{{ entry.start }}" placeholder="Start" aria-label="Start date">
+      <input type="text" data-field="end" value="{{ entry.end }}" placeholder="End" aria-label="End date">
+      <textarea data-field="bullets" rows="3" placeholder="One bullet per line" aria-label="Bullets">{{ entry.bullets | join('\n') }}</textarea>
+      <button type="button" class="rb-remove" aria-label="Remove this experience entry">Remove</button>
+    </fieldset>
+    {% endfor %}
+  </div>
+  <button type="button" class="ghost rb-add" data-kind="experience">+ Add experience</button>
+
+  <h3 class="data">Education</h3>
+  <div id="rb-education" class="rb-list">
+    {% for entry in (sections.education if sections else []) %}
+    <fieldset class="rb-entry" data-kind="education">
+      <input type="text" data-field="degree" value="{{ entry.degree }}" placeholder="Degree" aria-label="Degree">
+      <input type="text" data-field="institution" value="{{ entry.institution }}" placeholder="Institution" aria-label="Institution">
+      <input type="text" data-field="start" value="{{ entry.start }}" placeholder="Start" aria-label="Start date">
+      <input type="text" data-field="end" value="{{ entry.end }}" placeholder="End" aria-label="End date">
+      <input type="text" data-field="details" value="{{ entry.details }}" placeholder="Details (GPA, honors…)" aria-label="Details">
+      <button type="button" class="rb-remove" aria-label="Remove this education entry">Remove</button>
+    </fieldset>
+    {% endfor %}
+  </div>
+  <button type="button" class="ghost rb-add" data-kind="education">+ Add education</button>
+
+  <h3 class="data">Projects</h3>
+  <div id="rb-projects" class="rb-list">
+    {% for entry in (sections.projects if sections else []) %}
+    <fieldset class="rb-entry" data-kind="projects">
+      <input type="text" data-field="name" value="{{ entry.name }}" placeholder="Project name" aria-label="Project name">
+      <input type="text" data-field="description" value="{{ entry.description }}" placeholder="One-line description" aria-label="Project description">
+      <textarea data-field="bullets" rows="2" placeholder="One bullet per line" aria-label="Bullets">{{ entry.bullets | join('\n') }}</textarea>
+      <button type="button" class="rb-remove" aria-label="Remove this project entry">Remove</button>
+    </fieldset>
+    {% endfor %}
+  </div>
+  <button type="button" class="ghost rb-add" data-kind="projects">+ Add project</button>
+
+  <button type="button" id="rb-save">Save resume sections</button>
+</div>
+
+<template id="rb-tpl-experience">
+  <fieldset class="rb-entry" data-kind="experience">
+    <input type="text" data-field="title" placeholder="Title" aria-label="Job title">
+    <input type="text" data-field="organization" placeholder="Company" aria-label="Company">
+    <input type="text" data-field="start" placeholder="Start" aria-label="Start date">
+    <input type="text" data-field="end" placeholder="End" aria-label="End date">
+    <textarea data-field="bullets" rows="3" placeholder="One bullet per line" aria-label="Bullets"></textarea>
+    <button type="button" class="rb-remove" aria-label="Remove this experience entry">Remove</button>
+  </fieldset>
+</template>
+<template id="rb-tpl-education">
+  <fieldset class="rb-entry" data-kind="education">
+    <input type="text" data-field="degree" placeholder="Degree" aria-label="Degree">
+    <input type="text" data-field="institution" placeholder="Institution" aria-label="Institution">
+    <input type="text" data-field="start" placeholder="Start" aria-label="Start date">
+    <input type="text" data-field="end" placeholder="End" aria-label="End date">
+    <input type="text" data-field="details" placeholder="Details (GPA, honors…)" aria-label="Details">
+    <button type="button" class="rb-remove" aria-label="Remove this education entry">Remove</button>
+  </fieldset>
+</template>
+<template id="rb-tpl-projects">
+  <fieldset class="rb-entry" data-kind="projects">
+    <input type="text" data-field="name" placeholder="Project name" aria-label="Project name">
+    <input type="text" data-field="description" placeholder="One-line description" aria-label="Project description">
+    <textarea data-field="bullets" rows="2" placeholder="One bullet per line" aria-label="Bullets"></textarea>
+    <button type="button" class="rb-remove" aria-label="Remove this project entry">Remove</button>
+  </fieldset>
+</template>
+
+<script>
+(function () {
+  "use strict";
+  const builder = document.getElementById("resume-builder");
+  if (!builder) return;
+
+  builder.addEventListener("click", function (evt) {
+    if (evt.target.classList.contains("rb-remove")) {
+      evt.target.closest(".rb-entry").remove();
+    }
+    if (evt.target.classList.contains("rb-add")) {
+      const kind = evt.target.getAttribute("data-kind");
+      const tpl = document.getElementById("rb-tpl-" + kind);
+      document.getElementById("rb-" + kind).appendChild(tpl.content.cloneNode(true));
+    }
+  });
+
+  function collect(kind, fields) {
+    return Array.from(
+      document.querySelectorAll('#rb-' + kind + ' .rb-entry')
+    ).map(function (entry) {
+      const out = {};
+      fields.forEach(function (f) {
+        const el = entry.querySelector('[data-field="' + f + '"]');
+        if (!el) return;
+        out[f] = el.tagName === "TEXTAREA"
+          ? el.value.split("\n").map(function (s) { return s.trim(); }).filter(Boolean)
+          : el.value.trim();
+      });
+      return out;
+    });
+  }
+
+  document.getElementById("rb-save").addEventListener("click", async function () {
+    const skillsInput = document.querySelector('input[name="skills"]');
+    const payload = {
+      experience: collect("experience", ["title", "organization", "start", "end", "bullets"]),
+      education: collect("education", ["degree", "institution", "start", "end", "details"]),
+      projects: collect("projects", ["name", "description", "bullets"]),
+      skills: skillsInput
+        ? skillsInput.value.split(",").map(function (s) { return s.trim(); }).filter(Boolean)
+        : [],
+    };
+    const resp = await fetch("/api/profile/resume-sections", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (resp.ok) { window.toast("Resume sections saved"); }
+    else { window.toast("Could not save sections", "error"); }
+  });
+
+  const reextract = document.getElementById("reextract-btn");
+  if (reextract) {
+    reextract.addEventListener("click", async function () {
+      const resp = await fetch("/api/profile/reextract", { method: "POST" });
+      if (resp.ok) { window.location = "/profile"; }
+      else { window.toast("Re-extract failed", "error"); }
+    });
+  }
+})();
+</script>

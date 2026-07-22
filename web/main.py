@@ -170,7 +170,11 @@ def create_app() -> FastAPI:
         return templates.TemplateResponse(
             request,
             "profile.html",
-            {"profile": db.get_profile(), "answer_bank_entries": answer_bank.list_all()},
+            {
+                "profile": db.get_profile(),
+                "answer_bank_entries": answer_bank.list_all(),
+                "extraction_conflict": request.query_params.get("extraction_conflict") == "1",
+            },
         )
 
     @app.get("/analytics", response_class=HTMLResponse)

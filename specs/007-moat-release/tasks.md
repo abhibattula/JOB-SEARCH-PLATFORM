@@ -42,16 +42,16 @@ with US2 before US1 (US1's tailored-PDF attachment consumes US2's output).
 **Goal**: uploaded resume → editable structured sections → per-job ATS-safe tailored resume + cover-letter PDFs.
 **Independent test**: quickstart §1 (upload → review/edit → re-upload prompt → tailored PDF download).
 
-- [ ] T011 [US2] TDD: tests/test_resume_extract.py (NEW) — ResumeSections schema validation (partial extraction valid, empty-entry dropping), extraction via mocked matcher._chat, no-tier → None, malformed LLM output → bounded retry → None; watch fail
-- [ ] T012 [US2] engine/resume_extract.py (NEW) — pydantic ResumeSections + extract() via matcher._chat dispatch; tests green
-- [ ] T013 [US2] TDD: tests/test_api.py — resume upload stores original bytes (resume_file_path set, file exists under data dir), extraction_conflict flag when sections_edited_at set, PUT /api/profile/resume-sections validation (422 malformed), POST /api/profile/reextract (409 no resume, no-ai-tier reply, clears sections_edited_at); watch fail
-- [ ] T014 [US2] web/routes_api.py — implement stored-file save, extraction call + conflict flow, PUT resume-sections, POST reextract, extended GET /api/profile payload per contracts/http-api.md
-- [ ] T015 [US2] web/templates/partials/resume_builder.html (NEW) + include in profile.html — sections editor (experience/education/projects/skills), keep-vs-re-extract prompt, manual-entry parity; render test with populated + empty sections
-- [ ] T016 [US2] TDD: tests/test_resume_pdf.py (NEW) — renders parseable PDF (extract text back via fitz), tailored variant contains tailor bullets, untailored fallback without tailoring, unicode (en-dash/accents) renders, fingerprint cache hit/miss/invalidation; watch fail
-- [ ] T017 [US2] engine/resume_pdf.py (NEW) — fpdf2 + DejaVu fonts via paths.resource_path, single-column ATS layout, cover-letter renderer, fingerprint sidecar under data_dir()/tailored/
-- [ ] T018 [US2] TDD: tests/test_api.py — GET /api/jobs/{id}/resume-pdf (200 application/pdf, 409 no sections) and /cover-letter-pdf (409 no tailoring); watch fail → implement routes in web/routes_api.py
-- [ ] T019 [US2] web/templates/job_detail.html — "Download tailored resume (PDF)" + cover-letter PDF buttons beside tailor output
-- [ ] T020 [US2] GET /api/diagnostics/pdf-selftest route in web/routes_api.py (beside the existing local-llm/chromium selftests) + packaging/smoke_test.py assertion (real render, non-trivial byte count); test in tests/test_diagnostics.py
+- [X] T011 [US2] TDD: tests/test_resume_extract.py (NEW) — ResumeSections schema validation (partial extraction valid, empty-entry dropping), extraction via mocked matcher._chat, no-tier → None, malformed LLM output → bounded retry → None; watch fail
+- [X] T012 [US2] engine/resume_extract.py (NEW) — pydantic ResumeSections + extract() via matcher._chat dispatch; tests green
+- [X] T013 [US2] TDD: tests/test_api.py — resume upload stores original bytes (resume_file_path set, file exists under data dir), extraction_conflict flag when sections_edited_at set, PUT /api/profile/resume-sections validation (422 malformed), POST /api/profile/reextract (409 no resume, no-ai-tier reply, clears sections_edited_at); watch fail
+- [X] T014 [US2] web/routes_api.py — implement stored-file save, extraction call + conflict flow, PUT resume-sections, POST reextract, extended GET /api/profile payload per contracts/http-api.md
+- [X] T015 [US2] web/templates/partials/resume_builder.html (NEW) + include in profile.html — sections editor (experience/education/projects/skills), keep-vs-re-extract prompt, manual-entry parity; render test with populated + empty sections
+- [X] T016 [US2] TDD: tests/test_resume_pdf.py (NEW) — renders parseable PDF (extract text back via fitz), tailored variant contains tailor bullets, untailored fallback without tailoring, unicode (en-dash/accents) renders, fingerprint cache hit/miss/invalidation; watch fail
+- [X] T017 [US2] engine/resume_pdf.py (NEW) — fpdf2 + DejaVu fonts via paths.resource_path, single-column ATS layout, cover-letter renderer, fingerprint sidecar under data_dir()/tailored/
+- [X] T018 [US2] TDD: tests/test_api.py — GET /api/jobs/{id}/resume-pdf (200 application/pdf, 409 no sections) and /cover-letter-pdf (409 no tailoring); watch fail → implement routes in web/routes_api.py
+- [X] T019 [US2] web/templates/job_detail.html — "Download tailored resume (PDF)" + cover-letter PDF buttons beside tailor output
+- [X] T020 [US2] GET /api/diagnostics/pdf-selftest route in web/routes_api.py (beside the existing local-llm/chromium selftests) + packaging/smoke_test.py assertion (real render, non-trivial byte count); test in tests/test_diagnostics.py
 
 **Checkpoint**: US2 independently deliverable (quickstart §1 passes live).
 
