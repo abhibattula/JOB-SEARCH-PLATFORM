@@ -19,6 +19,17 @@ datas = [
 ]
 binaries = []
 
+# DejaVu TTFs (feature 007, resume/cover-letter PDF export) — fpdf2's core
+# fonts are Latin-1 only, so unicode resume text (en-dashes, accents)
+# requires a bundled TTF loaded at a path resolved via paths.resource_path.
+_fonts_dir = os.path.join(ROOT, "assets", "fonts")
+for _font in ("DejaVuSans.ttf", "DejaVuSans-Bold.ttf", "DejaVuSans-Oblique.ttf"):
+    _font_path = os.path.join(_fonts_dir, _font)
+    assert os.path.exists(_font_path) and os.path.getsize(_font_path) > 100_000, (
+        f"bundled font missing or truncated: {_font_path}"
+    )
+datas.append((_fonts_dir, "assets/fonts"))
+
 # jobspy's tls_client dependency loads a native dll/so/dylib via ctypes at a
 # path computed from its own package location — invisible to PyInstaller's
 # static import analysis, so it's silently dropped without this. Confirmed

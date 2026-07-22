@@ -17,9 +17,9 @@ with US2 before US1 (US1's tailored-PDF attachment consumes US2's output).
 
 ## Phase 1: Setup
 
-- [ ] T001 Add pinned `fpdf2` to requirements.txt, install into .venv, verify `python -c "import fpdf"`
-- [ ] T002 [P] Add DejaVu Sans TTF family under assets/fonts/ (regular + bold) with license file
-- [ ] T003 [P] packaging/jobengine.spec: add assets/fonts datas entry with build-time existence assertion (tls_client-pattern)
+- [X] T001 Add pinned `fpdf2` to requirements.txt, install into .venv, verify `python -c "import fpdf"`
+- [X] T002 [P] Add DejaVu Sans TTF family under assets/fonts/ (regular + bold) with license file
+- [X] T003 [P] packaging/jobengine.spec: add assets/fonts datas entry with build-time existence assertion (tls_client-pattern)
 
 ---
 
