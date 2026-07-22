@@ -51,7 +51,7 @@ with US2 before US1 (US1's tailored-PDF attachment consumes US2's output).
 - [ ] T017 [US2] engine/resume_pdf.py (NEW) — fpdf2 + DejaVu fonts via paths.resource_path, single-column ATS layout, cover-letter renderer, fingerprint sidecar under data_dir()/tailored/
 - [ ] T018 [US2] TDD: tests/test_api.py — GET /api/jobs/{id}/resume-pdf (200 application/pdf, 409 no sections) and /cover-letter-pdf (409 no tailoring); watch fail → implement routes in web/routes_api.py
 - [ ] T019 [US2] web/templates/job_detail.html — "Download tailored resume (PDF)" + cover-letter PDF buttons beside tailor output
-- [ ] T020 [US2] GET /api/diagnostics/pdf-selftest route (web/routes_api.py or diagnostics module) + packaging/smoke_test.py assertion (real render, non-trivial byte count); test in tests/test_diagnostics.py
+- [ ] T020 [US2] GET /api/diagnostics/pdf-selftest route in web/routes_api.py (beside the existing local-llm/chromium selftests) + packaging/smoke_test.py assertion (real render, non-trivial byte count); test in tests/test_diagnostics.py
 
 **Checkpoint**: US2 independently deliverable (quickstart §1 passes live).
 
@@ -63,8 +63,8 @@ with US2 before US1 (US1's tailored-PDF attachment consumes US2's output).
 **Independent test**: quickstart §2 on a real Greenhouse/Lever posting.
 
 - [ ] T021 [US1] TDD: tests/test_fields.py — option-matching classification support: select/radio/checkbox descriptors carry options list; matcher picks best option text for confirmed answers, returns None below confidence; watch fail
-- [ ] T022 [US1] engine/autofill/fields.py — options in serialized descriptors + match_option() helper; tests green
-- [ ] T023 [US1] TDD: tests/test_browser_controller.py — (a) resume field attaches stored file via set_input_files (mocked page), tailored PDF preferred when fingerprint-fresh + setting on; (b) idempotency: non-empty fields skipped, file inputs skipped when populated (FR-007); (c) fill report records label/tag/value_preview/outcome, password recorded pre-masked "•••" (FR-005); (d) page-URL-change triggers re-scan pass, confirmation gates still pause (FR-003); (e) TargetClosed → interrupted state preserving queue position; resume_queue() relaunches at current job (FR-008); (f) queue end produces batch summary (FR-009); watch all fail
+- [ ] T022 [US1] engine/autofill/fields.py — options in serialized descriptors + match_option() helper (confidence threshold is a named module constant, exercised from both sides by T021's match/no-match cases); tests green
+- [ ] T023 [US1] TDD: tests/test_browser_controller.py — (a) resume field attaches stored file via set_input_files (mocked page), tailored PDF preferred when fingerprint-fresh + setting on; when set_input_files raises (custom widget), outcome recorded as needs-manual and the queue continues; (b) idempotency: non-empty fields skipped, file inputs skipped when populated (FR-007); (c) fill report records label/tag/value_preview/outcome, password recorded pre-masked "•••" (FR-005); (d) page-URL-change triggers re-scan pass, confirmation gates still pause (FR-003); (e) TargetClosed → interrupted state preserving queue position; resume_queue() relaunches at current job (FR-008); (f) queue end produces batch summary (FR-009); (g) never-click assertion: across a full multi-page fill pass, the mocked page records zero click()/press() invocations on any button, submit, link, or navigation element (FR-004/SC-006); watch all fail
 - [ ] T024 [US1] engine/autofill/browser_controller.py — file attachment (generic + tailored-preferred), idempotent fill pass, fill-report recording with record-time masking
 - [ ] T025 [US1] engine/autofill/browser_controller.py — page-change detection on the controller thread + rescan pass; manual rescan command
 - [ ] T026 [US1] engine/autofill/browser_controller.py — interruption detection, resume_queue(), per-job outcomes + batch summary
