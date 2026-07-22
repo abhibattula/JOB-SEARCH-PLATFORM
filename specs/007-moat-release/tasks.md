@@ -115,8 +115,8 @@ with US2 before US1 (US1's tailored-PDF attachment consumes US2's output).
 - [X] T044 Docs: docs/USER_MANUAL.md + docs/USER_GUIDE.md — resume builder, PDFs, Apply Assist depth, sponsor grades, themes, kanban, onboarding
 - [X] T045 Version bump 0.7.0: engine/__init__.py, packaging/windows.iss, packaging/jobengine.spec
 - [X] T046 Full suite ×2 + live quickstart walkthrough (all four sections) against the dev app with isolated data dir
-- [ ] T047 Frozen verification: pyinstaller build + packaging/smoke_test.py (incl. pdf-selftest) on the real exe
-- [ ] T048 Ship: merge/push per workflow, tag v0.7.0, both CI installers green, artifacts confirmed on the Release page
+- [X] T047 Frozen verification: pyinstaller build + packaging/smoke_test.py (incl. pdf-selftest) on the real exe
+- [X] T048 Ship: merge/push per workflow, tag v0.7.0, both CI installers green, artifacts confirmed on the Release page
 
 ---
 
