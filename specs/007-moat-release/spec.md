@@ -328,7 +328,8 @@ queue panel, and the onboarding checklist reflecting real completion state.
   completion state of setup steps and stop appearing once complete.
 - **FR-028**: Interactive controls MUST have accessible names; live
   regions MUST not disrupt assistive technology; theme colors MUST meet
-  reasonable contrast for their text sizes.
+  WCAG 2.1 AA contrast ratios (4.5:1 for normal text, 3:1 for large text
+  and essential UI components) in both themes.
 
 ### Key Entities
 
