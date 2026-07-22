@@ -178,6 +178,18 @@ class TestRefreshRuns:
         assert by_url["old"]["is_new"] is False
         db.finish_run(run_id)
 
+    def test_utcnow_has_microsecond_resolution(self):
+        """v0.6.1 regression (mac CI): _utcnow() truncated to milliseconds,
+        so on a fast runner upsert_job() and start_run() could land in the
+        same millisecond — making a pre-run job's first_seen equal to the
+        run's started_at, and is_new's inclusive >= flagged it as new.
+        Full microsecond precision keeps sequential calls distinct."""
+        stamp = db._utcnow()
+        fractional = stamp.rsplit(".", 1)[1]
+        assert len(fractional) == 6, stamp
+        # and it must still round-trip through the parser used everywhere
+        assert db._parse_ts(stamp).microsecond == int(fractional)
+
 
 class TestEligibility:
     def _seed_with_sponsorship(self):

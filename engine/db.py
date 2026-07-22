@@ -124,8 +124,10 @@ def get_db_path() -> Path:
 
 
 def _utcnow() -> str:
+    # Full microsecond precision: millisecond truncation let two sequential
+    # calls collide on fast machines (v0.6.1 mac-CI is_new regression).
     now = datetime.now(timezone.utc)
-    return now.strftime("%Y-%m-%d %H:%M:%S.") + f"{now.microsecond // 1000:03d}"
+    return now.strftime("%Y-%m-%d %H:%M:%S.") + f"{now.microsecond:06d}"
 
 
 def _parse_ts(value: str) -> datetime:

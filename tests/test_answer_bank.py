@@ -9,6 +9,15 @@ import pytest
 from engine.autofill import answer_bank
 
 
+class TestTimestamps:
+    def test_utcnow_has_microsecond_resolution(self):
+        """v0.6.1: same millisecond-truncation fix as engine/db.py —
+        updated_at ordering (list_all, fuzzy-match recency) must not
+        collide for back-to-back saves on a fast machine."""
+        fractional = answer_bank._utcnow().rsplit(".", 1)[1]
+        assert len(fractional) == 6
+
+
 class TestSaveAndLookup:
     def test_save_then_exact_lookup(self, tmp_db):
         answer_bank.save(
