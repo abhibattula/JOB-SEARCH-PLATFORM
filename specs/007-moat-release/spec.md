@@ -5,6 +5,24 @@
 **Status**: Draft
 **Input**: User description: "Make the platform decisively better than every paid competitor on its four unique pillars, shipping as one release (v0.7.0): Apply Assist depth, sponsorship intelligence, resume builder + tailored resume PDF export, and a full 'Instrument, evolved' visual redesign. Constitution rules bind: never auto-submit, never auto-login, $0 recurring cost, local-first. Design doc: docs/superpowers/specs/2026-07-21-feature-007-design.md"
 
+## Clarifications
+
+### Session 2026-07-21
+
+- Q: What happens when a new resume is uploaded after structured sections
+  were user-edited? → A: The app asks whether to keep the edited sections
+  or re-extract from the new resume (replacing them); never a silent
+  overwrite, never an unprompted merge.
+- Q: How do login-credential fields appear in the per-field fill report?
+  → A: Login email shows normally; the password row is masked
+  ("Password ••• (filled)") — the secret is never stored in or displayed
+  by the report.
+- Q: How do kanban cards move between stages? → A: Native drag-and-drop
+  (no library) plus per-card ◀/▶ move buttons as the keyboard/AT path;
+  both paths trigger the same stage change with a toast.
+- Q: Minimum evidence for an A–F sponsor grade? → A: approvals + denials
+  ≥ 10 across loaded years; below that the company stays UNKNOWN.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Apply Assist completes real applications, not just first pages (Priority: P1)
@@ -230,6 +248,10 @@ queue panel, and the onboarding checklist reflecting real completion state.
   restated because multi-page support makes it newly tempting).
 - **FR-005**: The system MUST record every filled field (label, category,
   value entered) per job and present this report in the status panel.
+  Credential fields are the exception: the login email appears normally,
+  but a filled password is reported only as masked
+  ("Password ••• (filled)") — the secret value is never stored in or
+  displayed by the report.
 - **FR-006**: For select/radio/checkbox inputs, the system MUST choose the
   option whose text best matches the confirmed answer, and MUST leave the
   input untouched (reported as unfilled) when no option matches
@@ -249,8 +271,9 @@ queue panel, and the onboarding checklist reflecting real completion state.
   roles, retaining current behavior for files lacking those columns.
 - **FR-011**: The system MUST compute a per-company sponsor grade (A-F)
   locally from approval volume, denial ratio, engineering-filing
-  presence, and wage levels; companies without sufficient data remain
-  UNKNOWN.
+  presence, and wage levels. A grade is assigned only when the company
+  has at least 10 total petitions (approvals + denials) across the loaded
+  years; below that threshold the company remains UNKNOWN.
 - **FR-012**: The system MUST flag likely cap-exempt employers
   (universities, colleges, hospitals, research institutes, foundations)
   and present the flag with a plain-language explanation.
@@ -265,8 +288,9 @@ queue panel, and the onboarding checklist reflecting real completion state.
 
 - **FR-016**: On resume upload with an AI tier available, the system MUST
   extract structured sections (experience, education, projects, skills)
-  for user review; extraction MUST NOT silently overwrite prior user
-  edits.
+  for user review. If user-edited sections already exist, the system MUST
+  ask whether to keep them or re-extract from the new resume (replacing
+  them) — never a silent overwrite.
 - **FR-017**: The user MUST be able to create, edit, and delete structured
   resume entries manually, with identical capability whether or not any
   AI tier exists.
@@ -293,7 +317,10 @@ queue panel, and the onboarding checklist reflecting real completion state.
 - **FR-024**: Periodic background refreshes MUST NOT discard or replace
   in-progress user edits (open editors, focused inputs).
 - **FR-025**: The Applied view MUST offer a stage-column board view with
-  per-stage counts alongside the existing table view.
+  per-stage counts alongside the existing table view. Cards move between
+  stages by native drag-and-drop and by per-card ◀/▶ move buttons (the
+  keyboard/assistive-technology path); both trigger the same stage change
+  with visible confirmation.
 - **FR-026**: The Apply Assist page MUST show queue composition and
   per-job state, overall progress, the current job's title and company,
   and the FR-005 fill report.
