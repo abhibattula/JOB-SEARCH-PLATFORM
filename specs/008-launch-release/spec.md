@@ -368,7 +368,10 @@ top-ranked jobs consume AI scoring quota.
 - **FR-013**: Each job MUST record when it was last seen at its source;
   jobs absent from a successfully fetched company board MUST be marked
   delisted, excluded from default views, and flagged (not deleted) on
-  saved/applied records.
+  saved/applied records. A delisted job that reappears at its source MUST
+  be restored automatically. Liveness checks on scraped-board URLs MUST
+  stay within the existing ingestion politeness budget (rate limits,
+  honest headers).
 - **FR-014**: Jobs whose posted date is unknown MUST be displayed as
   approximate rather than silently substituting the first-seen date.
 - **FR-015**: The shipped company watchlist MUST contain at least 300
