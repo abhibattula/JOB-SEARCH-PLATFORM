@@ -32,14 +32,14 @@ US4 7 · US5 9 · US6 4 · Polish/Ship 1 (numbering is execution order).
 
 ## Phase 4: US2 — A desktop window the user can trust (P2)
 
-- [ ] T014 [test] [US2] Failing tests in tests/test_api.py: `POST /api/open` (http/https only, 400 otherwise, calls webbrowser.open — monkeypatched), `POST /api/clipboard` writes via engine clipboard helper (monkeypatched) and 500s honestly
-- [ ] T015 [US2] Implement `/api/open` + `/api/clipboard` in web/routes_api.py with engine/clipboard.py helper (PowerShell Set-Clipboard / pbcopy / xclip fallbacks)
-- [ ] T016 [US2] desktop.py: `text_select=True`, `confirm_close=True`, `min_size=(960,640)`; `webview.settings["ALLOW_DOWNLOADS"]=True` and `["OPEN_EXTERNAL_LINKS_IN_BROWSER"]=True`; acquire `JobEngineRunning` mutex via ctypes (Windows); fix fatal-startup message to name app.log path
-- [ ] T017 [US2] web/static/app.js: `window.copyText(text)` (clipboard → execCommand fallback → /api/clipboard, always toasts) and delegated `a[target=_blank]` click handler posting to /api/open
-- [ ] T018 [US2] Replace the 3 inline `navigator.clipboard` handlers in web/templates/job_detail.html with `copyText(...)`; convert "Open posting" to the /api/open path (href kept as browser-mode fallback)
-- [ ] T019 [US2] Add Copy-link buttons: feed rows (web/templates/partials/feed_table.html actions cell) and job detail header; show raw URL on job detail
-- [ ] T020 [test] [US2] Template render tests: copy-link buttons present with correct URLs; no remaining inline `navigator.clipboard` usage anywhere in templates (grep-style test)
-- [ ] T021 [US2] Global error visibility: `sys.excepthook` + `threading.excepthook` → app.log + `crash.marker`; base template shows one-time "closed unexpectedly last time" notice when marker present
+- [X] T014 [test] [US2] Failing tests in tests/test_api.py: `POST /api/open` (http/https only, 400 otherwise, calls webbrowser.open — monkeypatched), `POST /api/clipboard` writes via engine clipboard helper (monkeypatched) and 500s honestly
+- [X] T015 [US2] Implement `/api/open` + `/api/clipboard` in web/routes_api.py with engine/clipboard.py helper (PowerShell Set-Clipboard / pbcopy / xclip fallbacks)
+- [X] T016 [US2] desktop.py: `text_select=True`, `confirm_close=True`, `min_size=(960,640)`; `webview.settings["ALLOW_DOWNLOADS"]=True` and `["OPEN_EXTERNAL_LINKS_IN_BROWSER"]=True`; acquire `JobEngineRunning` mutex via ctypes (Windows); fix fatal-startup message to name app.log path
+- [X] T017 [US2] web/static/app.js: `window.copyText(text)` (clipboard → execCommand fallback → /api/clipboard, always toasts) and delegated `a[target=_blank]` click handler posting to /api/open
+- [X] T018 [US2] Replace the 3 inline `navigator.clipboard` handlers in web/templates/job_detail.html with `copyText(...)`; convert "Open posting" to the /api/open path (href kept as browser-mode fallback)
+- [X] T019 [US2] Add Copy-link buttons: feed rows (web/templates/partials/feed_table.html actions cell) and job detail header; show raw URL on job detail
+- [X] T020 [test] [US2] Template render tests: copy-link buttons present with correct URLs; no remaining inline `navigator.clipboard` usage anywhere in templates (grep-style test)
+- [X] T021 [US2] Global error visibility: `sys.excepthook` + `threading.excepthook` → app.log + `crash.marker`; base template shows one-time "closed unexpectedly last time" notice when marker present
 
 ## Phase 5: US3 — Genuine, fresh, sortable feed (P3)
 

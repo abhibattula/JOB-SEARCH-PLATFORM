@@ -173,6 +173,15 @@ def create_app() -> FastAPI:
             ineligible, min_score, seen, strong_sponsors,
         )
         context["board_view"] = view == "board"
+        # 008 (FR-033): surface an unclean previous shutdown exactly once
+        from engine import paths
+
+        marker = paths.data_dir() / "crash.marker"
+        if marker.exists():
+            context["crashed_last_run"] = marker.read_text(
+                encoding="utf-8", errors="replace"
+            )[:300]
+            marker.unlink(missing_ok=True)
         return templates.TemplateResponse(request, "feed.html", context)
 
     @app.get("/partials/feed", response_class=HTMLResponse)

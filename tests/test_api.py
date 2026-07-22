@@ -644,3 +644,97 @@ class TestRefreshApi:
         client.post("/api/refresh")
         status = client.get("/api/refresh/status").json()
         assert "active" in status and "sources" in status
+
+
+class Test008ShellSupport:
+    """008 US2 (T014): host-side open-in-system-browser and clipboard
+    endpoints — the pywebview shell's guaranteed paths for external links
+    and copying (FR-002/FR-004)."""
+
+    def test_open_launches_system_browser(self, client, monkeypatch):
+        import webbrowser
+
+        opened = []
+        monkeypatch.setattr(webbrowser, "open", lambda url: opened.append(url) or True)
+        resp = client.post("/api/open", json={"url": "https://example.com/job"})
+        assert resp.status_code == 200
+        assert resp.json() == {"opened": True}
+        assert opened == ["https://example.com/job"]
+
+    def test_open_rejects_non_http_schemes(self, client, monkeypatch):
+        import webbrowser
+
+        monkeypatch.setattr(
+            webbrowser, "open",
+            lambda url: (_ for _ in ()).throw(AssertionError("must not open")),
+        )
+        for bad in ("file:///C:/Windows/system32", "javascript:alert(1)", "notaurl"):
+            resp = client.post("/api/open", json={"url": bad})
+            assert resp.status_code == 400, bad
+
+    def test_clipboard_copies_via_engine_helper(self, client, monkeypatch):
+        from engine import clipboard
+
+        copied = []
+        monkeypatch.setattr(clipboard, "copy_text", lambda text: copied.append(text))
+        resp = client.post("/api/clipboard", json={"text": "Design Verification Engineer"})
+        assert resp.status_code == 200
+        assert resp.json() == {"copied": True}
+        assert copied == ["Design Verification Engineer"]
+
+    def test_clipboard_failure_is_honest(self, client, monkeypatch):
+        from engine import clipboard
+
+        def boom(text):
+            raise RuntimeError("no clipboard mechanism available")
+
+        monkeypatch.setattr(clipboard, "copy_text", boom)
+        resp = client.post("/api/clipboard", json={"text": "x"})
+        assert resp.status_code == 500
+        assert "clipboard" in resp.json()["detail"].lower()
+
+
+class Test008CrashMarker:
+    """008 US2 (T021): a crash in the previous run surfaces once."""
+
+    def test_crash_marker_shows_notice_once_then_clears(self, client, tmp_path):
+        from engine import paths
+
+        marker = paths.data_dir() / "crash.marker"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("2026-07-22", encoding="utf-8")
+        first = client.get("/")
+        assert first.status_code == 200
+        assert "closed unexpectedly" in first.text
+        assert not marker.exists()
+        second = client.get("/")
+        assert "closed unexpectedly" not in second.text
+
+
+class Test008CopyAffordances:
+    """008 US2 (T019/T020): copy-link buttons everywhere, and no template
+    may use raw navigator.clipboard (dead inside the WebView2 shell)."""
+
+    def test_feed_row_has_copy_link_button(self, client):
+        job = seed_job()
+        resp = client.get("/partials/feed")
+        assert resp.status_code == 200
+        assert f'copyText({job["url"]!r}' in resp.text.replace("&#39;", "'")
+
+    def test_job_detail_has_copy_link_and_visible_url(self, client):
+        job = seed_job()
+        resp = client.get(f"/jobs/{job['id']}")
+        assert resp.status_code == 200
+        text = resp.text.replace("&#39;", "'")
+        assert f'copyText({job["url"]!r}' in text
+        assert "Copy link" in resp.text
+
+    def test_no_template_uses_navigator_clipboard_inline(self):
+        from pathlib import Path
+
+        offenders = [
+            str(path)
+            for path in Path("web/templates").rglob("*.html")
+            if "navigator.clipboard" in path.read_text(encoding="utf-8")
+        ]
+        assert offenders == []

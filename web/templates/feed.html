@@ -4,6 +4,14 @@
 <!-- Kick a background refresh on open; server no-ops inside the 30-min cooldown -->
 <div hx-post="/api/refresh" hx-trigger="load" hx-swap="none"></div>
 
+{% if crashed_last_run %}
+<div class="error-banner" role="alert">
+  The app closed unexpectedly last time
+  (<span class="data">{{ crashed_last_run }}</span>). Details are in the log —
+  see Settings → Diagnostics.
+</div>
+{% endif %}
+
 {% include "partials/onboarding.html" %}
 
 <form class="toolbar" method="get" action="/">

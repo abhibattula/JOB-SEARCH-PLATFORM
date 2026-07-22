@@ -19,6 +19,47 @@ router = APIRouter(prefix="/api")
 # pass entry_level=all to see everything.
 DEFAULT_ENTRY_LEVEL: bool | None = True
 
+
+# --- 008 desktop-shell support (FR-002/FR-004) ------------------------------
+# Inside the pywebview shell, target=_blank and navigator.clipboard are
+# unreliable; these endpoints are the guaranteed paths. The server only ever
+# runs on the user's own machine (127.0.0.1), so "open a browser" and "write
+# the clipboard" act on the user's own session.
+
+
+class OpenRequest(BaseModel):
+    url: str
+
+
+@router.post("/open")
+def open_external(body: OpenRequest):
+    from urllib.parse import urlparse
+
+    parsed = urlparse(body.url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise HTTPException(status_code=400, detail="only http/https links can be opened")
+    import webbrowser
+
+    webbrowser.open(body.url)
+    return {"opened": True}
+
+
+class ClipboardRequest(BaseModel):
+    text: str
+
+
+@router.post("/clipboard")
+def copy_to_clipboard(body: ClipboardRequest):
+    from engine import clipboard
+
+    try:
+        clipboard.copy_text(body.text)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Couldn't write to the clipboard: {exc}"
+        )
+    return {"copied": True}
+
 _WINDOWS = {"7d": "7d", "24h": "24h", "all": None}
 
 

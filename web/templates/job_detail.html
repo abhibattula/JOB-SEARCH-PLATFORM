@@ -10,12 +10,17 @@
         · via <span class="data">{{ job.source }}</span></p>
     </div>
     <div class="job-actions">
-      <a class="apply" href="{{ job.url }}" target="_blank" rel="noopener">Open posting ↗</a>
+      <a class="apply" href="{{ job.url }}" target="_blank" rel="noopener"
+         title="Opens in your system browser">Open posting ↗</a>
+      <button type="button" class="ghost" onclick="copyText('{{ job.url }}')"
+              title="Copy the apply link"
+              aria-label="Copy link for {{ job.title }}">Copy link</button>
       <button hx-post="/api/jobs/{{ job.id }}/status?status=saved" hx-swap="none">Save</button>
       <button hx-post="/api/jobs/{{ job.id }}/status?status=applied" hx-swap="none">Mark applied</button>
       <button hx-post="/api/jobs/{{ job.id }}/status?status=hidden" hx-swap="none">Hide</button>
     </div>
   </header>
+  <p class="muted job-url data" title="The posting's direct apply link">{{ job.url }}</p>
 
   <div class="split">
     <section class="jd">
@@ -97,17 +102,17 @@
         <h2>Apply with tailored materials</h2>
         {% if tailoring %}
         <h3>Resume headline</h3>
-        <p class="copy-block" onclick="navigator.clipboard.writeText(this.innerText)"
+        <p class="copy-block" onclick="copyText(this.innerText)"
            title="Click to copy">{{ tailoring.summary_line }}</p>
         <h3>Tailored bullets <span class="muted">(click any to copy)</span></h3>
         <ul class="tailor-bullets">
           {% for bullet in tailoring.tailored_bullets %}
-          <li class="copy-block" onclick="navigator.clipboard.writeText(this.innerText)"
+          <li class="copy-block" onclick="copyText(this.innerText)"
               title="Click to copy">{{ bullet }}</li>
           {% endfor %}
         </ul>
         <h3>Cover letter</h3>
-        <p class="copy-block jd-text" onclick="navigator.clipboard.writeText(this.innerText)"
+        <p class="copy-block jd-text" onclick="copyText(this.innerText)"
            title="Click to copy">{{ tailoring.cover_letter }}</p>
         {% if tailoring.ats_keywords %}
         <h3>ATS keywords to include</h3>
