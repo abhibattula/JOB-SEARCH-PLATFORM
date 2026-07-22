@@ -17,24 +17,45 @@ class QueueRequest(BaseModel):
     job_ids: list[int]
 
 
+# 008: cached result of the last launchability probe — status polls read
+# this instead of re-probing (a preflight launches a real browser; running
+# one every 3s poll would be absurd).
+_last_preflight: dict | None = None
+
+
 @router.post("/setup")
 def setup_apply_assist():
-    from engine.autofill import browser_setup
+    """008 (FR-008): the first-use Chromium download is gone — Apply Assist
+    now uses the browser already installed on this machine."""
+    raise HTTPException(
+        status_code=410,
+        detail="Apply Assist no longer needs a browser download — it uses"
+        " your installed Microsoft Edge or Google Chrome directly.",
+    )
 
-    if browser_setup.is_installed():
-        return {"started": False, "reason": "already_installed"}
-    browser_setup.start_install()
-    return {"started": True}
+
+@router.post("/preflight")
+def preflight():
+    """008 (FR-010): verify the browser layer can actually start."""
+    global _last_preflight
+    from engine.autofill import browser_controller
+
+    _last_preflight = browser_controller.preflight()
+    return _last_preflight
 
 
 @router.post("/queue")
 def start_queue(body: QueueRequest):
-    from engine.autofill import browser_controller, browser_setup
+    global _last_preflight
+    from engine.autofill import browser_controller
 
-    if not browser_setup.is_installed():
+    check = browser_controller.preflight()
+    _last_preflight = check
+    if not check["ok"]:
         raise HTTPException(
             status_code=409,
-            detail="Chromium not installed yet — run setup first.",
+            detail=f"Couldn't start a browser: {check['error']} — install"
+            " Microsoft Edge or Google Chrome, then try again.",
         )
     try:
         current = browser_controller.start_queue(body.job_ids)
@@ -71,12 +92,14 @@ def stop_queue():
 
 @router.get("/status")
 def autofill_status():
-    from engine.autofill import browser_controller, browser_setup
+    from engine.autofill import browser_controller
 
     current = browser_controller.current_job()
     snapshot = browser_controller.queue_snapshot()
     return {
-        "chromium_installed": browser_setup.is_installed(),
+        # 008: last launchability probe (never re-probed on a poll)
+        "browser": _last_preflight
+        or {"ok": None, "channel": None, "error": None},
         "queue_active": current is not None,
         "current_job_id": current["job_id"] if current else None,
         "remaining": current["remaining"] if current else 0,
@@ -87,6 +110,8 @@ def autofill_status():
         "fill_report": snapshot["fill_report"],
         "interrupted": snapshot["interrupted"],
         "summary": snapshot["summary"],
+        # 008 (FR-009): per-job reason classes
+        "outcomes": snapshot["outcomes"],
     }
 
 

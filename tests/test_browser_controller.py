@@ -674,7 +674,7 @@ class TestBatchSummary:
         bc._fill_page(j1)
         bc.advance()
         with bc._lock:
-            bc._state.fell_back.add(j2)
+            bc._state.outcomes[j2] = {"reason": "unrecognized", "detail": ""}
         bc.advance()  # past the end -> queue finishes
 
         summary = bc.queue_snapshot()["summary"]

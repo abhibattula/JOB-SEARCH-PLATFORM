@@ -52,7 +52,6 @@ def _onboarding_state(profile: dict | None) -> dict | None:
     """FR-027: setup steps derived live from real state — no stored step
     flags to drift. None (hidden) once dismissed or everything's done."""
     from engine import matcher, settings
-    from engine.autofill import browser_setup
 
     if settings.get("ONBOARDING_DISMISSED") == "1":
         return None
@@ -82,10 +81,10 @@ def _onboarding_state(profile: dict | None) -> dict | None:
             "done": matcher.llm_available(),
         },
         {
-            "label": "Enable Apply Assist",
+            "label": "Apply to your first job",
             "href": "/autofill",
-            "hint": "one-time browser download for application autofill",
-            "done": browser_setup.is_installed(),
+            "hint": "Apply Assist uses your installed Edge/Chrome — nothing to download",
+            "done": db.query_jobs(window=None, statuses=["applied"])[1] > 0,
         },
     ]
     if all(step["done"] for step in steps):
@@ -261,16 +260,10 @@ def create_app() -> FastAPI:
 
     @app.get("/autofill", response_class=HTMLResponse)
     def autofill_page(request: Request):
-        from engine.autofill import browser_setup
-
         jobs, _ = db.query_jobs(
             window=None, statuses=("saved",), entry_level=True
         )
-        return templates.TemplateResponse(
-            request,
-            "autofill.html",
-            {"jobs": jobs, "chromium_installed": browser_setup.is_installed()},
-        )
+        return templates.TemplateResponse(request, "autofill.html", {"jobs": jobs})
 
     @app.get("/partials/autofill/status", response_class=HTMLResponse)
     def autofill_status_partial(request: Request):

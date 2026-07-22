@@ -46,11 +46,6 @@ jobs:
           key: jobengine-models-qwen1.5b-embgemma300m-v1
       - run: python packaging/fetch_model.py
       - run: pyinstaller packaging/jobengine.spec
-      - name: Install Chromium for the smoke test
-        shell: bash
-        run: |
-          export PLAYWRIGHT_BROWSERS_PATH="$RUNNER_TEMP/jobengine-smoke-data/browsers"
-          python -m playwright install chromium
       - name: Smoke test the frozen build
         run: python packaging/smoke_test.py dist/JobEngine/JobEngine.exe
       - run: choco install innosetup -y --no-progress
@@ -96,10 +91,6 @@ jobs:
           key: jobengine-models-qwen1.5b-embgemma300m-v1
       - run: python packaging/fetch_model.py
       - run: pyinstaller packaging/jobengine.spec
-      - name: Install Chromium for the smoke test
-        run: |
-          export PLAYWRIGHT_BROWSERS_PATH="$RUNNER_TEMP/jobengine-smoke-data/browsers"
-          python -m playwright install chromium
       - name: Smoke test the frozen build
         run: python packaging/smoke_test.py "dist/Job Engine.app/Contents/MacOS/JobEngine"
       - run: bash packaging/make_dmg.sh "${GITHUB_REF_NAME#v}"

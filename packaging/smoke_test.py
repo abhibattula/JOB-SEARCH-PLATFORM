@@ -37,16 +37,13 @@ def read_port(port_file: str) -> int | None:
 
 
 def _clear_stale_state(data_dir: str) -> None:
-    """Wipe everything except browsers/ — Chromium is installed there as a
-    separate CI step *before* this runs (it's a slow, cacheable download,
-    unrelated to whether the rest of the run is "fresh"). Nuking the whole
-    dir would silently discard that install and this step's Chromium check
-    would never actually exercise a real driver."""
+    """Wipe the smoke data dir for a truly fresh run. 008: no browsers/
+    carve-out anymore — Apply Assist launches the machine's installed
+    Edge/Chrome via Playwright channels (CI runner images ship both), so
+    there is no downloaded-Chromium state to preserve."""
     if not os.path.isdir(data_dir):
         return
     for name in os.listdir(data_dir):
-        if name == "browsers":
-            continue
         path = os.path.join(data_dir, name)
         if os.path.isdir(path):
             shutil.rmtree(path, ignore_errors=True)
@@ -122,9 +119,9 @@ def main() -> int:
         print(f"FAIL: pdf-selftest did not return ok+bytes: {pdf_selftest}")
         return 1
 
-    # 005: same reasoning, for the Playwright driver — only run this if
-    # Chromium is actually installed (it's an opt-in first-use download,
-    # not part of the base install, so CI installs it before this check).
+    # 005/008: same reasoning, for the Playwright driver — 008 launches the
+    # machine's installed Edge/Chrome via channels (no download), so this
+    # exercises the bundled Node driver against a real branded browser.
     chromium_body = urllib.request.urlopen(
         base + "/api/diagnostics/chromium-launch-selftest", timeout=60
     ).read()

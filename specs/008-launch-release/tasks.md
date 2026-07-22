@@ -10,25 +10,25 @@ US4 7 · US5 9 · US6 4 · Polish/Ship 1 (numbering is execution order).
 
 ## Phase 1: Setup
 
-- [ ] T001 Update dependencies: pin `pywebview>=6.2` in requirements.txt; verify installed playwright supports `channel=` persistent launch; add `assets/models/embeddinggemma-300m-q8_0.gguf` acquisition (documented download step + CI cache) and reference it from packaging notes
-- [ ] T002 [P] Add new settings defaults (`FEED_WINDOW_DEFAULT=14d`, `JOBSPY_SITES`, `JOBSPY_RESULTS_PER_SEARCH`, `LLM_JSON_MODEL`, `LLM_PROVIDER_PRESET`, `WHATS_NEW_SEEN_VERSION`, `UPDATE_LAST_CHECK`) in engine/settings.py
+- [X] T001 Update dependencies: pin `pywebview>=6.2` in requirements.txt; verify installed playwright supports `channel=` persistent launch; add `assets/models/embeddinggemma-300m-q8_0.gguf` acquisition (documented download step + CI cache) and reference it from packaging notes
+- [X] T002 [P] Add new settings defaults (`FEED_WINDOW_DEFAULT=14d`, `JOBSPY_SITES`, `JOBSPY_RESULTS_PER_SEARCH`, `LLM_JSON_MODEL`, `LLM_PROVIDER_PRESET`, `WHATS_NEW_SEEN_VERSION`, `UPDATE_LAST_CHECK`) in engine/settings.py
 
 ## Phase 2: Foundational (blocking all stories)
 
-- [ ] T003 [test] Failing tests in tests/test_db.py: migrations add `jobs.last_seen_at` (backfilled from first_seen), `jobs.delisted`, `jobs.embedding`, `user_profile.search_terms`, `user_profile.resume_embedding`, `watchlist` table; `init_db()` writes `backup/jobs-v{old}.db` before migrating and restores it on simulated migration failure
-- [ ] T004 Implement the migrations + backup-before-migrate/restore-on-failure in engine/db.py
-- [ ] T005 Watchlist seed: expand companies.yml to 300+ curated boards (CE/hardware/semis/defense + known sponsors; validate slugs via scripts/check_seeds.py) and implement one-time seeding into the `watchlist` table (engine/watchlist.py `ensure_seeded()`, re-seed inserts only unknown shipped slugs) with tests in tests/test_watchlist.py written first
+- [X] T003 [test] Failing tests in tests/test_db.py: migrations add `jobs.last_seen_at` (backfilled from first_seen), `jobs.delisted`, `jobs.embedding`, `user_profile.search_terms`, `user_profile.resume_embedding`, `watchlist` table; `init_db()` writes `backup/jobs-v{old}.db` before migrating and restores it on simulated migration failure
+- [X] T004 Implement the migrations + backup-before-migrate/restore-on-failure in engine/db.py
+- [X] T005 Watchlist seed: expand companies.yml to 300+ curated boards (CE/hardware/semis/defense + known sponsors; validate slugs via scripts/check_seeds.py) and implement one-time seeding into the `watchlist` table (engine/watchlist.py `ensure_seeded()`, re-seed inserts only unknown shipped slugs) with tests in tests/test_watchlist.py written first
 
 ## Phase 3: US1 — Apply Assist that works or explains (P1)
 
-- [ ] T006 [test] [US1] Failing tests in tests/test_browser_controller.py: `_ensure_context` launches via `channel="msedge"`, falls back to `"chrome"`, raises typed `BrowserUnavailable` with detail after both fail (playwright monkeypatched)
-- [ ] T007 [US1] Implement channel-based launch in engine/autofill/browser_controller.py (`user_data_dir=data_dir()/browser-profile`, no PLAYWRIGHT_BROWSERS_PATH); delete the download path from engine/autofill/browser_setup.py, leaving `legacy_browsers_dir_size()`/`cleanup_legacy()` helpers
-- [ ] T008 [test] [US1] Failing tests: `outcomes` dict replaces `fell_back` with reason classes `launch_failed|nav_failed|scan_failed|unrecognized|filled|manual|skipped` + detail text; `queue_snapshot()` exposes them; launch failure during a queue marks `launch_failed` (not generic manual)
-- [ ] T009 [US1] Implement reason-class outcomes in browser_controller (`_open_job`, `_fill_page`, `_job_outcome`, `queue_snapshot`)
-- [ ] T010 [test] [US1] Failing tests in tests/test_routes_autofill.py: `POST /api/autofill/preflight` returns `{ok, channel, error}`; `POST /api/autofill/queue` runs preflight and 409s with reason on failure; `POST /api/autofill/setup` returns 410; status payload has `browser` + `outcomes`, no `chromium_installed`
-- [ ] T011 [US1] Implement preflight + route changes in web/routes_autofill.py and engine/autofill/browser_controller.py `preflight()`
-- [ ] T012 [US1] Rebuild web/templates/autofill.html (remove download/setup flow; preflight card with error + retry) and web/templates/partials/autofill_status.html (distinct message per reason class, real error text)
-- [ ] T013 [US1] Packaging: assert playwright Node driver bundled in packaging/jobengine.spec; remove Chromium-install steps from CI smoke prep; smoke test asserts preflight endpoint answers (ok or typed error) in the frozen build
+- [X] T006 [test] [US1] Failing tests in tests/test_browser_controller.py: `_ensure_context` launches via `channel="msedge"`, falls back to `"chrome"`, raises typed `BrowserUnavailable` with detail after both fail (playwright monkeypatched)
+- [X] T007 [US1] Implement channel-based launch in engine/autofill/browser_controller.py (`user_data_dir=data_dir()/browser-profile`, no PLAYWRIGHT_BROWSERS_PATH); delete the download path from engine/autofill/browser_setup.py, leaving `legacy_browsers_dir_size()`/`cleanup_legacy()` helpers
+- [X] T008 [test] [US1] Failing tests: `outcomes` dict replaces `fell_back` with reason classes `launch_failed|nav_failed|scan_failed|unrecognized|filled|manual|skipped` + detail text; `queue_snapshot()` exposes them; launch failure during a queue marks `launch_failed` (not generic manual)
+- [X] T009 [US1] Implement reason-class outcomes in browser_controller (`_open_job`, `_fill_page`, `_job_outcome`, `queue_snapshot`)
+- [X] T010 [test] [US1] Failing tests in tests/test_routes_autofill.py: `POST /api/autofill/preflight` returns `{ok, channel, error}`; `POST /api/autofill/queue` runs preflight and 409s with reason on failure; `POST /api/autofill/setup` returns 410; status payload has `browser` + `outcomes`, no `chromium_installed`
+- [X] T011 [US1] Implement preflight + route changes in web/routes_autofill.py and engine/autofill/browser_controller.py `preflight()`
+- [X] T012 [US1] Rebuild web/templates/autofill.html (remove download/setup flow; preflight card with error + retry) and web/templates/partials/autofill_status.html (distinct message per reason class, real error text)
+- [X] T013 [US1] Packaging: assert playwright Node driver bundled in packaging/jobengine.spec; remove Chromium-install steps from CI smoke prep; smoke test asserts preflight endpoint answers (ok or typed error) in the frozen build
 
 ## Phase 4: US2 — A desktop window the user can trust (P2)
 
