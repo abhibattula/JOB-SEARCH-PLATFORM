@@ -135,3 +135,12 @@ class TestSettingsApi:
         resp = client.get("/settings")
         assert resp.status_code == 200
         assert "default@example.com" in resp.text
+
+
+class Test008Defaults:
+    def test_new_defaults_present(self, tmp_db):
+        assert settings.get("FEED_WINDOW_DEFAULT") == "14d"
+        assert settings.get("JOBSPY_SITES") == "indeed,google"
+        assert settings.get("JOBSPY_RESULTS_PER_SEARCH") == "40"
+        assert settings.get("LLM_JSON_MODEL") == "openai/gpt-oss-120b"
+        assert settings.get("LLM_PROVIDER_PRESET") == "groq"

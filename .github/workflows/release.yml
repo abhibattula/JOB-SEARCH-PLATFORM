@@ -43,7 +43,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: models
-          key: qwen2.5-1.5b-instruct-q4_k_m-gguf-v1
+          key: jobengine-models-qwen1.5b-embgemma300m-v1
       - run: python packaging/fetch_model.py
       - run: pyinstaller packaging/jobengine.spec
       - name: Install Chromium for the smoke test
@@ -93,7 +93,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: models
-          key: qwen2.5-1.5b-instruct-q4_k_m-gguf-v1
+          key: jobengine-models-qwen1.5b-embgemma300m-v1
       - run: python packaging/fetch_model.py
       - run: pyinstaller packaging/jobengine.spec
       - name: Install Chromium for the smoke test

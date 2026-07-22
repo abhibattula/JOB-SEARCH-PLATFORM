@@ -111,6 +111,19 @@ CREATE TABLE IF NOT EXISTS application_answers (
     answered_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_application_answers_job ON application_answers(job_id);
+
+CREATE TABLE IF NOT EXISTS watchlist (
+    id INTEGER PRIMARY KEY,
+    ats TEXT NOT NULL,
+    slug TEXT NOT NULL,
+    name TEXT,
+    enabled INTEGER DEFAULT 1,
+    origin TEXT DEFAULT 'shipped',
+    added_at TEXT,
+    last_ok_at TEXT,
+    extra TEXT,
+    UNIQUE(ats, slug)
+);
 """
 
 
@@ -166,6 +179,10 @@ _MIGRATIONS = {
         ("applied_at", "TEXT"),
         ("stage_updated_at", "TEXT"),
         ("notes", "TEXT"),
+        # 008: freshness/delisting + semantic ranking
+        ("last_seen_at", "TEXT"),
+        ("delisted", "INTEGER DEFAULT 0"),
+        ("embedding", "BLOB"),
     ],
     "user_profile": [
         ("authorized_without_sponsorship", "TEXT"),
@@ -180,6 +197,9 @@ _MIGRATIONS = {
         ("resume_file_path", "TEXT"),
         ("resume_sections", "TEXT"),
         ("sections_edited_at", "TEXT"),
+        # 008: profile-driven search + semantic ranking
+        ("search_terms", "TEXT"),
+        ("resume_embedding", "BLOB"),
     ],
     # 007: sponsorship intelligence
     "companies": [
@@ -197,17 +217,89 @@ _MIGRATIONS = {
 }
 
 
+def _pending_migrations(conn: sqlite3.Connection) -> bool:
+    tables = {
+        row["name"]
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    if not tables:
+        return False  # brand-new file: nothing to protect
+    if "watchlist" not in tables:
+        return True
+    for table, columns in _MIGRATIONS.items():
+        if table not in tables:
+            continue
+        existing = {
+            row["name"]
+            for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        if any(column not in existing for column, _ in columns):
+            return True
+    return False
+
+
+def _apply_migrations(conn: sqlite3.Connection) -> None:
+    for table, columns in _MIGRATIONS.items():
+        existing = {
+            row["name"]
+            for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        for column, ddl_type in columns:
+            if column not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}")
+    # 008 backfill: existing rows were last confirmed at their first ingest
+    conn.execute("UPDATE jobs SET last_seen_at = first_seen WHERE last_seen_at IS NULL")
+    conn.execute("UPDATE jobs SET delisted = 0 WHERE delisted IS NULL")
+
+
+def _backup_db(path: Path) -> Path:
+    """Consistent pre-migration snapshot via SQLite's backup API (safe under
+    WAL — a plain file copy can miss un-checkpointed pages)."""
+    from . import APP_VERSION
+
+    backup_dir = path.parent / "backup"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    dest = backup_dir / f"jobs-pre-{APP_VERSION}.db"
+    src = sqlite3.connect(path)
+    dst = sqlite3.connect(dest)
+    try:
+        with dst:
+            src.backup(dst)
+    finally:
+        src.close()
+        dst.close()
+    keep = sorted(
+        backup_dir.glob("jobs-pre-*.db"), key=lambda p: p.stat().st_mtime, reverse=True
+    )
+    for stale in keep[2:]:
+        stale.unlink(missing_ok=True)
+    return dest
+
+
+def _restore_db(path: Path, backup: Path) -> None:
+    import shutil
+
+    for suffix in ("", "-wal", "-shm"):
+        Path(str(path) + suffix).unlink(missing_ok=True)
+    shutil.copy2(backup, path)
+
+
 def init_db() -> None:
-    with _conn() as conn:
-        conn.executescript(_SCHEMA)
-        for table, columns in _MIGRATIONS.items():
-            existing = {
-                row["name"]
-                for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
-            }
-            for column, ddl_type in columns:
-                if column not in existing:
-                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}")
+    path = get_db_path()
+    backup: Path | None = None
+    if path.exists():
+        with _conn() as conn:
+            needs = _pending_migrations(conn)
+        if needs:
+            backup = _backup_db(path)
+    try:
+        with _conn() as conn:
+            conn.executescript(_SCHEMA)
+            _apply_migrations(conn)
+    except Exception:
+        if backup is not None:
+            _restore_db(path, backup)
+        raise
 
 
 def normalize_company(name: str) -> str:
