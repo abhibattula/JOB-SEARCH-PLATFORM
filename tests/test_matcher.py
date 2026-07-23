@@ -97,7 +97,10 @@ class TestScoringTierDispatch:
     """005-T012: matcher._chat becomes a cloud -> local -> raise dispatcher;
     scoring_tier() reports which tier is currently active."""
 
-    def test_scoring_tier_prefers_cloud_when_key_present(self, monkeypatch):
+    def test_scoring_tier_prefers_cloud_when_key_present(self, tmp_db, monkeypatch):
+        from engine import db as edb
+
+        edb.set_setting("PREFER_LOCAL_LLM", "0")  # 009: offline is default
         monkeypatch.setenv("LLM_API_KEY", "test-key")
         monkeypatch.setattr(matcher.local_llm, "available", lambda: True)
         assert matcher.scoring_tier() == "cloud"
@@ -112,7 +115,10 @@ class TestScoringTierDispatch:
         monkeypatch.setattr(matcher.local_llm, "available", lambda: False)
         assert matcher.scoring_tier() == "basic"
 
-    def test_chat_dispatches_to_cloud_when_key_present(self, monkeypatch):
+    def test_chat_dispatches_to_cloud_when_key_present(self, tmp_db, monkeypatch):
+        from engine import db as edb
+
+        edb.set_setting("PREFER_LOCAL_LLM", "0")  # 009: offline is default
         monkeypatch.setenv("LLM_API_KEY", "test-key")
         monkeypatch.setattr(matcher.local_llm, "available", lambda: True)
         calls = []
@@ -173,6 +179,7 @@ class Test008ModelSplit:
         import openai
 
         monkeypatch.setattr(openai, "OpenAI", FakeOpenAI)
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: False)
         monkeypatch.setenv("LLM_API_KEY", "test-key")
         monkeypatch.setenv("LLM_MIN_INTERVAL", "0")
         return record
@@ -203,3 +210,59 @@ class Test008ModelSplit:
         )
         matcher._chat([{"role": "user", "content": "extract"}], purpose="json")
         assert calls == [True]
+
+
+class Test009OfflineFirst:
+    """009 US4 (T024): PREFER_LOCAL_LLM defaults ON — the bundled model
+    serves all AI features even with a cloud key; the key is the automatic
+    fallback when the local tier fails."""
+
+    def test_default_prefers_local_when_model_available(self, tmp_db, monkeypatch):
+        monkeypatch.setenv("LLM_API_KEY", "test-key")
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: True)
+        assert matcher.scoring_tier() == "local"
+
+    def test_toggle_off_prefers_cloud(self, tmp_db, monkeypatch):
+        from engine import db as edb
+
+        monkeypatch.setenv("LLM_API_KEY", "test-key")
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: True)
+        edb.set_setting("PREFER_LOCAL_LLM", "0")
+        assert matcher.scoring_tier() == "cloud"
+
+    def test_no_local_model_still_cloud(self, tmp_db, monkeypatch):
+        monkeypatch.setenv("LLM_API_KEY", "test-key")
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: False)
+        assert matcher.scoring_tier() == "local" or matcher.scoring_tier() == "cloud"
+        assert matcher.scoring_tier() == "cloud"
+
+    def test_chat_uses_local_by_default_and_falls_through_on_failure(
+        self, tmp_db, monkeypatch
+    ):
+        monkeypatch.setenv("LLM_API_KEY", "test-key")
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: True)
+        calls = []
+
+        def local_boom(messages, **kw):
+            calls.append("local")
+            raise RuntimeError("local model choked")
+
+        monkeypatch.setattr(matcher, "_chat_local", local_boom)
+        monkeypatch.setattr(
+            matcher, "_chat_cloud",
+            lambda messages, **kw: calls.append("cloud") or "cloud says hi",
+        )
+        result = matcher._chat([{"role": "user", "content": "hello"}])
+        assert result == "cloud says hi"
+        assert calls == ["local", "cloud"]
+
+    def test_local_failure_without_key_reraises(self, tmp_db, monkeypatch):
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: True)
+
+        def local_boom(messages, **kw):
+            raise RuntimeError("local model choked")
+
+        monkeypatch.setattr(matcher, "_chat_local", local_boom)
+        with pytest.raises(RuntimeError, match="choked"):
+            matcher._chat([{"role": "user", "content": "hello"}])

@@ -79,6 +79,12 @@
         <input type="checkbox" name="alerts_enabled" value="1" {{ 'checked' if settings.alerts_enabled }}>
         Desktop notification when a refresh finds new 70+ matches
       </label>
+      <label class="check" title="Fully private and $0 — all AI features (matching, tailoring, resume import) run on the bundled model; your cloud key automatically takes over if the local model ever fails.">
+        <input type="hidden" name="prefer_local_llm" value="0">
+        <input type="checkbox" name="prefer_local_llm" value="1" {{ 'checked' if settings.prefer_local_llm }}>
+        Prefer the bundled offline model (private, $0, slower) — the cloud
+        key stays as automatic backup
+      </label>
       <label class="check">
         <input type="hidden" name="autofill_use_tailored_pdf" value="0">
         <input type="checkbox" name="autofill_use_tailored_pdf" value="1" {{ 'checked' if settings.autofill_use_tailored_pdf }}>

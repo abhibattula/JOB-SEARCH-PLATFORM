@@ -48,8 +48,8 @@ US4 2 · Polish/Ship 2.
 
 ## Phase 6: US4 — Offline model first (P4)
 
-- [ ] T024 [test] [US4] Failing tests in tests/test_matcher.py + test_settings.py: `PREFER_LOCAL_LLM` default "1"; `scoring_tier()` → local when model available even with key; toggle off → cloud; local-tier exception falls through to cloud when key present (else re-raises); settings page shows the checkbox
-- [ ] T025 [US4] Implement in engine/matcher.py (+settings.py default, settings.html checkbox, GET/POST /api/settings plumbing)
+- [X] T024 [test] [US4] Failing tests in tests/test_matcher.py + test_settings.py: `PREFER_LOCAL_LLM` default "1"; `scoring_tier()` → local when model available even with key; toggle off → cloud; local-tier exception falls through to cloud when key present (else re-raises); settings page shows the checkbox
+- [X] T025 [US4] Implement in engine/matcher.py (+settings.py default, settings.html checkbox, GET/POST /api/settings plumbing)
 
 ## Phase 7: Polish & Ship
 

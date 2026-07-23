@@ -376,6 +376,7 @@ def get_settings():
         "llm_model": settings.get("LLM_MODEL"),
         "llm_json_model": settings.get("LLM_JSON_MODEL"),
         "jobspy_linkedin": settings.get("JOBSPY_LINKEDIN") == "1",
+        "prefer_local_llm": settings.get("PREFER_LOCAL_LLM") != "0",
         "schedule_refresh": settings.get("SCHEDULE_REFRESH") == "1",
         "alerts_enabled": settings.get("ALERTS_ENABLED") != "0",
         "max_score_per_run": int(settings.get("MAX_SCORE_PER_RUN") or "150"),
@@ -392,6 +393,7 @@ async def save_settings(
     llm_model: str | None = Form(None),
     llm_json_model: str | None = Form(None),
     jobspy_linkedin: str | None = Form(None),
+    prefer_local_llm: str | None = Form(None),
     schedule_refresh: str | None = Form(None),
     alerts_enabled: str | None = Form(None),
     theme: str | None = Form(None),
@@ -408,6 +410,8 @@ async def save_settings(
         settings.set("LLM_JSON_MODEL", llm_json_model.strip())
     if jobspy_linkedin is not None:
         settings.set("JOBSPY_LINKEDIN", "1" if jobspy_linkedin == "1" else "0")
+    if prefer_local_llm is not None:
+        settings.set("PREFER_LOCAL_LLM", "1" if prefer_local_llm == "1" else "0")
     if schedule_refresh is not None:
         settings.set("SCHEDULE_REFRESH", "1" if schedule_refresh == "1" else "0")
     if alerts_enabled is not None:
