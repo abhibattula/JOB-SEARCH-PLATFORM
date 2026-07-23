@@ -22,7 +22,9 @@ from . import db
 log = logging.getLogger(__name__)
 
 
-def load_companies() -> list[dict]:
+def load_seed_companies() -> list[dict]:
+    """The bundled companies.yml — a one-time SEED source only (008). The
+    runtime source of monitored boards is the watchlist table."""
     override = os.environ.get("COMPANIES_PATH")
     if override:
         path = Path(override)
@@ -34,6 +36,15 @@ def load_companies() -> list[dict]:
         return []
     doc = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     return doc.get("companies") or []
+
+
+def load_companies() -> list[dict]:
+    """008 (FR-015): DB-backed watchlist — seeded from YAML on first call,
+    user-editable from Settings, edits survive updates."""
+    from . import watchlist
+
+    watchlist.ensure_seeded()
+    return watchlist.load_active()
 
 
 def _source_names() -> list[str]:

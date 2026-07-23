@@ -996,7 +996,10 @@ def _force_run_started_at(run_id: int, started_at: str) -> None:
 
 # --- user profile -----------------------------------------------------------
 
-_PROFILE_JSON_FIELDS = ("skills", "target_locations", "preferences", "resume_sections")
+_PROFILE_JSON_FIELDS = (
+    "skills", "target_locations", "preferences", "resume_sections",
+    "search_terms",  # 008: {"terms": [...], "derived_from": ..., "updated_at": ...}
+)
 # Single source of truth for save_profile()'s INSERT/UPDATE — every
 # user_profile column except id/updated_at (which are handled specially).
 # Adding a new profile field means adding it here AND to _MIGRATIONS above;
@@ -1006,6 +1009,7 @@ _PROFILE_COLUMNS = (
     "preferences", "authorized_without_sponsorship", "visa_status",
     "first_name", "last_name", "email", "phone", "linkedin_url", "portfolio_url",
     "resume_file_path", "resume_sections", "sections_edited_at",
+    "search_terms",  # 008: profile-driven search
 )
 
 

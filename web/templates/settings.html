@@ -27,10 +27,11 @@
           <input type="text" name="llm_model" value="{{ settings.llm_model }}">
         </label>
       </details>
-      <label class="check">
+      <label class="check" title="LinkedIn rate-limits anonymous scraping after a few hundred results, so this can quietly return little or nothing — the 'Search on LinkedIn' button on the feed always works and shows genuine live results in your own browser.">
         <input type="hidden" name="jobspy_linkedin" value="0">
         <input type="checkbox" name="jobspy_linkedin" value="1" {{ 'checked' if settings.jobspy_linkedin }}>
-        Also search LinkedIn (often bot-blocked; Indeed always runs)
+        Also scrape LinkedIn (unreliable: rate-limited quickly; the feed's
+        "Search on LinkedIn" button is the dependable path)
       </label>
       <label class="check">
         <input type="hidden" name="schedule_refresh" value="0">
@@ -150,6 +151,69 @@
           }),
         });
         location.reload();
+      });
+    </script>
+  </section>
+
+  <section class="settings-section" id="watchlist-section">
+    <h2>Company watchlist</h2>
+    <p class="muted">Career boards fetched directly from each company's own
+      site — the most trustworthy source of postings. Add any company that
+      uses Greenhouse, Lever, Ashby, or Workable: the identifier is the last
+      part of its careers URL (e.g. <span class="data">boards.greenhouse.io/<strong>sifive</strong></span>).
+      Your changes survive app updates.</p>
+    <form id="watchlist-add-form" class="settings-actions">
+      <select id="wl-ats">
+        <option value="greenhouse">Greenhouse</option>
+        <option value="lever">Lever</option>
+        <option value="ashby">Ashby</option>
+        <option value="workable">Workable</option>
+      </select>
+      <input type="text" id="wl-slug" placeholder="board identifier" required>
+      <input type="text" id="wl-name" placeholder="Company name (optional)">
+      <button type="submit">Add company</button>
+      <span id="wl-add-result" class="data"></span>
+    </form>
+    <details>
+      <summary>{{ watchlist_companies | length }} companies monitored
+        ({{ watchlist_companies | selectattr('enabled') | list | length }} enabled)</summary>
+      <table class="feed-table">
+        <tbody>
+          {% for c in watchlist_companies %}
+          <tr>
+            <td>{{ c.name }}</td>
+            <td class="data">{{ c.ats }}/{{ c.slug }}</td>
+            <td class="data">{% if c.last_ok_at %}ok {{ c.last_ok_at[:10] }}{% elif c.origin == 'user' %}not fetched yet{% else %}—{% endif %}</td>
+            <td>
+              <button type="button" class="ghost"
+                      onclick="fetch('/api/watchlist/{{ c.id }}', {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({enabled: {{ 'false' if c.enabled else 'true' }}})}).then(() => location.reload())">
+                {{ 'Disable' if c.enabled else 'Enable' }}
+              </button>
+              <button type="button" class="ghost"
+                      onclick="fetch('/api/watchlist/{{ c.id }}', {method:'DELETE'}).then(() => location.reload())">
+                Remove
+              </button>
+            </td>
+          </tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </details>
+    <script>
+      document.getElementById('watchlist-add-form').addEventListener('submit', async (e) => {
+        e.preventDefault();
+        const out = document.getElementById('wl-add-result');
+        const resp = await fetch('/api/watchlist', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            ats: document.getElementById('wl-ats').value,
+            slug: document.getElementById('wl-slug').value.trim(),
+            name: document.getElementById('wl-name').value.trim() || null,
+          }),
+        });
+        if (resp.ok) { location.reload(); }
+        else { out.textContent = '✕ ' + ((await resp.json()).detail || 'failed'); }
       });
     </script>
   </section>

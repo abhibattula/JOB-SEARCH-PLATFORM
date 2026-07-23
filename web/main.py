@@ -133,9 +133,10 @@ def _feed_context(
     run = db.get_run_status()
     profile = db.get_profile()
     from engine import matcher
-    from engine.ingest import SOURCE_ORDER
+    from engine.ingest import SOURCE_ORDER, linkedin_linkout
 
     return {
+        "linkedin_search_url": linkedin_linkout.url_for_profile(profile),
         "has_llm_key": matcher.llm_available(),
         "request": request,
         "jobs": jobs,
@@ -285,15 +286,17 @@ def create_app() -> FastAPI:
 
     @app.get("/settings", response_class=HTMLResponse)
     def settings_page(request: Request):
-        from engine import credentials
+        from engine import credentials, watchlist
 
         from .routes_api import get_settings
 
+        watchlist.ensure_seeded()
         default_cred = credentials.get_default()
         return templates.TemplateResponse(
             request,
             "settings.html",
             {
+                "watchlist_companies": watchlist.list_all(),
                 "settings": get_settings(),
                 "credential_domains": credentials.list_domains(),
                 "default_credential_email": default_cred["email"] if default_cred else None,

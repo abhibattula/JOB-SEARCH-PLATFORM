@@ -145,6 +145,68 @@ def job_summary(job: dict) -> dict:
     }
 
 
+@router.get("/jobs/{job_id}/linkedin-url")
+def job_linkedin_url(job_id: int):
+    """008 (FR-016): a genuine LinkedIn search for this job's title."""
+    from engine.ingest import linkedin_linkout
+
+    job = db.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    return {"url": linkedin_linkout.url_for_job(job)}
+
+
+# --- 008 company watchlist (FR-015) -----------------------------------------
+
+
+class WatchlistAddRequest(BaseModel):
+    ats: str
+    slug: str
+    name: str | None = None
+
+
+class WatchlistPatchRequest(BaseModel):
+    enabled: bool
+
+
+@router.get("/watchlist")
+def list_watchlist():
+    from engine import watchlist
+
+    watchlist.ensure_seeded()
+    return {"companies": watchlist.list_all()}
+
+
+@router.post("/watchlist", status_code=201)
+def add_watchlist_entry(body: WatchlistAddRequest):
+    from engine import watchlist
+
+    if body.ats not in watchlist.VALID_ATS:
+        raise HTTPException(status_code=400, detail=f"unknown board type {body.ats!r}")
+    try:
+        return watchlist.add(body.ats, body.slug, name=body.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@router.patch("/watchlist/{entry_id}")
+def patch_watchlist_entry(entry_id: int, body: WatchlistPatchRequest):
+    from engine import watchlist
+
+    watchlist.set_enabled(entry_id, body.enabled)
+    return {"id": entry_id, "enabled": body.enabled}
+
+
+@router.delete("/watchlist/{entry_id}")
+def delete_watchlist_entry(entry_id: int):
+    from engine import watchlist
+
+    result = watchlist.remove(entry_id)
+    if result == "missing":
+        raise HTTPException(status_code=404, detail="no such watchlist entry")
+    return {"result": result}
+
+
 @router.post("/refresh")
 def start_refresh(force: int = 0):
     result = pipeline.trigger_refresh(

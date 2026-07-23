@@ -86,3 +86,27 @@ class TestCrud:
         rows = {r["slug"]: r for r in watchlist.list_all()}
         assert rows["stripe"]["last_ok_at"]
         assert rows["tenstorrent"]["last_ok_at"] is None
+
+
+class TestRuntimeLoad:
+    """T028: after seeding, the DB is the single runtime source of boards —
+    user toggles change what the pipeline fetches without touching YAML."""
+
+    def test_pipeline_load_companies_reads_watchlist(self, tmp_db, seed_yaml):
+        from engine import pipeline
+
+        entries = pipeline.load_companies()  # auto-seeds, then serves from DB
+        slugs = {e["slug"] for e in entries if e["ats"] != "workday"}
+        assert "stripe" in slugs and "tenstorrent" in slugs
+        stripe = next(r for r in watchlist.list_all() if r["slug"] == "stripe")
+        watchlist.set_enabled(stripe["id"], False)
+        slugs = {e.get("slug") for e in pipeline.load_companies()}
+        assert "stripe" not in slugs
+
+    def test_user_added_board_reaches_pipeline(self, tmp_db, seed_yaml):
+        from engine import pipeline
+
+        pipeline.load_companies()
+        watchlist.add("greenhouse", "sifive", name="SiFive")
+        slugs = {e.get("slug") for e in pipeline.load_companies()}
+        assert "sifive" in slugs

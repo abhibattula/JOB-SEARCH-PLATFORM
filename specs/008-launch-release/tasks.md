@@ -49,11 +49,11 @@ US4 7 · US5 9 · US6 4 · Polish/Ship 1 (numbering is execution order).
 - [X] T025 [US3] Implement board-diff delisting + ingest age gate in engine/pipeline.py and engine/ingest/(greenhouse|lever|ashby|workable).py (sources return full-fetch success flag + seen keys)
 - [X] T026 [test] [US3] Failing tests: throttled HEAD liveness check for scraped-board rows (404 / redirect-to-careers-home ⇒ delisted; network error ⇒ no change), respecting 1 req/s/domain
 - [X] T027 [US3] Implement liveness checker in engine/pipeline.py (bounded batch per refresh, scraped sources only)
-- [ ] T028 [US3] Watchlist runtime: pipeline.load_companies reads the watchlist table (enabled rows) instead of YAML; per-board "not found" surfaces in the refresh strip via `last_ok_at` (tests first in tests/test_watchlist.py)
-- [ ] T029 [test] [US3] Failing tests in tests/test_api.py: watchlist CRUD contract (GET/POST 201/409, PATCH enabled, DELETE user-vs-shipped semantics)
-- [ ] T030 [US3] Implement watchlist CRUD in web/routes_api.py + Settings watchlist section in web/templates/settings.html
-- [ ] T031 [US3] jobspy upgrades in engine/ingest/jobspy_source.py: sites from `JOBSPY_SITES` (+google; linkedin only when opt-in), `hours_old=336` passed alone (client-side job_type/remote filtering), results_wanted from settings; tests first (kwargs asserted via monkeypatched scrape)
-- [ ] T032 [US3] LinkedIn link-out: engine/ingest/linkedin_linkout.py builds search URLs (terms + f_TPR=r1209600); `GET /api/jobs/{id}/linkedin-url` + toolbar/job-detail "Search on LinkedIn" buttons (open via /api/open); LinkedIn checkbox copy updated with rate-limit warning
+- [X] T028 [US3] Watchlist runtime: pipeline.load_companies reads the watchlist table (enabled rows) instead of YAML; per-board "not found" surfaces in the refresh strip via `last_ok_at` (tests first in tests/test_watchlist.py)
+- [X] T029 [test] [US3] Failing tests in tests/test_api.py: watchlist CRUD contract (GET/POST 201/409, PATCH enabled, DELETE user-vs-shipped semantics)
+- [X] T030 [US3] Implement watchlist CRUD in web/routes_api.py + Settings watchlist section in web/templates/settings.html
+- [X] T031 [US3] jobspy upgrades in engine/ingest/jobspy_source.py: sites from `JOBSPY_SITES` (+google; linkedin only when opt-in), `hours_old=336` passed alone (client-side job_type/remote filtering), results_wanted from settings; tests first (kwargs asserted via monkeypatched scrape)
+- [X] T032 [US3] LinkedIn link-out: engine/ingest/linkedin_linkout.py builds search URLs (terms + f_TPR=r1209600); `GET /api/jobs/{id}/linkedin-url` + toolbar/job-detail "Search on LinkedIn" buttons (open via /api/open); LinkedIn checkbox copy updated with rate-limit warning
 - [X] T033 [US3] Feed usability: sort auto-applies on change; segmented window/view links rebuilt from full query string; hidden seen/ineligible/view inputs in toolbar form; Prev/Next pager (total/limit/offset); `source` filter param + select in query_jobs/routes/template; fix `entry_level='0'`→False; clickable Posted/Match headers (template render + route tests first)
 - [X] T034 [US3] Honest dates: `posted_approx` flag in job payloads; feed/detail show "seen {date} ~" styling for NULL posted_date rows; MAX_SCORE_PER_RUN scaled with volume knobs (settings-driven)
 - [X] T035 [US3] Delisted badge styling + "delisted" filter chip in `all` window (web/static/styles.css + feed_table.html)
@@ -66,7 +66,7 @@ US4 7 · US5 9 · US6 4 · Polish/Ship 1 (numbering is execution order).
 - [ ] T039 [US4] Implement identity auto-fill + consent flow in web/routes_api.py save_profile/reextract + conflict UI in web/templates/profile.html
 - [ ] T040 [test] [US4] Failing tests in tests/test_search_terms.py: derivation from target_titles/experience/skills capped at 8, stable ordering, empty-profile → []; PUT /profile/search-terms validates and stamps `derived_from:"user"`
 - [ ] T041 [US4] Implement engine/search_terms.py + persistence + `PUT /api/profile/search-terms` + editable terms UI on profile.html (with "these drive the job search" note)
-- [ ] T042 [US4] Consume profile in sourcing: jobspy terms×locations from profile (fallback to built-in constants), target_locations pre-fills the feed location filter as documented (web/main.py); tests first in tests/test_ingest*/test_api.py
+- [X] T042 [US4] Consume profile in sourcing: jobspy terms×locations from profile (fallback to built-in constants), target_locations pre-fills the feed location filter as documented (web/main.py); tests first in tests/test_ingest*/test_api.py
 
 ## Phase 7: US5 — In-app updates, What's New, Diagnostics (P5)
 

@@ -792,3 +792,68 @@ class Test008FeedControls:
         seed_job(url="https://example.com/nodate", posted_date=None)
         resp = client.get("/partials/feed")
         assert "seen ~" in resp.text or "≈" in resp.text
+
+
+class Test008Watchlist:
+    """008 US3 (T029): company watchlist CRUD per contracts/http-api.md."""
+
+    def test_crud_roundtrip(self, client):
+        resp = client.post("/api/watchlist",
+                           json={"ats": "greenhouse", "slug": "sifive", "name": "SiFive"})
+        assert resp.status_code == 201
+        row = resp.json()
+        assert row["origin"] == "user" and row["enabled"] is True
+
+        assert client.post(
+            "/api/watchlist", json={"ats": "greenhouse", "slug": "sifive"}
+        ).status_code == 409
+        assert client.post(
+            "/api/watchlist", json={"ats": "bogus", "slug": "x"}
+        ).status_code == 400
+
+        listing = client.get("/api/watchlist").json()["companies"]
+        assert any(c["slug"] == "sifive" for c in listing)
+
+        resp = client.patch(f"/api/watchlist/{row['id']}", json={"enabled": False})
+        assert resp.status_code == 200
+        listing = client.get("/api/watchlist").json()["companies"]
+        assert next(c for c in listing if c["id"] == row["id"])["enabled"] is False
+
+        assert client.delete(f"/api/watchlist/{row['id']}").json()["result"] == "deleted"
+        listing = client.get("/api/watchlist").json()["companies"]
+        assert not any(c["id"] == row["id"] for c in listing)
+
+    def test_delete_shipped_row_disables_instead(self, client, tmp_path, monkeypatch):
+        seed = tmp_path / "companies.yml"
+        seed.write_text(
+            "companies:\n  - {name: Stripe, ats: greenhouse, slug: stripe}\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("COMPANIES_PATH", str(seed))
+        from engine import watchlist
+
+        watchlist.ensure_seeded()
+        row = next(c for c in client.get("/api/watchlist").json()["companies"]
+                   if c["slug"] == "stripe")
+        assert client.delete(f"/api/watchlist/{row['id']}").json()["result"] == "disabled"
+        listing = client.get("/api/watchlist").json()["companies"]
+        assert next(c for c in listing if c["id"] == row["id"])["enabled"] is False
+
+    def test_settings_page_shows_watchlist_section(self, client):
+        resp = client.get("/settings")
+        assert resp.status_code == 200
+        assert "Company watchlist" in resp.text
+
+
+class Test008LinkedInLinkout:
+    def test_job_linkedin_url_route(self, client):
+        job = seed_job(title="ASIC Engineer New Grad")
+        resp = client.get(f"/api/jobs/{job['id']}/linkedin-url")
+        assert resp.status_code == 200
+        assert "linkedin.com/jobs/search" in resp.json()["url"]
+        assert "ASIC" in resp.json()["url"]
+
+    def test_feed_toolbar_offers_linkedin_search(self, client):
+        seed_job()
+        resp = client.get("/")
+        assert "Search on LinkedIn" in resp.text

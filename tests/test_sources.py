@@ -293,7 +293,8 @@ class TestJobspy:
         monkeypatch.delenv("JOBSPY_LINKEDIN", raising=False)
         jobs = list(jobspy_source.fetch_jobs([]))
 
-        assert all(set(c["site_name"]) == {"indeed"} for c in calls)
+        # 008: google joined the default site list; linkedin stays opt-in
+        assert all(set(c["site_name"]) == {"indeed", "google"} for c in calls)
         assert len(jobs) >= 2
         first = next(j for j in jobs if j.company == "Micron")
         assert first.source == "jobspy"
@@ -316,3 +317,112 @@ class TestJobspy:
         monkeypatch.setenv("JOBSPY_LINKEDIN", "1")
         list(jobspy_source.fetch_jobs([]))
         assert any("linkedin" in c["site_name"] for c in calls)
+
+
+class TestJobspy008:
+    """008 US3 (T031/T042): settings-driven sites/volume, 14-day hours_old
+    passed ALONE (mutual-exclusivity), and profile-driven terms/locations."""
+
+    def _capture(self, monkeypatch):
+        from engine.ingest import jobspy_source
+
+        calls = []
+
+        def fake_scrape(**kw):
+            calls.append(kw)
+            return None
+
+        monkeypatch.setattr(jobspy_source, "_scrape", fake_scrape)
+        return calls
+
+    def test_default_sites_are_indeed_and_google(self, tmp_db, monkeypatch):
+        from engine.ingest import jobspy_source
+
+        calls = self._capture(monkeypatch)
+        list(jobspy_source.fetch_jobs([]))
+        assert calls and calls[0]["site_name"] == ["indeed", "google"]
+
+    def test_linkedin_appended_only_when_opted_in(self, tmp_db, monkeypatch):
+        from engine import db as edb
+        from engine.ingest import jobspy_source
+
+        edb.set_setting("JOBSPY_LINKEDIN", "1")
+        calls = self._capture(monkeypatch)
+        list(jobspy_source.fetch_jobs([]))
+        assert calls[0]["site_name"] == ["indeed", "google", "linkedin"]
+
+    def test_hours_old_is_336_and_passed_alone(self, tmp_db, monkeypatch):
+        from engine.ingest import jobspy_source
+
+        calls = self._capture(monkeypatch)
+        list(jobspy_source.fetch_jobs([]))
+        kw = calls[0]
+        assert kw["hours_old"] == 336
+        # jobspy treats hours_old as mutually exclusive with these — none
+        # may ever be passed alongside it (client-side filtering only)
+        assert not {"job_type", "is_remote", "easy_apply"} & set(kw)
+
+    def test_results_wanted_from_settings(self, tmp_db, monkeypatch):
+        from engine import db as edb
+        from engine.ingest import jobspy_source
+
+        edb.set_setting("JOBSPY_RESULTS_PER_SEARCH", "60")
+        calls = self._capture(monkeypatch)
+        list(jobspy_source.fetch_jobs([]))
+        assert calls[0]["results_wanted"] == 60
+
+    def test_profile_terms_and_locations_drive_searches(self, tmp_db, monkeypatch):
+        from engine import db as edb
+        from engine.ingest import jobspy_source
+
+        edb.save_profile(
+            search_terms={"terms": ["fpga engineer", "asic verification"]},
+            target_locations=["Austin, TX"],
+        )
+        calls = self._capture(monkeypatch)
+        list(jobspy_source.fetch_jobs([]))
+        combos = {(c["search_term"], c["location"]) for c in calls}
+        assert combos == {
+            ("fpga engineer", "Austin, TX"),
+            ("asic verification", "Austin, TX"),
+        }
+
+    def test_empty_profile_falls_back_to_builtin_terms(self, tmp_db, monkeypatch):
+        from engine.ingest import jobspy_source
+
+        calls = self._capture(monkeypatch)
+        list(jobspy_source.fetch_jobs([]))
+        assert len(calls) == len(jobspy_source.SEARCH_TERMS)
+        assert all(c["location"] == "United States" for c in calls)
+
+    def test_total_searches_capped(self, tmp_db, monkeypatch):
+        from engine import db as edb
+        from engine.ingest import jobspy_source
+
+        edb.save_profile(
+            search_terms={"terms": [f"term {i}" for i in range(6)]},
+            target_locations=["Austin, TX", "San Jose, CA", "Remote"],
+        )
+        calls = self._capture(monkeypatch)
+        list(jobspy_source.fetch_jobs([]))
+        assert len(calls) <= jobspy_source.MAX_SEARCHES_PER_RUN
+
+
+class TestLinkedInLinkout:
+    """008 US3 (T032): honest LinkedIn reach — one-click search link-outs
+    (14-day filter) instead of default-on scraping that silently 429s."""
+
+    def test_search_url_encodes_terms_and_fortnight_filter(self):
+        from engine.ingest import linkedin_linkout
+
+        url = linkedin_linkout.search_url("fpga engineer", location="Austin, TX")
+        assert url.startswith("https://www.linkedin.com/jobs/search/?")
+        assert "keywords=fpga+engineer" in url
+        assert "f_TPR=r1209600" in url  # posted within 14 days
+        assert "location=Austin%2C+TX" in url
+
+    def test_url_for_job_uses_title(self):
+        from engine.ingest import linkedin_linkout
+
+        url = linkedin_linkout.url_for_job({"title": "Design Verification Engineer"})
+        assert "keywords=Design+Verification+Engineer" in url

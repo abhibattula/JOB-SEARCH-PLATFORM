@@ -40,10 +40,10 @@ def _entry_slug(entry: dict) -> str:
 
 def ensure_seeded() -> int:
     """Insert unknown shipped seeds from companies.yml; returns insert count."""
-    from .pipeline import load_companies
+    from .pipeline import load_seed_companies
 
     inserted = 0
-    entries = load_companies()
+    entries = load_seed_companies()
     with db._conn() as conn:
         for entry in entries:
             ats = entry.get("ats")
