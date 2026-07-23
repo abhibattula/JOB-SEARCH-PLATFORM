@@ -89,7 +89,7 @@ US4 7 · US5 9 · US6 4 · Polish/Ship 1 (numbering is execution order).
 
 ## Phase 9: Polish & Ship
 
-- [ ] T056 Final gate, in order: (1) update README.md, USER_MANUAL.md, USER_GUIDE.md (new Apply Assist, watchlist, updater, diagnostics, What's New, 14-day default, provider presets); (2) bump 0.8.0 everywhere (engine/__init__.py, windows.iss, jobengine.spec) + changelog entry; (3) extend packaging/smoke_test.py (embeddings selftest, preflight answers, update-check dry run, version triple-match, ALLOW_DOWNLOADS honored); (4) full pytest ×2; (5) live frozen-shell walkthrough per quickstart.md §Shell walkthrough with content assertions; (6) merge → mirror `001-ai-job-engine` → tag v0.8.0 → both CI installers green → verify both Release assets
+- [X] T056 Final gate, in order: (1) update README.md, USER_MANUAL.md, USER_GUIDE.md (new Apply Assist, watchlist, updater, diagnostics, What's New, 14-day default, provider presets); (2) bump 0.8.0 everywhere (engine/__init__.py, windows.iss, jobengine.spec) + changelog entry; (3) extend packaging/smoke_test.py (embeddings selftest, preflight answers, update-check dry run, version triple-match, ALLOW_DOWNLOADS honored); (4) full pytest ×2; (5) live frozen-shell walkthrough per quickstart.md §Shell walkthrough with content assertions; (6) merge → mirror `001-ai-job-engine` → tag v0.8.0 → both CI installers green → verify both Release assets
 
 ## Dependencies
 
