@@ -2,6 +2,9 @@
 all business logic lives in engine/, this module only wires HTTP to it."""
 from __future__ import annotations
 
+import logging
+import os
+import sys
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -11,8 +14,11 @@ from fastapi.templating import Jinja2Templates
 
 from engine import db, paths
 
+log = logging.getLogger(__name__)
+
 from .routes_api import parse_feed_params, router as api_router
 from .routes_autofill import router as autofill_router
+from .routes_bridge import router as bridge_router
 
 from engine import APP_VERSION
 
@@ -209,12 +215,28 @@ def create_app() -> FastAPI:
     )
     app.include_router(api_router)
     app.include_router(autofill_router)
+    app.include_router(bridge_router)
 
     @app.on_event("startup")
     def _startup() -> None:
         import threading
 
         db.init_db()
+
+        # 010: dev-server equivalent of desktop.py's companion stamping —
+        # when uvicorn runs web.main directly (quickstart dev flow), stamp
+        # the extension for the conventional dev port so the companion can
+        # pair. The desktop app stamps with its real dynamic port instead.
+        if not getattr(sys, "frozen", False):
+            try:
+                from scripts import stamp_extension
+
+                stamp_extension.stamp(
+                    int(os.environ.get("JOBS_DEV_PORT", "8000"))
+                )
+            except Exception:
+                log.debug("dev companion stamp skipped", exc_info=True)
+
         threading.Thread(target=_bootstrap_sponsorship, daemon=True).start()
 
         def _quiet_update_check() -> None:

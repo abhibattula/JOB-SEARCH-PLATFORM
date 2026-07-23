@@ -14,9 +14,9 @@ US2 (P2 AI drafts) → US3 (P3 UI overhaul) → Polish/Ship.
 
 ## Phase 2: Foundational (blocking prerequisites)
 
-- [ ] T004 Extract `engine/autofill/field_core.py` from `watcher._process_field` (sacred-non-empty, focused-guard, classify → adapters-then-generic, option matching, ledger bookkeeping, outcome vocabulary) with `tests/test_field_core.py`; `watcher.py` delegates to it; ALL existing 009 watcher/browser tests stay green unchanged
-- [ ] T005 `scripts/stamp_extension.py` (materialize repo `extension/` → `<data_dir>/extension/`, write pairing.json {port, secret, app_id}; idempotent, version-stamped) + `desktop.py` calls it after port bind + dev-mode equivalent in `web/main.py` startup; unit tests for stamping in `tests/test_stamp_extension.py`
-- [ ] T006 Bridge server `web/routes_bridge.py`: `WS /ws/ext` (hello auth vs bridge_secret → 4401, version gate → 4426, single-session supersede → 4409, ping/pong, registers send-callable with ext_backend), `GET /api/bridge/info`, `GET /api/bridge/file/<token>` one-time 60s resume fetch; wired in `web/main.py`; `tests/test_routes_bridge.py` (starlette WS test client: auth, supersede, token single-use)
+- [x] T004 Extract `engine/autofill/field_core.py` from `watcher._process_field` (sacred-non-empty, focused-guard, classify → adapters-then-generic, option matching, ledger bookkeeping, outcome vocabulary) with `tests/test_field_core.py`; `watcher.py` delegates to it; ALL existing 009 watcher/browser tests stay green unchanged
+- [x] T005 `scripts/stamp_extension.py` (materialize repo `extension/` → `<data_dir>/extension/`, write pairing.json {port, secret, app_id}; idempotent, version-stamped) + `desktop.py` calls it after port bind + dev-mode equivalent in `web/main.py` startup; unit tests for stamping in `tests/test_stamp_extension.py`
+- [x] T006 Bridge server `web/routes_bridge.py`: `WS /ws/ext` (hello auth vs bridge_secret → 4401, version gate → 4426, single-session supersede → 4409, ping/pong, registers send-callable with ext_backend), `GET /api/bridge/info`, `GET /api/bridge/file/<token>` one-time 60s resume fetch; wired in `web/main.py`; `tests/test_routes_bridge.py` (starlette WS test client: auth, supersede, token single-use)
 
 ## Phase 3: US1 — Companion fills in the user's Chrome (P1) 🎯 MVP
 
