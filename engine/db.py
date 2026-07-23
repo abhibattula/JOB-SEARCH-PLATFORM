@@ -760,15 +760,34 @@ def jobs_needing_score(
         )
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT j.id, j.title, j.description, c.name AS company"
+            "SELECT j.id, j.title, j.description, j.embedding, c.name AS company"
             " FROM jobs j JOIN companies c ON j.company_id = c.id"
             f" WHERE j.is_entry_level = 1 AND {score_clause}"
             " AND j.sponsorship != 'EXCLUDED'"  # never spend LLM quota on ineligible jobs
             " AND j.status NOT IN ('applied', 'hidden')"
+            " AND j.delisted = 0"  # 008: dead postings don't spend quota either
             " ORDER BY COALESCE(j.posted_date, j.first_seen) DESC LIMIT ?",
             (*upgrade_methods, limit),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def jobs_needing_embedding(limit: int = 300) -> list[dict]:
+    """008 (FR-029): new eligible jobs without a semantic vector yet."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT j.id, j.title, j.description FROM jobs j"
+            " WHERE j.embedding IS NULL AND j.delisted = 0"
+            " AND j.is_entry_level = 1 AND j.sponsorship != 'EXCLUDED'"
+            " ORDER BY COALESCE(j.posted_date, j.first_seen) DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def save_job_embedding(job_id: int, blob: bytes) -> None:
+    with _conn() as conn:
+        conn.execute("UPDATE jobs SET embedding = ? WHERE id = ?", (blob, job_id))
 
 
 def get_setting(key: str) -> str | None:
@@ -1010,6 +1029,7 @@ _PROFILE_COLUMNS = (
     "first_name", "last_name", "email", "phone", "linkedin_url", "portfolio_url",
     "resume_file_path", "resume_sections", "sections_edited_at",
     "search_terms",  # 008: profile-driven search
+    "resume_embedding",  # 008: semantic pre-ranking (BLOB, not JSON)
 )
 
 

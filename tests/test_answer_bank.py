@@ -66,7 +66,7 @@ class TestSuggest:
     def test_suggest_uses_chat_dispatcher(self, tmp_db, monkeypatch):
         from engine import matcher
 
-        monkeypatch.setattr(matcher, "_chat", lambda messages: "Suggested answer text")
+        monkeypatch.setattr(matcher, "_chat", lambda messages, **kw: "Suggested answer text")
         monkeypatch.setenv("LLM_API_KEY", "test-key")
         draft = answer_bank.suggest(
             "How did you hear about us?", category="how_heard", profile={"resume_text": "..."}
@@ -88,7 +88,7 @@ class TestSuggest:
         explicitly confirms it — suggest() alone must not create a row."""
         from engine import matcher
 
-        monkeypatch.setattr(matcher, "_chat", lambda messages: "Suggested answer text")
+        monkeypatch.setattr(matcher, "_chat", lambda messages, **kw: "Suggested answer text")
         monkeypatch.setenv("LLM_API_KEY", "test-key")
         answer_bank.suggest("Novel question", category="free_text_unknown", profile={})
         assert answer_bank.lookup("Novel question") is None

@@ -67,6 +67,15 @@ assert os.path.exists(_model_path) and os.path.getsize(_model_path) > 500_000_00
 )
 datas.append((_model_path, "models"))
 
+# 008: the semantic pre-ranking embeddings model (EmbeddingGemma-300M Q8_0,
+# ~330MB) — core scoring asset, bundled like the LLM above.
+_embed_model_path = os.path.join(ROOT, "models", "embeddinggemma-300M-Q8_0.gguf")
+assert os.path.exists(_embed_model_path) and os.path.getsize(_embed_model_path) > 300_000_000, (
+    f"embedding model missing or too small at {_embed_model_path} — run"
+    " packaging/fetch_model.py first"
+)
+datas.append((_embed_model_path, "models"))
+
 # Playwright (feature 005, Apply Assist) loads its Node.js-based driver at
 # runtime from a path relative to its own package's __file__ — package data,
 # not a Python import, so invisible to static analysis. Playwright's own

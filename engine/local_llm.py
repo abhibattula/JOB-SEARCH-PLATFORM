@@ -57,12 +57,19 @@ def _get_model():
         return _model
 
 
-def chat(messages: list[dict]) -> str:
+def chat(messages: list[dict], json_mode: bool = False) -> str:
     """Raises RuntimeError if the bundled model is missing or fails to load —
     callers (engine/matcher.py's tier dispatcher) treat this the same as a
-    failed cloud call: fall through to the next tier."""
+    failed cloud call: fall through to the next tier.
+
+    008 (FR-028): json_mode enables llama.cpp's grammar-constrained JSON
+    decoding — the biggest reliability lever for small models: output is
+    structurally valid JSON every time instead of best-effort prose."""
     model = _get_model()
     if model is None:
         raise RuntimeError("local model unavailable")
-    completion = model.create_chat_completion(messages=messages, temperature=0.2)
+    kwargs = {"messages": messages, "temperature": 0.2}
+    if json_mode:
+        kwargs["response_format"] = {"type": "json_object"}
+    completion = model.create_chat_completion(**kwargs)
     return completion["choices"][0]["message"]["content"] or ""

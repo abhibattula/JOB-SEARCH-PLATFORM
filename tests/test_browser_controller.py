@@ -152,7 +152,7 @@ class TestPendingConfirmation:
     def test_unanswered_question_sets_pending_and_returns_no_value(self, tmp_db, monkeypatch):
         from engine import matcher
 
-        monkeypatch.setattr(matcher, "_chat", lambda messages: "Drafted answer")
+        monkeypatch.setattr(matcher, "_chat", lambda messages, **kw: "Drafted answer")
         monkeypatch.setenv("LLM_API_KEY", "test-key")
         bc._state.pending = None
 
@@ -169,7 +169,7 @@ class TestPendingConfirmation:
     def test_only_one_pending_confirmation_tracked_at_a_time(self, tmp_db, monkeypatch):
         from engine import matcher
 
-        monkeypatch.setattr(matcher, "_chat", lambda messages: "First draft")
+        monkeypatch.setattr(matcher, "_chat", lambda messages, **kw: "First draft")
         monkeypatch.setenv("LLM_API_KEY", "test-key")
         bc._state.pending = None
 

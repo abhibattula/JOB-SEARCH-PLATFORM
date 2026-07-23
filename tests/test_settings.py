@@ -67,7 +67,7 @@ class TestSettingsApi:
         from engine import matcher
 
         settings.set("LLM_API_KEY", "gsk_x")
-        monkeypatch.setattr(matcher, "_chat", lambda messages: "pong")
+        monkeypatch.setattr(matcher, "_chat", lambda messages, **kw: "pong")
         assert client.post("/api/settings/test").json()["ok"] is True
 
         def boom(messages):

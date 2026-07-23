@@ -19,13 +19,49 @@
         <input type="password" name="llm_api_key" placeholder="gsk_…" autocomplete="off">
       </label>
       <details>
-        <summary class="muted">Advanced: different AI provider</summary>
+        <summary class="muted">Advanced: AI provider &amp; models</summary>
+        <label>Provider preset (fills the fields below — both are free, no card)
+          <select id="llm-preset" onchange="applyLlmPreset(this.value)">
+            <option value="">— pick a preset —</option>
+            <option value="groq">Groq (30 req/min, ~1K req/day free)</option>
+            <option value="gemini">Google AI Studio — Gemini 2.5 Flash (~1,500 req/day free, huge context)</option>
+          </select>
+        </label>
         <label>Base URL (any OpenAI-compatible endpoint; Ollama: http://localhost:11434/v1)
-          <input type="text" name="llm_base_url" value="{{ settings.llm_base_url }}">
+          <input type="text" name="llm_base_url" id="llm-base-url" value="{{ settings.llm_base_url }}">
         </label>
-        <label>Model
-          <input type="text" name="llm_model" value="{{ settings.llm_model }}">
+        <label>Model for writing (bullets, cover letters)
+          <input type="text" name="llm_model" id="llm-model" value="{{ settings.llm_model }}">
         </label>
+        <label>Model for structured extraction &amp; scoring (needs reliable JSON output)
+          <input type="text" name="llm_json_model" id="llm-json-model" value="{{ settings.llm_json_model }}">
+        </label>
+        <p class="muted">Other free fallbacks (paste your own key + base URL):
+          Mistral free tier (1B tokens/mo — note: may train on your data),
+          Cerebras (1M tokens/day, 8K context cap), OpenRouter and GitHub
+          Models (~50 requests/day each).</p>
+        <script>
+          window.applyLlmPreset = function (preset) {
+            const presets = {
+              groq: {
+                base: 'https://api.groq.com/openai/v1',
+                prose: 'llama-3.3-70b-versatile',
+                json: 'openai/gpt-oss-120b',
+              },
+              gemini: {
+                base: 'https://generativelanguage.googleapis.com/v1beta/openai',
+                prose: 'gemini-2.5-flash',
+                json: 'gemini-2.5-flash',
+              },
+            };
+            const p = presets[preset];
+            if (!p) { return; }
+            document.getElementById('llm-base-url').value = p.base;
+            document.getElementById('llm-model').value = p.prose;
+            document.getElementById('llm-json-model').value = p.json;
+            toast('Preset applied — paste that provider\'s key above and Save');
+          };
+        </script>
       </details>
       <label class="check" title="LinkedIn rate-limits anonymous scraping after a few hundred results, so this can quietly return little or nothing — the 'Search on LinkedIn' button on the feed always works and shows genuine live results in your own browser.">
         <input type="hidden" name="jobspy_linkedin" value="0">

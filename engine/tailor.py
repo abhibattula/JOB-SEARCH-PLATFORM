@@ -51,7 +51,7 @@ def tailor_for_job(
     ]
     for attempt in range(2):
         try:
-            raw = matcher._chat(messages)
+            raw = matcher._chat(messages, purpose="json")
         except Exception:
             log.warning("tailor LLM call failed (attempt %d)", attempt + 1, exc_info=True)
             continue

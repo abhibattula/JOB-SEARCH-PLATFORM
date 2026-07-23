@@ -158,7 +158,7 @@ def extract(resume_text: str) -> ResumeSections | None:
     ]
     for attempt in (1, 2):
         try:
-            raw = matcher._chat(messages)
+            raw = matcher._chat(messages, purpose="json")
             payload = json.loads(matcher._extract_json(raw))
             return ResumeSections.model_validate(payload)
         except Exception as exc:  # malformed JSON, schema mismatch, LLM error

@@ -374,6 +374,7 @@ def get_settings():
         "llm_api_key_masked": settings.mask_key(key),
         "llm_base_url": settings.get("LLM_BASE_URL"),
         "llm_model": settings.get("LLM_MODEL"),
+        "llm_json_model": settings.get("LLM_JSON_MODEL"),
         "jobspy_linkedin": settings.get("JOBSPY_LINKEDIN") == "1",
         "schedule_refresh": settings.get("SCHEDULE_REFRESH") == "1",
         "alerts_enabled": settings.get("ALERTS_ENABLED") != "0",
@@ -389,6 +390,7 @@ async def save_settings(
     llm_api_key: str | None = Form(None),
     llm_base_url: str | None = Form(None),
     llm_model: str | None = Form(None),
+    llm_json_model: str | None = Form(None),
     jobspy_linkedin: str | None = Form(None),
     schedule_refresh: str | None = Form(None),
     alerts_enabled: str | None = Form(None),
@@ -402,6 +404,8 @@ async def save_settings(
         settings.set("LLM_BASE_URL", llm_base_url.strip())
     if llm_model:
         settings.set("LLM_MODEL", llm_model.strip())
+    if llm_json_model:
+        settings.set("LLM_JSON_MODEL", llm_json_model.strip())
     if jobspy_linkedin is not None:
         settings.set("JOBSPY_LINKEDIN", "1" if jobspy_linkedin == "1" else "0")
     if schedule_refresh is not None:
@@ -1032,11 +1036,18 @@ def _diag_sources() -> str:
     return f"reachable (HTTP {response.status_code})"
 
 
+def _diag_embeddings() -> str:
+    from engine import semantic
+
+    return semantic.selftest()
+
+
 # Named check registry — the Diagnostics page runs each and shows the REAL
 # error text on failure (audit: bare ok:false told the user nothing).
 DIAGNOSTIC_CHECKS: dict = {
     "pdf": _diag_pdf,
     "local-llm": _diag_local_llm,
+    "embeddings": _diag_embeddings,
     "browser": _diag_browser,
     "sources": _diag_sources,
 }

@@ -45,7 +45,7 @@ def seed_job():
 class TestTailorEngine:
     def test_valid_response_parsed(self, tmp_db, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "k")
-        monkeypatch.setattr(tailor.matcher, "_chat", lambda m: VALID)
+        monkeypatch.setattr(tailor.matcher, "_chat", lambda m, **kw: VALID)
         result = tailor.tailor_for_job("resume text", "DV Engineer", "ChipCo", "jd")
         assert result is not None
         assert len(result.tailored_bullets) == 2
@@ -54,7 +54,7 @@ class TestTailorEngine:
         monkeypatch.setenv("LLM_API_KEY", "k")
         captured = {}
 
-        def chat(messages):
+        def chat(messages, **kw):
             captured["all"] = json.dumps(messages)
             return VALID
 
@@ -66,7 +66,7 @@ class TestTailorEngine:
 
     def test_invalid_twice_returns_none(self, tmp_db, monkeypatch):
         monkeypatch.setenv("LLM_API_KEY", "k")
-        monkeypatch.setattr(tailor.matcher, "_chat", lambda m: "not json")
+        monkeypatch.setattr(tailor.matcher, "_chat", lambda m, **kw: "not json")
         assert tailor.tailor_for_job("r", "t", "c", "d") is None
 
 
@@ -91,7 +91,7 @@ class TestTailorApi:
         job_id = seed_job()
         db.save_profile(resume_text="resume", resume_filename="r.pdf")
         monkeypatch.setattr(matcher.local_llm, "available", lambda: True)
-        monkeypatch.setattr(tailor.matcher, "_chat", lambda m: VALID)
+        monkeypatch.setattr(tailor.matcher, "_chat", lambda m, **kw: VALID)
         resp = client.post(f"/api/jobs/{job_id}/tailor")
         assert resp.status_code == 200
 
@@ -99,7 +99,7 @@ class TestTailorApi:
         job_id = seed_job()
         db.save_profile(resume_text="resume", resume_filename="r.pdf")
         settings.set("LLM_API_KEY", "k")
-        monkeypatch.setattr(tailor.matcher, "_chat", lambda m: VALID)
+        monkeypatch.setattr(tailor.matcher, "_chat", lambda m, **kw: VALID)
         response = client.post(f"/api/jobs/{job_id}/tailor")
         assert response.status_code == 200
         assert "SystemVerilog" in response.json()["ats_keywords"]
@@ -109,7 +109,7 @@ class TestTailorApi:
         job_id = seed_job()
         db.save_profile(resume_text="resume", resume_filename="r.pdf")
         settings.set("LLM_API_KEY", "k")
-        monkeypatch.setattr(tailor.matcher, "_chat", lambda m: VALID)
+        monkeypatch.setattr(tailor.matcher, "_chat", lambda m, **kw: VALID)
         client.post(f"/api/jobs/{job_id}/tailor")
         db.save_profile(resume_text="a different resume")
         assert db.get_job(job_id)["tailor_json"] is None

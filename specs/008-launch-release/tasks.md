@@ -82,10 +82,10 @@ US4 7 · US5 9 · US6 4 · Polish/Ship 1 (numbering is execution order).
 
 ## Phase 8: US6 — Smarter matching within free limits (P6)
 
-- [ ] T052 [test] [US6] Failing tests in tests/test_semantic.py: embed(text)→vector via fake embedder, cosine hybrid blend with keyword score, rank ordering stable, missing model/embedding degrades to keyword order (never blocks feed)
-- [ ] T053 [US6] Implement engine/semantic.py (EmbeddingGemma via llama-cpp-python embedding mode) + pipeline integration: embed new jobs + resume, rank before scoring, LLM scores top-N within cap; bundle gguf in packaging/jobengine.spec with size assertion
-- [ ] T054 [US6] Cloud model split: `LLM_JSON_MODEL` (strict structured outputs on Groq gpt-oss-120b) used by extraction/scoring paths in engine/matcher.py + engine/resume_extract.py; prose stays LLM_MODEL; tests first (request payload asserted)
-- [ ] T055 [US6] Local tier constrained decoding: llama-cpp json_schema/grammar for structured outputs in engine/matcher.py local path (tests with stub llama); provider presets (Groq/Gemini co-equal + documented fallbacks with limits + privacy caveats) in settings.html + engine/settings.py
+- [X] T052 [test] [US6] Failing tests in tests/test_semantic.py: embed(text)→vector via fake embedder, cosine hybrid blend with keyword score, rank ordering stable, missing model/embedding degrades to keyword order (never blocks feed)
+- [X] T053 [US6] Implement engine/semantic.py (EmbeddingGemma via llama-cpp-python embedding mode) + pipeline integration: embed new jobs + resume, rank before scoring, LLM scores top-N within cap; bundle gguf in packaging/jobengine.spec with size assertion
+- [X] T054 [US6] Cloud model split: `LLM_JSON_MODEL` (strict structured outputs on Groq gpt-oss-120b) used by extraction/scoring paths in engine/matcher.py + engine/resume_extract.py; prose stays LLM_MODEL; tests first (request payload asserted)
+- [X] T055 [US6] Local tier constrained decoding: llama-cpp json_schema/grammar for structured outputs in engine/matcher.py local path (tests with stub llama); provider presets (Groq/Gemini co-equal + documented fallbacks with limits + privacy caveats) in settings.html + engine/settings.py
 
 ## Phase 9: Polish & Ship
 

@@ -74,7 +74,7 @@ class TestExtract:
     def test_extracts_via_chat_dispatcher(self, monkeypatch):
         from engine import matcher
 
-        monkeypatch.setattr(matcher, "_chat", lambda messages: json.dumps(VALID_PAYLOAD))
+        monkeypatch.setattr(matcher, "_chat", lambda messages, **kw: json.dumps(VALID_PAYLOAD))
         monkeypatch.setattr(matcher, "scoring_tier", lambda: "cloud")
         result = resume_extract.extract("resume text here")
         assert result is not None
@@ -86,7 +86,7 @@ class TestExtract:
         monkeypatch.setattr(matcher, "scoring_tier", lambda: "basic")
         monkeypatch.setattr(
             matcher, "_chat",
-            lambda messages: (_ for _ in ()).throw(AssertionError("must not call")),
+            lambda messages, **kw: (_ for _ in ()).throw(AssertionError("must not call")),
         )
         assert resume_extract.extract("resume text") is None
 
@@ -95,7 +95,7 @@ class TestExtract:
 
         calls = []
 
-        def bad_chat(messages):
+        def bad_chat(messages, **kw):
             calls.append(1)
             return "not json at all"
 
@@ -108,7 +108,7 @@ class TestExtract:
         from engine import matcher
 
         fenced = "```json\n" + json.dumps(VALID_PAYLOAD) + "\n```"
-        monkeypatch.setattr(matcher, "_chat", lambda messages: fenced)
+        monkeypatch.setattr(matcher, "_chat", lambda messages, **kw: fenced)
         monkeypatch.setattr(matcher, "scoring_tier", lambda: "cloud")
         result = resume_extract.extract("resume text")
         assert result is not None and result.skills == ["python", "verilog", "i2c"]

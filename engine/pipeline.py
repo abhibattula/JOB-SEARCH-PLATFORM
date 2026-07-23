@@ -207,6 +207,8 @@ def _score_new_jobs() -> None:
 
     from . import basic_match, matcher, settings
 
+    from . import semantic
+
     profile = db.get_profile()
     if not profile or not profile.get("resume_text"):
         return
@@ -218,7 +220,32 @@ def _score_new_jobs() -> None:
     tier = matcher.scoring_tier()  # "cloud" | "local" | "basic"
     upgrade_methods = {"cloud": ("basic", "local"), "local": ("basic",), "basic": ()}[tier]
     cap = int(settings.get("MAX_SCORE_PER_RUN") or "150") if tier != "basic" else 2000
-    for job in db.jobs_needing_score(limit=cap, upgrade_methods=upgrade_methods):
+
+    # 008 (FR-029): embed new jobs + the resume, then spend the quota
+    # top-down by semantic similarity. Any failure degrades to date order.
+    resume_vec = None
+    try:
+        if semantic.available():
+            for row in db.jobs_needing_embedding():
+                vector = semantic.embed(
+                    f"{row['title']}\n{(row.get('description') or '')[:1000]}"
+                )
+                if vector:
+                    db.save_job_embedding(row["id"], semantic.pack(vector))
+            resume_vec = semantic.unpack(profile.get("resume_embedding"))
+            if resume_vec is None:
+                vector = semantic.embed(resume_text)
+                if vector:
+                    db.save_profile(resume_embedding=semantic.pack(vector))
+                    resume_vec = vector
+    except Exception:
+        log.warning("semantic ranking unavailable this run", exc_info=True)
+        resume_vec = None
+
+    fetch = cap * 4 if resume_vec else cap
+    candidates = db.jobs_needing_score(limit=fetch, upgrade_methods=upgrade_methods)
+    candidates = semantic.order_jobs(resume_vec, candidates)[:cap]
+    for job in candidates:
         description = job.get("description") or ""
         if tier in ("cloud", "local"):
             analysis = _analyze(resume_text, job["title"], job["company"], description)
