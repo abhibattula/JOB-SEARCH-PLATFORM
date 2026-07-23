@@ -385,6 +385,17 @@ def create_app() -> FastAPI:
             },
         )
 
+    @app.get("/practice/apply", response_class=HTMLResponse)
+    def practice_apply(request: Request):
+        """009 (FR-009): the bundled practice application — a realistic
+        local form Apply Assist fills with the user's real data, no job
+        site involved. Doubles as the on-machine proof the engine works."""
+        return templates.TemplateResponse(request, "practice_apply.html", {})
+
+    @app.get("/practice/frame", response_class=HTMLResponse)
+    def practice_frame(request: Request):
+        return templates.TemplateResponse(request, "practice_frame.html", {})
+
     @app.get("/autofill", response_class=HTMLResponse)
     def autofill_page(request: Request):
         jobs, _ = db.query_jobs(

@@ -1,7 +1,7 @@
 {# 008 (FR-030): shown when the daily/manual check found a newer release.
    The Update button drives download -> verify -> silent install -> relaunch
    via app.js runUpdate(). #}
-<div class="update-banner mission-panel" role="status">
+<div class="update-banner mission-panel" id="update-banner-panel" role="status">
   <p>
     <strong>Version {{ update.latest }} is available.</strong>
     <button type="button" onclick="runUpdate(this)">Update now</button>
@@ -9,3 +9,4 @@
     <a class="data" href="{{ update.url }}" target="_blank" rel="noopener">or download manually ↗</a>
   </p>
 </div>
+<script>reveal(document.getElementById("update-banner-panel"));</script>

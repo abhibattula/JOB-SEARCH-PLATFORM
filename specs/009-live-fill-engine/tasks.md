@@ -31,10 +31,10 @@ US4 2 · Polish/Ship 2.
 
 ## Phase 4: US2 — Proof on my machine (P2)
 
-- [ ] T013 [test] [US2] Failing tests in tests/test_api.py + test_routes_autofill.py: `GET /practice/apply` + `/practice/frame` render (identity fields, select, file input, delayed-section script, iframe src); `POST /api/autofill/practice` starts a practice queue (409 when active)
-- [ ] T014 [US2] Implement web/templates/practice_apply.html + practice_frame.html, `/practice/*` routes in web/main.py, `OPEN_PRACTICE` worker path (no DB row), "Test Apply Assist" button on autofill.html
-- [ ] T015 [US2] Attention polish: `window.reveal(el)` (scrollIntoView + flash class) in web/static/app.js + styles.css; applied to pending-answer block, import region, update banner; template hooks
-- [ ] T016 [US2] Real-browser fixture suite (`@pytest.mark.browser`): tests/fixtures/ats_pages/{greenhouse_delayed,greenhouse_iframe_host,greenhouse_embed_frame,lever_apply,ashby_application,posting_with_apply_button,typing_race}.html + ThreadingHTTPServer harness + tests/integration/test_autofill_fixture_pages.py (poll queue_snapshot → assert real DOM values; the TEST clicks the Apply button / types during the race; headless via AUTOFILL_HEADLESS=1 honored in `_ensure_context`; skip cleanly when no channel launches)
+- [X] T013 [test] [US2] Failing tests in tests/test_api.py + test_routes_autofill.py: `GET /practice/apply` + `/practice/frame` render (identity fields, select, file input, delayed-section script, iframe src); `POST /api/autofill/practice` starts a practice queue (409 when active)
+- [X] T014 [US2] Implement web/templates/practice_apply.html + practice_frame.html, `/practice/*` routes in web/main.py, `OPEN_PRACTICE` worker path (no DB row), "Test Apply Assist" button on autofill.html
+- [X] T015 [US2] Attention polish: `window.reveal(el)` (scrollIntoView + flash class) in web/static/app.js + styles.css; applied to pending-answer block, import region, update banner; template hooks
+- [X] T016 [US2] Real-browser fixture suite (`@pytest.mark.browser`): tests/fixtures/ats_pages/{greenhouse_delayed,greenhouse_iframe_host,greenhouse_embed_frame,lever_apply,ashby_application,posting_with_apply_button,typing_race}.html + ThreadingHTTPServer harness + tests/integration/test_autofill_fixture_pages.py (poll queue_snapshot → assert real DOM values; the TEST clicks the Apply button / types during the race; headless via AUTOFILL_HEADLESS=1 honored in `_ensure_context`; skip cleanly when no channel launches)
 
 ## Phase 5: US3 — Profile import that imports (P3)
 

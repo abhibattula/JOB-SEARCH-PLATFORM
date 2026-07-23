@@ -14,12 +14,38 @@
   <div id="autofill-error" class="error-banner" style="display:none" role="alert"></div>
 
   <p class="settings-actions">
+    <button type="button" id="autofill-practice-btn"
+            title="Opens a bundled practice application and fills it with your real profile data — the ten-second proof this works on your machine, no job site involved">
+      Test Apply Assist
+    </button>
     <button type="button" class="ghost" id="autofill-preflight-btn"
             title="Verifies your installed browser can be started before you queue anything">
       Check my browser
     </button>
     <span id="autofill-preflight-result" class="data"></span>
   </p>
+  <script>
+    document.getElementById('autofill-practice-btn').addEventListener('click', async (e) => {
+      const btn = e.target;
+      const errEl = document.getElementById('autofill-error');
+      errEl.style.display = 'none';
+      btn.disabled = true;
+      btn.textContent = 'Starting practice…';
+      try {
+        const resp = await fetch('/api/autofill/practice', {method: 'POST'});
+        const body = await resp.json();
+        if (!resp.ok) { throw new Error(body.detail || 'could not start'); }
+        toast('Watch the browser window — your data fills in live');
+        htmx.trigger('#autofill-queue', 'load');
+      } catch (err) {
+        errEl.textContent = 'Practice run failed: ' + err.message;
+        errEl.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = 'Test Apply Assist';
+      }
+    });
+  </script>
   <script>
     document.getElementById('autofill-preflight-btn').addEventListener('click', async (e) => {
       const out = document.getElementById('autofill-preflight-result');

@@ -311,3 +311,14 @@ a.tailor-btn:hover, a.tailor-btn:focus-visible { text-decoration: none; filter: 
 .answer-bank-add, .answer-bank-eeo { display: grid; gap: 0.6rem; max-width: 480px; margin: 0.8rem 0 1.2rem; }
 .answer-bank-add label, .answer-bank-eeo label { display: grid; gap: 0.25rem; font-weight: 600; }
 .answer-bank-add input, .answer-bank-eeo input, .answer-bank-add select { padding: 0.4rem var(--s2); border: 1px solid var(--line); border-radius: var(--r-md); background: var(--surface-raised); color: var(--ink); font: inherit; }
+
+
+/* 009 (FR-011): pulse anything that needs the user's attention */
+.flash-attention { animation: je-flash 0.8s ease-in-out 3; }
+@keyframes je-flash {
+  0%, 100% { box-shadow: 0 0 0 0 transparent; }
+  50% { box-shadow: 0 0 0 4px var(--accent, #2757a8); }
+}
+.watch-activity { letter-spacing: 0.01em; }
+.watch-guidance { border-left: 3px solid var(--accent, #2757a8);
+  padding: 0.6rem 0.9rem; margin: 0.6rem 0; }

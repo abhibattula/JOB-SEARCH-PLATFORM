@@ -111,6 +111,7 @@
 
   {% if current.pending %}
   <div class="autofill-pending" id="autofill-pending-form">
+  <script>reveal(document.getElementById("autofill-pending-form"));</script>
     <p>
       <strong>Question needs your review</strong>
       {% if current.pending.category in ('work_authorization', 'sponsorship_requirement', 'eeo_disclosure') %}
