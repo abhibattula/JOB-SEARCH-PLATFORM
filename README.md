@@ -17,14 +17,20 @@ entirely on your machine for $0.
 
 ## What it does
 
-- **Open the app → see fresh jobs.** The feed renders instantly from the local
-  database (last 7 days by default, one-click 24-hour view) while a background
-  refresh pulls all sources and streams new postings in live.
+- **Open the app → see fresh, genuine jobs.** The feed renders instantly
+  from the local database (last **14 days** by default, with 24-hour/7-day
+  views) while a background refresh pulls all sources and streams new
+  postings in live. Sort by match score or newest in one click; page through
+  everything; filter by source.
 - **Aggregates real sources, no scraping fights**: Greenhouse, Lever, Ashby,
-  SmartRecruiters, and Workable public JSON APIs across ~67 validated
-  companies, Hacker News "Who is hiring" threads, and Indeed via python-jobspy.
-  One refresh ≈ 14,000+ postings; untouched postings older than 45 days are
-  pruned automatically so the feed stays current.
+  SmartRecruiters, and Workable public JSON APIs across **450+ validated
+  company career boards** (user-editable watchlist in Settings), Hacker News
+  "Who is hiring" threads, and Indeed + Google Jobs via python-jobspy — with
+  a one-click "Search on LinkedIn" link-out built from your own terms.
+  Postings that vanish from their company's board are **auto-delisted**, so
+  closed jobs don't waste your time; jobs whose posted date is unknown are
+  marked approximate instead of faked; search terms and locations come from
+  **your profile**, not hardcoded defaults.
 - **Entry-level filter tuned for SWE + hardware**: new-grad/junior markers plus
   the hardware families (firmware, embedded, FPGA, ASIC, verification,
   validation, silicon, RTL), with senior/staff/II+ roles excluded. 100% on the
@@ -57,7 +63,8 @@ entirely on your machine for $0.
   optional cloud key still gives the highest-quality results and is always
   preferred when set).
 - **Apply Assist**: opens each shortlisted job's real application page in
-  its own dedicated browser window and fills in the fields it recognizes —
+  **your own installed Edge or Chrome** (a separate profile dedicated to the
+  app — nothing to download, ever) and fills in the fields it recognizes —
   name, contact info, links, **your resume file itself**, work
   authorization/sponsorship dropdowns (matched to the site's own option
   wording), and common short-answer questions — from your profile and a
@@ -70,8 +77,10 @@ entirely on your machine for $0.
   your OS's own credential store (never this app's database) the same way —
   filled, never auto-submitted.
 - **Resume builder + tailored PDFs**: your uploaded resume is parsed into
-  editable structured sections (experience, education, projects, skills) you
-  review once; every job can then export an ATS-safe **tailored resume PDF**
+  editable structured sections (experience, education, projects, skills)
+  **plus your contact details and target titles** — blank profile fields fill
+  themselves (you approve any conflicts; visa questions are never
+  auto-filled); every job can then export an ATS-safe **tailored resume PDF**
   and cover-letter PDF — generated fully offline, and attached automatically
   by Apply Assist when available.
 - **Sponsorship intelligence nobody else has**: a local A–F **sponsor grade**
@@ -84,6 +93,16 @@ entirely on your machine for $0.
   "datasheet" theme and a dark "scope screen" theme, a kanban pipeline
   board, toast feedback on every action, and a first-run checklist that
   tracks real setup state.
+- **Smarter matching within free limits**: every new job gets an **offline
+  semantic ranking** against your resume (a bundled 330MB embeddings model —
+  no network, no key), so the limited free AI quota is always spent on the
+  most relevant jobs first; structured extraction uses the most
+  schema-reliable free cloud models, with Groq and Google AI Studio presets.
+- **Updates itself**: the app checks GitHub Releases daily, and one click
+  downloads the installer with a progress bar, verifies its SHA-256, installs
+  silently, and relaunches — with a What's New screen after every update. A
+  Diagnostics page runs real self-checks (PDF render, AI model, browser
+  launch, source reachability) and exports logs when something misbehaves.
 
 ## Install (for users)
 
@@ -100,9 +119,10 @@ Refresh, done. Match scoring works immediately via the bundled offline AI
 model — a free Groq key on the Settings page is optional and only upgrades
 quality further. Sponsorship data ships preloaded. All data stays on your
 computer (`%LOCALAPPDATA%\JobEngine` / `~/Library/Application Support/JobEngine`).
-The installer is noticeably larger than earlier versions (~1GB+) because it
-bundles that AI model; Apply Assist's one-time browser-engine download
-(~150-280MB) only happens the first time you use that specific feature.
+The installer is large (~1.5GB) because it bundles the offline AI model and
+the semantic-ranking model. Apply Assist needs **no download at all** — it
+drives the Edge or Chrome already installed on your machine. From v0.8.0 on,
+newer versions install from inside the app (Settings → Check for updates).
 
 ## Quick start (from source)
 
@@ -158,8 +178,8 @@ spec/plan/tasks live under [specs/001-ai-job-engine/](specs/001-ai-job-engine/).
 | Job sources (public JSON APIs, HN Algolia, jobspy) | $0 |
 | Sponsorship data (USCIS Data Hub, DOL LCA disclosures) | $0 |
 | LLM scoring (Groq free tier, ~28 req/min throttled) | $0 |
-| Bundled local AI model (Apache 2.0, ships in the installer) | $0 |
-| Apply Assist browser automation (Chromium, one-time download) | $0 |
+| Bundled local AI model + embeddings model (ship in the installer) | $0 |
+| Apply Assist browser automation (your installed Edge/Chrome) | $0 |
 | Storage (SQLite), UI (FastAPI + HTMX, no build step) | $0 |
 
 ## Known limitations
@@ -171,8 +191,10 @@ spec/plan/tasks live under [specs/001-ai-job-engine/](specs/001-ai-job-engine/).
   Assist applies the same principle: if a page's fields can't be confidently
   read (Workday included), it just opens the tab for you to fill manually and
   moves on to the next job — it never tries to bypass a site's protections.
-- **LinkedIn** via jobspy is off by default (`JOBSPY_LINKEDIN=1` to try it) —
-  it bot-blocks aggressively.
+- **LinkedIn** rate-limits anonymous scraping within a few hundred results,
+  so scraping stays opt-in (Settings) and unreliable by nature; the feed's
+  "Search on LinkedIn" button is the dependable path — it opens a genuine
+  LinkedIn search for your terms (last 14 days) in your own browser.
 - Scanned-image resumes (no text layer) are not supported.
 - **Apply Assist is an assistant, not an autopilot**: it never clicks a
   final submit or login button, and it never automates intra-form page
@@ -185,7 +207,7 @@ spec/plan/tasks live under [specs/001-ai-job-engine/](specs/001-ai-job-engine/).
 ## Development
 
 ```powershell
-.venv\Scripts\python.exe -m pytest    # 269 tests, no network needed
+.venv\Scripts\python.exe -m pytest    # 500+ tests, no network needed
 python cli.py refresh                  # real end-to-end pull
 python scripts/check_seeds.py          # validate companies.yml entries
 ```
@@ -194,8 +216,9 @@ Building an installer needs two extra one-time steps (see
 [docs/RELEASING.md](docs/RELEASING.md) for the full sequence):
 `pip install -r requirements.txt --extra-index-url https://abetlen.github.io/llama-cpp-python/whl/cpu`
 (the bundled local AI model's runtime has no default PyPI wheel) and
-`python packaging/fetch_model.py` (downloads + verifies the ~1GB model
-into a gitignored `models/` directory before `pyinstaller` runs).
+`python packaging/fetch_model.py` (downloads + verifies the ~1GB LLM and
+the ~330MB embeddings model into a gitignored `models/` directory before
+`pyinstaller` runs).
 
 Built spec-first (GitHub Spec Kit) with TDD; see `specs/001-ai-job-engine/`
 (core engine) and `specs/005-apply-assist/` (local AI + Apply Assist) for

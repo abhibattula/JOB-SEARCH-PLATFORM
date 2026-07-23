@@ -118,8 +118,9 @@ offline.
 
 1. Save jobs you want to apply to (☆ in the feed), then open **Apply
    Assist** from the top nav.
-2. First time only: click **Enable Apply Assist** — a one-time browser
-   component download (~150-280MB, needs internet).
+2. Nothing to download: Apply Assist uses the Edge or Chrome already on
+   your machine (with its own separate profile). **Check my browser**
+   verifies it can start.
 3. Pick your saved jobs (select all/none buttons) and **Start Apply
    Assist**. A dedicated browser window (separate from your everyday
    browser) opens on the first job's application page with recognized
@@ -172,7 +173,9 @@ itself.
   Cloudflare as of 2026-07, so none ship by default — their roles arrive via
   the Indeed source instead. If that changes, add entries with `ats: workday`,
   `host`, `site`.
-- **LinkedIn**: set `JOBSPY_LINKEDIN=1` to try it (expect blocks).
+- **LinkedIn**: use the feed's **Search on LinkedIn ↗** button (a genuine
+  14-day LinkedIn search in your own browser). Scraping stays opt-in in
+  Settings and rate-limits quickly by nature.
 
 ## Automation
 
@@ -193,5 +196,6 @@ itself.
 | `database is locked` / WAL errors | `JOBS_DB_PATH` must point to a **local** disk, not a network drive |
 | Refresh button says "cooldown" | A refresh finished < 30 min ago — use **Refresh now** (it bypasses the cooldown) |
 | Scores show `~` even though you expected `•` or a cloud score | The bundled model file may be missing/corrupted — the app degrades to the basic matcher rather than crashing; reinstalling fixes it |
-| Apply Assist "Enable" step fails | Needs internet for the one-time Chromium download; check your connection and try again |
-| Apply Assist opened a job but nothing got filled | The page couldn't be confidently read (common on Workday and similar heavy-JS sites) — fill it manually, then click **Done, next application** |
+| Apply Assist won't start a browser | Click **Check my browser** on the Apply Assist page — the error names the fix (usually: install Microsoft Edge or Google Chrome) |
+| Apply Assist opened a job but nothing got filled | The status panel now names the exact reason (page unreadable / failed to load / fields unrecognized) — fill it manually, then click **Done, next application** |
+| Something else misbehaves | Open **Diagnostics** (top nav): run the self-checks and use **Export logs** |

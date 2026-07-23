@@ -236,7 +236,7 @@ faces over the same engine — anything the app can do, a script can do.
 | `ingest/workable.py` | Workable v3 jobs endpoint (POST — the v1 widget returns empty as of 2026-07). Title-based classification like Workday. | `fetch_jobs(entries)` |
 | `ingest/workday.py` | Workday CxS endpoint with pagination and relative-date parsing ("Posted 3 Days Ago"). Implemented + tested, but no default seeds — Workday blocks non-browser clients (Cloudflare) as of 2026-07. | `fetch_jobs(entries)`, `parse_posted_on` |
 | `ingest/hn.py` | Latest "Ask HN: Who is hiring?" thread via the Algolia API. Parses the conventional `Company \| Role \| Location` first line; each comment's own timestamp is the posting date. | `fetch_jobs([])` |
-| `ingest/jobspy_source.py` | Indeed (and optionally LinkedIn) via the python-jobspy library, searching entry-level SWE/hardware terms. Best-effort by design. | `fetch_jobs([])` |
+| `ingest/jobspy_source.py` | Indeed + Google Jobs (and opt-in LinkedIn) via python-jobspy — search terms and locations come from your Profile (falling back to built-in new-grad terms), 14-day window, volume knobs in Settings. Best-effort by design. | `fetch_jobs([])` |
 | `basic_match.py` | Deterministic local scorer (curated SWE/hardware skill dictionary): powers `~NN` scores with no AI key; upgraded to LLM scores automatically. Also accepts the user's explicit Profile skills list (`extra_skills`) alongside resume-text regex extraction. |
 | `resume_extract.py` | (007) LLM extraction of the uploaded resume into structured sections (experience/education/projects/skills) via the tier dispatcher — schema-validated, bounded retry, None without an AI tier (manual forms take over). User review in the Resume builder is the quality gate. |
 | `resume_pdf.py` | (007) ATS-safe resume + cover-letter PDF rendering (fpdf2 + bundled DejaVu fonts, fully offline). Per-job tailored variants lead with `tailor.py`'s output; a fingerprint cache re-renders whenever sections or tailoring change — a stale PDF can never be served. |
@@ -349,7 +349,11 @@ the app runs.
 | `LLM_BASE_URL` | Groq endpoint | Any OpenAI-compatible URL (Ollama: `http://localhost:11434/v1`). |
 | `LLM_MODEL` | `llama-3.3-70b-versatile` | Model name at that provider. |
 | `JOBS_DB_PATH` | `data/jobs.db` | Database location — must be a local disk. |
-| `JOBSPY_LINKEDIN` | `0` | `1` adds LinkedIn to the jobspy searches (often blocked). |
+| `JOBSPY_LINKEDIN` | `0` | `1` adds LinkedIn to the jobspy searches (rate-limited quickly; the feed's "Search on LinkedIn" button is the dependable path). |
+| `JOBSPY_SITES` | `indeed,google` | Which jobspy boards run by default. |
+| `JOBSPY_RESULTS_PER_SEARCH` | `40` | Results requested per search term. |
+| `FEED_WINDOW_DEFAULT` | `14d` | Default feed freshness window. |
+| `LLM_JSON_MODEL` | `openai/gpt-oss-120b` | Model used for structured extraction/scoring (guaranteed-JSON on Groq); `LLM_MODEL` stays the prose model. |
 | `SCHEDULE_REFRESH` | `0` | `1` = nightly auto-refresh at 07:00 while the app runs. |
 | `MAX_SCORE_PER_RUN` | `150` | Cap on LLM scoring calls per refresh (protects the free-tier quota). |
 
@@ -414,11 +418,16 @@ there is no separate "update the model" step.
 Once you've shortlisted jobs (marked **Saved**), the **Apply Assist** page
 lets the app do the repetitive part of applying:
 
-1. Click **Enable Apply Assist** the first time — this downloads Chromium
-   (~150-280MB, one-time, needs internet for this step only).
+1. Nothing to enable or download (v0.8.0): Apply Assist launches the
+   **Microsoft Edge or Google Chrome already installed on your machine**,
+   with a separate profile dedicated to this app — never your everyday
+   browsing profile. Click **Check my browser** any time to verify the
+   browser layer can start.
 2. Select which saved jobs to include and click **Start Apply Assist**. A
-   separate, dedicated browser window opens (not your everyday browser) on
-   the first job's real application page.
+   dedicated browser window opens on the first job's real application page.
+   If anything prevents that (no supported browser, page down, unreadable
+   form), the status panel tells you the specific reason and what to do —
+   never a silent nothing.
 3. Recognized fields (name, email, phone, **your resume file** — the job's
    tailored PDF when one exists, LinkedIn/portfolio links, work
    authorization, sponsorship, years of experience, salary expectation,
@@ -552,3 +561,39 @@ like a real password manager).
 See the table at the end of [USER_GUIDE.md](USER_GUIDE.md#troubleshooting).
 The two most common: empty feed = wait for the first refresh to finish;
 UNKNOWN badges everywhere = run `python cli.py load-sponsorship`.
+
+
+## 12. What changed in v0.8.0 (the Launch Release)
+
+- **Apply Assist rebuilt on your installed browser.** The 150-280MB Chromium
+  download is gone — Playwright now drives the Edge/Chrome already on your
+  machine via its channel mechanism, with an isolated app-only profile. Every
+  failure carries a reason (browser couldn't start / page failed to load /
+  page unreadable / fields unrecognized) with the real error text, and a
+  preflight check runs before any queue starts. The old downloaded-Chromium
+  directory can be reclaimed from the Diagnostics page.
+- **The desktop window behaves like a browser.** Text selection, clipboard
+  (three-tier fallback ending at a host-side copy), external links (always
+  open in your system browser), and PDF downloads all work inside the shell
+  now — these were silently broken in v0.7.0.
+- **Freshness is enforced end-to-end.** 14-day default window, ingest-time
+  age gate, `last_seen` tracking with board-diff delisting (a job missing
+  from a successfully fetched company board is flagged delisted), HEAD
+  liveness checks for scraped rows, same-source repost dedup, and honest
+  "seen ~" dates when a source provides no posted date.
+- **The watchlist is yours.** 450+ validated company boards ship seeded into
+  a database-backed watchlist; add/disable/remove companies in Settings, and
+  your changes survive updates.
+- **Profile auto-fill + profile-driven search.** Resume upload extracts your
+  contact details (regex fallback works with zero AI) and target titles,
+  fills blank fields, asks keep-or-replace on conflicts, never touches visa
+  fields. Derived search terms are visible/editable on Profile and drive the
+  jobspy searches together with your preferred locations.
+- **Semantic pre-ranking.** EmbeddingGemma-300M (bundled, offline) ranks new
+  jobs against your resume so AI scoring quota is spent top-down.
+- **Self-update.** Daily throttled check → banner → SHA-256-verified
+  download with progress → silent Inno install → automatic relaunch, with a
+  What's New screen once per version. macOS remains a manual .dmg download.
+- **Diagnostics page** (top nav): real self-checks with error text, log
+  export, legacy-browser cleanup; crashes in background threads are logged
+  and surfaced once on the next launch.
