@@ -21,13 +21,13 @@ US4 2 · Polish/Ship 2.
 
 ## Phase 3: US1 — Apply Assist actually fills (P1)
 
-- [ ] T006 [test] [US1] Failing tests in tests/test_worker.py (Playwright fully faked): commands processed in order; command preempts tick; tick runs only when a job is current; `_assert_worker_thread` raises off-thread; RESOLVE_PENDING ack ≤0.5s; thread survives CLOSE_PAGE/SHUTDOWN_CONTEXT
-- [ ] T007 [US1] Implement engine/autofill/worker.py (daemon thread, queue.Queue, tick scheduling via get-timeout=2.0s, command handlers)
-- [ ] T008 [test] [US1] Failing tests in tests/test_watcher.py (FakePage/FakeFrame/FakeLocator — FakeLocator.click raises): stamp-based addressing only; serialize+stamp in one eval; idempotent across ticks; focused-guard; just-before-write re-check; delayed appearance (tick1 empty → tick2 fills); multi-frame merge with MAX_FRAMES bound; re-render refill without duplicate report rows; 3-strike scan-failure tolerance; activity accounting; pending single-slot preserved
-- [ ] T009 [US1] Implement engine/autofill/watcher.py (tick: frame walk → serialize/stamp JS → adapter-then-generic classify → idempotent fill via `[data-je-idx]` locators reusing `_apply_field_value`/`_value_for_tag`/masked reporting)
-- [ ] T010 [test] [US1] Failing tests: browser_controller facade — state-machine tests retarget monkeypatch seam `_open_job`→`_dispatch` keeping every assertion; `queue_snapshot`/`status` expose `activity`; `rescan` returns `{forced: true}`; `resolve_pending` routes through the worker; `unrecognized` never produced; tests/test_routes_autofill.py contract updates
-- [ ] T011 [US1] Rewrite engine/autofill/browser_controller.py as the thread-safe facade (public API + 005-008 semantics preserved; delete `_wire_page_change`/one-shot `_open_job` internals) + web/routes_autofill.py activity/rescan changes
-- [ ] T012 [US1] web/templates/partials/autofill_status.html: live activity feed ("watching page — N seen · M filled"), waiting_for_form guidance callout, launch/nav/scan branches kept; template render tests first
+- [X] T006 [test] [US1] Failing tests in tests/test_worker.py (Playwright fully faked): commands processed in order; command preempts tick; tick runs only when a job is current; `_assert_worker_thread` raises off-thread; RESOLVE_PENDING ack ≤0.5s; thread survives CLOSE_PAGE/SHUTDOWN_CONTEXT
+- [X] T007 [US1] Implement engine/autofill/worker.py (daemon thread, queue.Queue, tick scheduling via get-timeout=2.0s, command handlers)
+- [X] T008 [test] [US1] Failing tests in tests/test_watcher.py (FakePage/FakeFrame/FakeLocator — FakeLocator.click raises): stamp-based addressing only; serialize+stamp in one eval; idempotent across ticks; focused-guard; just-before-write re-check; delayed appearance (tick1 empty → tick2 fills); multi-frame merge with MAX_FRAMES bound; re-render refill without duplicate report rows; 3-strike scan-failure tolerance; activity accounting; pending single-slot preserved
+- [X] T009 [US1] Implement engine/autofill/watcher.py (tick: frame walk → serialize/stamp JS → adapter-then-generic classify → idempotent fill via `[data-je-idx]` locators reusing `_apply_field_value`/`_value_for_tag`/masked reporting)
+- [X] T010 [test] [US1] Failing tests: browser_controller facade — state-machine tests retarget monkeypatch seam `_open_job`→`_dispatch` keeping every assertion; `queue_snapshot`/`status` expose `activity`; `rescan` returns `{forced: true}`; `resolve_pending` routes through the worker; `unrecognized` never produced; tests/test_routes_autofill.py contract updates
+- [X] T011 [US1] Rewrite engine/autofill/browser_controller.py as the thread-safe facade (public API + 005-008 semantics preserved; delete `_wire_page_change`/one-shot `_open_job` internals) + web/routes_autofill.py activity/rescan changes
+- [X] T012 [US1] web/templates/partials/autofill_status.html: live activity feed ("watching page — N seen · M filled"), waiting_for_form guidance callout, launch/nav/scan branches kept; template render tests first
 
 ## Phase 4: US2 — Proof on my machine (P2)
 

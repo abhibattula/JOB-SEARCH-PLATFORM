@@ -19,6 +19,16 @@ from typing import Any
 
 FieldDescriptor = dict[str, Any]
 
+# Deliberately excludes <button> and input[type=submit|button|reset] — the
+# fill engine has nothing to click, so it collects nothing clickable in the
+# first place (first layer of the never-clicks invariant; the second is
+# that no fill path contains a click call). Lives here (pure module) so
+# every serializer shares one definition.
+FIELD_QUERY_SELECTOR = (
+    "input:not([type=submit]):not([type=button]):not([type=reset]),"
+    " textarea, select"
+)
+
 _WORK_AUTH_RE = re.compile(
     r"authoriz(e|ation)\w*\s.{0,30}work|legally\s.{0,20}work|work\s.{0,20}(authorization|permit)",
     re.IGNORECASE,

@@ -1,56 +1,67 @@
-"""App-driven browser automation for Apply Assist (feature 005).
+"""Thread-safe facade over the Apply Assist live fill engine (feature 009).
 
-Owns the Playwright lifecycle on its own dedicated background thread — the
-FastAPI request thread (web/routes_autofill.py) only calls these module-level
-functions, never touches a Playwright object directly, matching engine/db.py's
-existing rule that background and request threads never implicitly share one
-stateful connection.
+Division of labor:
+- THIS module owns the queue state machine (start/advance/stop/interrupt/
+  resume/summary — semantics unchanged since 005-008) and the value
+  resolution (profile, credentials, answer bank, tailored-PDF preference).
+  Public functions mutate shared state under `_lock` and enqueue commands;
+  they NEVER perform browser work on the caller's thread (FR-001).
+- engine/autofill/worker.py owns the ONE thread that may touch Playwright.
+- engine/autofill/watcher.py performs each ~2s watch tick: serialize+stamp
+  every frame, classify (adapters → generic), idempotently fill.
 
-Hard safety rule (spec FR-008/FR-016, analyze finding C1): this module NEVER
-clicks anything. It only ever fills values (fill/set_input_files/select_option/
-check) into fields the classifier recognizes. The DOM query used to collect
-fields (FIELD_QUERY_SELECTOR) does not even select buttons or submit-shaped
-inputs, so there is structurally nothing button-like to act on — the human
-always performs the actual submit/login/next-page click.
+Hard safety rule (unchanged since 005): this engine NEVER clicks anything.
+It only fills values into recognized fields — the field query selector
+(fields.FIELD_QUERY_SELECTOR) collects nothing clickable, and no fill path
+contains a click call. The human always performs every submit/login/next/
+apply click. The queue advances only on an explicit advance() call.
 
-The queue advances only on an explicit advance() call (the "Done, next
-application" control) — never automatic completion detection, per the
-005 clarify session.
+There is deliberately NO terminal "couldn't read this page" state: while a
+job is current the watcher keeps watching (FR-003) — late-rendering forms,
+forms the user reveals by clicking the site's own Apply button, and every
+page of a multi-step application fill when their fields appear.
 """
 from __future__ import annotations
 
 import logging
 import threading
+from datetime import datetime, timezone
 
 from . import fields as fields_mod
+from . import watcher
 
 log = logging.getLogger(__name__)
 
-# Deliberately excludes <button> and input[type=submit|button|reset] — this
-# module has nothing to click, so it collects nothing clickable in the
-# first place (second layer of defense alongside _apply_field_value never
-# calling .click()).
-FIELD_QUERY_SELECTOR = (
-    "input:not([type=submit]):not([type=button]):not([type=reset]),"
-    " textarea, select"
-)
-
-_CORE_IDENTITY_TAGS = {"full_name", "first_name", "last_name", "email", "resume_upload"}
+# Re-exported for callers/tests that referenced it here historically; the
+# definition lives in fields.py so every serializer shares it.
+FIELD_QUERY_SELECTOR = fields_mod.FIELD_QUERY_SELECTOR
 
 # 008 (FR-007): Apply Assist drives the user's INSTALLED branded browser via
-# Playwright channels — nothing is downloaded, PLAYWRIGHT_BROWSERS_PATH is
-# irrelevant. Edge ships inbox and is non-removable on US-market Windows 11;
-# Chrome is the fallback for machines where it isn't.
+# Playwright channels — nothing is downloaded. Edge ships inbox on
+# US-market Windows 11; Chrome is the fallback.
 _CHANNELS = ("msedge", "chrome")
 
-# 008 (FR-009): reason classes that mean "complete this one manually" —
-# each renders a DISTINCT message in the status panel, so a browser that
-# never launched is no longer misreported as "this page couldn't be read".
-FALLBACK_REASONS = ("launch_failed", "nav_failed", "scan_failed", "unrecognized")
+# Reason classes that mean "complete this one manually". 009: `unrecognized`
+# is gone — an unreadable-looking page just keeps being watched.
+FALLBACK_REASONS = ("launch_failed", "nav_failed", "scan_failed")
+
+# Scan trouble must persist this many consecutive ticks before it is
+# surfaced as scan_failed (and a single healthy tick clears it again).
+SCAN_FAILURE_LIMIT = 3
+
+# The bundled practice application queues like a job but has no DB row.
+PRACTICE_JOB_ID = -1
 
 
 class BrowserUnavailable(RuntimeError):
     """No supported installed browser (Edge/Chrome) could be launched."""
+
+
+def _fresh_activity() -> dict:
+    return {
+        "phase": "idle", "fields_seen": 0, "fields_filled": 0,
+        "message": "", "last_scan_at": None, "url": None,
+    }
 
 
 class _State:
@@ -58,31 +69,53 @@ class _State:
         self.job_ids: list[int] = []
         self.index: int = -1
         self.running: bool = False
+        self.practice: bool = False
+        self.practice_url: str | None = None
         # job_id -> {"reason": FALLBACK_REASONS member, "detail": str}
         self.outcomes: dict[int, dict] = {}
-        # At most one pending confirmation tracked at a time (FR-011): an
+        # job_id -> {(doc, je_idx): outcome} — the watcher's idempotency
+        # ledger (which elements are settled for this job)
+        self.handled: dict[int, dict] = {}
+        # consecutive all-frames-unreadable ticks for the current job
+        self.scan_failures: int = 0
+        # At most one pending confirmation at a time (005 FR-011): an
         # unrecognized/no-saved-answer question pauses for review rather
         # than being auto-filled from an unreviewed AI draft.
         self.pending: dict | None = None
-        # 007 depth: per-job fill reports (passwords pre-masked at record
-        # time — the secret never enters this structure), browser-closed
-        # interruption flag, and the end-of-queue batch summary. All
-        # session-scoped by design: an app restart clears them (spec
-        # assumption).
+        # per-job fill reports (passwords pre-masked at record time — the
+        # secret never enters this structure)
         self.fill_reports: dict[int, list[dict]] = {}
         self.interrupted: bool = False
         self.summary: dict | None = None
+        self.activity: dict = _fresh_activity()
 
 
 _state = _State()
 _lock = threading.Lock()
 
-# Real Playwright objects — created lazily, never at import time, so unit
-# tests never touch a real browser.
+# Real Playwright objects — owned EXCLUSIVELY by the worker thread; created
+# lazily, never at import time, so unit tests never touch a real browser.
 _playwright = None
 _context = None
 _page = None
 _launched_channel: str | None = None
+
+
+def _dispatch(name: str, payload: dict | None = None, wait: float | None = None):
+    """The one seam between the facade and the worker thread (tests
+    monkeypatch exactly this)."""
+    from . import worker
+
+    return worker.dispatch(name, payload, wait)
+
+
+def _utcnow_iso() -> str:
+    return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
+
+
+def _set_activity(**updates) -> None:
+    with _lock:
+        _state.activity.update(updates)
 
 
 def _mark_fallback(job_id: int, reason: str, detail: str = "") -> None:
@@ -90,16 +123,16 @@ def _mark_fallback(job_id: int, reason: str, detail: str = "") -> None:
         _state.outcomes[job_id] = {"reason": reason, "detail": detail[:300]}
 
 
-def _should_fall_back(classified_tags: list[str]) -> bool:
-    """FR-009: fall back to manual completion when none of the page's core
-    identity fields (name, email, resume upload) were recognized."""
-    return not any(tag in _CORE_IDENTITY_TAGS for tag in classified_tags)
+def _clear_fallback(job_id: int, reason: str) -> None:
+    with _lock:
+        outcome = _state.outcomes.get(job_id)
+        if outcome and outcome["reason"] == reason:
+            del _state.outcomes[job_id]
 
 
 def _apply_field_value(element, tag: str, field_type: str, value) -> None:
-    """The only place values are written into the page. NEVER calls .click()
-    — see module docstring and tests/test_browser_controller.py::
-    TestNeverClicksAnything, which regression-tests this directly."""
+    """The only kind of write ever made into a page. NEVER calls .click()
+    — regression-tested directly (TestNeverClicksAnything)."""
     if value is None:
         return
     if tag == "resume_upload":
@@ -113,10 +146,12 @@ def _apply_field_value(element, tag: str, field_type: str, value) -> None:
         element.fill(str(value))
 
 
+# --- browser launch (008, unchanged) ----------------------------------------
+
+
 def _profile_dir():
-    """Dedicated persistent profile for Apply Assist — the launched browser
-    is the user's installed Edge/Chrome BINARY, but never their personal
-    browsing profile (005 clarify session; 008 FR-007)."""
+    """Dedicated persistent profile — the user's installed Edge/Chrome
+    BINARY, never their personal browsing profile (005 clarify; 008)."""
     from .. import paths
 
     path = paths.data_dir() / "browser-profile"
@@ -124,10 +159,16 @@ def _profile_dir():
     return path
 
 
+def _headless() -> bool:
+    import os
+
+    return os.environ.get("AUTOFILL_HEADLESS") == "1"
+
+
 def _ensure_context():
     """Lazily launches a headed session of the user's installed browser via
     Playwright channels (msedge → chrome). Raises BrowserUnavailable with
-    per-channel detail when neither can start (008 FR-007/FR-009)."""
+    per-channel detail when neither can start. Worker thread only."""
     global _playwright, _context, _launched_channel
     if _context is not None:
         return _context
@@ -138,7 +179,9 @@ def _ensure_context():
     for channel in _CHANNELS:
         try:
             _context = _playwright.chromium.launch_persistent_context(
-                user_data_dir=str(_profile_dir()), channel=channel, headless=False
+                user_data_dir=str(_profile_dir()),
+                channel=channel,
+                headless=_headless(),
             )
             _launched_channel = channel
             return _context
@@ -152,8 +195,8 @@ def _ensure_context():
 
 
 def preflight() -> dict:
-    """Cheap launchability probe (FR-010): can an installed browser actually
-    start? Runs before any queue; never touches an already-live session."""
+    """Cheap launchability probe: can an installed browser actually start?
+    Never touches a live session."""
     if _context is not None:
         return {"ok": True, "channel": _launched_channel, "error": None}
     from playwright.sync_api import sync_playwright
@@ -173,39 +216,16 @@ def preflight() -> dict:
     return {"ok": False, "channel": None, "error": "; ".join(errors) or "unknown"}
 
 
-def _job_url(job_id: int) -> str | None:
-    from .. import db
+def chromium_selftest() -> bool:
+    """Diagnostics/smoke hook: raises with detail when the browser layer
+    can't start."""
+    result = preflight()
+    if not result["ok"]:
+        raise RuntimeError(result["error"])
+    return True
 
-    job = db.get_job(job_id)
-    return job["url"] if job else None
 
-
-def _serialize_fields(page) -> list[dict]:
-    """Real-DOM field extraction — the only function that reaches into a
-    live page; browser_controller is the sole caller of fields.classify()
-    with real serialized data (fields.py itself stays pure/fixture-testable).
-    007: also captures the current value (idempotency, FR-007) and select
-    option texts (structured-input matching, FR-006)."""
-    return page.eval_on_selector_all(
-        FIELD_QUERY_SELECTOR,
-        """(elements) => elements.map(el => ({
-            tag: el.tagName.toLowerCase(),
-            type: el.type || '',
-            name: el.name || '',
-            id: el.id || '',
-            label_text: (el.labels && el.labels[0] ? el.labels[0].innerText : '')
-                || el.getAttribute('aria-label') || '',
-            placeholder: el.placeholder || '',
-            aria_label: el.getAttribute('aria-label') || '',
-            autocomplete: el.autocomplete || '',
-            value: (el.type === 'checkbox' || el.type === 'radio')
-                ? (el.checked ? 'on' : '')
-                : (el.value || ''),
-            options: el.tagName === 'SELECT'
-                ? Array.from(el.options).map(o => o.text)
-                : null,
-        }))""",
-    )
+# --- value resolution (005-008 logic, preserved) -----------------------------
 
 
 def _is_closed_error(exc: Exception) -> bool:
@@ -214,12 +234,14 @@ def _is_closed_error(exc: Exception) -> bool:
 
 
 def _mark_interrupted() -> None:
-    """The dedicated browser window was closed under us (FR-008): keep the
-    queue and its position, drop the dead Playwright objects, and let
-    resume_queue() relaunch at the current job."""
+    """The dedicated browser window was closed under us: keep the queue and
+    its position, drop the dead Playwright objects, let resume_queue()
+    relaunch at the current job. Worker thread only (except via tests)."""
     global _playwright, _context, _page
     with _lock:
         _state.interrupted = True
+        _state.activity.update(phase="interrupted",
+                               message="the browser window was closed — resume when ready")
     _page = None
     _context = None
     if _playwright is not None:
@@ -230,81 +252,9 @@ def _mark_interrupted() -> None:
         _playwright = None
 
 
-def _open_job(job_id: int) -> None:
-    """Real Playwright work for one job: open its application page, wire
-    same-tab page-change rescans, and run the fill pass. Monkeypatched
-    entirely in unit tests (TestQueueStateMachine and friends)."""
-    global _page
-
-    url = _job_url(job_id)
-    if not url:
-        return
-    try:
-        context = _ensure_context()
-        _page = context.new_page()
-    except Exception as exc:
-        if _is_closed_error(exc):
-            _mark_interrupted()
-        else:
-            log.warning("browser launch failed", exc_info=True)
-            _mark_fallback(job_id, "launch_failed", str(exc))
-        return
-    _wire_page_change(_page, job_id)
-    try:
-        _page.goto(url, timeout=30_000)
-    except Exception as exc:
-        if _is_closed_error(exc):
-            _mark_interrupted()
-            return
-        log.warning("failed to load %s", url, exc_info=True)
-        _mark_fallback(job_id, "nav_failed", str(exc))
-        return
-
-    try:
-        raw_fields = _serialize_fields(_page)
-    except Exception as exc:
-        log.warning("field serialization failed for %s", url, exc_info=True)
-        _mark_fallback(job_id, "scan_failed", str(exc))
-        return
-
-    classified = [fields_mod.classify(f) for f in raw_fields]
-    if _should_fall_back(classified):
-        _mark_fallback(
-            job_id, "unrecognized",
-            "no core identity fields (name/email/resume) recognized on this page",
-        )
-        return
-
-    _fill_page(job_id)
-
-
-def _wire_page_change(page, job_id: int) -> None:
-    """FR-003: when the human clicks the site's own Next/Continue and the
-    same tab navigates, re-run the fill pass on the settled new page. The
-    app itself never navigates — this only ever REACTS to navigation the
-    user performed. Best-effort: SPA re-renders that never navigate are
-    covered by the manual rescan button (POST /api/autofill/rescan)."""
-    def _on_navigated(frame) -> None:
-        try:
-            if frame != page.main_frame:
-                return
-            page.wait_for_load_state("domcontentloaded", timeout=15_000)
-            _fill_page(job_id)
-        except Exception as exc:
-            if _is_closed_error(exc):
-                _mark_interrupted()
-            else:
-                log.debug("page-change fill pass failed", exc_info=True)
-
-    try:
-        page.on("framenavigated", _on_navigated)
-    except Exception:
-        log.debug("could not wire page-change listener", exc_info=True)
-
-
 def _resume_file_for_job(job_id: int, profile: dict) -> str | None:
-    """FR-001/FR-002: the job's tailored PDF when available and the
-    preference (default on) allows it; otherwise the stored original."""
+    """The job's tailored PDF when available and the preference (default
+    on) allows it; otherwise the stored original upload."""
     from .. import settings
 
     if settings.get("AUTOFILL_USE_TAILORED_PDF") != "0":
@@ -313,117 +263,19 @@ def _resume_file_for_job(job_id: int, profile: dict) -> str | None:
 
             return str(resume_pdf.tailored_resume_path(job_id))
         except Exception:
-            # no sections yet / render failure -> the original upload
             log.debug("tailored PDF unavailable — using original resume", exc_info=True)
     return profile.get("resume_file_path") or None
-
-
-def _fill_page(job_id: int) -> int:
-    """One idempotent fill pass over the current page (FR-005/006/007).
-    Safe to run repeatedly: non-empty fields (user-typed or previously
-    filled) are never overwritten. Returns the number of fields filled.
-    Every action lands in the job's fill report; a filled password is
-    recorded pre-masked — the secret never enters controller state."""
-    from .. import db
-
-    page = _page
-    if page is None:
-        return 0
-    try:
-        raw_fields = _serialize_fields(page)
-    except Exception as exc:
-        if _is_closed_error(exc):
-            _mark_interrupted()
-        return 0
-
-    profile = db.get_profile() or {}
-    with _lock:
-        report = _state.fill_reports.setdefault(job_id, [])
-    filled_count = 0
-
-    def record(raw: dict, tag: str, value_preview: str, outcome: str) -> None:
-        label = (raw.get("label_text") or raw.get("placeholder")
-                 or raw.get("aria_label") or raw.get("name") or "")
-        with _lock:
-            report.append({
-                "label": label[:120],
-                "tag": tag,
-                "value_preview": value_preview[:60],
-                "outcome": outcome,
-            })
-
-    for raw in raw_fields:
-        tag = fields_mod.classify(raw)
-
-        # FR-007: a value already present is sacred — never overwritten,
-        # never duplicated, for text inputs and file inputs alike.
-        if (raw.get("value") or "").strip():
-            if tag != "free_text_unknown":
-                record(raw, tag, "", "skipped_existing")
-            continue
-
-        selector = f"#{raw['id']}" if raw.get("id") else f"[name='{raw.get('name')}']"
-
-        if tag == "resume_upload":
-            path = _resume_file_for_job(job_id, profile)
-            if not path:
-                continue
-            try:
-                handle = page.query_selector(selector)
-                if handle is None:
-                    continue
-                handle.set_input_files(path)
-                record(raw, tag, path.rsplit("\\", 1)[-1].rsplit("/", 1)[-1], "filled")
-                filled_count += 1
-            except Exception as exc:
-                if _is_closed_error(exc):
-                    _mark_interrupted()
-                    return filled_count
-                # Spec edge case: custom widgets rejecting programmatic
-                # attachment are reported, never fatal — queue continues.
-                record(raw, tag, "", "needs_manual")
-            continue
-
-        pending_before = _state.pending
-        value = _value_for_tag(tag, raw, profile, job_id)
-        if value is None:
-            if _state.pending is not None and _state.pending is not pending_before:
-                record(raw, tag, "", "paused")
-            continue
-
-        try:
-            handle = page.query_selector(selector)
-            if handle is None:
-                continue
-            if raw.get("options"):
-                # FR-006: structured inputs answer by option-text match —
-                # below confidence the input is left untouched, never guessed.
-                matched = fields_mod.match_option(str(value), raw["options"])
-                if matched is None:
-                    record(raw, tag, "", "no_match")
-                    continue
-                handle.select_option(label=matched)
-                record(raw, tag, matched, "filled")
-            else:
-                _apply_field_value(handle, tag, raw.get("type", ""), value)
-                preview = "•••" if tag == "login_password" else str(value)
-                record(raw, tag, preview, "filled")
-            filled_count += 1
-        except Exception as exc:
-            if _is_closed_error(exc):
-                _mark_interrupted()
-                return filled_count
-            log.debug("could not fill field %s", raw, exc_info=True)
-    return filled_count
 
 
 def _domain_for_job(job_id: int) -> str | None:
     from urllib.parse import urlparse
 
-    url = _job_url(job_id)
-    if not url:
+    from .. import db
+
+    job = db.get_job(job_id)
+    if not job or not job.get("url"):
         return None
-    return urlparse(url).netloc or None
+    return urlparse(job["url"]).netloc or None
 
 
 def _value_for_tag(tag: str, raw: dict, profile: dict, job_id: int):
@@ -453,9 +305,7 @@ def _value_for_tag(tag: str, raw: dict, profile: dict, job_id: int):
     if tag == "phone":
         return profile.get("phone")
     if tag == "resume_upload":
-        # handled directly in _fill_page (007: _resume_file_for_job — the
-        # tailored-preferred file attachment path), never through here
-        return None
+        return _resume_file_for_job(job_id, profile)
     if tag in ("linkedin_url",):
         return profile.get("linkedin_url")
     if tag in ("portfolio_url",):
@@ -464,7 +314,7 @@ def _value_for_tag(tag: str, raw: dict, profile: dict, job_id: int):
     # eeo_disclosure, years_experience, salary_expectation, how_heard,
     # cover_letter, free_text_unknown) goes through the answer bank —
     # unrecognized/unconfirmed questions are surfaced for review, never
-    # auto-filled from an unreviewed draft (FR-011/FR-012).
+    # auto-filled from an unreviewed draft (005 FR-011/FR-012).
     question = raw.get("label_text") or raw.get("placeholder") or raw.get("aria_label") or ""
     if not question:
         return None
@@ -485,18 +335,55 @@ def _value_for_tag(tag: str, raw: dict, profile: dict, job_id: int):
     return None
 
 
+# --- queue state machine (public facade) -------------------------------------
+
+
 def start_queue(job_ids: list[int]) -> dict | None:
     with _lock:
         _state.job_ids = list(job_ids)
         _state.index = 0 if job_ids else -1
         _state.running = bool(job_ids)
+        _state.practice = False
+        _state.practice_url = None
         _state.outcomes = {}
+        _state.handled = {}
+        _state.scan_failures = 0
         _state.pending = None
         _state.fill_reports = {}
         _state.interrupted = False
         _state.summary = None
+        _state.activity = _fresh_activity()
+        if job_ids:
+            _state.activity.update(phase="opening",
+                                   message="opening the application page…")
     if job_ids:
-        _open_job(job_ids[0])
+        _dispatch("OPEN_JOB", {"job_id": job_ids[0]})
+    return current_job()
+
+
+def start_practice(url: str) -> dict | None:
+    """Queue the bundled practice application (FR-009) through the normal
+    engine — same watcher, same fills, the user's real data. Refused while
+    a queue is active."""
+    with _lock:
+        if _state.running:
+            return None
+        _state.job_ids = [PRACTICE_JOB_ID]
+        _state.index = 0
+        _state.running = True
+        _state.practice = True
+        _state.practice_url = url
+        _state.outcomes = {}
+        _state.handled = {}
+        _state.scan_failures = 0
+        _state.pending = None
+        _state.fill_reports = {}
+        _state.interrupted = False
+        _state.summary = None
+        _state.activity = _fresh_activity()
+        _state.activity.update(phase="opening",
+                               message="opening the practice application…")
+    _dispatch("OPEN_PRACTICE", {"url": url})
     return current_job()
 
 
@@ -523,30 +410,29 @@ def current_job() -> dict | None:
 
 
 def resolve_pending(answer: str) -> None:
-    """Called after the user confirms/edits a drafted answer (the caller —
-    web/routes_autofill.py's confirm route — has already saved it to
-    answer_bank). Fills the actual paused field on the still-open live
-    page, if any, and clears the pending state."""
-    global _page
+    """Called after the user confirms/edits a drafted answer (the route has
+    already saved it to the answer bank). 009: no element bookkeeping —
+    clear the pending slot, unlock any no_match verdicts (the confirmed
+    answer may now match), and force a fill pass; the watcher fills it via
+    the normal answer-bank lookup on the worker thread."""
     with _lock:
         pending = _state.pending
         _state.pending = None
-    if pending is None or _page is None:
-        return
-    try:
-        selector = (
-            f"#{pending['field_id']}" if pending.get("field_id")
-            else f"[name='{pending.get('field_name')}']"
-        )
-        handle = _page.query_selector(selector)
-        if handle is not None:
-            _apply_field_value(handle, "free_text_unknown", "text", answer)
-    except Exception:
-        log.debug("could not fill resolved pending field", exc_info=True)
+        if pending is None:
+            return
+        active = _state.running and 0 <= _state.index < len(_state.job_ids)
+        if active:
+            job_id = _state.job_ids[_state.index]
+            ledger = _state.handled.get(job_id)
+            if ledger:
+                for key in [k for k, v in ledger.items() if v == "no_match"]:
+                    del ledger[key]
+    if active:
+        _dispatch("FORCE_TICK", wait=0.5)
 
 
 def _job_outcome(job_id: int) -> str:
-    """Per-job outcome for the batch summary (FR-009). Caller holds _lock."""
+    """Per-job outcome for the batch summary. Caller holds _lock."""
     outcome = _state.outcomes.get(job_id)
     if outcome and outcome["reason"] in FALLBACK_REASONS:
         return "manual"
@@ -564,6 +450,7 @@ def advance() -> dict | None:
             return None
         _state.index += 1
         _state.pending = None  # a pending confirmation belongs to the job just left
+        _state.scan_failures = 0
         if _state.index >= len(_state.job_ids):
             _state.running = False
             per_job = [
@@ -576,44 +463,79 @@ def advance() -> dict | None:
                 "skipped": sum(1 for e in per_job if e["outcome"] == "skipped"),
                 "per_job": per_job,
             }
-            return None
-        next_job_id = _state.job_ids[_state.index]
-    _open_job(next_job_id)
+            _state.activity = _fresh_activity()
+            finished = True
+            next_job_id = None
+        else:
+            finished = False
+            next_job_id = _state.job_ids[_state.index]
+            _state.activity = _fresh_activity()
+            _state.activity.update(phase="opening",
+                                   message="opening the application page…")
+    _dispatch("CLOSE_PAGE")
+    if finished:
+        return None
+    _dispatch("OPEN_JOB", {"job_id": next_job_id})
     return current_job()
 
 
 def rescan() -> dict | None:
-    """Manual re-classify-and-fill of the current page (FR-003 fallback
-    for SPA re-renders that never navigate). None when no active session."""
+    """009: 'Re-scan' = force an immediate fill pass (the watcher already
+    re-scans every ~2s). None when no active session."""
     with _lock:
         if not _state.running or not (0 <= _state.index < len(_state.job_ids)):
             return None
-        job_id = _state.job_ids[_state.index]
-    if _page is None:
-        return None
-    filled = _fill_page(job_id)
-    return {"rescanned": True, "filled": filled}
+    _dispatch("FORCE_TICK")
+    return {"forced": True}
 
 
 def resume_queue() -> dict | None:
     """Relaunch the browser at the current queue position after the window
-    was closed (FR-008). Same-app-session only — an app restart clears the
-    queue entirely (spec assumption). None when there is nothing to resume."""
+    was closed. None when there is nothing to resume."""
     with _lock:
         if not _state.interrupted or not _state.running:
             return None
         if not (0 <= _state.index < len(_state.job_ids)):
             return None
         _state.interrupted = False
+        _state.scan_failures = 0
+        practice = _state.practice
+        practice_url = _state.practice_url
         job_id = _state.job_ids[_state.index]
-    _open_job(job_id)
+        _state.activity.update(phase="opening",
+                               message="reopening the application page…")
+    if practice and practice_url:
+        _dispatch("OPEN_PRACTICE", {"url": practice_url})
+    else:
+        _dispatch("OPEN_JOB", {"job_id": job_id})
     return current_job()
 
 
+def stop_queue() -> None:
+    global _page
+    had_session = _page is not None or _context is not None
+    with _lock:
+        _state.running = False
+        _state.job_ids = []
+        _state.index = -1
+        _state.practice = False
+        _state.practice_url = None
+        _state.outcomes = {}
+        _state.handled = {}
+        _state.scan_failures = 0
+        _state.pending = None
+        _state.fill_reports = {}
+        _state.interrupted = False
+        _state.summary = None
+        _state.activity = _fresh_activity()
+    if had_session:
+        _dispatch("CLOSE_PAGE")
+
+
 def queue_snapshot() -> dict:
-    """Everything the mission-control panel needs (FR-026): the whole
-    queue with per-job state and titles, progress, the current job's fill
-    report, the interruption flag, and the end-of-queue summary."""
+    """Everything the mission-control panel needs: queue with per-job state
+    and titles, progress, current fill report, interruption flag, summary,
+    reason-class outcomes, and the live watch activity (009)."""
     from .. import db
 
     with _lock:
@@ -622,6 +544,7 @@ def queue_snapshot() -> dict:
         running = _state.running
         interrupted = _state.interrupted
         summary = _state.summary
+        activity = dict(_state.activity)
         outcomes = [
             {"job_id": job_id, **entry}
             for job_id, entry in _state.outcomes.items()
@@ -632,16 +555,18 @@ def queue_snapshot() -> dict:
 
     queue = []
     for i, job_id in enumerate(job_ids):
-        job = db.get_job(job_id) or {}
+        if job_id == PRACTICE_JOB_ID:
+            title, company = "Practice application", "Job Engine"
+        else:
+            job = db.get_job(job_id) or {}
+            title = job.get("title") or f"#{job_id}"
+            company = job.get("company") or ""
         if running:
             state = "done" if i < index else ("current" if i == index else "pending")
         else:
             state = "done"
         queue.append({
-            "job_id": job_id,
-            "title": job.get("title") or f"#{job_id}",
-            "company": job.get("company") or "",
-            "state": state,
+            "job_id": job_id, "title": title, "company": company, "state": state,
         })
     done = index if running else len(job_ids)
     return {
@@ -651,29 +576,182 @@ def queue_snapshot() -> dict:
         "interrupted": interrupted,
         "summary": summary,
         "outcomes": outcomes,
+        "activity": activity,
     }
 
 
-def chromium_selftest() -> bool:
-    """Can the browser layer actually start? Used by GET /api/diagnostics/
-    chromium-launch-selftest and packaging/smoke_test.py to catch a
-    silently-dropped Playwright driver (the tls_client-shaped risk).
-    008: channel-based — probes the user's installed Edge/Chrome."""
-    result = preflight()
-    if not result["ok"]:
-        raise RuntimeError(result["error"])
-    return True
+# --- worker-side (the ONLY functions that touch Playwright) ------------------
 
 
-def stop_queue() -> None:
+def _worker_open_job(job_id: int) -> None:
+    from .. import db
+    from . import apply_urls
+
+    job = db.get_job(job_id)
+    url = apply_urls.resolve(job) if job else None
+    _worker_open_url(job_id, url)
+
+
+def _worker_open_practice(url: str) -> None:
+    _worker_open_url(PRACTICE_JOB_ID, url)
+
+
+def _worker_open_url(job_id: int, url: str | None) -> None:
+    from . import worker
+
+    worker._assert_worker_thread()
     global _page
+    if not url:
+        return
+    _set_activity(phase="opening", url=url,
+                  message="opening the application page…")
+    try:
+        context = _ensure_context()
+        if _page is not None:
+            try:
+                _page.close()
+            except Exception:
+                pass
+        _page = context.new_page()
+    except Exception as exc:
+        if _is_closed_error(exc):
+            _mark_interrupted()
+        else:
+            log.warning("browser launch failed", exc_info=True)
+            _mark_fallback(job_id, "launch_failed", str(exc))
+            _set_activity(phase="error",
+                          message="the browser couldn't start — see the reason above")
+        return
+    try:
+        _page.goto(url, timeout=30_000)
+    except Exception as exc:
+        if _is_closed_error(exc):
+            _mark_interrupted()
+            return
+        log.warning("failed to load %s", url, exc_info=True)
+        _mark_fallback(job_id, "nav_failed", str(exc))
+        _set_activity(phase="error",
+                      message="the page failed to load — Re-scan retries it")
+        return
+    _tick_if_active(force=True)
+
+
+def _worker_close_page() -> None:
+    from . import worker
+
+    worker._assert_worker_thread()
+    global _page
+    if _page is not None:
+        try:
+            _page.close()
+        except Exception:
+            pass
+        _page = None
+
+
+def _worker_shutdown_context() -> None:
+    from . import worker
+
+    worker._assert_worker_thread()
+    global _playwright, _context, _page
+    _worker_close_page()
+    if _context is not None:
+        try:
+            _context.close()
+        except Exception:
+            pass
+        _context = None
+    if _playwright is not None:
+        try:
+            _playwright.stop()
+        except Exception:
+            pass
+        _playwright = None
+
+
+def _worker_resolve_pending(payload: dict) -> None:
+    _tick_if_active(force=True)
+
+
+def _tick_if_active(force: bool = False) -> None:
+    """One watch tick when a job is current. Called by the worker on its
+    ~2s idle timeout and on FORCE_TICK."""
+    from .. import db
+
     with _lock:
-        _state.running = False
-        _state.job_ids = []
-        _state.index = -1
-        _state.outcomes = {}
-        _state.pending = None
-        _state.fill_reports = {}
-        _state.interrupted = False
-        _state.summary = None
-    _page = None
+        active = (
+            _state.running
+            and not _state.interrupted
+            and 0 <= _state.index < len(_state.job_ids)
+        )
+        job_id = _state.job_ids[_state.index] if active else None
+    page = _page
+    if not active or page is None:
+        return
+
+    with _lock:
+        ledger = _state.handled.setdefault(job_id, {})
+    profile = db.get_profile() or {}
+
+    def get_value(tag, descriptor):
+        before = _state.pending
+        value = _value_for_tag(tag, descriptor, profile, job_id)
+        if value is None and _state.pending is not None and _state.pending is not before:
+            _record(job_id, descriptor, tag, "", "paused")
+        return value
+
+    def record(descriptor, tag, preview, outcome):
+        _record(job_id, descriptor, tag, preview, outcome)
+
+    try:
+        result = watcher.tick(page, get_value=get_value, record=record, handled=ledger)
+    except Exception as exc:
+        if _is_closed_error(exc):
+            _mark_interrupted()
+            return
+        log.warning("watch tick failed", exc_info=True)
+        return
+
+    filled_total = sum(1 for outcome in ledger.values() if outcome == "filled")
+    if result.scan_error:
+        with _lock:
+            _state.scan_failures += 1
+            failures = _state.scan_failures
+        if failures >= SCAN_FAILURE_LIMIT:
+            _mark_fallback(job_id, "scan_failed", result.scan_error)
+    else:
+        with _lock:
+            _state.scan_failures = 0
+        _clear_fallback(job_id, "scan_failed")
+
+    if result.fields_seen > 0:
+        phase = "watching"
+        message = (
+            f"watching page — {result.fields_seen} fields seen · "
+            f"{filled_total} filled · you click the actual apply/submit"
+        )
+    else:
+        phase = "waiting_for_form"
+        message = (
+            "no form fields visible yet — click the site's own Apply "
+            "button; fields fill the moment the form appears"
+        )
+    _set_activity(
+        phase=phase,
+        fields_seen=result.fields_seen,
+        fields_filled=filled_total,
+        message=message,
+        last_scan_at=_utcnow_iso(),
+    )
+
+
+def _record(job_id: int, descriptor: dict, tag: str, preview: str, outcome: str) -> None:
+    label = (descriptor.get("label_text") or descriptor.get("placeholder")
+             or descriptor.get("aria_label") or descriptor.get("name") or "")
+    with _lock:
+        _state.fill_reports.setdefault(job_id, []).append({
+            "label": label[:120],
+            "tag": tag,
+            "value_preview": (preview or "")[:60],
+            "outcome": outcome,
+        })
