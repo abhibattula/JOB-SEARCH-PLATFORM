@@ -5,6 +5,22 @@
 **Status**: Draft
 **Input**: User description: "Chrome extension becomes the primary Apply Assist fill path (fills applications in the user's own Chrome where they are logged in, connected to the local app), AI answering for open-ended application questions grounded in the user's resume/profile (draft → fill → flag for review), and a full UI overhaul (Apply Assist flow, dashboard, tracker board, visual identity) — one free v1.0.0 release."
 
+## Clarifications
+
+### Session 2026-07-23
+
+- Q: Should v1.0.0 include ad-hoc filling of whatever application page the
+  user is currently on (companion toolbar button), in addition to
+  app-queue-driven filling? → A: Yes — both queue mode and ad-hoc "Fill
+  this page" mode ship in this release.
+- Q: When an application containing an unconfirmed (possibly page-edited)
+  AI draft is submitted, should the final on-page text auto-save to the
+  answer bank? → A: Yes — detected submission saves the as-submitted text
+  as the answer, marked auto-saved, editable/deletable in Profile.
+- Q: Default length/style for AI drafts? → A: Concise — ~60–120 words,
+  direct professional tone, 1–2 concrete resume facts per answer, scaling
+  down for short-answer boxes and respecting detectable character limits.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Apply Assist fills in MY browser (Priority: P1)
@@ -50,6 +66,11 @@ confirm it reconnects without any user action.
 5. **Given** the companion is NOT connected, **When** the user starts
    Apply Assist, **Then** the queue runs in the assistant browser window
    exactly as v0.9.0, and the UI clearly states which mode is being used.
+9. **Given** the user is already viewing an application page in their own
+   Chrome (found by browsing, not via the app), **When** they click the
+   companion's "Fill this page" action, **Then** the page fills with the
+   same rules and progress panel as a queued job, a fill report is
+   recorded, and the app offers to track the posting as an application.
 6. **Given** an active fill session in the user's Chrome, **When** the
    desktop app is closed mid-job, **Then** the companion stops touching
    the page, shows disconnected, and the app on restart offers to resume
@@ -96,6 +117,10 @@ application, and confirm the saved answer now fills without any AI flag.
 2. **Given** an AI draft the user confirms or edits in the app, **When**
    the same (or equivalent) question appears in a later application,
    **Then** the saved answer fills directly with no AI flag.
+2a. **Given** an AI draft the user edited directly on the page and never
+   confirmed in the app, **When** the application's submission is
+   detected, **Then** the final on-page text is saved to the answer bank
+   marked "auto-saved from application", and it fills directly next time.
 3. **Given** a question about work authorization, visa, sponsorship, or
    demographics, **When** filling reaches it, **Then** no AI draft is
    generated; the existing confirm-before-use gate applies unchanged.
@@ -169,6 +194,12 @@ inconsistent with the rest.
 - Two fill sessions attempted at once (extension + assistant window):
   impossible by design — one queue, one backend at a time, chosen at
   queue start.
+- "Fill this page" clicked on a page with no recognizable application
+  form: nothing is touched; the panel explains no fields were found and
+  suggests navigating to the actual application form.
+- "Fill this page" clicked while a queued job is actively filling in
+  another tab: the ad-hoc request is refused with a clear message (one
+  active fill session at a time).
 - An AI draft for a question the user already answered slightly
   differently phrased: the saved answer matches first (existing behavior);
   AI runs only when no saved answer matches.
@@ -194,6 +225,12 @@ inconsistent with the rest.
   open the job in the user's own Chrome and fill there; when not
   connected, Apply Assist MUST run exactly as v0.9.0 in the assistant
   window, and the active mode MUST be stated in the UI.
+- **FR-004a**: With a connected companion, the user MUST be able to fill
+  the application page they are currently viewing via a "Fill this page"
+  action on the companion — no queued job required. Ad-hoc fills follow
+  every rule of queued fills (same guarantees, same report), and the app
+  offers to link the page to the tracker as an application (user-
+  confirmable, never automatic).
 - **FR-005**: The mode MUST be fixed for the duration of a queue run;
   a mid-queue disconnect MUST preserve queue position and offer the user
   an explicit choice (wait/reconnect or restart the job in the assistant
@@ -227,12 +264,18 @@ inconsistent with the rest.
   system MUST generate a draft grounded ONLY in the user's resume,
   profile, saved answers, and the job's title/company/description — never
   fabricated facts (no invented employers, dates, or credentials).
+  Default shape: concise (~60–120 words), direct professional tone,
+  citing 1–2 concrete resume facts; short-answer boxes get proportionally
+  shorter text, and detectable character limits are respected.
 - **FR-012**: Every AI-drafted fill MUST be visibly flagged as an AI draft
   needing review, on the page and in the app's fill report; drafts MUST be
   editable and confirmable in the app.
-- **FR-013**: A confirmed (or edited-then-saved) draft MUST become a saved
-  answer reused directly in future applications, without AI and without
-  the draft flag.
+- **FR-013**: A draft MUST become a saved answer — reused directly in
+  future applications without AI and without the draft flag — through
+  either path: (a) explicit confirmation or edit-then-save in the app, or
+  (b) detected submission of the application, which saves the final
+  on-page text as-submitted, marked "auto-saved from application" and
+  editable/deletable in the Profile's answers section.
 - **FR-014**: Questions concerning work authorization, visa/sponsorship,
   or demographic/EEO information MUST never receive AI drafts; the
   existing explicit confirm-before-use flow applies unchanged.
