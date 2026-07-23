@@ -128,7 +128,7 @@ def fake_playwright(monkeypatch):
 
 def seed_job(url="https://x.example/apply/1"):
     db.upsert_job(
-        {"title": "SWE", "company": "TestCo", "url": url,
+        {"title": f"SWE {url.rsplit('/', 1)[-1]}", "company": "TestCo", "url": url,
          "source": "greenhouse", "description": "d"}
     )
     jobs, _ = db.query_jobs(window=None, statuses=None, entry_level=None)

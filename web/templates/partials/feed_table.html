@@ -19,8 +19,10 @@
 <table class="feed">
   <thead>
     <tr>
-      <th>Role</th><th>Company</th><th>Location</th><th>Posted</th>
-      <th>Sponsor</th><th>Match</th>
+      <th>Role</th><th>Company</th><th>Location</th>
+      <th><a href="{{ replace_query(sort='date', page=None) }}" title="Sort by newest">Posted{{ ' ▾' if sort == 'date' }}</a></th>
+      <th>Sponsor</th>
+      <th><a href="{{ replace_query(sort='score', page=None) }}" title="Sort by match score">Match{{ ' ▾' if sort == 'score' }}</a></th>
       {% if pipeline_view %}<th>Stage</th><th>Notes</th>{% endif %}
       <th></th>
     </tr>
@@ -31,12 +33,17 @@
       <td class="role">
         <a href="/jobs/{{ job.id }}">{{ job.title }}</a>
         {% if job.is_new %}<span class="new-flag">new</span>{% endif %}
+        {% if job.delisted %}<span class="badge excluded" title="No longer listed on the source's board — probably closed">delisted</span>{% endif %}
         {% if job.status == 'saved' %}<span class="saved-flag">saved</span>{% endif %}
         {% if job.follow_up %}<span class="followup-flag" title="Applied over a week ago with no movement — follow up or move on">⚑ follow up</span>{% endif %}
       </td>
       <td>{{ job.company }}</td>
       <td class="data">{{ 'Remote' if job.is_remote and not job.location else (job.location or '—') }}</td>
-      <td class="data">{{ (job.posted_date or job.first_seen)[:10] }}</td>
+      <td class="data">
+        {%- if job.posted_approx -%}
+        <span title="This source didn't provide a posted date — showing when the job was first seen here">seen ~ {{ job.first_seen[:10] }}</span>
+        {%- else -%}{{ job.posted_date[:10] }}{%- endif -%}
+      </td>
       <td>
         <span class="badge {{ job.sponsorship|lower }}">{{ job.sponsorship }}</span>
         {%- if job.sponsor_grade %} <span class="badge grade-{{ job.sponsor_grade|lower }}" title="Local sponsor grade from USCIS/DOL evidence (estimate) — details on the job page">{{ job.sponsor_grade }}</span>{% endif %}
@@ -85,6 +92,13 @@
   </tbody>
 </table>
 <p class="count data">{{ total }} job{{ 's' if total != 1 }} in view</p>
+{% if pages and pages > 1 %}
+<nav class="pager settings-actions" aria-label="Result pages">
+  {% if page > 1 %}<a class="data" href="{{ replace_query(page=page - 1) }}">← Prev</a>{% endif %}
+  <span class="data">page {{ page }} of {{ pages }}</span>
+  {% if page < pages %}<a class="data" href="{{ replace_query(page=page + 1) }}">Next →</a>{% endif %}
+</nav>
+{% endif %}
 {% else %}
 <div class="empty-state">
   {% if run.active %}

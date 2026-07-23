@@ -13,8 +13,10 @@ from engine.autofill import browser_controller as bc
 
 
 def seed_job(url):
+    # title derived from the url: same-source same-title rows would
+    # otherwise collapse as reposts of one job (008 FR-017)
     db.upsert_job(
-        {"title": "SWE", "company": "TestCo", "url": url,
+        {"title": f"SWE {url.rsplit('/', 1)[-1]}", "company": "TestCo", "url": url,
          "source": "greenhouse", "description": "desc"}
     )
     jobs, _ = db.query_jobs(window=None, statuses=None, entry_level=None)
@@ -702,5 +704,5 @@ class TestQueueSnapshot:
         assert states[j2] == "current"
         assert snapshot["progress"] == {"done": 1, "total": 2}
         current_entry = next(e for e in snapshot["queue"] if e["state"] == "current")
-        assert current_entry["title"] == "SWE"
+        assert current_entry["title"] == "SWE 2"  # j2 is current after advance()
         assert current_entry["company"] == "TestCo"

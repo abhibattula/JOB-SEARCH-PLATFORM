@@ -21,7 +21,7 @@ def client(tmp_db, monkeypatch):
 
 def seed_job(url="https://x.example/1"):
     db.upsert_job(
-        {"title": "SWE", "company": "TestCo", "url": url,
+        {"title": f"SWE {url.rsplit('/', 1)[-1]}", "company": "TestCo", "url": url,
          "source": "greenhouse", "description": "desc"}
     )
     jobs, _ = db.query_jobs(window=None, statuses=None, entry_level=None)
@@ -165,7 +165,7 @@ class TestDepthRoutes:
         states = {e["job_id"]: e["state"] for e in body["queue"]}
         assert states[j1] == "current" and states[j2] == "pending"
         current_entry = next(e for e in body["queue"] if e["state"] == "current")
-        assert current_entry["title"] == "SWE"
+        assert current_entry["title"] == "SWE 1"
         assert current_entry["company"] == "TestCo"
         assert body["fill_report"] == []
         assert body["interrupted"] is False

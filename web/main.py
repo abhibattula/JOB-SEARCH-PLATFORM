@@ -92,9 +92,25 @@ def _onboarding_state(profile: dict | None) -> dict | None:
     return {"steps": steps}
 
 
+def _replace_query(request: Request, **overrides) -> str:
+    """Rebuild the feed URL keeping every current filter, overriding only
+    what's passed (008 FR-019: window/sort/view switches never drop state).
+    None/'' removes the key."""
+    from urllib.parse import urlencode
+
+    params = {k: v for k, v in request.query_params.items()}
+    for key, value in overrides.items():
+        if value is None or value == "":
+            params.pop(key, None)
+        else:
+            params[key] = str(value)
+    query = urlencode(params)
+    return f"/?{query}" if query else "/"
+
+
 def _feed_context(
     request: Request,
-    window: str = "7d",
+    window: str = "14d",
     status: str | None = None,
     location: str | None = None,
     remote: int = 0,
@@ -104,16 +120,20 @@ def _feed_context(
     min_score: float | None = None,
     seen: str | None = None,
     strong_sponsors: int = 0,
+    page: int = 1,
+    source: str | None = None,
+    limit: int = 100,
 ) -> dict:
     params = parse_feed_params(
         window, status, location, remote, sort, entry_level,
-        ineligible=ineligible, min_score=min_score, seen=seen,
-        strong_sponsors=strong_sponsors,
+        limit=limit, ineligible=ineligible, min_score=min_score, seen=seen,
+        strong_sponsors=strong_sponsors, page=page, source=source,
     )
     jobs, total = db.query_jobs(**params)
     run = db.get_run_status()
     profile = db.get_profile()
     from engine import matcher
+    from engine.ingest import SOURCE_ORDER
 
     return {
         "has_llm_key": matcher.llm_available(),
@@ -122,7 +142,7 @@ def _feed_context(
         "total": total,
         "run": run,
         "onboarding": _onboarding_state(profile),
-        "window": window if window in ("7d", "24h", "all") else "7d",
+        "window": window if window in ("14d", "7d", "24h", "all") else "14d",
         "status_view": status or "",
         "location": location or "",
         "remote": bool(remote),
@@ -133,6 +153,13 @@ def _feed_context(
         "min_score": int(min_score) if min_score else 0,
         "strong_sponsors": bool(strong_sponsors),
         "query_string": request.url.query,
+        # 008 (FR-019/FR-020)
+        "seen": seen or "",
+        "source": source or "",
+        "sources": list(SOURCE_ORDER),
+        "page": max(1, page),
+        "pages": max(1, -(-total // params["limit"])),
+        "replace_query": lambda **kw: _replace_query(request, **kw),
     }
 
 
@@ -156,7 +183,7 @@ def create_app() -> FastAPI:
     @app.get("/", response_class=HTMLResponse)
     def index(
         request: Request,
-        window: str = "7d",
+        window: str = "14d",
         status: str | None = None,
         location: str | None = None,
         remote: int = 0,
@@ -167,10 +194,13 @@ def create_app() -> FastAPI:
         seen: str | None = None,
         strong_sponsors: int = 0,
         view: str | None = None,
+        page: int = 1,
+        source: str | None = None,
+        limit: int = 100,
     ):
         context = _feed_context(
             request, window, status, location, remote, sort, entry_level,
-            ineligible, min_score, seen, strong_sponsors,
+            ineligible, min_score, seen, strong_sponsors, page, source, limit,
         )
         context["board_view"] = view == "board"
         # 008 (FR-033): surface an unclean previous shutdown exactly once
@@ -187,7 +217,7 @@ def create_app() -> FastAPI:
     @app.get("/partials/feed", response_class=HTMLResponse)
     def feed_partial(
         request: Request,
-        window: str = "7d",
+        window: str = "14d",
         status: str | None = None,
         location: str | None = None,
         remote: int = 0,
@@ -198,10 +228,13 @@ def create_app() -> FastAPI:
         seen: str | None = None,
         strong_sponsors: int = 0,
         view: str | None = None,
+        page: int = 1,
+        source: str | None = None,
+        limit: int = 100,
     ):
         context = _feed_context(
             request, window, status, location, remote, sort, entry_level,
-            ineligible, min_score, seen, strong_sponsors,
+            ineligible, min_score, seen, strong_sponsors, page, source, limit,
         )
         context["board_view"] = view == "board"
         return templates.TemplateResponse(request, "partials/feed_table.html", context)

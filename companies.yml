@@ -88,3 +88,399 @@ companies:
   - {name: ElevenLabs, ats: ashby, slug: elevenlabs}
   - {name: Sierra, ats: ashby, slug: sierra}
   - {name: Plaid, ats: ashby, slug: plaid}
+
+  # ---- 008 Launch Release expansion: validated live via
+  # scripts/check_seeds.py on 2026-07-22 (391/400 candidates OK).
+  # Curated for CE/hardware/semis/robotics/space/AI-infra/quant +
+  # sponsor-friendly employers; clearance-only shops excluded. ----
+  - {name: 1Password, ats: ashby, slug: 1password}
+  - {name: Abound, ats: ashby, slug: Abound}
+  - {name: AfterQuery, ats: ashby, slug: AfterQuery}
+  - {name: Airbyte, ats: ashby, slug: airbyte}
+  - {name: Airspace Intelligence, ats: ashby, slug: airspace-intelligence.com}
+  - {name: Allen Control Systems, ats: ashby, slug: allen-control-systems}
+  - {name: ALSO, ats: ashby, slug: Ridealso}
+  - {name: Amigo AI, ats: ashby, slug: amigo}
+  - {name: Anyscale, ats: ashby, slug: anyscale}
+  - {name: Apex, ats: ashby, slug: apex-technology-inc}
+  - {name: Applied Intuition, ats: ashby, slug: applied}
+  - {name: Astera, ats: ashby, slug: astera}
+  - {name: Astro Mechanica, ats: ashby, slug: astro-mechanica}
+  - {name: Astronomer, ats: ashby, slug: astronomer}
+  - {name: Aurelius Systems, ats: ashby, slug: aureliussystems}
+  - {name: Base Power, ats: ashby, slug: base-power}
+  - {name: Baton Corporation, ats: ashby, slug: batoncorporation}
+  - {name: Blockhouse, ats: ashby, slug: blockhouse}
+  - {name: BRINC Drones, ats: ashby, slug: brinc}
+  - {name: Cerebras, ats: ashby, slug: cerebras}
+  - {name: Character AI, ats: ashby, slug: character}
+  - {name: Charge Robotics, ats: ashby, slug: charge-robotics}
+  - {name: Chroma, ats: ashby, slug: trychroma}
+  - {name: Clera, ats: ashby, slug: clera}
+  - {name: Cohere, ats: ashby, slug: cohere}
+  - {name: Collaborative Robotics, ats: ashby, slug: cobot}
+  - {name: Constellation Space, ats: ashby, slug: constellationspace}
+  - {name: Corvus Robotics, ats: ashby, slug: corvus-robotics}
+  - {name: Crusoe, ats: ashby, slug: Crusoe}
+  - {name: Cybernetic Labs, ats: ashby, slug: netic}
+  - {name: 'd-Matrix', ats: ashby, slug: d-Matrix}
+  - {name: Decagon, ats: ashby, slug: decagon}
+  - {name: Deel, ats: ashby, slug: deel}
+  - {name: Docker, ats: ashby, slug: docker}
+  - {name: Droyd Robotics, ats: ashby, slug: droyd}
+  - {name: Dyna Robotics, ats: ashby, slug: dyna-robotics}
+  - {name: Ellipsis Labs, ats: ashby, slug: ellipsislabs}
+  - {name: Fab2, ats: ashby, slug: fab2}
+  - {name: Faculty AI, ats: ashby, slug: faculty}
+  - {name: Faros AI, ats: ashby, slug: faros-ai}
+  - {name: Flock Safety, ats: ashby, slug: Flock%20Safety}
+  - {name: Focal, ats: ashby, slug: focal}
+  - {name: Fuse Energy, ats: ashby, slug: Fuse}
+  - {name: Giga AI, ats: ashby, slug: gigaml}
+  - {name: Gimlet Labs, ats: ashby, slug: gimlet}
+  - {name: Gradient Robotics, ats: ashby, slug: gradientrobotics}
+  - {name: Gritt Robotics Inc, ats: ashby, slug: gritt}
+  - {name: Handshake, ats: ashby, slug: handshake}
+  - {name: 'Hawk-Eye Innovations', ats: ashby, slug: hawkeyeinnovations}
+  - {name: Hayden AI, ats: ashby, slug: haydenai}
+  - {name: Hebbia, ats: ashby, slug: hebbia-ai}
+  - {name: Helion Energy, ats: ashby, slug: helion}
+  - {name: Heron Power, ats: ashby, slug: heron-power}
+  - {name: Hippocratic AI, ats: ashby, slug: Hippocratic%20AI}
+  - {name: Icon, ats: ashby, slug: icon}
+  - {name: Jerry, ats: ashby, slug: jerry.ai}
+  - {name: Kalshi, ats: ashby, slug: kalshi}
+  - {name: KAYAK, ats: ashby, slug: KAYAK}
+  - {name: Kirin, ats: ashby, slug: kirin}
+  - {name: LangChain, ats: ashby, slug: langchain}
+  - {name: Logiqal, ats: ashby, slug: logiqal}
+  - {name: Logos Space, ats: ashby, slug: logos-space}
+  - {name: Luma AI, ats: ashby, slug: lumaai}
+  - {name: Mach Industries, ats: ashby, slug: mach}
+  - {name: Matic, ats: ashby, slug: MaticRobots}
+  - {name: Medra, ats: ashby, slug: medraai}
+  - {name: Melotech, ats: ashby, slug: melotech}
+  - {name: Mercor, ats: ashby, slug: mercor}
+  - {name: Meshy, ats: ashby, slug: meshy}
+  - {name: Monogram, ats: ashby, slug: monogram}
+  - {name: Northwood Space, ats: ashby, slug: NorthwoodSpace}
+  - {name: NumerixS Quant, ats: ashby, slug: numerixs-quant}
+  - {name: Observable Space, ats: ashby, slug: observable-space}
+  - {name: Oligo Space, ats: ashby, slug: oligo}
+  - {name: OpusClip, ats: ashby, slug: opusclip}
+  - {name: Orbital Industries, ats: ashby, slug: orbitalindustries}
+  - {name: Osmo, ats: ashby, slug: osmo}
+  - {name: Outpost Technologies, ats: ashby, slug: outpostnow}
+  - {name: Output Biosciences, ats: ashby, slug: output}
+  - {name: PAR Tech, ats: ashby, slug: PAR%20Technology}
+  - {name: Periodic Labs, ats: ashby, slug: periodic-labs}
+  - {name: Physical Intelligence, ats: ashby, slug: physicalintelligence}
+  - {name: Pinecone, ats: ashby, slug: pinecone}
+  - {name: Polymarket, ats: ashby, slug: polymarket}
+  - {name: PostHog, ats: ashby, slug: posthog}
+  - {name: Pylon, ats: ashby, slug: pylon-labs}
+  - {name: Quadrillion, ats: ashby, slug: quadrillion-labs}
+  - {name: Quantcast, ats: ashby, slug: quantcast}
+  - {name: Quantum, ats: ashby, slug: quantum}
+  - {name: Reflect Orbital, ats: ashby, slug: reflect-orbital}
+  - {name: Render, ats: ashby, slug: render}
+  - {name: Revel, ats: ashby, slug: revel}
+  - {name: Revise Robotics, ats: ashby, slug: reviserobotics}
+  - {name: Rhoda AI, ats: ashby, slug: rhoda-ai}
+  - {name: Rivet Industries, ats: ashby, slug: rivet}
+  - {name: Rivian and Volkswagen Group Technologies, ats: ashby, slug: rivianvw.tech}
+  - {name: Rocket Science Group, ats: ashby, slug: rocketsciencegg}
+  - {name: Root Access, ats: ashby, slug: root-access}
+  - {name: Runway, ats: ashby, slug: runway-ml}
+  - {name: Saronic, ats: ashby, slug: saronic}
+  - {name: Second Front Systems, ats: ashby, slug: Second-Front-Systems}
+  - {name: Sentra, ats: ashby, slug: sentra}
+  - {name: Serve Robotics, ats: ashby, slug: serverobotics}
+  - {name: Simular, ats: ashby, slug: Simular}
+  - {name: Skydio, ats: ashby, slug: skydio}
+  - {name: Snowflake, ats: ashby, slug: snowflake}
+  - {name: Socket, ats: ashby, slug: socket}
+  - {name: Span, ats: ashby, slug: span}
+  - {name: Starpath Robotics, ats: ashby, slug: starpath.space}
+  - {name: Sunday Robotics, ats: ashby, slug: sunday}
+  - {name: Suno, ats: ashby, slug: suno}
+  - {name: Super, ats: ashby, slug: super.com}
+  - {name: Sylvera, ats: ashby, slug: sylvera}
+  - {name: Taara, ats: ashby, slug: taaraconnect}
+  - {name: Talos, ats: ashby, slug: Talos-Trading}
+  - {name: Teleport, ats: ashby, slug: goteleport}
+  - {name: Terranova, ats: ashby, slug: terranova}
+  - {name: Thinking Machines Lab, ats: ashby, slug: thinking-machines}
+  - {name: Tilde Research, ats: ashby, slug: tilderesearch}
+  - {name: Triumph, ats: ashby, slug: triumph-arcade}
+  - {name: Turion Space, ats: ashby, slug: turion-space}
+  - {name: Turn/River Capital, ats: ashby, slug: turn-river}
+  - {name: Uncountable, ats: ashby, slug: uncountable}
+  - {name: Verne Robotics, ats: ashby, slug: Verne%20Robotics}
+  - {name: Vmax AI Corp, ats: ashby, slug: vmax}
+  - {name: WindBorne Systems, ats: ashby, slug: windborne-systems}
+  - {name: Writer, ats: ashby, slug: writer}
+  - {name: Zettabyte, ats: ashby, slug: zettabyte-space}
+  - {name: 10a Labs, ats: greenhouse, slug: 10alabs}
+  - {name: 10x Genomics, ats: greenhouse, slug: 10xgenomics}
+  - {name: 3RedPartners, ats: greenhouse, slug: 3redpartners}
+  - {name: Abnormal AI, ats: greenhouse, slug: abnormalsecurity}
+  - {name: AccuWeather, ats: greenhouse, slug: accuweather}
+  - {name: Agility Robotics, ats: greenhouse, slug: agilityrobotics}
+  - {name: Airbnb, ats: greenhouse, slug: airbnb}
+  - {name: AirCapture, ats: greenhouse, slug: aircapture}
+  - {name: Akuna Capital, ats: greenhouse, slug: akunacapital}
+  - {name: Alarm.com, ats: greenhouse, slug: alarmcom}
+  - {name: ALTEN Technology, ats: greenhouse, slug: altentechnologyusa}
+  - {name: Ambiq, ats: greenhouse, slug: ambiqmicroinc}
+  - {name: American Institutes for Research, ats: greenhouse, slug: americaninstitutesforresearch}
+  - {name: Amp Robotics, ats: greenhouse, slug: ampsortation}
+  - {name: Antora Energy, ats: greenhouse, slug: antora}
+  - {name: Apera AI, ats: greenhouse, slug: aperaaiinc}
+  - {name: Appian, ats: greenhouse, slug: appian}
+  - {name: Apptronik, ats: greenhouse, slug: apptronik}
+  - {name: Aquatic Capital Management, ats: greenhouse, slug: aquaticcapitalmanagement}
+  - {name: Arc Institute, ats: greenhouse, slug: arcinstitute}
+  - {name: Archer, ats: greenhouse, slug: archer56}
+  - {name: Arize AI, ats: greenhouse, slug: arizeai}
+  - {name: Astera Labs, ats: greenhouse, slug: asteraearlycareer2026}
+  - {name: Atlas Energy Solutions, ats: greenhouse, slug: atlassand}
+  - {name: Atomic Machines, ats: greenhouse, slug: atomicmachines}
+  - {name: Aurora Innovation, ats: greenhouse, slug: aurorainnovation}
+  - {name: Axis Automation, ats: greenhouse, slug: axiscompany}
+  - {name: AXQ Capital, ats: greenhouse, slug: axq}
+  - {name: BlackEdge Capital, ats: greenhouse, slug: blackedgecapital}
+  - {name: Block, ats: greenhouse, slug: block}
+  - {name: Blueprint Technologies, ats: greenhouse, slug: bpcs}
+  - {name: Bot Auto, ats: greenhouse, slug: botauto}
+  - {name: Bracebridge Capital, ats: greenhouse, slug: bracebridgecapital}
+  - {name: Cadwell, ats: greenhouse, slug: cadwell}
+  - {name: Canonical, ats: greenhouse, slug: canonical}
+  - {name: Capco, ats: greenhouse, slug: capco}
+  - {name: Catapult, ats: greenhouse, slug: catapultsports}
+  - {name: Celonis, ats: greenhouse, slug: celonis}
+  - {name: Chainguard, ats: greenhouse, slug: chainguard}
+  - {name: Chan Zuckerberg Initiative, ats: greenhouse, slug: chanzuckerberginitiative}
+  - {name: Chicago Trading Company, ats: greenhouse, slug: ctccampusboard}
+  - {name: Chicago Trading Company, ats: greenhouse, slug: chicagotrading}
+  - {name: Clear Street, ats: greenhouse, slug: clearstreet}
+  - {name: ClickHouse, ats: greenhouse, slug: clickhouse}
+  - {name: Cockroach Labs, ats: greenhouse, slug: cockroachlabs}
+  - {name: CoreWeave, ats: greenhouse, slug: coreweave}
+  - {name: Cresta, ats: greenhouse, slug: cresta}
+  - {name: Cribl, ats: greenhouse, slug: cribl}
+  - {name: dbt Labs, ats: greenhouse, slug: dbtlabsinc}
+  - {name: DiDi Global, ats: greenhouse, slug: didi}
+  - {name: Diligent Robotics, ats: greenhouse, slug: diligentrobotics}
+  - {name: Docugami, ats: greenhouse, slug: docugami}
+  - {name: DRW, ats: greenhouse, slug: drweng}
+  - {name: DV Trading, ats: greenhouse, slug: dvtrading}
+  - {name: Efficient Computer, ats: greenhouse, slug: efficientcomputer}
+  - {name: Elastic, ats: greenhouse, slug: elastic}
+  - {name: EnCharge AI, ats: greenhouse, slug: enchargeai36}
+  - {name: Epic Games, ats: greenhouse, slug: epicgames}
+  - {name: Epirus, ats: greenhouse, slug: epirus}
+  - {name: Fastly, ats: greenhouse, slug: fastly}
+  - {name: Figure, ats: greenhouse, slug: figureai}
+  - {name: Fireblocks, ats: greenhouse, slug: fireblocks}
+  - {name: Five Rings Capital, ats: greenhouse, slug: fiveringsllc}
+  - {name: Fivetran, ats: greenhouse, slug: fivetran}
+  - {name: Freeform, ats: greenhouse, slug: freeformfuturecorp}
+  - {name: Gemini, ats: greenhouse, slug: gemini}
+  - {name: Geneva Trading, ats: greenhouse, slug: genevatrading}
+  - {name: Geotab, ats: greenhouse, slug: geotab}
+  - {name: Ginkgo Bioworks, ats: greenhouse, slug: ginkgobioworks}
+  - {name: Google DeepMind, ats: greenhouse, slug: deepmind}
+  - {name: Graphcore, ats: greenhouse, slug: graphcore}
+  - {name: GRVTY, ats: greenhouse, slug: grvty}
+  - {name: Harbinger Motors, ats: greenhouse, slug: harbingermotors}
+  - {name: HELLBENDER, ats: greenhouse, slug: hellbenderinc}
+  - {name: Honeycomb, ats: greenhouse, slug: honeycomb}
+  - {name: Horizon Surgical Systems, ats: greenhouse, slug: horizonsurgicalsystems}
+  - {name: Hudl, ats: greenhouse, slug: hudl}
+  - {name: Hudson River Trading, ats: greenhouse, slug: wehrtyou}
+  - {name: HumanSignal, ats: greenhouse, slug: humansignal}
+  - {name: iCapital Network, ats: greenhouse, slug: icapitalnetwork}
+  - {name: IEM, ats: greenhouse, slug: industrialelectricmanufacturing}
+  - {name: Imbue, ats: greenhouse, slug: imbue}
+  - {name: IMC Trading, ats: greenhouse, slug: imc}
+  - {name: Impinj, ats: greenhouse, slug: impinjexternal}
+  - {name: Innodata, ats: greenhouse, slug: innodatainc}
+  - {name: InstaLILY, ats: greenhouse, slug: instalilyai}
+  - {name: Integra FEC, ats: greenhouse, slug: integra}
+  - {name: Intrinsic, ats: greenhouse, slug: intrinsicrobotics}
+  - {name: Inversion Space, ats: greenhouse, slug: inversionspace}
+  - {name: IonQ, ats: greenhouse, slug: ionq}
+  - {name: Jane Street, ats: greenhouse, slug: janestreet}
+  - {name: Jump Trading, ats: greenhouse, slug: jumptrading}
+  - {name: K2 Space, ats: greenhouse, slug: k2spacecorporation}
+  - {name: Katalyst Space Technologies, ats: greenhouse, slug: katalyst}
+  - {name: Kodiak Robotics, ats: greenhouse, slug: kodiak}
+  - {name: Latitude AI, ats: greenhouse, slug: latitude}
+  - {name: LG Electronics, ats: greenhouse, slug: lgelectronics}
+  - {name: Lightmatter, ats: greenhouse, slug: lightmatter}
+  - {name: Lila Sciences, ats: greenhouse, slug: lilasciences}
+  - {name: Locus Robotics, ats: greenhouse, slug: locusrobotics}
+  - {name: Lucid Motors, ats: greenhouse, slug: lucidmotors}
+  - {name: Lumos, ats: greenhouse, slug: lumosfiber}
+  - {name: LVT, ats: greenhouse, slug: liveviewtechnologiesinc}
+  - {name: Markforged, ats: greenhouse, slug: markforged}
+  - {name: Marqeta, ats: greenhouse, slug: marqeta}
+  - {name: Marshall Wace, ats: greenhouse, slug: mw-tech-grad}
+  - {name: MatX, ats: greenhouse, slug: matx}
+  - {name: Maven Securities, ats: greenhouse, slug: mavensecuritiesholdingltd}
+  - {name: May Mobility, ats: greenhouse, slug: maymobility}
+  - {name: Maybell Quantum Industries, ats: greenhouse, slug: maybellquantum}
+  - {name: Moment Energy, ats: greenhouse, slug: momentenergy}
+  - {name: Momentus Space, ats: greenhouse, slug: momentus}
+  - {name: Motional, ats: greenhouse, slug: motional}
+  - {name: Muon Space, ats: greenhouse, slug: muonspace}
+  - {name: National Information Solutions Cooperative (NISC), ats: greenhouse, slug: nisc}
+  - {name: Netlify, ats: greenhouse, slug: netlify}
+  - {name: Netskope, ats: greenhouse, slug: netskope}
+  - {name: NewsBreak, ats: greenhouse, slug: newsbreak}
+  - {name: Old Mission Capital, ats: greenhouse, slug: oldmissioncapital}
+  - {name: Olsson, ats: greenhouse, slug: olsson}
+  - {name: OpenEye, ats: greenhouse, slug: openeye}
+  - {name: Optiver, ats: greenhouse, slug: optiverprivate}
+  - {name: Orennia, ats: greenhouse, slug: orennia}
+  - {name: Otto Aviation, ats: greenhouse, slug: ottoaviation}
+  - {name: Oura, ats: greenhouse, slug: oura}
+  - {name: Path Robotics, ats: greenhouse, slug: pathrobotics}
+  - {name: Pattern Data, ats: greenhouse, slug: patterndata}
+  - {name: Penn Interactive, ats: greenhouse, slug: penninteractive}
+  - {name: Phoenix Contact, ats: greenhouse, slug: phoenixcontact}
+  - {name: Planet, ats: greenhouse, slug: planetlabs}
+  - {name: Point72, ats: greenhouse, slug: point72}
+  - {name: PsiQuantum, ats: greenhouse, slug: psiquantum}
+  - {name: Pure Storage, ats: greenhouse, slug: purestorage}
+  - {name: QuEra Computing, ats: greenhouse, slug: queracomputinginc}
+  - {name: RADAR, ats: greenhouse, slug: radar}
+  - {name: Radix Trading, ats: greenhouse, slug: radixuniversity}
+  - {name: Redwood Materials, ats: greenhouse, slug: redwoodmaterials}
+  - {name: Relay, ats: greenhouse, slug: relaypro}
+  - {name: Ripple, ats: greenhouse, slug: ripple}
+  - {name: Rocket EMS, ats: greenhouse, slug: rocketems}
+  - {name: Rocket Lawyer, ats: greenhouse, slug: rocketlawyer}
+  - {name: Rugged Robotics, ats: greenhouse, slug: ruggedrobotics}
+  - {name: Samsung, ats: greenhouse, slug: samsungsemiconductor}
+  - {name: Samsung Research America, ats: greenhouse, slug: samsungresearchamericainternship}
+  - {name: Schonfeld, ats: greenhouse, slug: schonfeld}
+  - {name: Scout Motors, ats: greenhouse, slug: scoutmotors}
+  - {name: Scout Space, ats: greenhouse, slug: scoutspace}
+  - {name: Seurat Technologies, ats: greenhouse, slug: seurat}
+  - {name: Seven Research, ats: greenhouse, slug: sevenresearch}
+  - {name: SharkNinja, ats: greenhouse, slug: sharkninjaoperatingllc}
+  - {name: Sigma Computing, ats: greenhouse, slug: sigmacomputing}
+  - {name: SK hynix, ats: greenhouse, slug: skhynixamerica}
+  - {name: Skild AI, ats: greenhouse, slug: skildai-careers}
+  - {name: Skyryse, ats: greenhouse, slug: skyryse}
+  - {name: Slingshot Aerospace, ats: greenhouse, slug: slingshotaerospace}
+  - {name: SoFi, ats: greenhouse, slug: sofi}
+  - {name: Sony Interactive Entertainment, ats: greenhouse, slug: sonyinteractiveentertainmentglobal}
+  - {name: Sourcegraph, ats: greenhouse, slug: sourcegraph91}
+  - {name: Space Kinetic, ats: greenhouse, slug: spacekinetic}
+  - {name: Squarepoint Capital, ats: greenhouse, slug: squarepointcapital}
+  - {name: Starburst, ats: greenhouse, slug: starburst}
+  - {name: Stoke Space, ats: greenhouse, slug: stokespacetechnologies}
+  - {name: Stratolaunch, ats: greenhouse, slug: stratolaunch}
+  - {name: Tailscale, ats: greenhouse, slug: tailscale}
+  - {name: Tatari, ats: greenhouse, slug: tatari}
+  - {name: Tenstorrent, ats: greenhouse, slug: tenstorrentuniversity}
+  - {name: Tenstorrent, ats: greenhouse, slug: tenstorrent}
+  - {name: Terran Orbital, ats: greenhouse, slug: terranorbitalcorporation}
+  - {name: The Allen Institute for AI, ats: greenhouse, slug: thealleninstitute}
+  - {name: The New York Times, ats: greenhouse, slug: thenewyorktimes}
+  - {name: The Trade Desk, ats: greenhouse, slug: thetradedesk}
+  - {name: Together AI, ats: greenhouse, slug: togetherai}
+  - {name: Torc Robotics, ats: greenhouse, slug: torcrobotics}
+  - {name: Tower Research Capital, ats: greenhouse, slug: towerresearchcapital}
+  - {name: Trace3, ats: greenhouse, slug: trace3}
+  - {name: TransMarket Group, ats: greenhouse, slug: transmarketgroup}
+  - {name: Trexon, ats: greenhouse, slug: tpcengineeringholdingsllc}
+  - {name: True Anomaly, ats: greenhouse, slug: trueanomalyinc}
+  - {name: Trumid, ats: greenhouse, slug: trumid}
+  - {name: Truveta, ats: greenhouse, slug: truveta}
+  - {name: Twitch, ats: greenhouse, slug: twitch}
+  - {name: Ultima Genomics, ats: greenhouse, slug: ultimagenomics}
+  - {name: Unlimited Technology, ats: greenhouse, slug: unlimitedtechnology}
+  - {name: Ursa Major, ats: greenhouse, slug: ursamajor}
+  - {name: US Conec, ats: greenhouse, slug: usconec}
+  - {name: Vannevar Labs, ats: greenhouse, slug: vannevarlabs}
+  - {name: Varda Space, ats: greenhouse, slug: vardaspace}
+  - {name: VEGA Americas, ats: greenhouse, slug: vegaamericas}
+  - {name: Virtu Financial, ats: greenhouse, slug: virtu}
+  - {name: Voloridge, ats: greenhouse, slug: voloridgeinvestmentmanagement}
+  - {name: Voyager Technologies, ats: greenhouse, slug: voyagertechnologiesinc}
+  - {name: Walleye Capital, ats: greenhouse, slug: walleyecapital-external-students}
+  - {name: Wiz, ats: greenhouse, slug: wizinc}
+  - {name: World Labs, ats: greenhouse, slug: worldlabs}
+  - {name: Xometry, ats: greenhouse, slug: xometry}
+  - {name: XPENG Motors, ats: greenhouse, slug: xpengmotors}
+  - {name: XTX Markets, ats: greenhouse, slug: xtxmarketstechnologies}
+  - {name: Zscaler, ats: greenhouse, slug: zscaler}
+  - {name: Actian, ats: lever, slug: actian}
+  - {name: AHEAD, ats: lever, slug: thinkahead}
+  - {name: AI Fund, ats: lever, slug: AIFund}
+  - {name: Alertus Technologies, ats: lever, slug: alertus}
+  - {name: Atom Computing, ats: lever, slug: atomcomputing}
+  - {name: Autoroboto, ats: lever, slug: autoroboto}
+  - {name: Beta Technologies, ats: lever, slug: beta}
+  - {name: Boson Ai, ats: lever, slug: bosonai}
+  - {name: CesiumAstro, ats: lever, slug: CesiumAstro}
+  - {name: CleanSpark, ats: lever, slug: cleanspark}
+  - {name: Commonwealth Fusion Systems, ats: lever, slug: cfsenergy}
+  - {name: CrowdGen by Appen, ats: lever, slug: appen}
+  - {name: Dexterity, ats: lever, slug: dexterity}
+  - {name: Diversified Automation, ats: lever, slug: diversified-automation}
+  - {name: Field AI, ats: lever, slug: field-ai}
+  - {name: Fluxergy, ats: lever, slug: fluxergy-2}
+  - {name: Hermeus, ats: lever, slug: hermeus}
+  - {name: Intropic, ats: lever, slug: intropic}
+  - {name: ispace, ats: lever, slug: ispace-inc}
+  - {name: Kepler Communications, ats: lever, slug: kepler}
+  - {name: Latitude, ats: lever, slug: latitudeinc}
+  - {name: Lightship RV, ats: lever, slug: lightship}
+  - {name: Link, ats: lever, slug: linkllc}
+  - {name: Loft Orbital, ats: lever, slug: loftorbital}
+  - {name: Lumotive, ats: lever, slug: lumotive}
+  - {name: Magnet Forensics, ats: lever, slug: magnetforensics}
+  - {name: Metergy Solutions, ats: lever, slug: metergysolutions}
+  - {name: Multiply Labs, ats: lever, slug: multiplylabs}
+  - {name: Nominal, ats: lever, slug: nominal}
+  - {name: Omni Design Technologies, ats: lever, slug: omnidesigntech}
+  - {name: Orb Aerospace, ats: lever, slug: orbaerospace}
+  - {name: Pickle Robot, ats: lever, slug: picklerobot}
+  - {name: Pivotal Software, ats: lever, slug: pivotal}
+  - {name: PlusAI, ats: lever, slug: plus-2}
+  - {name: Quantum Workplace, ats: lever, slug: QuantumWorkplace}
+  - {name: Reliable Robotics, ats: lever, slug: reliable}
+  - {name: RWS, ats: lever, slug: rws}
+  - {name: Sanctuary AI, ats: lever, slug: sanctuary}
+  - {name: ShyftLabs, ats: lever, slug: shyftlabs}
+  - {name: Simbe Robotics, ats: lever, slug: SimbeRobotics}
+  - {name: Skyways, ats: lever, slug: skyways}
+  - {name: SoloPulse, ats: lever, slug: solopulseco}
+  - {name: Spotify, ats: lever, slug: spotify}
+  - {name: Telesat, ats: lever, slug: telesat}
+  - {name: The Information Lab, ats: lever, slug: theinformationlab}
+  - {name: Toyota Research Institute, ats: lever, slug: tri}
+  - {name: TSMG, ats: lever, slug: tsmg}
+  - {name: UntilLabs, ats: lever, slug: until}
+  - {name: Veeva Systems, ats: lever, slug: veeva}
+  - {name: Voltus, ats: lever, slug: voltus}
+  - {name: Waabi, ats: lever, slug: waabi}
+  - {name: Welo Global, ats: lever, slug: weloglobal}
+  - {name: WeRide, ats: lever, slug: weride}
+  - {name: Whoop, ats: lever, slug: whoop}
+  - {name: Wing Assistant, ats: lever, slug: getwingapp}
+  - {name: Wintermute, ats: lever, slug: wintermute-trading}
+  - {name: Woven, ats: lever, slug: woven-by-toyota}
+  - {name: Xsolla, ats: lever, slug: xsolla}
+  - {name: Evolve Technology, ats: workable, slug: evolv-technology}
+  - {name: pony.ai, ats: workable, slug: pony-dot-ai}
+  - {name: Quadric, ats: workable, slug: quadric-dot-i-o-inc}
+  - {name: Thorlabs, ats: workable, slug: thorlabs}
+  - {name: Tokamak Energy, ats: workable, slug: tokamak-energy}
+  - {name: Trexquant, ats: workable, slug: trexquant}
+  - {name: TWG Global, ats: workable, slug: twgai}

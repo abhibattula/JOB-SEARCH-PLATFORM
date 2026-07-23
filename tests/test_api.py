@@ -738,3 +738,57 @@ class Test008CopyAffordances:
             if "navigator.clipboard" in path.read_text(encoding="utf-8")
         ]
         assert offenders == []
+
+
+class Test008FeedControls:
+    """008 US3 (T033/T034): default 2-week window, source filter, paging,
+    immediate sort, honest approximate dates."""
+
+    def test_default_window_is_14d(self):
+        from web.routes_api import parse_feed_params
+
+        assert parse_feed_params()["window"] == "14d"
+
+    def test_page_param_maps_to_offset(self):
+        from web.routes_api import parse_feed_params
+
+        params = parse_feed_params(page=3)
+        assert params["offset"] == 200 and params["limit"] == 100
+
+    def test_source_param_passes_through(self):
+        from web.routes_api import parse_feed_params
+
+        assert parse_feed_params(source="greenhouse")["source"] == "greenhouse"
+        assert parse_feed_params()["source"] is None
+
+    def test_feed_page_has_two_week_default_sort_autosubmit_and_source_select(
+        self, client
+    ):
+        seed_job()
+        resp = client.get("/")
+        assert resp.status_code == 200
+        assert "2 weeks" in resp.text
+        assert 'name="source"' in resp.text
+        assert "this.form.submit()" in resp.text  # sort applies immediately
+
+    def test_window_links_preserve_other_filters(self, client):
+        seed_job()
+        resp = client.get("/?location=Austin&remote=1&sort=date")
+        assert resp.status_code == 200
+        text = resp.text.replace("&amp;", "&")
+        # the window segmented links carry the location/remote/sort state
+        assert "window=24h" in text
+        start = text.index("window=24h")
+        snippet = text[max(0, start - 200): start + 200]
+        assert "location=Austin" in snippet
+
+    def test_pager_appears_beyond_one_page(self, client):
+        for i in range(3):
+            seed_job(url=f"https://example.com/p/{i}", title=f"Role {i}")
+        resp = client.get("/partials/feed?limit=2")
+        assert "page 1 of 2" in resp.text.lower()
+
+    def test_unknown_posted_date_marked_approximate(self, client):
+        seed_job(url="https://example.com/nodate", posted_date=None)
+        resp = client.get("/partials/feed")
+        assert "seen ~" in resp.text or "≈" in resp.text

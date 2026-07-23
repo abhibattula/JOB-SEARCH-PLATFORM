@@ -48,14 +48,41 @@ def _get_source(name: str):
     return get_source(name)
 
 
+# 008 (FR-012): date-bearing rows older than this never enter the DB —
+# "latest postings" is enforced at ingest, not just at display.
+INGEST_MAX_AGE_DAYS = 14
+
+# 008 (FR-013): sources that fetch ENTIRE boards, where absence from a
+# successful fetch authoritatively means the posting is gone.
+FULL_BOARD_SOURCES = ("greenhouse", "lever", "ashby", "workable", "smartrecruiters")
+
+# 008: scraped-board rows can't be board-diffed; their apply URLs get a
+# bounded HEAD liveness check instead.
+SCRAPED_SOURCES = ("jobspy",)
+LIVENESS_CHECKS_PER_RUN = 20
+
+
+def _ingest_cutoff() -> str:
+    from datetime import datetime, timedelta, timezone
+
+    return (
+        datetime.now(timezone.utc) - timedelta(days=INGEST_MAX_AGE_DAYS)
+    ).strftime("%Y-%m-%d")
+
+
 def _run_source(run_id: int, name: str, entries: list[dict]) -> None:
     db.update_run_source(run_id, name, state="running", found=0, added=0)
     found = added = 0
+    cutoff = _ingest_cutoff()
     try:
         module = _get_source(name)
         for job in module.fetch_jobs(entries):
             found += 1
-            if db.upsert_job(job.to_dict()) == "inserted":
+            payload = job.to_dict()
+            posted = payload.get("posted_date")
+            if posted and posted[:10] < cutoff:
+                continue  # older than the freshness window (FR-012)
+            if db.upsert_job(payload) == "inserted":
                 added += 1
             if found % 50 == 0:
                 db.update_run_source(run_id, name, found=found, added=added)
@@ -67,11 +94,59 @@ def _run_source(run_id: int, name: str, entries: list[dict]) -> None:
         )
 
 
+def delist_missing(run_id: int) -> int:
+    """Board-diff delisting (FR-013): after the sources finish, mark rows of
+    full-board sources that a SUCCESSFUL board fetch no longer contains."""
+    status = db.get_run_status()
+    if status.get("run_id") != run_id or not status.get("started_at"):
+        return 0
+    run_start = status["started_at"]
+    total = 0
+    for source, info in (status.get("sources") or {}).items():
+        if source in FULL_BOARD_SOURCES and info.get("state") == "done":
+            total += db.delist_missing_for_source(source, run_start)
+    if total:
+        log.info("delisted %d postings no longer on their boards", total)
+    return total
+
+
+def _check_scraped_liveness(limit: int = LIVENESS_CHECKS_PER_RUN) -> int:
+    """Bounded HEAD checks on scraped-board apply URLs (FR-013): 404/410 or
+    a redirect to the site root means the posting is dead. Network errors
+    change NOTHING — a job is never delisted on uncertainty. Uses the same
+    polite per-domain rate limit as ingestion."""
+    from urllib.parse import urlparse
+
+    from .ingest import base
+
+    dead = 0
+    for row in db.jobs_for_liveness_check(SCRAPED_SOURCES, limit):
+        try:
+            resp = base.polite_head(row["url"])
+        except Exception:
+            continue
+        final_path = urlparse(str(resp.url)).path
+        bounced_home = str(resp.url) != row["url"] and final_path in ("", "/")
+        if resp.status_code in (404, 410) or bounced_home:
+            db.mark_job_delisted(row["id"])
+            dead += 1
+        elif resp.status_code < 400:
+            db.touch_job_seen(row["id"])
+    if dead:
+        log.info("liveness check delisted %d dead scraped postings", dead)
+    return dead
+
+
 def _post_ingest(run_id: int) -> None:
-    """Post-ingest stages: sponsorship matching, classification, scoring,
-    prune, then fresh-match alerts."""
+    """Post-ingest stages: delisting, sponsorship matching, classification,
+    scoring, liveness, prune, then fresh-match alerts."""
+    delist_missing(run_id)
     _classify_new_jobs()
     _score_new_jobs()
+    try:
+        _check_scraped_liveness()
+    except Exception:
+        log.warning("liveness check failed", exc_info=True)
     removed = db.prune_old_jobs()
     if removed:
         log.info("pruned %d stale untouched jobs", removed)

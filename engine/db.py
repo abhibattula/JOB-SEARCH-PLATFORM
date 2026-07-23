@@ -348,6 +348,14 @@ def upsert_job(job: Mapping[str, Any]) -> str:
     dedup = _dedup_key(job["company"], job["title"], job.get("location"))
     with _conn() as conn:
         existing = conn.execute("SELECT * FROM jobs WHERE url = ?", (url,)).fetchone()
+        if existing is None:
+            # 008 (FR-017): the same source re-posting the same job under a
+            # NEW url refreshes the existing row (newest url wins — the old
+            # one may be dead) instead of inserting a visible duplicate.
+            existing = conn.execute(
+                "SELECT * FROM jobs WHERE dedup_key = ? AND source = ?",
+                (dedup, job["source"]),
+            ).fetchone()
         if existing:
             new_posted = job.get("posted_date")
             posted = existing["posted_date"]
@@ -355,7 +363,8 @@ def upsert_job(job: Mapping[str, Any]) -> str:
                 posted = new_posted
             conn.execute(
                 "UPDATE jobs SET title=?, location=?, is_remote=?,"
-                " description=COALESCE(NULLIF(?, ''), description), posted_date=?"
+                " description=COALESCE(NULLIF(?, ''), description), posted_date=?,"
+                " url=?, last_seen_at=?, delisted=0"
                 " WHERE id=?",
                 (
                     job["title"],
@@ -363,6 +372,8 @@ def upsert_job(job: Mapping[str, Any]) -> str:
                     1 if job.get("is_remote") else 0,
                     job.get("description") or "",
                     posted,
+                    url,
+                    _utcnow(),
                     existing["id"],
                 ),
             )
@@ -372,14 +383,21 @@ def upsert_job(job: Mapping[str, Any]) -> str:
             (dedup, job["source"]),
         ).fetchone()
         if duplicate:
+            # cross-source duplicate: first source wins, but the job was
+            # just confirmed live — stamp the kept row (008 delisting)
+            conn.execute(
+                "UPDATE jobs SET last_seen_at = ?, delisted = 0 WHERE id = ?",
+                (_utcnow(), duplicate["id"]),
+            )
             return "skipped"
         company_id = _get_or_create_company(
             conn, job["company"], job.get("company_ats_type"), job.get("company_ats_slug")
         )
+        now = _utcnow()
         conn.execute(
             "INSERT INTO jobs (company_id, title, location, is_remote, description,"
-            " url, dedup_key, source, posted_date, first_seen)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " url, dedup_key, source, posted_date, first_seen, last_seen_at, delisted)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
             (
                 company_id,
                 job["title"],
@@ -390,10 +408,52 @@ def upsert_job(job: Mapping[str, Any]) -> str:
                 dedup,
                 job["source"],
                 job.get("posted_date"),
-                _utcnow(),
+                now,
+                now,
             ),
         )
         return "inserted"
+
+
+def delist_missing_for_source(source: str, run_start: str) -> int:
+    """008 (FR-013): jobs of a full-board source not seen this run are gone
+    from their board — but ONLY for boards whose fetch succeeded this run
+    (watchlist.last_ok_at >= run_start). Saved/applied rows are flagged,
+    never deleted; upsert_job clears the flag if a job reappears."""
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE jobs SET delisted = 1"
+            " WHERE source = ? AND delisted = 0 AND last_seen_at < ?"
+            " AND company_id IN ("
+            "   SELECT c.id FROM companies c JOIN watchlist w"
+            "     ON w.ats = ? AND w.slug = c.ats_slug"
+            "   WHERE w.last_ok_at >= ?)",
+            (source, run_start, source, run_start),
+        )
+        return cur.rowcount
+
+
+def jobs_for_liveness_check(sources: tuple[str, ...], limit: int) -> list[dict]:
+    placeholders = ",".join("?" for _ in sources)
+    with _conn() as conn:
+        rows = conn.execute(
+            f"SELECT id, url FROM jobs WHERE source IN ({placeholders})"
+            " AND delisted = 0 ORDER BY last_seen_at ASC LIMIT ?",
+            (*sources, limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def mark_job_delisted(job_id: int) -> None:
+    with _conn() as conn:
+        conn.execute("UPDATE jobs SET delisted = 1 WHERE id = ?", (job_id,))
+
+
+def touch_job_seen(job_id: int) -> None:
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE jobs SET last_seen_at = ? WHERE id = ?", (_utcnow(), job_id)
+        )
 
 
 _JOB_COLUMNS = (
@@ -401,6 +461,7 @@ _JOB_COLUMNS = (
     " j.first_seen, j.is_entry_level, j.sponsorship, j.match_score, j.status,"
     " json_extract(j.match_json, '$.method') AS match_method,"
     " j.stage, j.applied_at, j.stage_updated_at, j.notes,"
+    " j.last_seen_at, j.delisted,"
     " c.name AS company, c.sponsor_grade, c.cap_exempt"
 )
 
@@ -410,6 +471,11 @@ def _row_to_job(row: sqlite3.Row, latest_start: str | None) -> dict:
     job["is_remote"] = bool(job.get("is_remote"))
     if "cap_exempt" in job:
         job["cap_exempt"] = bool(job.get("cap_exempt"))
+    if "delisted" in job:
+        job["delisted"] = bool(job.get("delisted"))
+    # 008 (FR-014): a missing source date is APPROXIMATE, never silently
+    # presented as the posted date — the UI renders "seen {first_seen} ~"
+    job["posted_approx"] = job.get("posted_date") is None
     if latest_start is not None and job.get("first_seen"):
         job["is_new"] = _parse_ts(job["first_seen"]) >= _parse_ts(latest_start)
     else:
@@ -437,8 +503,12 @@ def query_jobs(
     min_score: float | None = None,
     seen_since: str | None = None,
     strong_sponsors: bool = False,
+    source: str | None = None,
 ) -> tuple[list[dict], int]:
     where, params = [], []
+    if source:
+        where.append("j.source = ?")
+        params.append(source)
     # 007 (FR-014): grade B or better, or likely cap-exempt (lottery-free)
     if strong_sponsors:
         where.append("(c.sponsor_grade IN ('A', 'B') OR c.cap_exempt = 1)")
@@ -448,12 +518,15 @@ def query_jobs(
         where.append("j.sponsorship = 'EXCLUDED'")
     elif not include_ineligible:
         where.append("j.sponsorship != 'EXCLUDED'")
-    if window in ("7d", "24h"):
-        days = 7 if window == "7d" else 1
+    if window in ("14d", "7d", "24h"):
+        days = {"14d": 14, "7d": 7, "24h": 1}[window]
         where.append(
             "date(COALESCE(j.posted_date, j.first_seen)) >= date('now', ?)"
         )
         params.append(f"-{days} days")
+        # 008 (FR-013): recency views never show delisted postings; the
+        # "all" window shows them flagged instead
+        where.append("j.delisted = 0")
     if statuses:
         placeholders = ",".join("?" for _ in statuses)
         where.append(f"j.status IN ({placeholders})")

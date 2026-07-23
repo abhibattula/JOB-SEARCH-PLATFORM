@@ -60,11 +60,11 @@ def copy_to_clipboard(body: ClipboardRequest):
         )
     return {"copied": True}
 
-_WINDOWS = {"7d": "7d", "24h": "24h", "all": None}
+_WINDOWS = {"14d": "14d", "7d": "7d", "24h": "24h", "all": None}
 
 
 def parse_feed_params(
-    window: str = "7d",
+    window: str = "14d",
     status: str | None = None,
     location: str | None = None,
     remote: int = 0,
@@ -76,6 +76,8 @@ def parse_feed_params(
     min_score: float | None = None,
     seen: str | None = None,
     strong_sponsors: int = 0,
+    page: int = 1,
+    source: str | None = None,
 ) -> dict:
     seen_since = None
     if seen == "24h":
@@ -94,20 +96,25 @@ def parse_feed_params(
     if entry_level is None:
         entry = DEFAULT_ENTRY_LEVEL
     else:
-        entry = {"1": True, "0": None, "all": None}.get(entry_level, DEFAULT_ENTRY_LEVEL)
+        # 008 (FR-021): '0' now genuinely means non-entry-only
+        entry = {"1": True, "0": False, "all": None}.get(entry_level, DEFAULT_ENTRY_LEVEL)
+    limit = max(1, min(limit, 500))
+    if page and page > 1 and not offset:
+        offset = (page - 1) * limit
     return {
-        "window": _WINDOWS.get(window, "7d"),
+        "window": _WINDOWS.get(window, "14d"),
         "statuses": statuses,
         "entry_level": entry,
         "location": location or None,
         "remote": bool(remote),
         "sort": sort if sort in ("score", "date") else "score",
-        "limit": max(1, min(limit, 500)),
+        "limit": limit,
         "offset": max(0, offset),
         "ineligible": bool(ineligible),
         "min_score": min_score if min_score and min_score > 0 else None,
         "seen_since": seen_since,
         "strong_sponsors": bool(strong_sponsors),
+        "source": source or None,
     }
 
 
@@ -131,6 +138,10 @@ def job_summary(job: dict) -> dict:
         "is_new": job.get("is_new", False),
         "sponsor_grade": job.get("sponsor_grade"),
         "cap_exempt": bool(job.get("cap_exempt")),
+        # 008: freshness honesty (FR-013/FR-014)
+        "delisted": bool(job.get("delisted")),
+        "posted_approx": job.get("posted_approx", job.get("posted_date") is None),
+        "last_seen_at": job.get("last_seen_at"),
     }
 
 
@@ -149,7 +160,7 @@ def refresh_status():
 
 @router.get("/jobs")
 def list_jobs(
-    window: str = "7d",
+    window: str = "14d",
     status: str | None = None,
     location: str | None = None,
     remote: int = 0,
@@ -161,13 +172,21 @@ def list_jobs(
     min_score: float | None = None,
     seen: str | None = None,
     strong_sponsors: int = 0,
+    page: int = 1,
+    source: str | None = None,
 ):
     params = parse_feed_params(
         window, status, location, remote, sort, entry_level, limit, offset,
-        ineligible, min_score, seen, strong_sponsors,
+        ineligible, min_score, seen, strong_sponsors, page=page, source=source,
     )
     jobs, total = db.query_jobs(**params)
-    return {"jobs": [job_summary(j) for j in jobs], "total": total}
+    pages = max(1, -(-total // params["limit"]))
+    return {
+        "jobs": [job_summary(j) for j in jobs],
+        "total": total,
+        "page": max(1, page),
+        "pages": pages,
+    }
 
 
 @router.get("/jobs/{job_id}")
@@ -250,7 +269,7 @@ async def set_job_status(job_id: int, request: Request, status: str | None = Non
 
 @router.get("/export")
 def export_csv(
-    window: str = "7d",
+    window: str = "14d",
     status: str | None = None,
     location: str | None = None,
     remote: int = 0,

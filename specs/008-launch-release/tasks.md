@@ -43,20 +43,20 @@ US4 7 · US5 9 · US6 4 · Polish/Ship 1 (numbering is execution order).
 
 ## Phase 5: US3 — Genuine, fresh, sortable feed (P3)
 
-- [ ] T022 [test] [US3] Failing tests in tests/test_db.py: `14d` window in query_jobs (and new default), `delisted=1` excluded from default views/included with flag in `all`, dedup_key hit suppresses same-source repost (URL refresh, no duplicate row), `last_seen_at` stamped on every upsert path
-- [ ] T023 [US3] Implement window/delist/dedup/last_seen changes in engine/db.py; default window threaded through web/routes_api.py parse_feed_params + web/main.py + feed.html segmented control ("2 weeks" default)
-- [ ] T024 [test] [US3] Failing tests in tests/test_pipeline.py (or test_ingest): delisting pass marks rows absent from a successful full-board fetch, never on failed/empty-error fetch; reappearing job restored; ingest-time 14-day age gate skips old date-bearing rows
-- [ ] T025 [US3] Implement board-diff delisting + ingest age gate in engine/pipeline.py and engine/ingest/(greenhouse|lever|ashby|workable).py (sources return full-fetch success flag + seen keys)
-- [ ] T026 [test] [US3] Failing tests: throttled HEAD liveness check for scraped-board rows (404 / redirect-to-careers-home ⇒ delisted; network error ⇒ no change), respecting 1 req/s/domain
-- [ ] T027 [US3] Implement liveness checker in engine/pipeline.py (bounded batch per refresh, scraped sources only)
+- [X] T022 [test] [US3] Failing tests in tests/test_db.py: `14d` window in query_jobs (and new default), `delisted=1` excluded from default views/included with flag in `all`, dedup_key hit suppresses same-source repost (URL refresh, no duplicate row), `last_seen_at` stamped on every upsert path
+- [X] T023 [US3] Implement window/delist/dedup/last_seen changes in engine/db.py; default window threaded through web/routes_api.py parse_feed_params + web/main.py + feed.html segmented control ("2 weeks" default)
+- [X] T024 [test] [US3] Failing tests in tests/test_pipeline.py (or test_ingest): delisting pass marks rows absent from a successful full-board fetch, never on failed/empty-error fetch; reappearing job restored; ingest-time 14-day age gate skips old date-bearing rows
+- [X] T025 [US3] Implement board-diff delisting + ingest age gate in engine/pipeline.py and engine/ingest/(greenhouse|lever|ashby|workable).py (sources return full-fetch success flag + seen keys)
+- [X] T026 [test] [US3] Failing tests: throttled HEAD liveness check for scraped-board rows (404 / redirect-to-careers-home ⇒ delisted; network error ⇒ no change), respecting 1 req/s/domain
+- [X] T027 [US3] Implement liveness checker in engine/pipeline.py (bounded batch per refresh, scraped sources only)
 - [ ] T028 [US3] Watchlist runtime: pipeline.load_companies reads the watchlist table (enabled rows) instead of YAML; per-board "not found" surfaces in the refresh strip via `last_ok_at` (tests first in tests/test_watchlist.py)
 - [ ] T029 [test] [US3] Failing tests in tests/test_api.py: watchlist CRUD contract (GET/POST 201/409, PATCH enabled, DELETE user-vs-shipped semantics)
 - [ ] T030 [US3] Implement watchlist CRUD in web/routes_api.py + Settings watchlist section in web/templates/settings.html
 - [ ] T031 [US3] jobspy upgrades in engine/ingest/jobspy_source.py: sites from `JOBSPY_SITES` (+google; linkedin only when opt-in), `hours_old=336` passed alone (client-side job_type/remote filtering), results_wanted from settings; tests first (kwargs asserted via monkeypatched scrape)
 - [ ] T032 [US3] LinkedIn link-out: engine/ingest/linkedin_linkout.py builds search URLs (terms + f_TPR=r1209600); `GET /api/jobs/{id}/linkedin-url` + toolbar/job-detail "Search on LinkedIn" buttons (open via /api/open); LinkedIn checkbox copy updated with rate-limit warning
-- [ ] T033 [US3] Feed usability: sort auto-applies on change; segmented window/view links rebuilt from full query string; hidden seen/ineligible/view inputs in toolbar form; Prev/Next pager (total/limit/offset); `source` filter param + select in query_jobs/routes/template; fix `entry_level='0'`→False; clickable Posted/Match headers (template render + route tests first)
-- [ ] T034 [US3] Honest dates: `posted_approx` flag in job payloads; feed/detail show "seen {date} ~" styling for NULL posted_date rows; MAX_SCORE_PER_RUN scaled with volume knobs (settings-driven)
-- [ ] T035 [US3] Delisted badge styling + "delisted" filter chip in `all` window (web/static/styles.css + feed_table.html)
+- [X] T033 [US3] Feed usability: sort auto-applies on change; segmented window/view links rebuilt from full query string; hidden seen/ineligible/view inputs in toolbar form; Prev/Next pager (total/limit/offset); `source` filter param + select in query_jobs/routes/template; fix `entry_level='0'`→False; clickable Posted/Match headers (template render + route tests first)
+- [X] T034 [US3] Honest dates: `posted_approx` flag in job payloads; feed/detail show "seen {date} ~" styling for NULL posted_date rows; MAX_SCORE_PER_RUN scaled with volume knobs (settings-driven)
+- [X] T035 [US3] Delisted badge styling + "delisted" filter chip in `all` window (web/static/styles.css + feed_table.html)
 
 ## Phase 6: US4 — Profile fills itself; search follows it (P4)
 
