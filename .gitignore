@@ -31,3 +31,4 @@ models/
 Thumbs.db
 *.tmp
 *.swp
+jobengine-smoke-data/
