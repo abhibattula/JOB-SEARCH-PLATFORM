@@ -119,8 +119,10 @@ offline.
 1. Save jobs you want to apply to (☆ in the feed), then open **Apply
    Assist** from the top nav.
 2. Nothing to download: Apply Assist uses the Edge or Chrome already on
-   your machine (with its own separate profile). **Check my browser**
-   verifies it can start.
+   your machine (with its own separate profile). Click **Test Apply
+   Assist** first — a bundled practice application fills with your own
+   data in seconds, so you can see it working before any real posting.
+   **Check my browser** verifies the browser can start.
 3. Pick your saved jobs (select all/none buttons) and **Start Apply
    Assist**. A dedicated browser window (separate from your everyday
    browser) opens on the first job's application page with recognized
@@ -197,5 +199,6 @@ itself.
 | Refresh button says "cooldown" | A refresh finished < 30 min ago — use **Refresh now** (it bypasses the cooldown) |
 | Scores show `~` even though you expected `•` or a cloud score | The bundled model file may be missing/corrupted — the app degrades to the basic matcher rather than crashing; reinstalling fixes it |
 | Apply Assist won't start a browser | Click **Check my browser** on the Apply Assist page — the error names the fix (usually: install Microsoft Edge or Google Chrome) |
-| Apply Assist opened a job but nothing got filled | The status panel now names the exact reason (page unreadable / failed to load / fields unrecognized) — fill it manually, then click **Done, next application** |
+| Apply Assist opened a job but nothing filled yet | The engine keeps watching the page every ~2s — if no form is visible it says so and tells you to click the site's own Apply button; fields fill the moment the form appears |
+| Resume import seems slow | On the offline model a long resume takes a few minutes — the progress banner on Profile shows exactly which part it's on; flip "Prefer the bundled offline model" off in Settings to use your Groq key instead (much faster) |
 | Something else misbehaves | Open **Diagnostics** (top nav): run the self-checks and use **Export logs** |

@@ -34,6 +34,24 @@ templates.env.globals["current_theme"] = _current_theme
 # 008 (FR-032): plain-language changelog behind the What's New overlay —
 # keyed by APP_VERSION, shown once per version.
 WHATS_NEW: dict[str, list[str]] = {
+    "0.9.0": [
+        "Apply Assist finally FILLS: it now watches the open page "
+        "continuously and fills fields the moment they exist — slow-loading "
+        "forms, forms behind the site's Apply button, multi-page "
+        "applications, and forms inside embedded frames all work.",
+        "Jobs open at the real application form now (Lever/Ashby links "
+        "used to land on the description page).",
+        "New 'Test Apply Assist' button: a bundled practice application "
+        "fills with your own data in seconds — proof it works, on your "
+        "machine, before you touch a real posting.",
+        "Profile import rebuilt: upload returns instantly, extraction runs "
+        "in the background with live progress, and a review screen shows "
+        "every field (yours vs the resume's) — nothing changes without "
+        "your say-so. It now genuinely works on the offline model.",
+        "The bundled offline model is the default AI everywhere (private, "
+        "$0); your cloud key automatically takes over if it ever fails — "
+        "toggle in Settings.",
+    ],
     "0.8.0": [
         "Apply Assist now opens your installed Edge or Chrome directly — no "
         "browser download step, and when something fails you see exactly why.",

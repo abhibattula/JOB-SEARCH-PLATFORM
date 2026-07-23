@@ -62,9 +62,15 @@ entirely on your machine for $0.
   account, no API key, no internet connection needed for the AI itself (an
   optional cloud key still gives the highest-quality results and is always
   preferred when set).
-- **Apply Assist**: opens each shortlisted job's real application page in
-  **your own installed Edge or Chrome** (a separate profile dedicated to the
-  app — nothing to download, ever) and fills in the fields it recognizes —
+- **Apply Assist — a live fill engine**: opens each shortlisted job at its
+  real application form in **your own installed Edge or Chrome** (a
+  separate profile dedicated to the app — nothing to download, ever) and
+  then **watches the page continuously**, filling every recognized field
+  the moment it exists: slow-rendering forms, forms revealed by the site's
+  own Apply button, every page of a multi-step application, and forms
+  embedded in iframes. A **Test Apply Assist** button runs a bundled
+  practice application so you can watch your own data fill in seconds —
+  proof on your machine before any real posting. Recognized fields —
   name, contact info, links, **your resume file itself**, work
   authorization/sponsorship dropdowns (matched to the site's own option
   wording), and common short-answer questions — from your profile and a
@@ -76,11 +82,12 @@ entirely on your machine for $0.
   your review before anything is saved or typed. Saved logins autofill from
   your OS's own credential store (never this app's database) the same way —
   filled, never auto-submitted.
-- **Resume builder + tailored PDFs**: your uploaded resume is parsed into
-  editable structured sections (experience, education, projects, skills)
-  **plus your contact details and target titles** — blank profile fields fill
-  themselves (you approve any conflicts; visa questions are never
-  auto-filled); every job can then export an ATS-safe **tailored resume PDF**
+- **Resume builder + tailored PDFs**: uploading a resume returns
+  instantly and extraction runs in the background with live progress; a
+  **review screen** then shows every profile field — yours vs the
+  resume's — with per-field Keep / Use resume's / Merge choices. Nothing
+  changes silently, visa questions are never imported, and it genuinely
+  works on the offline model (long resumes are processed in parts); every job can then export an ATS-safe **tailored resume PDF**
   and cover-letter PDF — generated fully offline, and attached automatically
   by Apply Assist when available.
 - **Sponsorship intelligence nobody else has**: a local A–F **sponsor grade**
@@ -97,7 +104,7 @@ entirely on your machine for $0.
   semantic ranking** against your resume (a bundled 330MB embeddings model —
   no network, no key), so the limited free AI quota is always spent on the
   most relevant jobs first; structured extraction uses the most
-  schema-reliable free cloud models, with Groq and Google AI Studio presets.
+  schema-reliable free cloud models, with Groq and Google AI Studio presets. **The bundled offline model is the default AI everywhere** (private, $0) with the cloud key as automatic fallback — one toggle in Settings flips the preference.
 - **Updates itself**: the app checks GitHub Releases daily, and one click
   downloads the installer with a progress bar, verifies its SHA-256, installs
   silently, and relaunches — with a What's New screen after every update. A
