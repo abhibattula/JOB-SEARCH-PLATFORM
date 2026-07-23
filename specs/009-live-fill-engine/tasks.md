@@ -38,13 +38,13 @@ US4 2 · Polish/Ship 2.
 
 ## Phase 5: US3 — Profile import that imports (P3)
 
-- [ ] T017 [test] [US3] Failing tests: tests/test_local_llm.py asserts `Llama(..., n_ctx=8192)`; tests/test_resume_extract.py `_split_chunks` (blank-line boundaries, ~5000 target, no mid-line splits) + `_merge` (ordered concat, casefold dedupe, contact first-non-empty + regex overlay, all-failed→None, one-failed→partial) + local-tier dispatch sends every prompt ≤6000 chars
-- [ ] T018 [US3] Implement chunked map-reduce local path in engine/resume_extract.py (`extract(text, on_progress=None)`) + n_ctx=8192 in engine/local_llm.py
-- [ ] T019 [test] [US3] Failing tests in tests/test_profile_import.py (`background=False`): state transitions incl. failed(error); stage/chunk progress; proposal matrix (blank→apply, conflict→keep, identical→"none", lists→merge, edited-sections→keep+warning, `has_differences`, visa fields absent); apply decisions (one save_profile, merge semantics, sections consent sets/clears `sections_edited_at`, search-terms re-derivation unless user-owned, proposal consumed)
-- [ ] T020 [US3] Implement engine/profile_import.py (updates.py-pattern state machine + proposal builder + apply)
-- [ ] T021 [test] [US3] Failing route tests in tests/test_api.py: slim `POST /api/profile` (monkeypatch extract/extract_skills to raise — must not be called inline; auto-starts import on upload), `POST /api/profile/import` (+409s), `GET status/proposal` (404 until ready), `POST apply`, `/api/profile/reextract` delegates
-- [ ] T022 [US3] Implement route changes in web/routes_api.py + `GET /partials/profile/import` in web/main.py; retire PENDING_IDENTITY_CONFLICTS generation (endpoint kept for compat)
-- [ ] T023 [US3] Templates: partials/import_progress.html (incl. failed state showing the real error with a Retry button per FR-012) + import_review.html (full table, compact zero-diff confirmation with expandable view) + profile.html `#import-region` polling wiring + apply JS + toasts; render tests first
+- [X] T017 [test] [US3] Failing tests: tests/test_local_llm.py asserts `Llama(..., n_ctx=8192)`; tests/test_resume_extract.py `_split_chunks` (blank-line boundaries, ~5000 target, no mid-line splits) + `_merge` (ordered concat, casefold dedupe, contact first-non-empty + regex overlay, all-failed→None, one-failed→partial) + local-tier dispatch sends every prompt ≤6000 chars
+- [X] T018 [US3] Implement chunked map-reduce local path in engine/resume_extract.py (`extract(text, on_progress=None)`) + n_ctx=8192 in engine/local_llm.py
+- [X] T019 [test] [US3] Failing tests in tests/test_profile_import.py (`background=False`): state transitions incl. failed(error); stage/chunk progress; proposal matrix (blank→apply, conflict→keep, identical→"none", lists→merge, edited-sections→keep+warning, `has_differences`, visa fields absent); apply decisions (one save_profile, merge semantics, sections consent sets/clears `sections_edited_at`, search-terms re-derivation unless user-owned, proposal consumed)
+- [X] T020 [US3] Implement engine/profile_import.py (updates.py-pattern state machine + proposal builder + apply)
+- [X] T021 [test] [US3] Failing route tests in tests/test_api.py: slim `POST /api/profile` (monkeypatch extract/extract_skills to raise — must not be called inline; auto-starts import on upload), `POST /api/profile/import` (+409s), `GET status/proposal` (404 until ready), `POST apply`, `/api/profile/reextract` delegates
+- [X] T022 [US3] Implement route changes in web/routes_api.py + `GET /partials/profile/import` in web/main.py; retire PENDING_IDENTITY_CONFLICTS generation (endpoint kept for compat)
+- [X] T023 [US3] Templates: partials/import_progress.html (incl. failed state showing the real error with a Retry button per FR-012) + import_review.html (full table, compact zero-diff confirmation with expandable view) + profile.html `#import-region` polling wiring + apply JS + toasts; render tests first
 
 ## Phase 6: US4 — Offline model first (P4)
 

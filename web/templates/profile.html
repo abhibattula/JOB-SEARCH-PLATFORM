@@ -49,36 +49,35 @@
 
     {% include "partials/profile_answer_bank.html" %}
 
-    {% if identity_conflicts %}
-    <div class="error-banner" id="identity-conflicts" role="alert">
-      <p><strong>Your resume says something different</strong> — choose what
-        to keep for each field:</p>
-      {% for c in identity_conflicts %}
-      <p class="identity-conflict">
-        <span class="data">{{ c.field | replace('_', ' ') }}</span>:
-        yours “{{ c.current }}” · resume “{{ c.extracted }}”
-        <button type="button" class="ghost"
-                onclick="resolveIdentity('{{ c.field }}', 'keep')">Keep mine</button>
-        <button type="button" class="ghost"
-                onclick="resolveIdentity('{{ c.field }}', 'replace')">Use resume's</button>
-      </p>
-      {% endfor %}
-    </div>
-    <script>
-      window.resolveIdentity = async function (field, decision) {
-        const payload = {decisions: {}};
-        payload.decisions[field] = decision;
-        await fetch('/api/profile/identity-conflicts', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify(payload),
-        });
-        location.reload();
-      };
-    </script>
-    {% endif %}
-
     <h2>Resume &amp; job search</h2>
+
+    {# 009 (FR-012/FR-014): background import progress / review screen #}
+    <div id="import-region" hx-get="/partials/profile/import"
+         hx-trigger="load, every 2s [pollingAllowed()]" hx-swap="innerHTML"
+         aria-live="polite"></div>
+    <p class="settings-actions">
+      <button type="button" class="ghost" id="import-from-resume-btn"
+              title="Re-reads the uploaded resume and shows a review of everything it can fill — nothing changes without your say-so">
+        Import from resume
+      </button>
+    </p>
+    <script>
+      document.getElementById('import-from-resume-btn').addEventListener('click', async (e) => {
+        e.target.disabled = true;
+        try {
+          const resp = await fetch('/api/profile/import', {method: 'POST'});
+          const body = await resp.json();
+          if (!resp.ok) { throw new Error(body.detail || 'could not start'); }
+          toast('Reading your resume — progress shows below');
+          htmx.trigger('#import-region', 'load');
+        } catch (err) {
+          toast(err.message, 'error');
+        } finally {
+          e.target.disabled = false;
+        }
+      });
+    </script>
+
     {% include "partials/resume_builder.html" %}
     {% if profile and profile.resume_filename %}
     <p>Resume on file: <span class="data">{{ profile.resume_filename }}</span>

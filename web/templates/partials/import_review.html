@@ -1,0 +1,99 @@
+{# 009 (FR-014/FR-015): the import review screen — every profile field as
+   current-vs-from-resume with a per-row choice. Nothing changes without
+   "Apply selected". Zero differences renders the compact confirmation. #}
+{% if not proposal.has_differences %}
+<div class="notice" id="import-review" role="status">
+  <strong>✓ Everything in your resume already matches your profile</strong> —
+  nothing to apply.
+  <details>
+    <summary class="muted">show the field-by-field comparison</summary>
+    <table class="feed-table">
+      <tbody>
+        {% for f in proposal.fields %}
+        <tr>
+          <td>{{ f.field | replace('_', ' ') }}</td>
+          <td class="data">no change</td>
+        </tr>
+        {% endfor %}
+      </tbody>
+    </table>
+  </details>
+</div>
+<script>reveal(document.getElementById('import-review'));</script>
+{% else %}
+<div class="mission-panel" id="import-review">
+  <h2>Import from resume — review</h2>
+  <p class="muted">From <span class="data">{{ proposal.resume_filename }}</span>
+    ({{ 'offline model' if proposal.tier == 'local' else 'cloud model' }}).
+    Pick what to apply — nothing changes until you click Apply selected.
+    Work-authorization fields are never imported.</p>
+  <table class="feed-table" id="import-review-table">
+    <thead><tr><th>Field</th><th>Your current value</th><th>From the resume</th><th>Decision</th></tr></thead>
+    <tbody>
+      {% for f in proposal.fields %}
+      <tr data-field="{{ f.field }}" data-kind="{{ f.kind }}">
+        <td>{{ f.field | replace('_', ' ') }}
+          {% if f.kind == 'sections' and f.edited_at %}
+          <span class="badge excluded" title="You hand-edited these sections on {{ f.edited_at[:10] }} — applying replaces your edits.">edited by you</span>
+          {% endif %}
+        </td>
+        <td class="data">
+          {%- if f.kind == 'text' -%}{{ f.current or '—' }}
+          {%- elif f.kind == 'list' -%}{{ f.current | join(', ') or '—' }}
+          {%- else -%}{{ f.current_summary.experience }} exp · {{ f.current_summary.education }} edu · {{ f.current_summary.projects }} proj
+          {%- endif -%}
+        </td>
+        <td class="data">
+          {%- if f.kind == 'text' -%}{{ f.proposed or '—' }}
+          {%- elif f.kind == 'list' -%}{{ f.proposed | join(', ') or '—' }}
+          {%- else -%}{{ f.proposed_summary.experience }} exp · {{ f.proposed_summary.education }} edu · {{ f.proposed_summary.projects }} proj
+          {%- endif -%}
+        </td>
+        <td>
+          {% if f.default == 'none' %}
+          <span class="muted">no change</span>
+          {% else %}
+          <select class="import-decision data">
+            <option value="keep" {{ 'selected' if f.default == 'keep' }}>Keep mine</option>
+            <option value="apply" {{ 'selected' if f.default == 'apply' }}>Use resume's</option>
+            {% if f.kind == 'list' %}
+            <option value="merge" {{ 'selected' if f.default == 'merge' }}>Merge both</option>
+            {% endif %}
+          </select>
+          {% endif %}
+        </td>
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  <p class="settings-actions">
+    <button type="button" id="import-apply-btn">Apply selected</button>
+    <span id="import-apply-result" class="data"></span>
+  </p>
+</div>
+<script>
+  reveal(document.getElementById('import-review'));
+  document.getElementById('import-apply-btn').addEventListener('click', async (e) => {
+    e.target.disabled = true;
+    const decisions = {};
+    document.querySelectorAll('#import-review-table tr[data-field]').forEach(row => {
+      const select = row.querySelector('.import-decision');
+      if (select) { decisions[row.dataset.field] = select.value; }
+    });
+    try {
+      const resp = await fetch('/api/profile/import/apply', {
+        method: 'POST',
+        headers: {'Content-Type': 'application/json'},
+        body: JSON.stringify({decisions}),
+      });
+      const body = await resp.json();
+      if (!resp.ok) { throw new Error(body.detail || 'apply failed'); }
+      toast('Profile updated from your resume (' + body.applied.length + ' fields)');
+      location.reload();
+    } catch (err) {
+      document.getElementById('import-apply-result').textContent = '✕ ' + err.message;
+      e.target.disabled = false;
+    }
+  });
+</script>
+{% endif %}

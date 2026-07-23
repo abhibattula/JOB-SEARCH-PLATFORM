@@ -34,3 +34,14 @@ def _isolated_browser_controller_state():
     browser_controller.stop_queue()
     yield
     browser_controller.stop_queue()
+
+
+@pytest.fixture(autouse=True)
+def _isolated_profile_import_state():
+    """009: engine.profile_import keeps its state machine in module-level
+    globals (session-scoped by design). Reset around every test."""
+    from engine import profile_import
+
+    profile_import.reset_state()
+    yield
+    profile_import.reset_state()

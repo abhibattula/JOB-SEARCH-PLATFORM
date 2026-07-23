@@ -385,6 +385,26 @@ def create_app() -> FastAPI:
             },
         )
 
+    @app.get("/partials/profile/import", response_class=HTMLResponse)
+    def profile_import_partial(request: Request):
+        """009 (FR-012/FR-014): the import region — progress banner while
+        extracting (or failed with the real error + Retry), the review
+        screen when ready, empty when idle."""
+        from engine import profile_import
+
+        state = profile_import.status()
+        if state["state"] in ("extracting", "failed"):
+            return templates.TemplateResponse(
+                request, "partials/import_progress.html", {"status": state}
+            )
+        if state["state"] == "ready":
+            return templates.TemplateResponse(
+                request,
+                "partials/import_review.html",
+                {"proposal": profile_import.proposal()},
+            )
+        return HTMLResponse("")
+
     @app.get("/practice/apply", response_class=HTMLResponse)
     def practice_apply(request: Request):
         """009 (FR-009): the bundled practice application — a realistic
