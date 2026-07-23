@@ -9,6 +9,22 @@ Approved design doc: `docs/superpowers/specs/2026-07-23-feature-009-design.md`
 (root causes confirmed by two 2026-07-23 code investigations with file:line
 evidence, recorded in the design doc and plan).
 
+## Clarifications
+
+### Session 2026-07-23
+
+- Q: Watcher pacing while a job stays open? → A: Steady few-second rhythm
+  the entire time a job is current (no idle backoff) — always responsive
+  the instant a form appears; cost bounded per tick.
+- Q: Import review when the resume matches the profile exactly? → A:
+  Compact confirmation ("everything already matches — nothing to apply")
+  with an expandable full field-by-field view.
+- Pre-resolved in the brainstorming session (recorded in the design doc):
+  scope incl. practice application + attention polish; offline model
+  preferred by default with cloud fall-through; review-screen import
+  semantics; full watcher rebuild with per-ATS adapters; one v0.9.0
+  release.
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Apply Assist actually fills applications (Priority: P1)
@@ -222,9 +238,10 @@ failure and confirm automatic cloud fallback.
   postings as-is, all others at the posting page.
 - **FR-003**: While a job is current, the app MUST repeatedly scan the
   open page — including embedded frames, up to a documented bound — and
-  fill any empty, recognized, non-focused field, at an interval of a few
-  seconds, until the user advances or stops. There MUST be no terminal
-  "couldn't read this page" state while a job is current.
+  fill any empty, recognized, non-focused field, at a steady interval of a
+  few seconds for as long as the job is current (no idle backoff), until
+  the user advances or stops. There MUST be no terminal "couldn't read
+  this page" state while a job is current.
 - **FR-004**: Field addressing MUST NOT be constructed from raw page
   attribute values; elements MUST be addressed via stamps applied during
   scanning, immune to special characters in names/ids.
@@ -274,7 +291,10 @@ failure and confirm automatic cloud fallback.
   summary) as current-value vs resume-value with per-row Keep / Use
   resume's / Merge choices and the stated defaults (blank→apply,
   conflict→keep, lists→merge, user-edited sections→keep with warning).
-  Nothing may change without the user applying the proposal.
+  When the proposal contains zero differences it MUST render as a compact
+  "everything already matches — nothing to apply" confirmation with an
+  expandable full view. Nothing may change without the user applying the
+  proposal.
 - **FR-015**: Applying a proposal MUST update the profile in one action
   with visible confirmation, count as explicit consent for replacing
   user-edited sections, refresh derived search terms unless user-owned,
