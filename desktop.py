@@ -46,6 +46,59 @@ def wait_until_ready(url: str, timeout: float = 15.0) -> bool:
     return False
 
 
+def _acquire_app_mutex() -> None:
+    """Named mutex the Inno installer's AppMutex directive checks, so an
+    upgrade reliably detects (and closes) a running instance instead of
+    hitting in-use files mid-copy (008 FR-031). Held for process lifetime —
+    deliberately never closed."""
+    import sys
+
+    if sys.platform != "win32":
+        return
+    import ctypes
+
+    ctypes.windll.kernel32.CreateMutexW(None, False, "JobEngineRunning")
+
+
+def _install_crash_hooks() -> None:
+    """008 (FR-033): unhandled exceptions — main thread AND background
+    threads (refresh pipeline, scheduler, Apply Assist) — land in app.log
+    with a crash marker the UI surfaces once on next launch."""
+    import sys
+    import threading
+    import traceback
+
+    from engine import paths
+
+    def _record(exc_type, exc, tb) -> None:
+        try:
+            data_dir = paths.data_dir()
+            data_dir.mkdir(parents=True, exist_ok=True)
+            with open(data_dir / "app.log", "a", encoding="utf-8", errors="replace") as f:
+                f.write("\n--- UNHANDLED EXCEPTION ---\n")
+                traceback.print_exception(exc_type, exc, tb, file=f)
+            (data_dir / "crash.marker").write_text(
+                f"{exc_type.__name__}: {exc}"[:300], encoding="utf-8"
+            )
+        except Exception:
+            pass
+
+    previous_hook = sys.excepthook
+
+    def _sys_hook(exc_type, exc, tb):
+        _record(exc_type, exc, tb)
+        previous_hook(exc_type, exc, tb)
+
+    sys.excepthook = _sys_hook
+
+    def _thread_hook(args):
+        if args.exc_type is SystemExit:
+            return
+        _record(args.exc_type, args.exc_value, args.exc_traceback)
+
+    threading.excepthook = _thread_hook
+
+
 def _redirect_streams_when_windowed() -> None:
     """Windowed (console-less) builds have sys.stdout/stderr = None, which
     breaks uvicorn's logging setup. Point them at a log file in the data dir —
@@ -65,6 +118,8 @@ def _redirect_streams_when_windowed() -> None:
 
 def main() -> None:
     _redirect_streams_when_windowed()
+    _acquire_app_mutex()
+    _install_crash_hooks()
     db.init_db()
     maybe_start_scheduler()
     port = pick_port()
@@ -89,12 +144,28 @@ def main() -> None:
     server_thread = threading.Thread(target=server.run, daemon=True)
     server_thread.start()
     if not wait_until_ready(url):
-        raise SystemExit("Server failed to start — check the console for errors.")
+        raise SystemExit(
+            "Server failed to start — see the log at "
+            f"{paths.data_dir() / 'app.log'} for the reason."
+        )
 
     try:
         import webview  # pywebview
 
-        webview.create_window(WINDOW_TITLE, url, width=1280, height=880)
+        # 008 (FR-001/FR-004/FR-005): the shell must behave like a browser —
+        # selectable text, working downloads, external links opening in the
+        # system browser. pywebview's defaults disable all three.
+        webview.settings["ALLOW_DOWNLOADS"] = True
+        webview.settings["OPEN_EXTERNAL_LINKS_IN_BROWSER"] = True
+        webview.create_window(
+            WINDOW_TITLE,
+            url,
+            width=1280,
+            height=880,
+            min_size=(960, 640),
+            text_select=True,
+            confirm_close=True,
+        )
         webview.start()  # blocks until the window is closed
     except Exception as exc:
         print(f"Native window unavailable ({type(exc).__name__}: {exc}).")

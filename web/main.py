@@ -31,6 +31,24 @@ def _current_theme() -> str:
 
 templates.env.globals["current_theme"] = _current_theme
 
+# 008 (FR-032): plain-language changelog behind the What's New overlay —
+# keyed by APP_VERSION, shown once per version.
+WHATS_NEW: dict[str, list[str]] = {
+    "0.8.0": [
+        "Apply Assist now opens your installed Edge or Chrome directly — no "
+        "browser download step, and when something fails you see exactly why.",
+        "The desktop window behaves: select and copy any text, copy apply "
+        "links with one click, open postings in your own browser, download PDFs.",
+        "Fresher, more genuine jobs: 2-week default window, closed postings "
+        "auto-delisted, 450+ company career boards monitored (editable in "
+        "Settings), Google Jobs added, one-click LinkedIn searches.",
+        "Your resume fills your whole profile (with your consent), and the "
+        "job search now follows your profile's terms and locations.",
+        "Updates install from inside the app with a progress bar.",
+        "New Diagnostics page (Settings → Diagnostics) if anything misbehaves.",
+    ],
+}
+
 
 def _bootstrap_sponsorship() -> None:
     """Load the bundled USCIS data on first run so installed users get
@@ -52,7 +70,6 @@ def _onboarding_state(profile: dict | None) -> dict | None:
     """FR-027: setup steps derived live from real state — no stored step
     flags to drift. None (hidden) once dismissed or everything's done."""
     from engine import matcher, settings
-    from engine.autofill import browser_setup
 
     if settings.get("ONBOARDING_DISMISSED") == "1":
         return None
@@ -82,10 +99,10 @@ def _onboarding_state(profile: dict | None) -> dict | None:
             "done": matcher.llm_available(),
         },
         {
-            "label": "Enable Apply Assist",
+            "label": "Apply to your first job",
             "href": "/autofill",
-            "hint": "one-time browser download for application autofill",
-            "done": browser_setup.is_installed(),
+            "hint": "Apply Assist uses your installed Edge/Chrome — nothing to download",
+            "done": db.query_jobs(window=None, statuses=["applied"])[1] > 0,
         },
     ]
     if all(step["done"] for step in steps):
@@ -93,9 +110,25 @@ def _onboarding_state(profile: dict | None) -> dict | None:
     return {"steps": steps}
 
 
+def _replace_query(request: Request, **overrides) -> str:
+    """Rebuild the feed URL keeping every current filter, overriding only
+    what's passed (008 FR-019: window/sort/view switches never drop state).
+    None/'' removes the key."""
+    from urllib.parse import urlencode
+
+    params = {k: v for k, v in request.query_params.items()}
+    for key, value in overrides.items():
+        if value is None or value == "":
+            params.pop(key, None)
+        else:
+            params[key] = str(value)
+    query = urlencode(params)
+    return f"/?{query}" if query else "/"
+
+
 def _feed_context(
     request: Request,
-    window: str = "7d",
+    window: str = "14d",
     status: str | None = None,
     location: str | None = None,
     remote: int = 0,
@@ -105,25 +138,30 @@ def _feed_context(
     min_score: float | None = None,
     seen: str | None = None,
     strong_sponsors: int = 0,
+    page: int = 1,
+    source: str | None = None,
+    limit: int = 100,
 ) -> dict:
     params = parse_feed_params(
         window, status, location, remote, sort, entry_level,
-        ineligible=ineligible, min_score=min_score, seen=seen,
-        strong_sponsors=strong_sponsors,
+        limit=limit, ineligible=ineligible, min_score=min_score, seen=seen,
+        strong_sponsors=strong_sponsors, page=page, source=source,
     )
     jobs, total = db.query_jobs(**params)
     run = db.get_run_status()
     profile = db.get_profile()
     from engine import matcher
+    from engine.ingest import SOURCE_ORDER, linkedin_linkout
 
     return {
+        "linkedin_search_url": linkedin_linkout.url_for_profile(profile),
         "has_llm_key": matcher.llm_available(),
         "request": request,
         "jobs": jobs,
         "total": total,
         "run": run,
         "onboarding": _onboarding_state(profile),
-        "window": window if window in ("7d", "24h", "all") else "7d",
+        "window": window if window in ("14d", "7d", "24h", "all") else "14d",
         "status_view": status or "",
         "location": location or "",
         "remote": bool(remote),
@@ -134,6 +172,13 @@ def _feed_context(
         "min_score": int(min_score) if min_score else 0,
         "strong_sponsors": bool(strong_sponsors),
         "query_string": request.url.query,
+        # 008 (FR-019/FR-020)
+        "seen": seen or "",
+        "source": source or "",
+        "sources": list(SOURCE_ORDER),
+        "page": max(1, page),
+        "pages": max(1, -(-total // params["limit"])),
+        "replace_query": lambda **kw: _replace_query(request, **kw),
     }
 
 
@@ -154,10 +199,20 @@ def create_app() -> FastAPI:
         db.init_db()
         threading.Thread(target=_bootstrap_sponsorship, daemon=True).start()
 
+        def _quiet_update_check() -> None:
+            from engine import updates
+
+            try:
+                updates.startup_check()  # once daily; silent offline (FR-030)
+            except Exception:
+                pass
+
+        threading.Thread(target=_quiet_update_check, daemon=True).start()
+
     @app.get("/", response_class=HTMLResponse)
     def index(
         request: Request,
-        window: str = "7d",
+        window: str = "14d",
         status: str | None = None,
         location: str | None = None,
         remote: int = 0,
@@ -168,18 +223,30 @@ def create_app() -> FastAPI:
         seen: str | None = None,
         strong_sponsors: int = 0,
         view: str | None = None,
+        page: int = 1,
+        source: str | None = None,
+        limit: int = 100,
     ):
         context = _feed_context(
             request, window, status, location, remote, sort, entry_level,
-            ineligible, min_score, seen, strong_sponsors,
+            ineligible, min_score, seen, strong_sponsors, page, source, limit,
         )
         context["board_view"] = view == "board"
+        # 008 (FR-033): surface an unclean previous shutdown exactly once
+        from engine import paths
+
+        marker = paths.data_dir() / "crash.marker"
+        if marker.exists():
+            context["crashed_last_run"] = marker.read_text(
+                encoding="utf-8", errors="replace"
+            )[:300]
+            marker.unlink(missing_ok=True)
         return templates.TemplateResponse(request, "feed.html", context)
 
     @app.get("/partials/feed", response_class=HTMLResponse)
     def feed_partial(
         request: Request,
-        window: str = "7d",
+        window: str = "14d",
         status: str | None = None,
         location: str | None = None,
         remote: int = 0,
@@ -190,10 +257,13 @@ def create_app() -> FastAPI:
         seen: str | None = None,
         strong_sponsors: int = 0,
         view: str | None = None,
+        page: int = 1,
+        source: str | None = None,
+        limit: int = 100,
     ):
         context = _feed_context(
             request, window, status, location, remote, sort, entry_level,
-            ineligible, min_score, seen, strong_sponsors,
+            ineligible, min_score, seen, strong_sponsors, page, source, limit,
         )
         context["board_view"] = view == "board"
         return templates.TemplateResponse(request, "partials/feed_table.html", context)
@@ -226,6 +296,11 @@ def create_app() -> FastAPI:
     def profile_page(request: Request):
         from engine.autofill import answer_bank
 
+        import json as json_mod
+
+        from engine import settings as settings_mod
+
+        pending = settings_mod.get("PENDING_IDENTITY_CONFLICTS") or "[]"
         return templates.TemplateResponse(
             request,
             "profile.html",
@@ -233,6 +308,7 @@ def create_app() -> FastAPI:
                 "profile": db.get_profile(),
                 "answer_bank_entries": answer_bank.list_all(),
                 "extraction_conflict": request.query_params.get("extraction_conflict") == "1",
+                "identity_conflicts": json_mod.loads(pending or "[]"),
             },
         )
 
@@ -242,17 +318,67 @@ def create_app() -> FastAPI:
             request, "analytics.html", {"stats": db.application_analytics()}
         )
 
+    @app.get("/partials/update-banner", response_class=HTMLResponse)
+    def update_banner(request: Request):
+        """008 (FR-030): rendered when the daily startup check (or a manual
+        check) found a newer release."""
+        from engine import updates
+
+        with updates._lock:
+            info = updates._state.get("last_check")
+        if not info or not info.get("newer"):
+            return HTMLResponse("")
+        return templates.TemplateResponse(
+            request, "partials/update_banner.html", {"update": info}
+        )
+
+    @app.get("/partials/whats-new", response_class=HTMLResponse)
+    def whats_new(request: Request):
+        """008 (FR-032): version-specific overlay, shown exactly once."""
+        from engine import APP_VERSION, settings as settings_mod
+
+        entries = WHATS_NEW.get(APP_VERSION) or []
+        if not entries or settings_mod.get("WHATS_NEW_SEEN_VERSION") == APP_VERSION:
+            return HTMLResponse("")
+        return templates.TemplateResponse(
+            request,
+            "partials/whats_new.html",
+            {"entries": entries, "version": APP_VERSION},
+        )
+
+    @app.get("/diagnostics", response_class=HTMLResponse)
+    def diagnostics_page(request: Request):
+        from engine import paths
+        from engine.autofill import browser_setup
+
+        log_path = paths.data_dir() / "app.log"
+        tail = ""
+        if log_path.exists():
+            tail = "\n".join(
+                log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-40:]
+            )
+        return templates.TemplateResponse(
+            request,
+            "diagnostics.html",
+            {
+                "log_tail": tail,
+                "legacy_bytes": browser_setup.legacy_size_bytes(),
+            },
+        )
+
     @app.get("/settings", response_class=HTMLResponse)
     def settings_page(request: Request):
-        from engine import credentials
+        from engine import credentials, watchlist
 
         from .routes_api import get_settings
 
+        watchlist.ensure_seeded()
         default_cred = credentials.get_default()
         return templates.TemplateResponse(
             request,
             "settings.html",
             {
+                "watchlist_companies": watchlist.list_all(),
                 "settings": get_settings(),
                 "credential_domains": credentials.list_domains(),
                 "default_credential_email": default_cred["email"] if default_cred else None,
@@ -261,16 +387,10 @@ def create_app() -> FastAPI:
 
     @app.get("/autofill", response_class=HTMLResponse)
     def autofill_page(request: Request):
-        from engine.autofill import browser_setup
-
         jobs, _ = db.query_jobs(
             window=None, statuses=("saved",), entry_level=True
         )
-        return templates.TemplateResponse(
-            request,
-            "autofill.html",
-            {"jobs": jobs, "chromium_installed": browser_setup.is_installed()},
-        )
+        return templates.TemplateResponse(request, "autofill.html", {"jobs": jobs})
 
     @app.get("/partials/autofill/status", response_class=HTMLResponse)
     def autofill_status_partial(request: Request):

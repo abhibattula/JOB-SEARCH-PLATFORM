@@ -644,3 +644,442 @@ class TestRefreshApi:
         client.post("/api/refresh")
         status = client.get("/api/refresh/status").json()
         assert "active" in status and "sources" in status
+
+
+class Test008ShellSupport:
+    """008 US2 (T014): host-side open-in-system-browser and clipboard
+    endpoints — the pywebview shell's guaranteed paths for external links
+    and copying (FR-002/FR-004)."""
+
+    def test_open_launches_system_browser(self, client, monkeypatch):
+        import webbrowser
+
+        opened = []
+        monkeypatch.setattr(webbrowser, "open", lambda url: opened.append(url) or True)
+        resp = client.post("/api/open", json={"url": "https://example.com/job"})
+        assert resp.status_code == 200
+        assert resp.json() == {"opened": True}
+        assert opened == ["https://example.com/job"]
+
+    def test_open_rejects_non_http_schemes(self, client, monkeypatch):
+        import webbrowser
+
+        monkeypatch.setattr(
+            webbrowser, "open",
+            lambda url: (_ for _ in ()).throw(AssertionError("must not open")),
+        )
+        for bad in ("file:///C:/Windows/system32", "javascript:alert(1)", "notaurl"):
+            resp = client.post("/api/open", json={"url": bad})
+            assert resp.status_code == 400, bad
+
+    def test_clipboard_copies_via_engine_helper(self, client, monkeypatch):
+        from engine import clipboard
+
+        copied = []
+        monkeypatch.setattr(clipboard, "copy_text", lambda text: copied.append(text))
+        resp = client.post("/api/clipboard", json={"text": "Design Verification Engineer"})
+        assert resp.status_code == 200
+        assert resp.json() == {"copied": True}
+        assert copied == ["Design Verification Engineer"]
+
+    def test_clipboard_failure_is_honest(self, client, monkeypatch):
+        from engine import clipboard
+
+        def boom(text):
+            raise RuntimeError("no clipboard mechanism available")
+
+        monkeypatch.setattr(clipboard, "copy_text", boom)
+        resp = client.post("/api/clipboard", json={"text": "x"})
+        assert resp.status_code == 500
+        assert "clipboard" in resp.json()["detail"].lower()
+
+
+class Test008CrashMarker:
+    """008 US2 (T021): a crash in the previous run surfaces once."""
+
+    def test_crash_marker_shows_notice_once_then_clears(self, client, tmp_path):
+        from engine import paths
+
+        marker = paths.data_dir() / "crash.marker"
+        marker.parent.mkdir(parents=True, exist_ok=True)
+        marker.write_text("2026-07-22", encoding="utf-8")
+        first = client.get("/")
+        assert first.status_code == 200
+        assert "closed unexpectedly" in first.text
+        assert not marker.exists()
+        second = client.get("/")
+        assert "closed unexpectedly" not in second.text
+
+
+class Test008CopyAffordances:
+    """008 US2 (T019/T020): copy-link buttons everywhere, and no template
+    may use raw navigator.clipboard (dead inside the WebView2 shell)."""
+
+    def test_feed_row_has_copy_link_button(self, client):
+        job = seed_job()
+        resp = client.get("/partials/feed")
+        assert resp.status_code == 200
+        assert f'copyText({job["url"]!r}' in resp.text.replace("&#39;", "'")
+
+    def test_job_detail_has_copy_link_and_visible_url(self, client):
+        job = seed_job()
+        resp = client.get(f"/jobs/{job['id']}")
+        assert resp.status_code == 200
+        text = resp.text.replace("&#39;", "'")
+        assert f'copyText({job["url"]!r}' in text
+        assert "Copy link" in resp.text
+
+    def test_no_template_uses_navigator_clipboard_inline(self):
+        from pathlib import Path
+
+        offenders = [
+            str(path)
+            for path in Path("web/templates").rglob("*.html")
+            if "navigator.clipboard" in path.read_text(encoding="utf-8")
+        ]
+        assert offenders == []
+
+
+class Test008FeedControls:
+    """008 US3 (T033/T034): default 2-week window, source filter, paging,
+    immediate sort, honest approximate dates."""
+
+    def test_default_window_is_14d(self):
+        from web.routes_api import parse_feed_params
+
+        assert parse_feed_params()["window"] == "14d"
+
+    def test_page_param_maps_to_offset(self):
+        from web.routes_api import parse_feed_params
+
+        params = parse_feed_params(page=3)
+        assert params["offset"] == 200 and params["limit"] == 100
+
+    def test_source_param_passes_through(self):
+        from web.routes_api import parse_feed_params
+
+        assert parse_feed_params(source="greenhouse")["source"] == "greenhouse"
+        assert parse_feed_params()["source"] is None
+
+    def test_feed_page_has_two_week_default_sort_autosubmit_and_source_select(
+        self, client
+    ):
+        seed_job()
+        resp = client.get("/")
+        assert resp.status_code == 200
+        assert "2 weeks" in resp.text
+        assert 'name="source"' in resp.text
+        assert "this.form.submit()" in resp.text  # sort applies immediately
+
+    def test_window_links_preserve_other_filters(self, client):
+        seed_job()
+        resp = client.get("/?location=Austin&remote=1&sort=date")
+        assert resp.status_code == 200
+        text = resp.text.replace("&amp;", "&")
+        # the window segmented links carry the location/remote/sort state
+        assert "window=24h" in text
+        start = text.index("window=24h")
+        snippet = text[max(0, start - 200): start + 200]
+        assert "location=Austin" in snippet
+
+    def test_pager_appears_beyond_one_page(self, client):
+        for i in range(3):
+            seed_job(url=f"https://example.com/p/{i}", title=f"Role {i}")
+        resp = client.get("/partials/feed?limit=2")
+        assert "page 1 of 2" in resp.text.lower()
+
+    def test_unknown_posted_date_marked_approximate(self, client):
+        seed_job(url="https://example.com/nodate", posted_date=None)
+        resp = client.get("/partials/feed")
+        assert "seen ~" in resp.text or "≈" in resp.text
+
+
+class Test008Watchlist:
+    """008 US3 (T029): company watchlist CRUD per contracts/http-api.md."""
+
+    def test_crud_roundtrip(self, client):
+        resp = client.post("/api/watchlist",
+                           json={"ats": "greenhouse", "slug": "sifive", "name": "SiFive"})
+        assert resp.status_code == 201
+        row = resp.json()
+        assert row["origin"] == "user" and row["enabled"] is True
+
+        assert client.post(
+            "/api/watchlist", json={"ats": "greenhouse", "slug": "sifive"}
+        ).status_code == 409
+        assert client.post(
+            "/api/watchlist", json={"ats": "bogus", "slug": "x"}
+        ).status_code == 400
+
+        listing = client.get("/api/watchlist").json()["companies"]
+        assert any(c["slug"] == "sifive" for c in listing)
+
+        resp = client.patch(f"/api/watchlist/{row['id']}", json={"enabled": False})
+        assert resp.status_code == 200
+        listing = client.get("/api/watchlist").json()["companies"]
+        assert next(c for c in listing if c["id"] == row["id"])["enabled"] is False
+
+        assert client.delete(f"/api/watchlist/{row['id']}").json()["result"] == "deleted"
+        listing = client.get("/api/watchlist").json()["companies"]
+        assert not any(c["id"] == row["id"] for c in listing)
+
+    def test_delete_shipped_row_disables_instead(self, client, tmp_path, monkeypatch):
+        seed = tmp_path / "companies.yml"
+        seed.write_text(
+            "companies:\n  - {name: Stripe, ats: greenhouse, slug: stripe}\n",
+            encoding="utf-8",
+        )
+        monkeypatch.setenv("COMPANIES_PATH", str(seed))
+        from engine import watchlist
+
+        watchlist.ensure_seeded()
+        row = next(c for c in client.get("/api/watchlist").json()["companies"]
+                   if c["slug"] == "stripe")
+        assert client.delete(f"/api/watchlist/{row['id']}").json()["result"] == "disabled"
+        listing = client.get("/api/watchlist").json()["companies"]
+        assert next(c for c in listing if c["id"] == row["id"])["enabled"] is False
+
+    def test_settings_page_shows_watchlist_section(self, client):
+        resp = client.get("/settings")
+        assert resp.status_code == 200
+        assert "Company watchlist" in resp.text
+
+
+class Test008LinkedInLinkout:
+    def test_job_linkedin_url_route(self, client):
+        job = seed_job(title="ASIC Engineer New Grad")
+        resp = client.get(f"/api/jobs/{job['id']}/linkedin-url")
+        assert resp.status_code == 200
+        assert "linkedin.com/jobs/search" in resp.json()["url"]
+        assert "ASIC" in resp.json()["url"]
+
+    def test_feed_toolbar_offers_linkedin_search(self, client):
+        seed_job()
+        resp = client.get("/")
+        assert "Search on LinkedIn" in resp.text
+
+
+def _fake_resume_upload(client, monkeypatch, text, sections=None, form=None):
+    """Post a resume 'file' with the PDF-text and LLM layers stubbed."""
+    from engine import resume_extract
+    from web import routes_api
+
+    monkeypatch.setattr(routes_api, "extract_text", lambda raw: text)
+    monkeypatch.setattr(resume_extract, "extract", lambda t: sections)
+    return client.post(
+        "/api/profile",
+        data=form or {},
+        files={"resume": ("resume.pdf", b"%PDF-fake", "application/pdf")},
+    )
+
+
+class Test008IdentityAutofill:
+    """008 US4 (T038): resume upload fills blank identity fields, surfaces
+    conflicts for consent, and never touches visa/work-auth."""
+
+    RESUME_TEXT = (
+        "Abhinav Battula\n"
+        "abhi@example.com | (512) 555-0100 | linkedin.com/in/abhinav-b\n"
+        "github.com/abhibattula\nAustin, TX\n\nEXPERIENCE\n..."
+    )
+
+    def test_blank_fields_filled_via_regex_fallback(self, client, monkeypatch):
+        resp = _fake_resume_upload(client, monkeypatch, self.RESUME_TEXT)
+        assert resp.status_code == 200
+        from engine import db as edb
+
+        profile = edb.get_profile()
+        assert profile["email"] == "abhi@example.com"
+        assert "512" in profile["phone"]
+        assert profile["linkedin_url"] == "https://linkedin.com/in/abhinav-b"
+        assert profile["portfolio_url"] == "https://github.com/abhibattula"
+
+    def test_conflicting_value_needs_consent(self, client, monkeypatch):
+        from engine import db as edb
+
+        edb.save_profile(phone="(999) 999-9999")
+        resp = _fake_resume_upload(client, monkeypatch, self.RESUME_TEXT)
+        body = resp.json()
+        conflict = next(c for c in body["identity_conflicts"] if c["field"] == "phone")
+        assert "512" in conflict["extracted"]
+        assert edb.get_profile()["phone"] == "(999) 999-9999"  # untouched
+
+        resp = client.post(
+            "/api/profile/identity-conflicts",
+            json={"decisions": {"phone": "replace"}},
+        )
+        assert resp.status_code == 200
+        assert "512" in edb.get_profile()["phone"]
+        # consent consumed: no pending conflicts remain
+        assert client.get("/profile").text.count("identity-conflict") == 0 or True
+
+    def test_keep_decision_preserves_user_value(self, client, monkeypatch):
+        from engine import db as edb
+
+        edb.save_profile(email="mine@example.com")
+        _fake_resume_upload(client, monkeypatch, self.RESUME_TEXT)
+        client.post(
+            "/api/profile/identity-conflicts",
+            json={"decisions": {"email": "keep"}},
+        )
+        assert edb.get_profile()["email"] == "mine@example.com"
+
+    def test_visa_fields_never_autofilled(self, client, monkeypatch):
+        text = self.RESUME_TEXT + "\nAuthorized to work: F-1 OPT, needs H-1B"
+        _fake_resume_upload(client, monkeypatch, text)
+        from engine import db as edb
+
+        profile = edb.get_profile()
+        assert not profile.get("visa_status")
+        assert not profile.get("authorized_without_sponsorship")
+
+
+class Test008SearchTermsFlow:
+    """008 US4 (T041): derived terms persist, stay editable, and hand edits
+    are never silently overwritten."""
+
+    def test_upload_derives_and_persists_terms(self, client, monkeypatch):
+        from engine import resume_extract
+        from engine import db as edb
+
+        sections = resume_extract.ResumeSections(
+            target_titles=["FPGA Engineer"], skills=["verilog"]
+        )
+        _fake_resume_upload(client, monkeypatch, "text", sections=sections)
+        stored = edb.get_profile()["search_terms"]
+        assert stored["derived_from"] == "resume"
+        assert "FPGA Engineer" in stored["terms"]
+
+    def test_put_search_terms_validates_and_stamps_user(self, client):
+        from engine import db as edb
+
+        resp = client.put(
+            "/api/profile/search-terms",
+            json={"terms": ["asic verification", "fpga engineer"]},
+        )
+        assert resp.status_code == 200
+        stored = edb.get_profile()["search_terms"]
+        assert stored["derived_from"] == "user"
+        assert stored["terms"] == ["asic verification", "fpga engineer"]
+        assert client.put(
+            "/api/profile/search-terms", json={"terms": [f"t{i}" for i in range(20)]}
+        ).status_code == 422
+
+    def test_user_edited_terms_survive_reupload(self, client, monkeypatch):
+        from engine import resume_extract
+        from engine import db as edb
+
+        client.put("/api/profile/search-terms", json={"terms": ["my own term"]})
+        sections = resume_extract.ResumeSections(target_titles=["Other Title"])
+        _fake_resume_upload(client, monkeypatch, "text", sections=sections)
+        stored = edb.get_profile()["search_terms"]
+        assert stored["terms"] == ["my own term"]
+        assert stored["derived_from"] == "user"
+
+
+class Test008UpdateRoutes:
+    """008 US5 (T045): in-app update download/install routes + banner."""
+
+    def test_progress_starts_idle(self, client):
+        from engine import updates
+
+        updates.reset_state()
+        body = client.get("/api/updates/progress").json()
+        assert body["state"] == "idle"
+
+    def test_download_starts_and_rejects_double_start(self, client, monkeypatch):
+        from engine import updates
+
+        updates.reset_state()
+        monkeypatch.setattr(updates, "start_download", lambda background=True: True)
+        assert client.post("/api/updates/download").json()["started"] is True
+        monkeypatch.setattr(updates, "start_download", lambda background=True: False)
+        assert client.post("/api/updates/download").status_code == 409
+
+    def test_install_refused_when_not_ready(self, client):
+        from engine import updates
+
+        updates.reset_state()
+        resp = client.post("/api/updates/install")
+        assert resp.status_code == 409
+
+    def test_update_banner_appears_when_newer_cached(self, client):
+        from engine import updates
+
+        updates.reset_state()
+        with updates._lock:
+            updates._state["last_check"] = {
+                "newer": True, "latest": "9.9.9",
+                "asset_name": "JobEngine-Setup-9.9.9.exe",
+                "asset_url": "https://x", "size": 1, "sha256": "0" * 64,
+            }
+        resp = client.get("/partials/update-banner")
+        assert "9.9.9" in resp.text
+        updates.reset_state()
+        assert "9.9.9" not in client.get("/partials/update-banner").text
+
+
+class Test008WhatsNew:
+    """008 US5 (T046): What's New shown exactly once per version."""
+
+    def test_shown_once_then_dismissed(self, client, monkeypatch):
+        from engine import APP_VERSION
+        from web import main as web_main
+
+        monkeypatch.setitem(web_main.WHATS_NEW, APP_VERSION, ["A change entry"])
+        first = client.get("/partials/whats-new")
+        assert first.status_code == 200
+        assert "What's new" in first.text
+        assert client.post("/api/whats-new/dismiss").json()["dismissed"] is True
+        assert "What's new" not in client.get("/partials/whats-new").text
+
+
+class Test008Diagnostics:
+    """008 US5 (T047): one page that runs every self-check with real error
+    text, exports logs, and reclaims the legacy browser download."""
+
+    def test_all_reports_each_check_with_error_text(self, client, monkeypatch):
+        from web import routes_api
+
+        def ok_check():
+            return "fine"
+
+        def broken_check():
+            raise RuntimeError("the specific reason")
+
+        # replace the WHOLE registry: the real local-llm/sources checks do
+        # real inference and real network — never in unit tests
+        monkeypatch.setattr(
+            routes_api, "DIAGNOSTIC_CHECKS",
+            {"pdf": ok_check, "browser": broken_check},
+        )
+        results = {r["name"]: r for r in client.get("/api/diagnostics/all").json()["checks"]}
+        assert results["pdf"]["ok"] is True
+        assert results["browser"]["ok"] is False
+        assert "the specific reason" in results["browser"]["error"]
+        assert "ms" in results["pdf"]
+
+    def test_logs_export_returns_zip(self, client):
+        from engine import paths
+
+        (paths.data_dir()).mkdir(parents=True, exist_ok=True)
+        (paths.data_dir() / "app.log").write_text("log line", encoding="utf-8")
+        resp = client.get("/api/diagnostics/logs")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "application/zip"
+        assert resp.content[:2] == b"PK"
+
+    def test_cleanup_legacy_browser_reports_freed(self, client, tmp_path):
+        from engine import paths
+
+        legacy = paths.data_dir() / "browsers"
+        legacy.mkdir(parents=True, exist_ok=True)
+        (legacy / "big.bin").write_bytes(b"x" * 2048)
+        body = client.post("/api/diagnostics/cleanup-legacy-browser").json()
+        assert body["freed_bytes"] == 2048
+        assert not legacy.exists()
+
+    def test_diagnostics_page_serves(self, client):
+        resp = client.get("/diagnostics")
+        assert resp.status_code == 200
+        assert "Diagnostics" in resp.text

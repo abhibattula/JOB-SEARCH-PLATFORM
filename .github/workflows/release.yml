@@ -38,26 +38,31 @@ jobs:
       - run: python -m pip install pyinstaller
       - name: llama-cpp-python install canary
         run: python -c "import llama_cpp; print(llama_cpp.__version__)"
+      - name: Version consistency gate (tag == iss == APP_VERSION)
+        run: python packaging/check_version.py
       - run: python -m pytest -q
       - name: Cache bundled model
         uses: actions/cache@v4
         with:
           path: models
-          key: qwen2.5-1.5b-instruct-q4_k_m-gguf-v1
+          key: jobengine-models-qwen1.5b-embgemma300m-v1
       - run: python packaging/fetch_model.py
       - run: pyinstaller packaging/jobengine.spec
-      - name: Install Chromium for the smoke test
-        shell: bash
-        run: |
-          export PLAYWRIGHT_BROWSERS_PATH="$RUNNER_TEMP/jobengine-smoke-data/browsers"
-          python -m playwright install chromium
       - name: Smoke test the frozen build
         run: python packaging/smoke_test.py dist/JobEngine/JobEngine.exe
       - run: choco install innosetup -y --no-progress
       - run: iscc packaging\windows.iss
+      - name: Compute installer SHA-256 for the release body
+        shell: bash
+        run: |
+          f=$(ls packaging/Output/JobEngine-Setup-*.exe)
+          echo "$(sha256sum "$f" | awk '{print $1}')  $(basename "$f")" > sha256-windows.txt
+          cat sha256-windows.txt
       - uses: softprops/action-gh-release@v2
         with:
           files: packaging/Output/JobEngine-Setup-*.exe
+          body_path: sha256-windows.txt
+          append_body: true
 
   mac-dmg:
     runs-on: macos-latest
@@ -88,21 +93,26 @@ jobs:
       - run: python -m pip install pyinstaller
       - name: llama-cpp-python install canary
         run: python -c "import llama_cpp; print(llama_cpp.__version__)"
+      - name: Version consistency gate (tag == iss == APP_VERSION)
+        run: python packaging/check_version.py
       - run: python -m pytest -q
       - name: Cache bundled model
         uses: actions/cache@v4
         with:
           path: models
-          key: qwen2.5-1.5b-instruct-q4_k_m-gguf-v1
+          key: jobengine-models-qwen1.5b-embgemma300m-v1
       - run: python packaging/fetch_model.py
       - run: pyinstaller packaging/jobengine.spec
-      - name: Install Chromium for the smoke test
-        run: |
-          export PLAYWRIGHT_BROWSERS_PATH="$RUNNER_TEMP/jobengine-smoke-data/browsers"
-          python -m playwright install chromium
       - name: Smoke test the frozen build
         run: python packaging/smoke_test.py "dist/Job Engine.app/Contents/MacOS/JobEngine"
       - run: bash packaging/make_dmg.sh "${GITHUB_REF_NAME#v}"
+      - name: Compute dmg SHA-256 for the release body
+        run: |
+          f=$(ls dist/JobEngine-*.dmg)
+          echo "$(shasum -a 256 "$f" | awk '{print $1}')  $(basename "$f")" > sha256-mac.txt
+          cat sha256-mac.txt
       - uses: softprops/action-gh-release@v2
         with:
           files: dist/JobEngine-*.dmg
+          body_path: sha256-mac.txt
+          append_body: true

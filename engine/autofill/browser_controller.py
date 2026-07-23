@@ -37,13 +37,29 @@ FIELD_QUERY_SELECTOR = (
 
 _CORE_IDENTITY_TAGS = {"full_name", "first_name", "last_name", "email", "resume_upload"}
 
+# 008 (FR-007): Apply Assist drives the user's INSTALLED branded browser via
+# Playwright channels — nothing is downloaded, PLAYWRIGHT_BROWSERS_PATH is
+# irrelevant. Edge ships inbox and is non-removable on US-market Windows 11;
+# Chrome is the fallback for machines where it isn't.
+_CHANNELS = ("msedge", "chrome")
+
+# 008 (FR-009): reason classes that mean "complete this one manually" —
+# each renders a DISTINCT message in the status panel, so a browser that
+# never launched is no longer misreported as "this page couldn't be read".
+FALLBACK_REASONS = ("launch_failed", "nav_failed", "scan_failed", "unrecognized")
+
+
+class BrowserUnavailable(RuntimeError):
+    """No supported installed browser (Edge/Chrome) could be launched."""
+
 
 class _State:
     def __init__(self) -> None:
         self.job_ids: list[int] = []
         self.index: int = -1
         self.running: bool = False
-        self.fell_back: set[int] = set()
+        # job_id -> {"reason": FALLBACK_REASONS member, "detail": str}
+        self.outcomes: dict[int, dict] = {}
         # At most one pending confirmation tracked at a time (FR-011): an
         # unrecognized/no-saved-answer question pauses for review rather
         # than being auto-filled from an unreviewed AI draft.
@@ -66,6 +82,12 @@ _lock = threading.Lock()
 _playwright = None
 _context = None
 _page = None
+_launched_channel: str | None = None
+
+
+def _mark_fallback(job_id: int, reason: str, detail: str = "") -> None:
+    with _lock:
+        _state.outcomes[job_id] = {"reason": reason, "detail": detail[:300]}
 
 
 def _should_fall_back(classified_tags: list[str]) -> bool:
@@ -91,34 +113,64 @@ def _apply_field_value(element, tag: str, field_type: str, value) -> None:
         element.fill(str(value))
 
 
-def _browsers_path():
+def _profile_dir():
+    """Dedicated persistent profile for Apply Assist — the launched browser
+    is the user's installed Edge/Chrome BINARY, but never their personal
+    browsing profile (005 clarify session; 008 FR-007)."""
     from .. import paths
 
-    return paths.data_dir() / "browsers"
-
-
-def _profile_dir():
-    path = _browsers_path() / "apply-assist-profile"
+    path = paths.data_dir() / "browser-profile"
     path.mkdir(parents=True, exist_ok=True)
     return path
 
 
 def _ensure_context():
-    """Lazily launches a dedicated, isolated headed Chromium profile —
-    never the user's regular default browser (005 clarify session)."""
-    global _playwright, _context
+    """Lazily launches a headed session of the user's installed browser via
+    Playwright channels (msedge → chrome). Raises BrowserUnavailable with
+    per-channel detail when neither can start (008 FR-007/FR-009)."""
+    global _playwright, _context, _launched_channel
     if _context is not None:
         return _context
-    import os
-
-    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(_browsers_path())
     from playwright.sync_api import sync_playwright
 
     _playwright = sync_playwright().start()
-    _context = _playwright.chromium.launch_persistent_context(
-        user_data_dir=str(_profile_dir()), headless=False
-    )
-    return _context
+    errors = []
+    for channel in _CHANNELS:
+        try:
+            _context = _playwright.chromium.launch_persistent_context(
+                user_data_dir=str(_profile_dir()), channel=channel, headless=False
+            )
+            _launched_channel = channel
+            return _context
+        except Exception as exc:
+            errors.append(f"{channel}: {str(exc).splitlines()[0][:200]}")
+    try:
+        _playwright.stop()
+    finally:
+        _playwright = None
+    raise BrowserUnavailable("; ".join(errors))
+
+
+def preflight() -> dict:
+    """Cheap launchability probe (FR-010): can an installed browser actually
+    start? Runs before any queue; never touches an already-live session."""
+    if _context is not None:
+        return {"ok": True, "channel": _launched_channel, "error": None}
+    from playwright.sync_api import sync_playwright
+
+    errors = []
+    try:
+        with sync_playwright() as p:
+            for channel in _CHANNELS:
+                try:
+                    probe = p.chromium.launch(channel=channel, headless=True)
+                    probe.close()
+                    return {"ok": True, "channel": channel, "error": None}
+                except Exception as exc:
+                    errors.append(f"{channel}: {str(exc).splitlines()[0][:200]}")
+    except Exception as exc:
+        errors.append(str(exc).splitlines()[0][:200])
+    return {"ok": False, "channel": None, "error": "; ".join(errors) or "unknown"}
 
 
 def _job_url(job_id: int) -> str | None:
@@ -194,9 +246,8 @@ def _open_job(job_id: int) -> None:
         if _is_closed_error(exc):
             _mark_interrupted()
         else:
-            log.warning("could not open a browser page — manual fallback", exc_info=True)
-            with _lock:
-                _state.fell_back.add(job_id)
+            log.warning("browser launch failed", exc_info=True)
+            _mark_fallback(job_id, "launch_failed", str(exc))
         return
     _wire_page_change(_page, job_id)
     try:
@@ -205,23 +256,23 @@ def _open_job(job_id: int) -> None:
         if _is_closed_error(exc):
             _mark_interrupted()
             return
-        log.warning("failed to load %s — falling back to manual", url, exc_info=True)
-        with _lock:
-            _state.fell_back.add(job_id)
+        log.warning("failed to load %s", url, exc_info=True)
+        _mark_fallback(job_id, "nav_failed", str(exc))
         return
 
     try:
         raw_fields = _serialize_fields(_page)
-    except Exception:
-        log.warning("field serialization failed for %s — falling back to manual", url, exc_info=True)
-        with _lock:
-            _state.fell_back.add(job_id)
+    except Exception as exc:
+        log.warning("field serialization failed for %s", url, exc_info=True)
+        _mark_fallback(job_id, "scan_failed", str(exc))
         return
 
     classified = [fields_mod.classify(f) for f in raw_fields]
     if _should_fall_back(classified):
-        with _lock:
-            _state.fell_back.add(job_id)
+        _mark_fallback(
+            job_id, "unrecognized",
+            "no core identity fields (name/email/resume) recognized on this page",
+        )
         return
 
     _fill_page(job_id)
@@ -439,7 +490,7 @@ def start_queue(job_ids: list[int]) -> dict | None:
         _state.job_ids = list(job_ids)
         _state.index = 0 if job_ids else -1
         _state.running = bool(job_ids)
-        _state.fell_back = set()
+        _state.outcomes = {}
         _state.pending = None
         _state.fill_reports = {}
         _state.interrupted = False
@@ -462,10 +513,11 @@ def current_job() -> dict | None:
                 "category": _state.pending["category"],
                 "drafted_answer": _state.pending["drafted_answer"],
             }
+        outcome = _state.outcomes.get(job_id)
         return {
             "job_id": job_id,
             "remaining": remaining,
-            "fell_back": job_id in _state.fell_back,
+            "fell_back": bool(outcome and outcome["reason"] in FALLBACK_REASONS),
             "pending": pending,
         }
 
@@ -495,7 +547,8 @@ def resolve_pending(answer: str) -> None:
 
 def _job_outcome(job_id: int) -> str:
     """Per-job outcome for the batch summary (FR-009). Caller holds _lock."""
-    if job_id in _state.fell_back:
+    outcome = _state.outcomes.get(job_id)
+    if outcome and outcome["reason"] in FALLBACK_REASONS:
         return "manual"
     entries = _state.fill_reports.get(job_id) or []
     if any(entry["outcome"] == "filled" for entry in entries):
@@ -569,6 +622,10 @@ def queue_snapshot() -> dict:
         running = _state.running
         interrupted = _state.interrupted
         summary = _state.summary
+        outcomes = [
+            {"job_id": job_id, **entry}
+            for job_id, entry in _state.outcomes.items()
+        ]
         current_report = []
         if 0 <= index < len(job_ids):
             current_report = list(_state.fill_reports.get(job_ids[index]) or [])
@@ -593,26 +650,18 @@ def queue_snapshot() -> dict:
         "fill_report": current_report,
         "interrupted": interrupted,
         "summary": summary,
+        "outcomes": outcomes,
     }
 
 
 def chromium_selftest() -> bool:
-    """Launches a real headed Chromium instance and navigates to about:blank
-    — used by GET /api/diagnostics/chromium-launch-selftest and
-    packaging/smoke_test.py to catch a silently-dropped Playwright driver
-    (the same tls_client-shaped risk as the local LLM's native lib)."""
-    import os
-
-    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(_browsers_path())
-    from playwright.sync_api import sync_playwright
-
-    with sync_playwright() as p:
-        browser = p.chromium.launch(headless=True)
-        try:
-            page = browser.new_page()
-            page.goto("about:blank")
-        finally:
-            browser.close()
+    """Can the browser layer actually start? Used by GET /api/diagnostics/
+    chromium-launch-selftest and packaging/smoke_test.py to catch a
+    silently-dropped Playwright driver (the tls_client-shaped risk).
+    008: channel-based — probes the user's installed Edge/Chrome."""
+    result = preflight()
+    if not result["ok"]:
+        raise RuntimeError(result["error"])
     return True
 
 
@@ -622,7 +671,7 @@ def stop_queue() -> None:
         _state.running = False
         _state.job_ids = []
         _state.index = -1
-        _state.fell_back = set()
+        _state.outcomes = {}
         _state.pending = None
         _state.fill_reports = {}
         _state.interrupted = False

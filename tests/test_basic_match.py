@@ -76,7 +76,7 @@ class TestUpgradePath:
     def _seed(self, method):
         db.upsert_job(
             {
-                "title": "HW Engineer",
+                "title": f"HW Engineer {method}",
                 "company": "TestCo",
                 "url": f"https://x.example/{method}",
                 "source": "greenhouse",

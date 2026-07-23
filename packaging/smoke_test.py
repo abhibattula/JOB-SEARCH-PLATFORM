@@ -37,16 +37,13 @@ def read_port(port_file: str) -> int | None:
 
 
 def _clear_stale_state(data_dir: str) -> None:
-    """Wipe everything except browsers/ — Chromium is installed there as a
-    separate CI step *before* this runs (it's a slow, cacheable download,
-    unrelated to whether the rest of the run is "fresh"). Nuking the whole
-    dir would silently discard that install and this step's Chromium check
-    would never actually exercise a real driver."""
+    """Wipe the smoke data dir for a truly fresh run. 008: no browsers/
+    carve-out anymore — Apply Assist launches the machine's installed
+    Edge/Chrome via Playwright channels (CI runner images ship both), so
+    there is no downloaded-Chromium state to preserve."""
     if not os.path.isdir(data_dir):
         return
     for name in os.listdir(data_dir):
-        if name == "browsers":
-            continue
         path = os.path.join(data_dir, name)
         if os.path.isdir(path):
             shutil.rmtree(path, ignore_errors=True)
@@ -122,9 +119,9 @@ def main() -> int:
         print(f"FAIL: pdf-selftest did not return ok+bytes: {pdf_selftest}")
         return 1
 
-    # 005: same reasoning, for the Playwright driver — only run this if
-    # Chromium is actually installed (it's an opt-in first-use download,
-    # not part of the base install, so CI installs it before this check).
+    # 005/008: same reasoning, for the Playwright driver — 008 launches the
+    # machine's installed Edge/Chrome via channels (no download), so this
+    # exercises the bundled Node driver against a real branded browser.
     chromium_body = urllib.request.urlopen(
         base + "/api/diagnostics/chromium-launch-selftest", timeout=60
     ).read()
@@ -134,6 +131,40 @@ def main() -> int:
         proc.terminate()
         print(f"FAIL: chromium-launch-selftest did not return ok: {chromium_selftest}")
         return 1
+
+    # 008: the bundled embeddings model must actually embed in the frozen
+    # build (same dropped-native-lib blind spot as llama_cpp/tls_client).
+    diag_body = urllib.request.urlopen(
+        base + "/api/diagnostics/all", timeout=180
+    ).read()
+    diag = {c["name"]: c for c in json.loads(diag_body)["checks"]}
+    print(f"diagnostics/all -> { {k: v['ok'] for k, v in diag.items()} }")
+    for required in ("embeddings", "browser", "pdf"):
+        if not diag.get(required, {}).get("ok"):
+            proc.terminate()
+            print(f"FAIL: diagnostics check {required!r} failed: {diag.get(required)}")
+            return 1
+
+    # 008: Apply Assist preflight must ANSWER (ok or a typed error) — a
+    # silent hang here was exactly the v0.5-v0.7 failure mode.
+    preflight_req = urllib.request.Request(
+        base + "/api/autofill/preflight", method="POST"
+    )
+    preflight = json.loads(urllib.request.urlopen(preflight_req, timeout=120).read())
+    print(f"autofill/preflight -> {preflight}")
+    if "ok" not in preflight:
+        proc.terminate()
+        print(f"FAIL: preflight returned no verdict: {preflight}")
+        return 1
+
+    # 008: the update check must run inside the frozen build (asset
+    # selection + version compare); offline it may return an error string,
+    # but the endpoint itself must answer.
+    update_req = urllib.request.Request(
+        base + "/api/settings/check-update", method="POST"
+    )
+    update_body = urllib.request.urlopen(update_req, timeout=30).read()
+    print(f"check-update -> {update_body[:200]!r}")
 
     proc.terminate()
     time.sleep(2)

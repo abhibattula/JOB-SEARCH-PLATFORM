@@ -4,24 +4,42 @@
 <!-- Kick a background refresh on open; server no-ops inside the 30-min cooldown -->
 <div hx-post="/api/refresh" hx-trigger="load" hx-swap="none"></div>
 
+{% if crashed_last_run %}
+<div class="error-banner" role="alert">
+  The app closed unexpectedly last time
+  (<span class="data">{{ crashed_last_run }}</span>). Details are in the log —
+  see Settings → Diagnostics.
+</div>
+{% endif %}
+
 {% include "partials/onboarding.html" %}
 
 <form class="toolbar" method="get" action="/">
   <div class="segmented" role="group" aria-label="Time window">
-    <a class="{{ 'on' if window == '24h' }}" href="/?window=24h&status={{ status_view }}&sort={{ sort }}">Today</a>
-    <a class="{{ 'on' if window == '7d' }}" href="/?window=7d&status={{ status_view }}&sort={{ sort }}">This week</a>
-    <a class="{{ 'on' if window == 'all' }}" href="/?window=all&status={{ status_view }}&sort={{ sort }}">All</a>
+    <a class="{{ 'on' if window == '24h' }}" href="{{ replace_query(window='24h', page=None) }}">Today</a>
+    <a class="{{ 'on' if window == '7d' }}" href="{{ replace_query(window='7d', page=None) }}">This week</a>
+    <a class="{{ 'on' if window == '14d' }}" href="{{ replace_query(window='14d', page=None) }}">2 weeks</a>
+    <a class="{{ 'on' if window == 'all' }}" href="{{ replace_query(window='all', page=None) }}" title="Everything on record — delisted postings show flagged here">All</a>
   </div>
   <input type="hidden" name="window" value="{{ window }}">
   <input type="hidden" name="status" value="{{ status_view }}">
+  {% if seen %}<input type="hidden" name="seen" value="{{ seen }}">{% endif %}
+  {% if ineligible %}<input type="hidden" name="ineligible" value="1">{% endif %}
+  {% if board_view %}<input type="hidden" name="view" value="board">{% endif %}
   <input type="search" name="location" value="{{ location }}" placeholder="Location contains…">
   <label class="check"><input type="checkbox" name="remote" value="1" {{ 'checked' if remote }}> Remote only</label>
   <label class="check" title="Sponsor grade B or better, or likely cap-exempt employers (universities/nonprofits that skip the H-1B lottery)">
     <input type="checkbox" name="strong_sponsors" value="1" {{ 'checked' if strong_sponsors }}> Strong sponsors only
   </label>
-  <select name="sort">
+  <select name="sort" onchange="this.form.submit()" title="Applies immediately">
     <option value="score" {{ 'selected' if sort == 'score' }}>Sort: match score</option>
     <option value="date" {{ 'selected' if sort == 'date' }}>Sort: newest</option>
+  </select>
+  <select name="source" onchange="this.form.submit()" title="Only show jobs from one source">
+    <option value="" {{ 'selected' if not source }}>All sources</option>
+    {% for s in sources %}
+    <option value="{{ s }}" {{ 'selected' if source == s }}>{{ s }}</option>
+    {% endfor %}
   </select>
   <select name="entry_level" title="Seniority filter">
     <option value="" {{ 'selected' if not entry_level }}>Entry-level only</option>
@@ -35,8 +53,8 @@
   </select>
   {% if status_view == 'applied' %}
   <div class="segmented" role="group" aria-label="Pipeline view">
-    <a class="{{ 'on' if not board_view }}" href="/?status=applied&window={{ window }}">Table</a>
-    <a class="{{ 'on' if board_view }}" href="/?status=applied&window={{ window }}&view=board">Board</a>
+    <a class="{{ 'on' if not board_view }}" href="{{ replace_query(view=None) }}">Table</a>
+    <a class="{{ 'on' if board_view }}" href="{{ replace_query(view='board') }}">Board</a>
   </div>
   {% endif %}
   <button type="submit">Apply filters</button>
@@ -46,6 +64,8 @@
     Refresh now
   </button>
   <a class="export-link data" href="/api/export?{{ query_string }}" title="Download the current view as CSV">CSV ↓</a>
+  <a class="export-link data" href="{{ linkedin_search_url }}" target="_blank" rel="noopener"
+     title="Opens a LinkedIn search for your terms (last 14 days) in your own browser — always genuine, no scraping">Search on LinkedIn ↗</a>
 </form>
 
 <div id="feed-region" aria-live="polite"

@@ -26,7 +26,7 @@ def llm_env(monkeypatch):
 
 class TestAnalyzeMatch:
     def test_valid_json_returns_analysis(self, monkeypatch):
-        monkeypatch.setattr(matcher, "_chat", lambda messages: VALID)
+        monkeypatch.setattr(matcher, "_chat", lambda messages, **kw: VALID)
         result = matcher.analyze_match("resume text", "HW Engineer", "NVIDIA", "jd text")
         assert result is not None
         assert result.match_score == 72
@@ -35,7 +35,7 @@ class TestAnalyzeMatch:
     def test_invalid_then_valid_retries_once(self, monkeypatch):
         calls = []
 
-        def chat(messages):
+        def chat(messages, **kw):
             calls.append(messages)
             return "not json at all" if len(calls) == 1 else VALID
 
@@ -44,19 +44,19 @@ class TestAnalyzeMatch:
         assert result is not None and len(calls) == 2
 
     def test_invalid_twice_returns_none(self, monkeypatch):
-        monkeypatch.setattr(matcher, "_chat", lambda messages: "still not json")
+        monkeypatch.setattr(matcher, "_chat", lambda messages, **kw: "still not json")
         assert matcher.analyze_match("resume", "Title", "Co", "jd") is None
 
     def test_code_fenced_json_is_accepted(self, monkeypatch):
         monkeypatch.setattr(
-            matcher, "_chat", lambda messages: f"```json\n{VALID}\n```"
+            matcher, "_chat", lambda messages, **kw: f"```json\n{VALID}\n```"
         )
         assert matcher.analyze_match("resume", "Title", "Co", "jd") is not None
 
     def test_prompt_includes_resume_and_jd(self, monkeypatch):
         captured = {}
 
-        def chat(messages):
+        def chat(messages, **kw):
             captured["text"] = json.dumps(messages)
             return VALID
 
@@ -70,7 +70,7 @@ class TestAnalyzeMatch:
         monkeypatch.delenv("LLM_API_KEY")
         monkeypatch.setattr(matcher.local_llm, "available", lambda: False)
         monkeypatch.setattr(
-            matcher, "_chat", lambda messages: pytest.fail("must not call LLM")
+            matcher, "_chat", lambda messages, **kw: pytest.fail("must not call LLM")
         )
         assert matcher.analyze_match("resume", "Title", "Co", "jd") is None
 
@@ -78,12 +78,12 @@ class TestAnalyzeMatch:
 class TestExtractSkills:
     def test_valid_array(self, monkeypatch):
         monkeypatch.setattr(
-            matcher, "_chat", lambda messages: '["Python", "Verilog", "FPGA"]'
+            matcher, "_chat", lambda messages, **kw: '["Python", "Verilog", "FPGA"]'
         )
         assert matcher.extract_skills("resume") == ["Python", "Verilog", "FPGA"]
 
     def test_failure_degrades_to_empty(self, monkeypatch):
-        monkeypatch.setattr(matcher, "_chat", lambda messages: "oops")
+        monkeypatch.setattr(matcher, "_chat", lambda messages, **kw: "oops")
         assert matcher.extract_skills("resume") == []
 
     def test_no_key_degrades_to_empty(self, monkeypatch):
@@ -116,8 +116,8 @@ class TestScoringTierDispatch:
         monkeypatch.setenv("LLM_API_KEY", "test-key")
         monkeypatch.setattr(matcher.local_llm, "available", lambda: True)
         calls = []
-        monkeypatch.setattr(matcher, "_chat_cloud", lambda messages: calls.append("cloud") or "ok")
-        monkeypatch.setattr(matcher, "_chat_local", lambda messages: calls.append("local") or "ok")
+        monkeypatch.setattr(matcher, "_chat_cloud", lambda messages, **kw: calls.append("cloud") or "ok")
+        monkeypatch.setattr(matcher, "_chat_local", lambda messages, **kw: calls.append("local") or "ok")
         assert matcher._chat([{"role": "user", "content": "hi"}]) == "ok"
         assert calls == ["cloud"]
 
@@ -125,8 +125,8 @@ class TestScoringTierDispatch:
         monkeypatch.delenv("LLM_API_KEY")
         monkeypatch.setattr(matcher.local_llm, "available", lambda: True)
         calls = []
-        monkeypatch.setattr(matcher, "_chat_cloud", lambda messages: calls.append("cloud") or "ok")
-        monkeypatch.setattr(matcher, "_chat_local", lambda messages: calls.append("local") or "ok")
+        monkeypatch.setattr(matcher, "_chat_cloud", lambda messages, **kw: calls.append("cloud") or "ok")
+        monkeypatch.setattr(matcher, "_chat_local", lambda messages, **kw: calls.append("local") or "ok")
         assert matcher._chat([{"role": "user", "content": "hi"}]) == "ok"
         assert calls == ["local"]
 
@@ -140,3 +140,66 @@ class TestScoringTierDispatch:
         monkeypatch.delenv("LLM_API_KEY")
         monkeypatch.setattr(matcher.local_llm, "available", lambda: True)
         assert matcher.llm_available() is True
+
+
+class Test008ModelSplit:
+    """008 US6 (T054/T055): structured tasks use the strict-JSON cloud model;
+    the local tier gets constrained JSON decoding."""
+
+    class _FakeCompletions:
+        def __init__(self, record):
+            self.record = record
+
+        def create(self, **kwargs):
+            self.record.append(kwargs)
+            from types import SimpleNamespace
+
+            return SimpleNamespace(
+                choices=[SimpleNamespace(message=SimpleNamespace(content="{}"))]
+            )
+
+    def _fake_openai(self, monkeypatch):
+        record = []
+        outer = self
+
+        class FakeOpenAI:
+            def __init__(self, base_url=None, api_key=None):
+                from types import SimpleNamespace
+
+                self.chat = SimpleNamespace(
+                    completions=outer._FakeCompletions(record)
+                )
+
+        import openai
+
+        monkeypatch.setattr(openai, "OpenAI", FakeOpenAI)
+        monkeypatch.setenv("LLM_API_KEY", "test-key")
+        monkeypatch.setenv("LLM_MIN_INTERVAL", "0")
+        return record
+
+    def test_json_purpose_uses_strict_model_and_json_mode(self, tmp_db, monkeypatch):
+        record = self._fake_openai(monkeypatch)
+        matcher._chat([{"role": "user", "content": "extract"}], purpose="json")
+        assert record[0]["model"] == "openai/gpt-oss-120b"
+        assert record[0]["response_format"] == {"type": "json_object"}
+
+    def test_prose_purpose_keeps_default_model(self, tmp_db, monkeypatch):
+        record = self._fake_openai(monkeypatch)
+        matcher._chat([{"role": "user", "content": "write a cover letter"}])
+        assert record[0]["model"] == "llama-3.3-70b-versatile"
+        assert "response_format" not in record[0]
+
+    def test_local_json_purpose_requests_constrained_output(
+        self, tmp_db, monkeypatch
+    ):
+        from engine import local_llm
+
+        calls = []
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        monkeypatch.setattr(local_llm, "available", lambda: True)
+        monkeypatch.setattr(
+            local_llm, "chat",
+            lambda messages, json_mode=False: calls.append(json_mode) or "{}",
+        )
+        matcher._chat([{"role": "user", "content": "extract"}], purpose="json")
+        assert calls == [True]

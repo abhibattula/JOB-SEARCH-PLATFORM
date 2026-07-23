@@ -39,3 +39,16 @@ passes locally against the fixed build and would have failed against v0.4.0.
 
 Tagged `v0.4.1`; CI installers (now smoke-tested before upload) replace the
 broken v0.4.0 assets.
+
+## Follow-up: v0.4.2
+
+The `v0.4.1` Windows job passed completely (all 12 steps, including the new
+smoke test) and the fixed `.exe` is live and confirmed working — a real
+double-click launch on a clean install completed a full refresh with
+`jobspy: found=187, added=9` (previously: 100% failure, every time). The
+`mac-dmg` job failed at the smoke test step, most likely because its port
+discovery (`lsof` output parsing) is fragile/unverified without Mac hardware
+to test against. Replaced with a portable mechanism: `desktop.py` writes its
+own bound port to `<data_dir>/port.txt` on startup; `smoke_test.py` reads
+that file directly instead of parsing OS-specific process/socket listings.
+Tagged `v0.4.2` to retry the macOS build with this fix.

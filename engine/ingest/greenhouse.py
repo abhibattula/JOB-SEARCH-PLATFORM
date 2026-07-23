@@ -4,7 +4,7 @@ from __future__ import annotations
 import logging
 from typing import Iterator
 
-from .base import RawJob, polite_get, strip_html
+from .base import RawJob, board_ok, polite_get, strip_html
 
 SOURCE_NAME = "greenhouse"
 log = logging.getLogger(__name__)
@@ -36,3 +36,4 @@ def fetch_jobs(entries: list[dict]) -> Iterator[RawJob]:
                 company_ats_type=SOURCE_NAME,
                 company_ats_slug=slug,
             )
+        board_ok(SOURCE_NAME, slug)

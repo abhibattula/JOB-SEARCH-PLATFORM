@@ -1,6 +1,15 @@
 <!--
 Sync Impact Report
 ==================
+Version change: 1.1.0 → 1.1.1 (2026-07-22)
+Modified sections:
+  - Additional Constraints › "Recency is a first-class requirement" — default
+    feed window changed from 7 days to 14 days at the user's explicit
+    direction (feature 008; "okay to show reasonably old postings … past
+    2 weeks"). 24h/7d/all remain as toggles. No principle changed.
+Templates status: all compatible (no template references the 7-day default).
+
+Previous report (1.0.0 → 1.1.0):
 Version change: 1.0.0 → 1.1.0
 Modified principles:
   - I. Speed-to-Value First — narrowed the deferred/MUST-NOT-build list: "local
@@ -86,7 +95,9 @@ the per-milestone manual verification steps in the plan.
   in `.env` (gitignored) and MUST never be committed. `data/` is gitignored.
 - **Recency is a first-class requirement**: every stored job MUST carry
   `posted_date` (when the source provides it) and `first_seen`; the default feed view
-  is the past 7 days with a last-24-hours toggle.
+  is a recent window — 14 days by default (user-directed, feature 008) — with
+  24-hour/7-day/all toggles. Jobs lacking a source posted date MUST be displayed
+  as approximate, not silently dated by first-seen.
 
 ## Development Workflow
 
@@ -111,4 +122,4 @@ templates listed there. Plans and task lists MUST pass the Constitution Check ga
 deviations discovered during implementation MUST be either corrected or recorded in
 Complexity Tracking before the milestone is declared done.
 
-**Version**: 1.1.0 | **Ratified**: 2026-07-18 | **Last Amended**: 2026-07-20
+**Version**: 1.1.1 | **Ratified**: 2026-07-18 | **Last Amended**: 2026-07-22

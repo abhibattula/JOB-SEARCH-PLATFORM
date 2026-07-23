@@ -86,6 +86,14 @@ def polite_get(url: str, **kwargs) -> httpx.Response:
     return _request("GET", url, **kwargs)
 
 
+def polite_head(url: str, **kwargs) -> httpx.Response:
+    """Rate-limited HEAD that does NOT raise on 4xx — the 008 liveness
+    checker needs the status code (404/410 = dead posting), not an
+    exception. Transport errors still raise (caller treats as unknown)."""
+    _respect_rate_limit(urlparse(url).netloc)
+    return _get_client().request("HEAD", url, **kwargs)
+
+
 def polite_post(url: str, **kwargs) -> httpx.Response:
     return _request("POST", url, **kwargs)
 
@@ -102,3 +110,17 @@ def strip_html(text: str) -> str:
     unescaped = re.sub(r"<(br|/p|/div|/li|/h[1-6])[^>]*>", " ", unescaped, flags=re.I)
     stripped = _TAG_RE.sub("", unescaped)
     return _WS_RE.sub(" ", html.unescape(stripped)).strip()
+
+
+def board_ok(source: str, slug: str) -> None:
+    """008 delisting hook: a full-board source calls this AFTER a board's
+    jobs have been fully yielded (and therefore upserted by the consumer) —
+    it authorizes board-diff delisting for that board this run. Never call
+    it before/inside the yield loop: an abandoned generator must not
+    qualify its board."""
+    try:
+        from .. import watchlist
+
+        watchlist.mark_ok(source, slug)
+    except Exception:  # stamping must never break ingestion
+        pass

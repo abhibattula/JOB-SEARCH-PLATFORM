@@ -1,89 +1,48 @@
-"""First-use Chromium install for Apply Assist (feature 005).
+"""Legacy Chromium-download cleanup (feature 008, FR-008).
 
-Chromium (~150-280MB) is downloaded on first use of Apply Assist rather
-than bundled in the base installer — this feature is opt-in, unlike the
-local LLM (used by the core scoring feature nearly every user touches),
-so this keeps the *unconditional* installer-size hit to the model alone
-(research.md §4). Progress is tracked via the same DB-backed settings KV
-pattern as everything else in engine/settings.py, not by parsing
-Playwright's internal directory layout.
+Features 005-007 downloaded a private Chromium (~150-280MB) into
+data_dir()/browsers on first use of Apply Assist. That flow is gone —
+browser_controller now launches the user's installed Edge/Chrome via
+Playwright channels, so nothing is downloaded and the old directory is dead
+weight. These helpers report and reclaim it; the Diagnostics page offers the
+cleanup as an explicit user action (never automatic deletion of user disk
+data). The old `autofill_chromium_status` settings row is simply ignored.
 """
 from __future__ import annotations
 
 import logging
-import os
-import subprocess
-import threading
-
-from playwright._impl._driver import compute_driver_executable, get_driver_env
+import shutil
+from pathlib import Path
 
 log = logging.getLogger(__name__)
 
-_STATUS_KEY = "autofill_chromium_status"
 
-
-def _browsers_path():
+def legacy_browsers_dir() -> Path:
     from .. import paths
 
     return paths.data_dir() / "browsers"
 
 
-def status() -> str:
-    from .. import db
-
-    return db.get_setting(_STATUS_KEY) or "not_installed"
-
-
-def is_installed() -> bool:
-    return status() == "installed"
-
-
-def _set_status(value: str) -> None:
-    from .. import db
-
-    db.set_setting(_STATUS_KEY, value)
+def legacy_size_bytes() -> int:
+    root = legacy_browsers_dir()
+    if not root.exists():
+        return 0
+    total = 0
+    for path in root.rglob("*"):
+        try:
+            if path.is_file():
+                total += path.stat().st_size
+        except OSError:
+            continue
+    return total
 
 
-def _run_install() -> None:
-    """Invokes Playwright's bundled Node.js driver directly via
-    compute_driver_executable() — NOT `[sys.executable, "-m", "playwright",
-    ...]`. Inside a frozen PyInstaller app, sys.executable is the app's own
-    .exe, not a Python interpreter, so that invocation silently does not
-    install anything (it just tries to relaunch the app). The driver
-    executable is a real binary bundled alongside the package (see
-    packaging/jobengine.spec's collect_data_files("playwright")), so this
-    works identically in dev and frozen builds."""
-    _set_status("installing")
-    path = _browsers_path()
-    path.mkdir(parents=True, exist_ok=True)
-    os.environ["PLAYWRIGHT_BROWSERS_PATH"] = str(path)
-    try:
-        driver_executable, driver_cli = compute_driver_executable()
-        result = subprocess.run(
-            [driver_executable, driver_cli, "install", "chromium"],
-            env=get_driver_env(),
-            capture_output=True,
-            text=True,
-        )
-    except Exception as exc:
-        log.warning("Chromium install failed", exc_info=True)
-        _set_status(f"failed: {exc}")
-        return
-    if result.returncode != 0:
-        log.warning("Chromium install exited %d: %s", result.returncode, result.stderr)
-        _set_status(f"failed: {(result.stderr or '').strip()[:300]}")
-        return
-    _set_status("installed")
-
-
-def start_install(background: bool = True) -> bool:
-    """Kicks off the one-time Chromium download. Returns False (no-op) if
-    already installed. `background=False` runs synchronously (used by tests
-    and by the CI smoke test's own setup step)."""
-    if is_installed():
-        return False
-    if background:
-        threading.Thread(target=_run_install, daemon=True).start()
-    else:
-        _run_install()
-    return True
+def cleanup_legacy() -> int:
+    """Deletes the obsolete downloaded-browser directory. Returns bytes
+    freed (0 when there was nothing to clean)."""
+    freed = legacy_size_bytes()
+    root = legacy_browsers_dir()
+    if root.exists():
+        shutil.rmtree(root, ignore_errors=True)
+        log.info("removed legacy browser dir %s (%d bytes)", root, freed)
+    return freed

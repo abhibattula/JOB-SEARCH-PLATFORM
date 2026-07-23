@@ -33,9 +33,12 @@
       <div class="navgroup" aria-label="Setup">
         <a href="/profile" {% if path == "/profile" %}aria-current="page"{% endif %}>Profile</a>
         <a href="/settings" {% if path == "/settings" %}aria-current="page"{% endif %}>Settings</a>
+        <a href="/diagnostics" {% if path == "/diagnostics" %}aria-current="page"{% endif %}>Diagnostics</a>
       </div>
     </nav>
   </header>
+  <div id="update-banner" hx-get="/partials/update-banner" hx-trigger="load" hx-swap="innerHTML"></div>
+  <div id="whats-new-region" hx-get="/partials/whats-new" hx-trigger="load" hx-swap="innerHTML"></div>
   <main>
     {% block content %}
     <p class="empty-state">The engine is running. The feed arrives with US1.</p>

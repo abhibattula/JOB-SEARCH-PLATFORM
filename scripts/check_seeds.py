@@ -1,6 +1,6 @@
 """Validate companies.yml seed entries against their live board endpoints.
 
-Usage: python scripts/check_seeds.py [--prune]
+Usage: python scripts/check_seeds.py [--prune] [path-to-yml]
 
 Reports each entry as OK (with job count) or FAIL (with reason). With --prune,
 rewrites companies.yml keeping only OK entries (a backup is written first).
@@ -84,6 +84,10 @@ def check_entry(client: httpx.Client, entry: dict) -> tuple[bool, str]:
 
 def main() -> int:
     prune = "--prune" in sys.argv
+    global SEEDS
+    path_args = [a for a in sys.argv[1:] if not a.startswith("--")]
+    if path_args:
+        SEEDS = Path(path_args[0])
     doc = yaml.safe_load(SEEDS.read_text(encoding="utf-8"))
     entries = doc["companies"]
     ok_entries, failures = [], []

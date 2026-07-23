@@ -1,6 +1,10 @@
-/* Job Engine shared UI module (feature 007).
+/* Job Engine shared UI module (features 007/008).
    Vendored-vanilla: no framework, no build step.
    - toast(): visible confirmation for every action (FR-023)
+   - copyText(): the ONE copy path — works inside the WebView2 shell where
+     navigator.clipboard is permission-gated (008 FR-002)
+   - external-link delegation: every target=_blank opens via the host so no
+     link is ever a silent no-op in the shell (008 FR-004)
    - pollingAllowed(): gates HTMX polling so background refreshes never
      clobber an in-progress edit (FR-024)
    - theme toggle helper (FR-021)
@@ -26,6 +30,93 @@
     el.textContent = message;
     ensureStack().appendChild(el);
     setTimeout(function () { el.remove(); }, 3200);
+  };
+
+  /* ---------- copy (008 FR-002) ----------
+     Three-step fallback, always toasting the real outcome:
+     navigator.clipboard (normal browsers) -> hidden-textarea execCommand
+     (WebView2/WKWebView without async-clipboard permission) -> host-side
+     /api/clipboard (guaranteed: the server runs on this machine). */
+  function copyViaExecCommand(text) {
+    const area = document.createElement("textarea");
+    area.value = text;
+    area.setAttribute("readonly", "");
+    area.style.position = "fixed";
+    area.style.left = "-9999px";
+    document.body.appendChild(area);
+    area.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch (e) { ok = false; }
+    area.remove();
+    return ok;
+  }
+
+  window.copyText = function (text) {
+    function done() { window.toast("Copied"); }
+    function hostFallback() {
+      fetch("/api/clipboard", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: text }),
+      }).then(function (r) {
+        if (r.ok) { done(); } else { window.toast("Copy failed", "error"); }
+      }).catch(function () { window.toast("Copy failed", "error"); });
+    }
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(text).then(done, function () {
+        if (copyViaExecCommand(text)) { done(); } else { hostFallback(); }
+      });
+    } else if (copyViaExecCommand(text)) {
+      done();
+    } else {
+      hostFallback();
+    }
+  };
+
+  /* ---------- external links (008 FR-004) ----------
+     Delegated: catches template anchors AND server-generated fragments
+     (e.g. the update link HTMX swaps into Settings). */
+  document.addEventListener("click", function (evt) {
+    const anchor = evt.target.closest ? evt.target.closest("a[target=_blank]") : null;
+    if (!anchor || !anchor.href || anchor.href.indexOf("http") !== 0) { return; }
+    evt.preventDefault();
+    fetch("/api/open", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url: anchor.href }),
+    }).catch(function () {
+      /* server unreachable — fall back to the browser's own handling */
+      window.open(anchor.href, "_blank", "noopener");
+    });
+  });
+
+  /* ---------- in-app update (008 FR-030) ---------- */
+  window.runUpdate = async function (btn) {
+    btn.disabled = true;
+    const bar = document.getElementById("update-progress");
+    function status(text) { if (bar) { bar.textContent = text; } }
+    try {
+      const resp = await fetch("/api/updates/download", { method: "POST" });
+      if (!resp.ok && resp.status !== 409) {
+        throw new Error((await resp.json()).detail || "download failed");
+      }
+      for (;;) {
+        const p = await (await fetch("/api/updates/progress")).json();
+        if (p.state === "downloading") { status("downloading " + p.pct + "%"); }
+        else if (p.state === "verifying") { status("verifying…"); }
+        else if (p.state === "ready") { break; }
+        else if (p.state === "failed" || p.state === "blocked") {
+          throw new Error(p.error || p.state);
+        }
+        await new Promise(function (r) { setTimeout(r, 700); });
+      }
+      status("installing — the app will close and restart itself…");
+      const inst = await fetch("/api/updates/install", { method: "POST" });
+      if (!inst.ok) { throw new Error((await inst.json()).detail || "install refused"); }
+    } catch (err) {
+      status("✕ " + err.message + " — use the manual download link instead");
+      btn.disabled = false;
+    }
   };
 
   /* ---------- polling gate (FR-024) ----------

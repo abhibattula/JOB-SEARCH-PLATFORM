@@ -17,6 +17,14 @@ DEFAULTS = {
     "MAX_SCORE_PER_RUN": "150",
     "ALERTS_ENABLED": "1",
     "UPDATE_CHECK": "1",
+    # 008: freshness, sourcing knobs, model split, update/What's-New state
+    "FEED_WINDOW_DEFAULT": "14d",
+    "JOBSPY_SITES": "indeed,google",
+    "JOBSPY_RESULTS_PER_SEARCH": "40",
+    "LLM_JSON_MODEL": "openai/gpt-oss-120b",
+    "LLM_PROVIDER_PRESET": "groq",
+    "WHATS_NEW_SEEN_VERSION": "",
+    "UPDATE_LAST_CHECK": "",
 }
 
 

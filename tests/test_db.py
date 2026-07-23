@@ -6,6 +6,12 @@ import pytest
 from engine import db
 
 
+def iso_days_ago(days, hours=0):
+    return (
+        datetime.now(timezone.utc) - timedelta(days=days, hours=hours)
+    ).strftime("%Y-%m-%d")
+
+
 def make_job(**overrides):
     job = {
         "title": "Software Engineer, New Grad",
@@ -15,16 +21,12 @@ def make_job(**overrides):
         "location": "San Francisco, CA",
         "is_remote": False,
         "description": "Build payments infrastructure.",
-        "posted_date": "2026-07-15",
+        # relative, not hardcoded: a fixed date silently ages out of the
+        # window filters as real time passes (flaked 2026-07-22 -> 23 UTC)
+        "posted_date": iso_days_ago(2),
     }
     job.update(overrides)
     return job
-
-
-def iso_days_ago(days, hours=0):
-    return (
-        datetime.now(timezone.utc) - timedelta(days=days, hours=hours)
-    ).strftime("%Y-%m-%d")
 
 
 class TestInit:
@@ -38,15 +40,16 @@ class TestInit:
 class TestUpsert:
     def test_insert_then_update_same_url(self, tmp_db):
         assert db.upsert_job(make_job()) == "inserted"
+        newer = iso_days_ago(1)
         result = db.upsert_job(
-            make_job(description="Updated text.", posted_date="2026-07-16")
+            make_job(description="Updated text.", posted_date=newer)
         )
         assert result == "updated"
         jobs, total = db.query_jobs()
         assert total == 1
         job = db.get_job(jobs[0]["id"])
         assert job["description"] == "Updated text."
-        assert job["posted_date"] == "2026-07-16"
+        assert job["posted_date"] == newer
 
     def test_first_seen_never_changes_on_update(self, tmp_db):
         db.upsert_job(make_job())
@@ -87,10 +90,12 @@ class TestUpsert:
 
 class TestRecency:
     def test_windows_use_posted_date_with_first_seen_fallback(self, tmp_db):
-        db.upsert_job(make_job(url="u1", posted_date=iso_days_ago(2)))
-        db.upsert_job(make_job(url="u2", posted_date=iso_days_ago(10)))
-        db.upsert_job(make_job(url="u3", posted_date=None))  # falls back to first_seen=now
-        db.upsert_job(make_job(url="u4", posted_date=iso_days_ago(0)))
+        # distinct titles: same-source same-title rows would now (008
+        # FR-017) collapse as reposts of one job
+        db.upsert_job(make_job(url="u1", title="Role 1", posted_date=iso_days_ago(2)))
+        db.upsert_job(make_job(url="u2", title="Role 2", posted_date=iso_days_ago(10)))
+        db.upsert_job(make_job(url="u3", title="Role 3", posted_date=None))  # falls back to first_seen=now
+        db.upsert_job(make_job(url="u4", title="Role 4", posted_date=iso_days_ago(0)))
 
         week, total_week = db.query_jobs(window="7d")
         assert total_week == 3  # u2 is 10 days old
@@ -425,3 +430,196 @@ class TestAnswerBank:
                 "SELECT * FROM application_answers WHERE job_id = ?", (job_id,)
             ).fetchone()
         assert row["answer_used"] == "Yes"
+
+
+# --- 008: migrations, backfill, backup-before-migrate ------------------------
+
+import sqlite3
+
+# A faithful v0.7.0-shape database (original _SCHEMA + all pre-008 migration
+# columns, none of the 008 ones). Used by the migration tests here and by the
+# upgrade-with-data release gate (T051).
+_V07_SCHEMA = """
+CREATE TABLE companies (id INTEGER PRIMARY KEY, name TEXT UNIQUE NOT NULL,
+    normalized_name TEXT, ats_type TEXT, ats_slug TEXT,
+    h1b_approvals INTEGER DEFAULT 0, lca_titles TEXT,
+    sponsor_score TEXT DEFAULT 'UNKNOWN', sponsor_checked INTEGER DEFAULT 0,
+    h1b_denials INTEGER DEFAULT 0, wage_level_median TEXT,
+    wage_offered_median REAL, cap_exempt INTEGER DEFAULT 0, sponsor_grade TEXT);
+CREATE TABLE jobs (id INTEGER PRIMARY KEY, company_id INTEGER NOT NULL,
+    title TEXT NOT NULL, location TEXT, is_remote INTEGER DEFAULT 0,
+    description TEXT, url TEXT UNIQUE NOT NULL, dedup_key TEXT,
+    source TEXT NOT NULL, posted_date TEXT, first_seen TEXT NOT NULL,
+    is_entry_level INTEGER, sponsorship TEXT DEFAULT 'UNKNOWN',
+    sponsorship_evidence TEXT, match_score REAL, match_json TEXT,
+    status TEXT DEFAULT 'none', tailor_json TEXT, stage TEXT, applied_at TEXT,
+    stage_updated_at TEXT, notes TEXT);
+CREATE TABLE user_profile (id INTEGER PRIMARY KEY, resume_text TEXT,
+    resume_filename TEXT, skills TEXT, target_locations TEXT, preferences TEXT,
+    updated_at TEXT, authorized_without_sponsorship TEXT, visa_status TEXT,
+    first_name TEXT, last_name TEXT, email TEXT, phone TEXT, linkedin_url TEXT,
+    portfolio_url TEXT, resume_file_path TEXT, resume_sections TEXT,
+    sections_edited_at TEXT);
+CREATE TABLE refresh_runs (id INTEGER PRIMARY KEY, started_at TEXT NOT NULL,
+    finished_at TEXT, trigger TEXT, source_status TEXT DEFAULT '{}');
+CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+CREATE TABLE h1b_employers (normalized_name TEXT PRIMARY KEY, display_name TEXT,
+    approvals INTEGER DEFAULT 0, lca_titles TEXT, denials INTEGER DEFAULT 0,
+    wage_level_median TEXT, wage_offered_median REAL);
+CREATE TABLE answer_bank (id INTEGER PRIMARY KEY,
+    question_normalized TEXT UNIQUE NOT NULL, question_raw TEXT NOT NULL,
+    answer TEXT NOT NULL, category TEXT, source TEXT DEFAULT 'user',
+    confirmed_at TEXT NOT NULL, updated_at TEXT NOT NULL);
+CREATE TABLE application_answers (id INTEGER PRIMARY KEY,
+    job_id INTEGER NOT NULL, answer_bank_id INTEGER, question_raw TEXT NOT NULL,
+    answer_used TEXT NOT NULL, answered_at TEXT NOT NULL);
+"""
+
+
+def make_v07_db(path):
+    conn = sqlite3.connect(path)
+    conn.executescript(_V07_SCHEMA)
+    conn.execute(
+        "INSERT INTO companies (id, name, normalized_name) VALUES (1, 'Stripe', 'stripe')"
+    )
+    conn.execute(
+        "INSERT INTO jobs (company_id, title, url, source, first_seen, status,"
+        " match_score) VALUES (1, 'SWE New Grad', 'https://x/1', 'greenhouse',"
+        " '2026-07-20 10:00:00.000000', 'saved', 82.0)"
+    )
+    conn.execute(
+        "INSERT INTO user_profile (id, first_name, skills) VALUES"
+        " (1, 'Abhinav', '[\"python\"]')"
+    )
+    conn.commit()
+    conn.close()
+
+
+class TestMigrations008:
+    def test_new_columns_and_watchlist_table_exist(self, tmp_db):
+        with db._conn() as conn:
+            job_cols = {r["name"] for r in conn.execute("PRAGMA table_info(jobs)")}
+            assert {"last_seen_at", "delisted", "embedding"} <= job_cols
+            prof_cols = {
+                r["name"] for r in conn.execute("PRAGMA table_info(user_profile)")
+            }
+            assert {"search_terms", "resume_embedding"} <= prof_cols
+            tables = {
+                r["name"]
+                for r in conn.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+            assert "watchlist" in tables
+
+    def test_v07_upgrade_backfills_last_seen_and_preserves_data(self, _isolated_db):
+        make_v07_db(_isolated_db)
+        db.init_db()
+        with db._conn() as conn:
+            row = conn.execute("SELECT * FROM jobs").fetchone()
+            assert row["last_seen_at"] == row["first_seen"]
+            assert row["delisted"] == 0
+            assert row["status"] == "saved" and row["match_score"] == 82.0
+            prof = conn.execute("SELECT * FROM user_profile").fetchone()
+            assert prof["first_name"] == "Abhinav"
+
+    def test_backup_created_before_migration(self, _isolated_db):
+        make_v07_db(_isolated_db)
+        db.init_db()
+        backups = list((_isolated_db.parent / "backup").glob("*.db"))
+        assert len(backups) == 1
+        check = sqlite3.connect(backups[0])
+        check.row_factory = sqlite3.Row
+        row = check.execute("SELECT * FROM jobs").fetchone()
+        cols = {r["name"] for r in check.execute("PRAGMA table_info(jobs)")}
+        check.close()
+        assert row["title"] == "SWE New Grad"
+        assert "last_seen_at" not in cols  # pre-migration snapshot
+
+    def test_no_backup_when_nothing_pending(self, _isolated_db):
+        db.init_db()  # fresh db: no file existed, nothing to back up
+        db.init_db()  # idempotent re-run: still nothing pending
+        backup_dir = _isolated_db.parent / "backup"
+        assert not backup_dir.exists() or not list(backup_dir.glob("*.db"))
+
+    def test_restore_on_migration_failure(self, _isolated_db, monkeypatch):
+        make_v07_db(_isolated_db)
+
+        def boom(conn):
+            raise RuntimeError("migration exploded")
+
+        monkeypatch.setattr(db, "_apply_migrations", boom)
+        with pytest.raises(RuntimeError):
+            db.init_db()
+        # original file restored: old shape, data intact
+        check = sqlite3.connect(_isolated_db)
+        check.row_factory = sqlite3.Row
+        cols = {r["name"] for r in check.execute("PRAGMA table_info(jobs)")}
+        count = check.execute("SELECT COUNT(*) c FROM jobs").fetchone()["c"]
+        check.close()
+        assert "last_seen_at" not in cols
+        assert count == 1
+
+
+class Test008Freshness:
+    """008 US3 (T022): 14-day window, delisting visibility, same-source
+    repost dedup, and last-seen stamping on every upsert path."""
+
+    def _raw(self, url):
+        with db._conn() as conn:
+            return dict(conn.execute("SELECT * FROM jobs WHERE url = ?", (url,)).fetchone())
+
+    def test_14d_window_includes_10d_excludes_20d(self, tmp_db):
+        db.upsert_job(make_job(url="https://x/recent", posted_date=iso_days_ago(10)))
+        db.upsert_job(make_job(url="https://x/old", title="Old Role",
+                               posted_date=iso_days_ago(20)))
+        jobs, total = db.query_jobs(window="14d", statuses=None, entry_level=None)
+        urls = {j["url"] for j in jobs}
+        assert "https://x/recent" in urls
+        assert "https://x/old" not in urls
+
+    def test_delisted_hidden_from_windowed_views_flagged_in_all(self, tmp_db):
+        db.upsert_job(make_job(url="https://x/gone", posted_date=iso_days_ago(2)))
+        with db._conn() as conn:
+            conn.execute("UPDATE jobs SET delisted = 1 WHERE url = 'https://x/gone'")
+        jobs, _ = db.query_jobs(window="14d", statuses=None, entry_level=None)
+        assert all(j["url"] != "https://x/gone" for j in jobs)
+        jobs, _ = db.query_jobs(window=None, statuses=None, entry_level=None)
+        gone = next(j for j in jobs if j["url"] == "https://x/gone")
+        assert gone["delisted"] is True
+
+    def test_same_source_repost_refreshes_row_instead_of_duplicating(self, tmp_db):
+        db.upsert_job(make_job(url="https://x/v1", posted_date="2026-07-10"))
+        result = db.upsert_job(make_job(url="https://x/v2", posted_date="2026-07-20"))
+        assert result == "updated"
+        jobs, total = db.query_jobs(window=None, statuses=None, entry_level=None)
+        assert total == 1
+        assert jobs[0]["url"] == "https://x/v2"  # newest URL wins (old may be dead)
+
+    def test_last_seen_stamped_on_every_upsert_path(self, tmp_db):
+        db.upsert_job(make_job(url="https://x/1"))
+        first = self._raw("https://x/1")["last_seen_at"]
+        assert first
+        db.upsert_job(make_job(url="https://x/1", description="refreshed"))
+        after_update = self._raw("https://x/1")["last_seen_at"]
+        assert after_update > first
+        # cross-source duplicate: skipped, but the surviving row was seen
+        db.upsert_job(make_job(url="https://y/other", source="jobspy"))
+        after_skip = self._raw("https://x/1")["last_seen_at"]
+        assert after_skip > after_update
+
+    def test_delisted_job_restored_on_reappearance(self, tmp_db):
+        db.upsert_job(make_job(url="https://x/back"))
+        with db._conn() as conn:
+            conn.execute("UPDATE jobs SET delisted = 1 WHERE url = 'https://x/back'")
+        db.upsert_job(make_job(url="https://x/back"))
+        assert self._raw("https://x/back")["delisted"] == 0
+
+
+class Test008SourceFilter:
+    def test_query_filters_by_source(self, tmp_db):
+        db.upsert_job(make_job(url="https://x/1", title="A", source="greenhouse"))
+        db.upsert_job(make_job(url="https://x/2", title="B", source="jobspy"))
+        jobs, total = db.query_jobs(window=None, statuses=None, entry_level=None,
+                                    source="jobspy")
+        assert total == 1 and jobs[0]["source"] == "jobspy"

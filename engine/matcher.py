@@ -65,7 +65,7 @@ def _min_interval() -> float:
     return float(os.environ.get("LLM_MIN_INTERVAL", "2.2"))
 
 
-def _chat_cloud(messages: list[dict]) -> str:
+def _chat_cloud(messages: list[dict], purpose: str = "prose") -> str:
     global _last_call
     with _throttle_lock:
         wait = _min_interval() - (time.monotonic() - _last_call)
@@ -80,29 +80,41 @@ def _chat_cloud(messages: list[dict]) -> str:
         base_url=settings.get("LLM_BASE_URL") or DEFAULT_BASE_URL,
         api_key=settings.get("LLM_API_KEY"),
     )
+    # 008 (FR-026): structured tasks use the strict-JSON model with JSON
+    # mode (on Groq, gpt-oss models guarantee schema-valid output); prose
+    # (bullets, cover letters) keeps the conversational default.
+    if purpose == "json":
+        kwargs = {
+            "model": settings.get("LLM_JSON_MODEL")
+            or settings.get("LLM_MODEL") or DEFAULT_MODEL,
+            "response_format": {"type": "json_object"},
+        }
+    else:
+        kwargs = {"model": settings.get("LLM_MODEL") or DEFAULT_MODEL}
     completion = client.chat.completions.create(
-        model=settings.get("LLM_MODEL") or DEFAULT_MODEL,
         messages=messages,
         temperature=0.2,
+        **kwargs,
     )
     return completion.choices[0].message.content or ""
 
 
-def _chat_local(messages: list[dict]) -> str:
-    return local_llm.chat(messages)
+def _chat_local(messages: list[dict], purpose: str = "prose") -> str:
+    return local_llm.chat(messages, json_mode=purpose == "json")
 
 
-def _chat(messages: list[dict]) -> str:
+def _chat(messages: list[dict], purpose: str = "prose") -> str:
     """Tier dispatcher: cloud (Groq/OpenAI-compatible API) > local (bundled
-    model) > raise. Existing callers (analyze_match, extract_skills) already
-    try/except around _chat and degrade gracefully on failure, so no call
-    site needs to change for the new tier."""
+    model) > raise. purpose="json" routes structured tasks to the
+    schema-reliable model/decoding on each tier (008 FR-026/FR-028).
+    Existing callers already try/except around _chat and degrade
+    gracefully on failure."""
     from . import settings
 
     if settings.get("LLM_API_KEY"):
-        return _chat_cloud(messages)
+        return _chat_cloud(messages, purpose=purpose)
     if local_llm.available():
-        return _chat_local(messages)
+        return _chat_local(messages, purpose=purpose)
     raise RuntimeError("no LLM tier available (no cloud key, no local model)")
 
 
@@ -147,7 +159,7 @@ def analyze_match(
     ]
     for attempt in range(2):
         try:
-            raw = _chat(messages)
+            raw = _chat(messages, purpose="json")
         except Exception:
             log.warning("LLM call failed (attempt %d)", attempt + 1, exc_info=True)
             continue

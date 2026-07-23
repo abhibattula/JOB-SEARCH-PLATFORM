@@ -13,8 +13,10 @@ from engine.autofill import browser_controller as bc
 
 
 def seed_job(url):
+    # title derived from the url: same-source same-title rows would
+    # otherwise collapse as reposts of one job (008 FR-017)
     db.upsert_job(
-        {"title": "SWE", "company": "TestCo", "url": url,
+        {"title": f"SWE {url.rsplit('/', 1)[-1]}", "company": "TestCo", "url": url,
          "source": "greenhouse", "description": "desc"}
     )
     jobs, _ = db.query_jobs(window=None, statuses=None, entry_level=None)
@@ -150,7 +152,7 @@ class TestPendingConfirmation:
     def test_unanswered_question_sets_pending_and_returns_no_value(self, tmp_db, monkeypatch):
         from engine import matcher
 
-        monkeypatch.setattr(matcher, "_chat", lambda messages: "Drafted answer")
+        monkeypatch.setattr(matcher, "_chat", lambda messages, **kw: "Drafted answer")
         monkeypatch.setenv("LLM_API_KEY", "test-key")
         bc._state.pending = None
 
@@ -167,7 +169,7 @@ class TestPendingConfirmation:
     def test_only_one_pending_confirmation_tracked_at_a_time(self, tmp_db, monkeypatch):
         from engine import matcher
 
-        monkeypatch.setattr(matcher, "_chat", lambda messages: "First draft")
+        monkeypatch.setattr(matcher, "_chat", lambda messages, **kw: "First draft")
         monkeypatch.setenv("LLM_API_KEY", "test-key")
         bc._state.pending = None
 
@@ -674,7 +676,7 @@ class TestBatchSummary:
         bc._fill_page(j1)
         bc.advance()
         with bc._lock:
-            bc._state.fell_back.add(j2)
+            bc._state.outcomes[j2] = {"reason": "unrecognized", "detail": ""}
         bc.advance()  # past the end -> queue finishes
 
         summary = bc.queue_snapshot()["summary"]
@@ -702,5 +704,5 @@ class TestQueueSnapshot:
         assert states[j2] == "current"
         assert snapshot["progress"] == {"done": 1, "total": 2}
         current_entry = next(e for e in snapshot["queue"] if e["state"] == "current")
-        assert current_entry["title"] == "SWE"
+        assert current_entry["title"] == "SWE 2"  # j2 is current after advance()
         assert current_entry["company"] == "TestCo"

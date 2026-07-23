@@ -1,114 +1,40 @@
-"""005-T025: engine/autofill/browser_setup.py — first-use Chromium install.
+"""008 (T007): browser_setup is now only the legacy-Chromium cleanup helper.
 
-Progress is tracked via the settings table (same DB-backed-KV pattern as
-everything else in engine/settings.py), not by parsing Playwright's internal
-directory layout — simpler and fully mockable in tests (no real ~200MB
-download in the unit suite).
-"""
-import pytest
+The 005-007 first-use Chromium download flow is gone — Apply Assist drives
+the user's installed Edge/Chrome (see test_browser_channel.py). What remains
+here: reporting and reclaiming the obsolete downloaded-browser directory
+(offered from the Diagnostics page, FR-008)."""
+from pathlib import Path
 
 from engine.autofill import browser_setup
 
 
-@pytest.fixture(autouse=True)
-def _isolate(tmp_db):
-    yield
+def _make_legacy_dir(tmp_path) -> Path:
+    legacy = tmp_path / "browsers"
+    (legacy / "chromium-1234").mkdir(parents=True)
+    (legacy / "chromium-1234" / "chrome.exe").write_bytes(b"x" * 1024)
+    (legacy / "apply-assist-profile").mkdir()
+    (legacy / "apply-assist-profile" / "Cookies").write_bytes(b"y" * 256)
+    return legacy
 
 
-class TestStatus:
-    def test_not_installed_by_default(self, tmp_db):
-        assert browser_setup.status() == "not_installed"
+class TestLegacyCleanup:
+    def test_size_zero_when_no_legacy_dir(self, tmp_db):
+        assert browser_setup.legacy_size_bytes() == 0
 
-    def test_is_installed_false_by_default(self, tmp_db):
-        assert browser_setup.is_installed() is False
+    def test_size_reports_recursive_bytes(self, tmp_db, tmp_path):
+        _make_legacy_dir(tmp_path)
+        assert browser_setup.legacy_size_bytes() == 1024 + 256
 
+    def test_cleanup_removes_dir_and_returns_freed(self, tmp_db, tmp_path):
+        legacy = _make_legacy_dir(tmp_path)
+        freed = browser_setup.cleanup_legacy()
+        assert freed == 1024 + 256
+        assert not legacy.exists()
 
-class TestStartInstall:
-    def test_start_install_runs_subprocess_and_marks_installed_on_success(self, tmp_db, monkeypatch):
-        calls = []
+    def test_cleanup_idempotent(self, tmp_db):
+        assert browser_setup.cleanup_legacy() == 0
 
-        def fake_run(cmd, **kwargs):
-            calls.append(cmd)
-
-            class Result:
-                returncode = 0
-                stderr = ""
-
-            return Result()
-
-        monkeypatch.setattr(browser_setup.subprocess, "run", fake_run)
-
-        browser_setup.start_install(background=False)
-
-        assert browser_setup.status() == "installed"
-        assert browser_setup.is_installed() is True
-        assert any("chromium" in " ".join(str(c) for c in cmd) for cmd in calls)
-
-    def test_start_install_marks_failed_on_nonzero_exit(self, tmp_db, monkeypatch):
-        def fake_run(cmd, **kwargs):
-            class Result:
-                returncode = 1
-                stderr = "network error"
-
-            return Result()
-
-        monkeypatch.setattr(browser_setup.subprocess, "run", fake_run)
-
-        browser_setup.start_install(background=False)
-
-        status = browser_setup.status()
-        assert status.startswith("failed")
-        assert browser_setup.is_installed() is False
-
-    def test_start_install_marks_failed_on_exception(self, tmp_db, monkeypatch):
-        def fake_run(cmd, **kwargs):
-            raise OSError("no disk space")
-
-        monkeypatch.setattr(browser_setup.subprocess, "run", fake_run)
-
-        browser_setup.start_install(background=False)
-
-        assert browser_setup.status().startswith("failed")
-
-    def test_already_installed_is_a_noop(self, tmp_db, monkeypatch):
-        calls = []
-        monkeypatch.setattr(browser_setup, "status", lambda: "installed")
-
-        started = browser_setup.start_install(background=False)
-
-        assert started is False
-
-    def test_install_uses_playwright_driver_executable_not_sys_executable(self, tmp_db, monkeypatch):
-        """Regression test: sys.executable is the frozen app's own .exe inside
-        a packaged build, not a Python interpreter — `[sys.executable, "-m",
-        "playwright", ...]` silently does not install anything there (it just
-        tries to relaunch the app). The real fix uses Playwright's own
-        compute_driver_executable(), which resolves to its bundled Node.js
-        driver directly and works identically in dev and frozen builds."""
-        monkeypatch.setattr(
-            browser_setup, "compute_driver_executable",
-            lambda: ("/fake/node", "/fake/cli.js"),
-        )
-        calls = []
-
-        def fake_run(cmd, **kwargs):
-            calls.append(cmd)
-
-            class Result:
-                returncode = 0
-                stderr = ""
-
-            return Result()
-
-        monkeypatch.setattr(browser_setup.subprocess, "run", fake_run)
-
-        browser_setup.start_install(background=False)
-
-        assert len(calls) == 1
-        cmd = calls[0]
-        assert cmd[0] == "/fake/node"
-        assert cmd[1] == "/fake/cli.js"
-        assert "install" in cmd
-        assert "chromium" in cmd
-        import sys as sys_mod
-        assert sys_mod.executable not in cmd
+    def test_download_flow_is_gone(self):
+        assert not hasattr(browser_setup, "start_install")
+        assert not hasattr(browser_setup, "is_installed")

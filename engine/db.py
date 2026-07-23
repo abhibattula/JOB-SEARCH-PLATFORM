@@ -111,6 +111,19 @@ CREATE TABLE IF NOT EXISTS application_answers (
     answered_at TEXT NOT NULL
 );
 CREATE INDEX IF NOT EXISTS idx_application_answers_job ON application_answers(job_id);
+
+CREATE TABLE IF NOT EXISTS watchlist (
+    id INTEGER PRIMARY KEY,
+    ats TEXT NOT NULL,
+    slug TEXT NOT NULL,
+    name TEXT,
+    enabled INTEGER DEFAULT 1,
+    origin TEXT DEFAULT 'shipped',
+    added_at TEXT,
+    last_ok_at TEXT,
+    extra TEXT,
+    UNIQUE(ats, slug)
+);
 """
 
 
@@ -166,6 +179,10 @@ _MIGRATIONS = {
         ("applied_at", "TEXT"),
         ("stage_updated_at", "TEXT"),
         ("notes", "TEXT"),
+        # 008: freshness/delisting + semantic ranking
+        ("last_seen_at", "TEXT"),
+        ("delisted", "INTEGER DEFAULT 0"),
+        ("embedding", "BLOB"),
     ],
     "user_profile": [
         ("authorized_without_sponsorship", "TEXT"),
@@ -180,6 +197,9 @@ _MIGRATIONS = {
         ("resume_file_path", "TEXT"),
         ("resume_sections", "TEXT"),
         ("sections_edited_at", "TEXT"),
+        # 008: profile-driven search + semantic ranking
+        ("search_terms", "TEXT"),
+        ("resume_embedding", "BLOB"),
     ],
     # 007: sponsorship intelligence
     "companies": [
@@ -197,17 +217,89 @@ _MIGRATIONS = {
 }
 
 
+def _pending_migrations(conn: sqlite3.Connection) -> bool:
+    tables = {
+        row["name"]
+        for row in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")
+    }
+    if not tables:
+        return False  # brand-new file: nothing to protect
+    if "watchlist" not in tables:
+        return True
+    for table, columns in _MIGRATIONS.items():
+        if table not in tables:
+            continue
+        existing = {
+            row["name"]
+            for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        if any(column not in existing for column, _ in columns):
+            return True
+    return False
+
+
+def _apply_migrations(conn: sqlite3.Connection) -> None:
+    for table, columns in _MIGRATIONS.items():
+        existing = {
+            row["name"]
+            for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
+        }
+        for column, ddl_type in columns:
+            if column not in existing:
+                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}")
+    # 008 backfill: existing rows were last confirmed at their first ingest
+    conn.execute("UPDATE jobs SET last_seen_at = first_seen WHERE last_seen_at IS NULL")
+    conn.execute("UPDATE jobs SET delisted = 0 WHERE delisted IS NULL")
+
+
+def _backup_db(path: Path) -> Path:
+    """Consistent pre-migration snapshot via SQLite's backup API (safe under
+    WAL — a plain file copy can miss un-checkpointed pages)."""
+    from . import APP_VERSION
+
+    backup_dir = path.parent / "backup"
+    backup_dir.mkdir(parents=True, exist_ok=True)
+    dest = backup_dir / f"jobs-pre-{APP_VERSION}.db"
+    src = sqlite3.connect(path)
+    dst = sqlite3.connect(dest)
+    try:
+        with dst:
+            src.backup(dst)
+    finally:
+        src.close()
+        dst.close()
+    keep = sorted(
+        backup_dir.glob("jobs-pre-*.db"), key=lambda p: p.stat().st_mtime, reverse=True
+    )
+    for stale in keep[2:]:
+        stale.unlink(missing_ok=True)
+    return dest
+
+
+def _restore_db(path: Path, backup: Path) -> None:
+    import shutil
+
+    for suffix in ("", "-wal", "-shm"):
+        Path(str(path) + suffix).unlink(missing_ok=True)
+    shutil.copy2(backup, path)
+
+
 def init_db() -> None:
-    with _conn() as conn:
-        conn.executescript(_SCHEMA)
-        for table, columns in _MIGRATIONS.items():
-            existing = {
-                row["name"]
-                for row in conn.execute(f"PRAGMA table_info({table})").fetchall()
-            }
-            for column, ddl_type in columns:
-                if column not in existing:
-                    conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}")
+    path = get_db_path()
+    backup: Path | None = None
+    if path.exists():
+        with _conn() as conn:
+            needs = _pending_migrations(conn)
+        if needs:
+            backup = _backup_db(path)
+    try:
+        with _conn() as conn:
+            conn.executescript(_SCHEMA)
+            _apply_migrations(conn)
+    except Exception:
+        if backup is not None:
+            _restore_db(path, backup)
+        raise
 
 
 def normalize_company(name: str) -> str:
@@ -256,6 +348,14 @@ def upsert_job(job: Mapping[str, Any]) -> str:
     dedup = _dedup_key(job["company"], job["title"], job.get("location"))
     with _conn() as conn:
         existing = conn.execute("SELECT * FROM jobs WHERE url = ?", (url,)).fetchone()
+        if existing is None:
+            # 008 (FR-017): the same source re-posting the same job under a
+            # NEW url refreshes the existing row (newest url wins — the old
+            # one may be dead) instead of inserting a visible duplicate.
+            existing = conn.execute(
+                "SELECT * FROM jobs WHERE dedup_key = ? AND source = ?",
+                (dedup, job["source"]),
+            ).fetchone()
         if existing:
             new_posted = job.get("posted_date")
             posted = existing["posted_date"]
@@ -263,7 +363,8 @@ def upsert_job(job: Mapping[str, Any]) -> str:
                 posted = new_posted
             conn.execute(
                 "UPDATE jobs SET title=?, location=?, is_remote=?,"
-                " description=COALESCE(NULLIF(?, ''), description), posted_date=?"
+                " description=COALESCE(NULLIF(?, ''), description), posted_date=?,"
+                " url=?, last_seen_at=?, delisted=0"
                 " WHERE id=?",
                 (
                     job["title"],
@@ -271,6 +372,8 @@ def upsert_job(job: Mapping[str, Any]) -> str:
                     1 if job.get("is_remote") else 0,
                     job.get("description") or "",
                     posted,
+                    url,
+                    _utcnow(),
                     existing["id"],
                 ),
             )
@@ -280,14 +383,21 @@ def upsert_job(job: Mapping[str, Any]) -> str:
             (dedup, job["source"]),
         ).fetchone()
         if duplicate:
+            # cross-source duplicate: first source wins, but the job was
+            # just confirmed live — stamp the kept row (008 delisting)
+            conn.execute(
+                "UPDATE jobs SET last_seen_at = ?, delisted = 0 WHERE id = ?",
+                (_utcnow(), duplicate["id"]),
+            )
             return "skipped"
         company_id = _get_or_create_company(
             conn, job["company"], job.get("company_ats_type"), job.get("company_ats_slug")
         )
+        now = _utcnow()
         conn.execute(
             "INSERT INTO jobs (company_id, title, location, is_remote, description,"
-            " url, dedup_key, source, posted_date, first_seen)"
-            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+            " url, dedup_key, source, posted_date, first_seen, last_seen_at, delisted)"
+            " VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0)",
             (
                 company_id,
                 job["title"],
@@ -298,10 +408,52 @@ def upsert_job(job: Mapping[str, Any]) -> str:
                 dedup,
                 job["source"],
                 job.get("posted_date"),
-                _utcnow(),
+                now,
+                now,
             ),
         )
         return "inserted"
+
+
+def delist_missing_for_source(source: str, run_start: str) -> int:
+    """008 (FR-013): jobs of a full-board source not seen this run are gone
+    from their board — but ONLY for boards whose fetch succeeded this run
+    (watchlist.last_ok_at >= run_start). Saved/applied rows are flagged,
+    never deleted; upsert_job clears the flag if a job reappears."""
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE jobs SET delisted = 1"
+            " WHERE source = ? AND delisted = 0 AND last_seen_at < ?"
+            " AND company_id IN ("
+            "   SELECT c.id FROM companies c JOIN watchlist w"
+            "     ON w.ats = ? AND w.slug = c.ats_slug"
+            "   WHERE w.last_ok_at >= ?)",
+            (source, run_start, source, run_start),
+        )
+        return cur.rowcount
+
+
+def jobs_for_liveness_check(sources: tuple[str, ...], limit: int) -> list[dict]:
+    placeholders = ",".join("?" for _ in sources)
+    with _conn() as conn:
+        rows = conn.execute(
+            f"SELECT id, url FROM jobs WHERE source IN ({placeholders})"
+            " AND delisted = 0 ORDER BY last_seen_at ASC LIMIT ?",
+            (*sources, limit),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
+def mark_job_delisted(job_id: int) -> None:
+    with _conn() as conn:
+        conn.execute("UPDATE jobs SET delisted = 1 WHERE id = ?", (job_id,))
+
+
+def touch_job_seen(job_id: int) -> None:
+    with _conn() as conn:
+        conn.execute(
+            "UPDATE jobs SET last_seen_at = ? WHERE id = ?", (_utcnow(), job_id)
+        )
 
 
 _JOB_COLUMNS = (
@@ -309,6 +461,7 @@ _JOB_COLUMNS = (
     " j.first_seen, j.is_entry_level, j.sponsorship, j.match_score, j.status,"
     " json_extract(j.match_json, '$.method') AS match_method,"
     " j.stage, j.applied_at, j.stage_updated_at, j.notes,"
+    " j.last_seen_at, j.delisted,"
     " c.name AS company, c.sponsor_grade, c.cap_exempt"
 )
 
@@ -318,6 +471,11 @@ def _row_to_job(row: sqlite3.Row, latest_start: str | None) -> dict:
     job["is_remote"] = bool(job.get("is_remote"))
     if "cap_exempt" in job:
         job["cap_exempt"] = bool(job.get("cap_exempt"))
+    if "delisted" in job:
+        job["delisted"] = bool(job.get("delisted"))
+    # 008 (FR-014): a missing source date is APPROXIMATE, never silently
+    # presented as the posted date — the UI renders "seen {first_seen} ~"
+    job["posted_approx"] = job.get("posted_date") is None
     if latest_start is not None and job.get("first_seen"):
         job["is_new"] = _parse_ts(job["first_seen"]) >= _parse_ts(latest_start)
     else:
@@ -345,8 +503,12 @@ def query_jobs(
     min_score: float | None = None,
     seen_since: str | None = None,
     strong_sponsors: bool = False,
+    source: str | None = None,
 ) -> tuple[list[dict], int]:
     where, params = [], []
+    if source:
+        where.append("j.source = ?")
+        params.append(source)
     # 007 (FR-014): grade B or better, or likely cap-exempt (lottery-free)
     if strong_sponsors:
         where.append("(c.sponsor_grade IN ('A', 'B') OR c.cap_exempt = 1)")
@@ -356,12 +518,15 @@ def query_jobs(
         where.append("j.sponsorship = 'EXCLUDED'")
     elif not include_ineligible:
         where.append("j.sponsorship != 'EXCLUDED'")
-    if window in ("7d", "24h"):
-        days = 7 if window == "7d" else 1
+    if window in ("14d", "7d", "24h"):
+        days = {"14d": 14, "7d": 7, "24h": 1}[window]
         where.append(
             "date(COALESCE(j.posted_date, j.first_seen)) >= date('now', ?)"
         )
         params.append(f"-{days} days")
+        # 008 (FR-013): recency views never show delisted postings; the
+        # "all" window shows them flagged instead
+        where.append("j.delisted = 0")
     if statuses:
         placeholders = ",".join("?" for _ in statuses)
         where.append(f"j.status IN ({placeholders})")
@@ -595,15 +760,34 @@ def jobs_needing_score(
         )
     with _conn() as conn:
         rows = conn.execute(
-            "SELECT j.id, j.title, j.description, c.name AS company"
+            "SELECT j.id, j.title, j.description, j.embedding, c.name AS company"
             " FROM jobs j JOIN companies c ON j.company_id = c.id"
             f" WHERE j.is_entry_level = 1 AND {score_clause}"
             " AND j.sponsorship != 'EXCLUDED'"  # never spend LLM quota on ineligible jobs
             " AND j.status NOT IN ('applied', 'hidden')"
+            " AND j.delisted = 0"  # 008: dead postings don't spend quota either
             " ORDER BY COALESCE(j.posted_date, j.first_seen) DESC LIMIT ?",
             (*upgrade_methods, limit),
         ).fetchall()
     return [dict(row) for row in rows]
+
+
+def jobs_needing_embedding(limit: int = 300) -> list[dict]:
+    """008 (FR-029): new eligible jobs without a semantic vector yet."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT j.id, j.title, j.description FROM jobs j"
+            " WHERE j.embedding IS NULL AND j.delisted = 0"
+            " AND j.is_entry_level = 1 AND j.sponsorship != 'EXCLUDED'"
+            " ORDER BY COALESCE(j.posted_date, j.first_seen) DESC LIMIT ?",
+            (limit,),
+        ).fetchall()
+    return [dict(row) for row in rows]
+
+
+def save_job_embedding(job_id: int, blob: bytes) -> None:
+    with _conn() as conn:
+        conn.execute("UPDATE jobs SET embedding = ? WHERE id = ?", (blob, job_id))
 
 
 def get_setting(key: str) -> str | None:
@@ -831,7 +1015,10 @@ def _force_run_started_at(run_id: int, started_at: str) -> None:
 
 # --- user profile -----------------------------------------------------------
 
-_PROFILE_JSON_FIELDS = ("skills", "target_locations", "preferences", "resume_sections")
+_PROFILE_JSON_FIELDS = (
+    "skills", "target_locations", "preferences", "resume_sections",
+    "search_terms",  # 008: {"terms": [...], "derived_from": ..., "updated_at": ...}
+)
 # Single source of truth for save_profile()'s INSERT/UPDATE — every
 # user_profile column except id/updated_at (which are handled specially).
 # Adding a new profile field means adding it here AND to _MIGRATIONS above;
@@ -841,6 +1028,8 @@ _PROFILE_COLUMNS = (
     "preferences", "authorized_without_sponsorship", "visa_status",
     "first_name", "last_name", "email", "phone", "linkedin_url", "portfolio_url",
     "resume_file_path", "resume_sections", "sections_edited_at",
+    "search_terms",  # 008: profile-driven search
+    "resume_embedding",  # 008: semantic pre-ranking (BLOB, not JSON)
 )
 
 

@@ -1,0 +1,70 @@
+{% extends "base.html" %}
+{% block title %}Diagnostics · Job Engine{% endblock %}
+{% block content %}
+<article class="profile">
+  <h1>Diagnostics</h1>
+  <p class="muted">Every self-check runs against the real thing — a real PDF
+    render, a real local-model reply, a real browser launch, a real request
+    to a job board. Failures show the actual error, not a shrug.</p>
+
+  <section class="settings-section">
+    <h2>Self-checks</h2>
+    <p class="settings-actions">
+      <button type="button" id="diag-run">Run all checks</button>
+    </p>
+    <table class="feed-table" id="diag-results" aria-live="polite"></table>
+    <script>
+      document.getElementById('diag-run').addEventListener('click', async (e) => {
+        e.target.disabled = true;
+        e.target.textContent = 'Running…';
+        const table = document.getElementById('diag-results');
+        table.innerHTML = '';
+        try {
+          const body = await (await fetch('/api/diagnostics/all')).json();
+          for (const check of body.checks) {
+            const row = table.insertRow();
+            row.insertCell().textContent = check.name;
+            row.insertCell().textContent = check.ok ? '✓ ' + (check.detail || 'ok')
+                                                    : '✕ ' + (check.error || 'failed');
+            row.insertCell().textContent = check.ms + ' ms';
+          }
+        } catch (err) {
+          const row = table.insertRow();
+          row.insertCell().textContent = 'Could not run checks: ' + err.message;
+        } finally {
+          e.target.disabled = false;
+          e.target.textContent = 'Run all checks';
+        }
+      });
+    </script>
+  </section>
+
+  <section class="settings-section">
+    <h2>Logs</h2>
+    <p class="settings-actions">
+      <a class="data" href="/api/diagnostics/logs">Export logs (zip) ↓</a>
+    </p>
+    {% if log_tail %}
+    <details>
+      <summary>Recent log lines</summary>
+      <pre class="data" style="white-space: pre-wrap; overflow-x: auto">{{ log_tail }}</pre>
+    </details>
+    {% else %}
+    <p class="muted">No log entries yet.</p>
+    {% endif %}
+  </section>
+
+  {% if legacy_bytes %}
+  <section class="settings-section">
+    <h2>Reclaim disk space</h2>
+    <p class="muted">Older versions downloaded a private Chromium
+      (~{{ (legacy_bytes / 1048576) | round | int }} MB). Apply Assist now
+      uses your installed browser, so that download is dead weight.</p>
+    <button type="button" data-toast="Space reclaimed"
+            onclick="fetch('/api/diagnostics/cleanup-legacy-browser', {method:'POST'}).then(async r => { toast('Freed ' + Math.round(((await r.json()).freed_bytes) / 1048576) + ' MB'); location.reload(); })">
+      Remove old browser download
+    </button>
+  </section>
+  {% endif %}
+</article>
+{% endblock %}

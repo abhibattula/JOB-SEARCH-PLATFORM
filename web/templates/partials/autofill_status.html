@@ -13,12 +13,39 @@
 {% endif %}
 
 {% if current %}
+{# 008 FR-009: the current job's failure (if any) carries a reason class —
+   each renders a DISTINCT, honest message. A browser that never launched is
+   no longer misreported as "this page couldn't be read". #}
+{% set my_outcome = (snapshot.outcomes | selectattr('job_id', 'equalto', current.job_id) | list | first) if snapshot and snapshot.outcomes else None %}
 <div class="autofill-active mission-panel">
+  {% if my_outcome %}
+  <div class="error-banner" role="alert">
+    {% if my_outcome.reason == 'launch_failed' %}
+    <strong>The browser couldn't start.</strong> No window is open for this
+    job. <span class="data">{{ my_outcome.detail }}</span>
+    Install Microsoft Edge or Google Chrome, then use
+    <em>Check my browser</em> below or Stop and start again.
+    {% elif my_outcome.reason == 'nav_failed' %}
+    <strong>The application page failed to load.</strong>
+    <span class="data">{{ my_outcome.detail }}</span>
+    The posting may be down — try <em>Open posting</em> from the job page,
+    or skip to the next application.
+    {% elif my_outcome.reason == 'scan_failed' %}
+    <strong>The page loaded but couldn't be read.</strong>
+    <span class="data">{{ my_outcome.detail }}</span>
+    Complete this one manually in the open browser window, or try
+    <em>Re-scan this page</em>.
+    {% else %}
+    <strong>This page's fields couldn't be confidently read.</strong>
+    Complete it manually in the open browser window — nothing was filled.
+    {% endif %}
+  </div>
+  {% endif %}
   <div class="mission-head">
     <p>
       Working on <strong>{{ current_title or ('#' ~ current.job_id) }}</strong>
-      {% if current.fell_back %}
-      <span class="badge unknown" title="This page's fields couldn't be confidently read — complete it manually in the open browser window.">manual completion needed</span>
+      {% if my_outcome %}
+      <span class="badge unknown">manual completion needed</span>
       {% endif %}
     </p>
     {% if snapshot %}
@@ -139,7 +166,8 @@
     <li>
       <span class="glyph data">{%- if entry.outcome == 'filled' -%}✓{%- elif entry.outcome == 'manual' -%}⚠{%- else -%}·{%- endif -%}</span>
       {{ qentry.title if qentry else '#' ~ entry.job_id }}
-      <span class="muted">{{ entry.outcome }}</span>
+      {% set oc = (snapshot.outcomes | selectattr('job_id', 'equalto', entry.job_id) | list | first) if snapshot.outcomes else None %}
+      <span class="muted">{{ entry.outcome }}{% if oc %} — {{ oc.reason | replace('_', ' ') }}{% endif %}</span>
     </li>
     {% endfor %}
   </ul>

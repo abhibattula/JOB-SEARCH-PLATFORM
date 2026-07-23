@@ -11,7 +11,7 @@ from __future__ import annotations
 import logging
 from typing import Iterator
 
-from .base import RawJob, polite_get
+from .base import RawJob, board_ok, polite_get
 
 SOURCE_NAME = "smartrecruiters"
 log = logging.getLogger(__name__)
@@ -24,6 +24,7 @@ def fetch_jobs(entries: list[dict]) -> Iterator[RawJob]:
     for entry in entries:
         slug = entry["slug"]
         offset = 0
+        complete = False
         for _ in range(MAX_PAGES):
             try:
                 payload = polite_get(
@@ -62,4 +63,8 @@ def fetch_jobs(entries: list[dict]) -> Iterator[RawJob]:
             offset += PAGE_LIMIT
             total = payload.get("totalFound") or 0
             if offset >= total or not postings:
+                complete = True
                 break
+        # partial fetches (page cap hit / error) never authorize delisting
+        if complete:
+            board_ok(SOURCE_NAME, slug)

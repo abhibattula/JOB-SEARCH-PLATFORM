@@ -3,59 +3,41 @@
 {% block content %}
 <article class="autofill-page">
   <h1>Apply Assist</h1>
-  <p class="muted">Opens each saved job's real application page in its own
-    dedicated browser window and fills recognized fields from your profile
+  <p class="muted">Opens each saved job's real application page in a browser
+    window (your installed Edge or Chrome, with a separate profile just for
+    this — nothing to download) and fills recognized fields from your profile
     and answer bank. You always review and click the actual apply/submit
-    button yourself — this never happens automatically.</p>
+    button yourself — this never happens automatically. Automating
+    field-filling may touch the edges of some sites' Terms of Service; use
+    your judgment per site — this is a co-pilot, not a bot.</p>
 
-  <div id="autofill-error" class="error-banner" style="display:none"></div>
+  <div id="autofill-error" class="error-banner" style="display:none" role="alert"></div>
 
-  {% if not chromium_installed %}
-  <div class="empty-state" id="autofill-setup">
-    <p class="muted"><strong>Before you enable this:</strong> Apply Assist
-      automates opening and filling out real application pages on
-      third-party sites. Even though a human always performs the final
-      submit and login, automating page navigation and field-filling may
-      still touch the edges of some sites' Terms of Service. Use your own
-      judgment per site — this is a co-pilot that saves you retyping, not a
-      bot that applies on your behalf.</p>
-    <p>First-time setup: a one-time browser component download
-      (~150-280MB) is needed before Apply Assist can open application
-      pages.</p>
-    <button id="autofill-enable-btn" type="button">Enable Apply Assist</button>
-    <p id="autofill-setup-status" class="muted"></p>
-    <script>
-      document.getElementById('autofill-enable-btn').addEventListener('click', async (e) => {
-        const btn = e.target;
-        const statusEl = document.getElementById('autofill-setup-status');
-        const errEl = document.getElementById('autofill-error');
-        errEl.style.display = 'none';
-        btn.disabled = true;
-        statusEl.textContent = 'Downloading (this can take a minute)...';
-        try {
-          const resp = await fetch('/api/autofill/setup', {method: 'POST'});
-          const body = await resp.json();
-          if (!resp.ok) {
-            throw new Error(body.detail || `Setup failed (HTTP ${resp.status})`);
-          }
-          statusEl.textContent = 'Installing in the background — this page will refresh automatically.';
-          const poll = setInterval(async () => {
-            const s = await (await fetch('/api/autofill/status')).json();
-            if (s.chromium_installed) {
-              clearInterval(poll);
-              location.reload();
-            }
-          }, 3000);
-        } catch (err) {
-          errEl.textContent = 'Enable Apply Assist failed: ' + err.message;
-          errEl.style.display = 'block';
-          btn.disabled = false;
-          statusEl.textContent = '';
-        }
-      });
-    </script>
-  </div>
-  {% else %}
+  <p class="settings-actions">
+    <button type="button" class="ghost" id="autofill-preflight-btn"
+            title="Verifies your installed browser can be started before you queue anything">
+      Check my browser
+    </button>
+    <span id="autofill-preflight-result" class="data"></span>
+  </p>
+  <script>
+    document.getElementById('autofill-preflight-btn').addEventListener('click', async (e) => {
+      const out = document.getElementById('autofill-preflight-result');
+      e.target.disabled = true;
+      out.textContent = 'checking…';
+      try {
+        const body = await (await fetch('/api/autofill/preflight', {method: 'POST'})).json();
+        out.textContent = body.ok
+          ? ('✓ ready (' + (body.channel === 'msedge' ? 'Microsoft Edge' : 'Google Chrome') + ')')
+          : ('✕ ' + body.error);
+      } catch (err) {
+        out.textContent = '✕ ' + err.message;
+      } finally {
+        e.target.disabled = false;
+      }
+    });
+  </script>
+
   <section id="autofill-queue" aria-live="polite" hx-get="/partials/autofill/status" hx-trigger="load, every 3s [pollingAllowed()]" hx-swap="innerHTML"></section>
 
   <section>
@@ -92,6 +74,7 @@
           .map(el => parseInt(el.value, 10));
         if (!job_ids.length) return;
         btn.disabled = true;
+        btn.textContent = 'Starting…';
         try {
           const resp = await fetch('/api/autofill/queue', {
             method: 'POST',
@@ -108,6 +91,7 @@
           errEl.style.display = 'block';
         } finally {
           btn.disabled = false;
+          btn.textContent = 'Start Apply Assist';
         }
       });
     </script>
@@ -116,6 +100,5 @@
       them here.</p>
     {% endif %}
   </section>
-  {% endif %}
 </article>
 {% endblock %}

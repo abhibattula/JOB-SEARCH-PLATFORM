@@ -19,11 +19,52 @@ router = APIRouter(prefix="/api")
 # pass entry_level=all to see everything.
 DEFAULT_ENTRY_LEVEL: bool | None = True
 
-_WINDOWS = {"7d": "7d", "24h": "24h", "all": None}
+
+# --- 008 desktop-shell support (FR-002/FR-004) ------------------------------
+# Inside the pywebview shell, target=_blank and navigator.clipboard are
+# unreliable; these endpoints are the guaranteed paths. The server only ever
+# runs on the user's own machine (127.0.0.1), so "open a browser" and "write
+# the clipboard" act on the user's own session.
+
+
+class OpenRequest(BaseModel):
+    url: str
+
+
+@router.post("/open")
+def open_external(body: OpenRequest):
+    from urllib.parse import urlparse
+
+    parsed = urlparse(body.url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise HTTPException(status_code=400, detail="only http/https links can be opened")
+    import webbrowser
+
+    webbrowser.open(body.url)
+    return {"opened": True}
+
+
+class ClipboardRequest(BaseModel):
+    text: str
+
+
+@router.post("/clipboard")
+def copy_to_clipboard(body: ClipboardRequest):
+    from engine import clipboard
+
+    try:
+        clipboard.copy_text(body.text)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Couldn't write to the clipboard: {exc}"
+        )
+    return {"copied": True}
+
+_WINDOWS = {"14d": "14d", "7d": "7d", "24h": "24h", "all": None}
 
 
 def parse_feed_params(
-    window: str = "7d",
+    window: str = "14d",
     status: str | None = None,
     location: str | None = None,
     remote: int = 0,
@@ -35,6 +76,8 @@ def parse_feed_params(
     min_score: float | None = None,
     seen: str | None = None,
     strong_sponsors: int = 0,
+    page: int = 1,
+    source: str | None = None,
 ) -> dict:
     seen_since = None
     if seen == "24h":
@@ -53,20 +96,25 @@ def parse_feed_params(
     if entry_level is None:
         entry = DEFAULT_ENTRY_LEVEL
     else:
-        entry = {"1": True, "0": None, "all": None}.get(entry_level, DEFAULT_ENTRY_LEVEL)
+        # 008 (FR-021): '0' now genuinely means non-entry-only
+        entry = {"1": True, "0": False, "all": None}.get(entry_level, DEFAULT_ENTRY_LEVEL)
+    limit = max(1, min(limit, 500))
+    if page and page > 1 and not offset:
+        offset = (page - 1) * limit
     return {
-        "window": _WINDOWS.get(window, "7d"),
+        "window": _WINDOWS.get(window, "14d"),
         "statuses": statuses,
         "entry_level": entry,
         "location": location or None,
         "remote": bool(remote),
         "sort": sort if sort in ("score", "date") else "score",
-        "limit": max(1, min(limit, 500)),
+        "limit": limit,
         "offset": max(0, offset),
         "ineligible": bool(ineligible),
         "min_score": min_score if min_score and min_score > 0 else None,
         "seen_since": seen_since,
         "strong_sponsors": bool(strong_sponsors),
+        "source": source or None,
     }
 
 
@@ -90,7 +138,73 @@ def job_summary(job: dict) -> dict:
         "is_new": job.get("is_new", False),
         "sponsor_grade": job.get("sponsor_grade"),
         "cap_exempt": bool(job.get("cap_exempt")),
+        # 008: freshness honesty (FR-013/FR-014)
+        "delisted": bool(job.get("delisted")),
+        "posted_approx": job.get("posted_approx", job.get("posted_date") is None),
+        "last_seen_at": job.get("last_seen_at"),
     }
+
+
+@router.get("/jobs/{job_id}/linkedin-url")
+def job_linkedin_url(job_id: int):
+    """008 (FR-016): a genuine LinkedIn search for this job's title."""
+    from engine.ingest import linkedin_linkout
+
+    job = db.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="job not found")
+    return {"url": linkedin_linkout.url_for_job(job)}
+
+
+# --- 008 company watchlist (FR-015) -----------------------------------------
+
+
+class WatchlistAddRequest(BaseModel):
+    ats: str
+    slug: str
+    name: str | None = None
+
+
+class WatchlistPatchRequest(BaseModel):
+    enabled: bool
+
+
+@router.get("/watchlist")
+def list_watchlist():
+    from engine import watchlist
+
+    watchlist.ensure_seeded()
+    return {"companies": watchlist.list_all()}
+
+
+@router.post("/watchlist", status_code=201)
+def add_watchlist_entry(body: WatchlistAddRequest):
+    from engine import watchlist
+
+    if body.ats not in watchlist.VALID_ATS:
+        raise HTTPException(status_code=400, detail=f"unknown board type {body.ats!r}")
+    try:
+        return watchlist.add(body.ats, body.slug, name=body.name)
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+
+
+@router.patch("/watchlist/{entry_id}")
+def patch_watchlist_entry(entry_id: int, body: WatchlistPatchRequest):
+    from engine import watchlist
+
+    watchlist.set_enabled(entry_id, body.enabled)
+    return {"id": entry_id, "enabled": body.enabled}
+
+
+@router.delete("/watchlist/{entry_id}")
+def delete_watchlist_entry(entry_id: int):
+    from engine import watchlist
+
+    result = watchlist.remove(entry_id)
+    if result == "missing":
+        raise HTTPException(status_code=404, detail="no such watchlist entry")
+    return {"result": result}
 
 
 @router.post("/refresh")
@@ -108,7 +222,7 @@ def refresh_status():
 
 @router.get("/jobs")
 def list_jobs(
-    window: str = "7d",
+    window: str = "14d",
     status: str | None = None,
     location: str | None = None,
     remote: int = 0,
@@ -120,13 +234,21 @@ def list_jobs(
     min_score: float | None = None,
     seen: str | None = None,
     strong_sponsors: int = 0,
+    page: int = 1,
+    source: str | None = None,
 ):
     params = parse_feed_params(
         window, status, location, remote, sort, entry_level, limit, offset,
-        ineligible, min_score, seen, strong_sponsors,
+        ineligible, min_score, seen, strong_sponsors, page=page, source=source,
     )
     jobs, total = db.query_jobs(**params)
-    return {"jobs": [job_summary(j) for j in jobs], "total": total}
+    pages = max(1, -(-total // params["limit"]))
+    return {
+        "jobs": [job_summary(j) for j in jobs],
+        "total": total,
+        "page": max(1, page),
+        "pages": pages,
+    }
 
 
 @router.get("/jobs/{job_id}")
@@ -209,7 +331,7 @@ async def set_job_status(job_id: int, request: Request, status: str | None = Non
 
 @router.get("/export")
 def export_csv(
-    window: str = "7d",
+    window: str = "14d",
     status: str | None = None,
     location: str | None = None,
     remote: int = 0,
@@ -252,6 +374,7 @@ def get_settings():
         "llm_api_key_masked": settings.mask_key(key),
         "llm_base_url": settings.get("LLM_BASE_URL"),
         "llm_model": settings.get("LLM_MODEL"),
+        "llm_json_model": settings.get("LLM_JSON_MODEL"),
         "jobspy_linkedin": settings.get("JOBSPY_LINKEDIN") == "1",
         "schedule_refresh": settings.get("SCHEDULE_REFRESH") == "1",
         "alerts_enabled": settings.get("ALERTS_ENABLED") != "0",
@@ -267,6 +390,7 @@ async def save_settings(
     llm_api_key: str | None = Form(None),
     llm_base_url: str | None = Form(None),
     llm_model: str | None = Form(None),
+    llm_json_model: str | None = Form(None),
     jobspy_linkedin: str | None = Form(None),
     schedule_refresh: str | None = Form(None),
     alerts_enabled: str | None = Form(None),
@@ -280,6 +404,8 @@ async def save_settings(
         settings.set("LLM_BASE_URL", llm_base_url.strip())
     if llm_model:
         settings.set("LLM_MODEL", llm_model.strip())
+    if llm_json_model:
+        settings.set("LLM_JSON_MODEL", llm_json_model.strip())
     if jobspy_linkedin is not None:
         settings.set("JOBSPY_LINKEDIN", "1" if jobspy_linkedin == "1" else "0")
     if schedule_refresh is not None:
@@ -311,9 +437,12 @@ def check_update(request: Request):
         if result is None:
             return HTMLResponse("✕ Couldn't reach GitHub — check your connection.")
         if result["newer"]:
+            # 008 (FR-030): a real in-app update, not just a link
             return HTMLResponse(
                 f'⬆ Version {result["latest"]} is available — '
-                f'<a href="{result["url"]}" target="_blank" rel="noopener">download it</a>.'
+                f'<button type="button" onclick="runUpdate(this)">Update now</button> '
+                f'<span id="update-progress" class="data"></span> '
+                f'<a href="{result["url"]}" target="_blank" rel="noopener">manual download ↗</a>'
             )
         return HTMLResponse("✓ You're on the latest version.")
     return result or {"error": "check failed"}
@@ -498,6 +627,16 @@ async def save_profile(
             sections = resume_extract.extract(text)
             if sections is not None:
                 fields["resume_sections"] = sections.model_dump()
+        # 008 (FR-022/FR-023): identity details — the LLM's contact block
+        # when available, the pattern-based fallback otherwise, so
+        # auto-fill works on every tier. Applied after the form fields
+        # below (fill-only-blank + consent, never a silent overwrite).
+        contact_pending = (fields.get("resume_sections") or {}).get("contact")
+        if not contact_pending or not any(
+            (v or "").strip() for v in contact_pending.values()
+        ):
+            contact_pending = resume_extract.extract_contact(text).model_dump()
+        fields["_contact_pending"] = contact_pending
     if target_locations is not None:
         fields["target_locations"] = [
             part.strip() for part in target_locations.split(",") if part.strip()
@@ -525,12 +664,110 @@ async def save_profile(
     }.items():
         if value is not None:
             fields[key] = value
+
+    # 008 (FR-022): apply identity auto-fill AFTER the form values above so
+    # a value the user just typed always wins; blanks fill silently,
+    # disagreements become explicit keep-or-replace decisions. Visa/work-
+    # authorization fields are deliberately not in this list (FR-024).
+    identity_conflicts: list[dict] = []
+    contact_pending = fields.pop("_contact_pending", None)
+    if contact_pending:
+        existing = db.get_profile() or {}
+        for field in ("first_name", "last_name", "email", "phone",
+                      "linkedin_url", "portfolio_url"):
+            extracted_value = (contact_pending.get(field) or "").strip()
+            if not extracted_value:
+                continue
+            current = fields.get(field)
+            if current is None:
+                current = existing.get(field) or ""
+            current = current.strip()
+            if not current:
+                fields[field] = extracted_value
+            elif current != extracted_value:
+                identity_conflicts.append({
+                    "field": field, "current": current, "extracted": extracted_value,
+                })
+        location = (contact_pending.get("location") or "").strip()
+        if location and not fields.get("target_locations") and not (
+            existing.get("target_locations") or []
+        ):
+            fields["target_locations"] = [location]
+        settings.set(
+            "PENDING_IDENTITY_CONFLICTS",
+            json.dumps(identity_conflicts) if identity_conflicts else "",
+        )
+        # FR-025: derive search terms from the fresh extraction — unless the
+        # user has taken ownership of them (derived_from == "user").
+        from engine import search_terms as search_terms_mod
+
+        stored_terms = existing.get("search_terms") or {}
+        if not (isinstance(stored_terms, dict) and stored_terms.get("derived_from") == "user"):
+            merged = dict(existing)
+            merged.update(fields)
+            derived = search_terms_mod.derive(merged)
+            if derived:
+                fields["search_terms"] = {
+                    "terms": derived, "derived_from": "resume",
+                    "updated_at": db._utcnow(),
+                }
+
     if fields:
         db.save_profile(**fields)
     if "text/html" in (request.headers.get("accept") or ""):
         target = "/profile?extraction_conflict=1" if extraction_conflict else "/profile"
         return RedirectResponse(target, status_code=303)
-    return {**_profile_payload(), "extraction_conflict": extraction_conflict}
+    return {
+        **_profile_payload(),
+        "extraction_conflict": extraction_conflict,
+        "identity_conflicts": identity_conflicts,
+    }
+
+
+class IdentityDecisions(BaseModel):
+    decisions: dict[str, str]  # field -> "keep" | "replace"
+
+
+@router.post("/profile/identity-conflicts")
+def resolve_identity_conflicts(body: IdentityDecisions):
+    """008 (FR-022): explicit consent for extracted values that disagreed
+    with what the user typed. 'replace' adopts the extracted value; 'keep'
+    (or no decision) leaves the user's value. Either way the conflict is
+    consumed."""
+    pending = json.loads(settings.get("PENDING_IDENTITY_CONFLICTS") or "[]")
+    by_field = {c["field"]: c for c in pending}
+    updates = {}
+    for field, decision in body.decisions.items():
+        conflict = by_field.pop(field, None)
+        if conflict and decision == "replace":
+            updates[field] = conflict["extracted"]
+    if updates:
+        db.save_profile(**updates)
+    settings.set(
+        "PENDING_IDENTITY_CONFLICTS",
+        json.dumps(list(by_field.values())) if by_field else "",
+    )
+    return {"applied": list(updates), "remaining": list(by_field)}
+
+
+class SearchTermsRequest(BaseModel):
+    terms: list[str]
+
+
+@router.put("/profile/search-terms")
+def put_search_terms(body: SearchTermsRequest):
+    """008 (FR-025): the user takes ownership of the search terms."""
+    from engine.search_terms import MAX_TERMS
+
+    terms = [t.strip() for t in body.terms if t and t.strip()]
+    if len(terms) > MAX_TERMS:
+        raise HTTPException(
+            status_code=422, detail=f"at most {MAX_TERMS} search terms"
+        )
+    db.save_profile(search_terms={
+        "terms": terms, "derived_from": "user", "updated_at": db._utcnow(),
+    })
+    return {"terms": terms, "derived_from": "user"}
 
 
 @router.put("/profile/resume-sections")
@@ -565,10 +802,25 @@ def reextract_resume_sections():
     sections = resume_extract.extract(profile["resume_text"])
     if sections is None:
         return {"extracted": False, "reason": "no-ai-tier"}
-    db.save_profile(
-        resume_sections=sections.model_dump(),
-        sections_edited_at=None,
-    )
+    updates: dict = {
+        "resume_sections": sections.model_dump(),
+        "sections_edited_at": None,
+    }
+    # 008: re-extraction also refreshes derived search terms (same
+    # ownership rule — user-edited terms are never overwritten)
+    stored_terms = profile.get("search_terms") or {}
+    if not (isinstance(stored_terms, dict) and stored_terms.get("derived_from") == "user"):
+        from engine import search_terms as search_terms_mod
+
+        merged = dict(profile)
+        merged.update(updates)
+        derived = search_terms_mod.derive(merged)
+        if derived:
+            updates["search_terms"] = {
+                "terms": derived, "derived_from": "resume",
+                "updated_at": db._utcnow(),
+            }
+    db.save_profile(**updates)
     return _profile_payload()
 
 
@@ -732,5 +984,162 @@ def chromium_launch_selftest():
     try:
         ok = browser_controller.chromium_selftest()
         return {"ok": bool(ok)}
-    except Exception:
-        return {"ok": False}
+    except Exception as exc:
+        # 008: the audit found this returned a bare false with no reason —
+        # the error text is the whole point of a self-test
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:300]}
+
+
+# --- 008 diagnostics (FR-033) -----------------------------------------------
+
+
+def _diag_pdf() -> str:
+    from engine import resume_pdf
+
+    data = resume_pdf.render_resume(
+        {"experience": [], "education": [], "projects": [],
+         "skills": ["self-test — unicode dash", "résumé"]},
+        {"first_name": "Self", "last_name": "Test"},
+        tailoring=None,
+    )
+    if data[:5] != b"%PDF-":
+        raise RuntimeError("render did not produce a PDF header")
+    return f"{len(data)} bytes"
+
+
+def _diag_local_llm() -> str:
+    from engine import local_llm
+
+    reply = local_llm.chat(
+        [{"role": "user", "content": "Reply with a short greeting."}]
+    )
+    if not reply:
+        raise RuntimeError("empty reply from the local model")
+    return "responded"
+
+
+def _diag_browser() -> str:
+    from engine.autofill import browser_controller
+
+    result = browser_controller.preflight()
+    if not result["ok"]:
+        raise RuntimeError(result["error"] or "browser launch failed")
+    return f"ready ({result['channel']})"
+
+
+def _diag_sources() -> str:
+    from engine.ingest.base import polite_get
+
+    response = polite_get(
+        "https://boards-api.greenhouse.io/v1/boards/stripe/jobs"
+    )
+    return f"reachable (HTTP {response.status_code})"
+
+
+def _diag_embeddings() -> str:
+    from engine import semantic
+
+    return semantic.selftest()
+
+
+# Named check registry — the Diagnostics page runs each and shows the REAL
+# error text on failure (audit: bare ok:false told the user nothing).
+DIAGNOSTIC_CHECKS: dict = {
+    "pdf": _diag_pdf,
+    "local-llm": _diag_local_llm,
+    "embeddings": _diag_embeddings,
+    "browser": _diag_browser,
+    "sources": _diag_sources,
+}
+
+
+@router.get("/diagnostics/all")
+def diagnostics_all():
+    import time as time_mod
+
+    checks = []
+    for name, fn in DIAGNOSTIC_CHECKS.items():
+        started = time_mod.perf_counter()
+        try:
+            detail = fn()
+            checks.append({
+                "name": name, "ok": True, "detail": detail, "error": None,
+                "ms": int((time_mod.perf_counter() - started) * 1000),
+            })
+        except Exception as exc:
+            checks.append({
+                "name": name, "ok": False, "detail": None,
+                "error": f"{type(exc).__name__}: {exc}"[:300],
+                "ms": int((time_mod.perf_counter() - started) * 1000),
+            })
+    return {"checks": checks}
+
+
+@router.get("/diagnostics/logs")
+def diagnostics_logs():
+    import io
+    import zipfile
+
+    from engine import paths
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name in ("app.log", "crash.marker"):
+            path = paths.data_dir() / name
+            if path.exists():
+                archive.writestr(name, path.read_text(encoding="utf-8", errors="replace"))
+    return Response(
+        buffer.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=jobengine-logs.zip"},
+    )
+
+
+@router.post("/diagnostics/cleanup-legacy-browser")
+def cleanup_legacy_browser():
+    from engine.autofill import browser_setup
+
+    return {"freed_bytes": browser_setup.cleanup_legacy()}
+
+
+# --- 008 self-update routes (FR-030) ----------------------------------------
+
+
+@router.post("/updates/download")
+def updates_download():
+    from engine import updates
+
+    if not updates.start_download():
+        raise HTTPException(status_code=409, detail="a download is already running")
+    return {"started": True}
+
+
+@router.get("/updates/progress")
+def updates_progress():
+    from engine import updates
+
+    return updates.progress()
+
+
+@router.post("/updates/install")
+def updates_install():
+    from engine import updates
+
+    try:
+        updates.install()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    # the installer takes over; give this response time to flush, then exit
+    import os
+    import threading as threading_mod
+
+    threading_mod.Timer(1.5, os._exit, args=(0,)).start()
+    return {"installing": True}
+
+
+@router.post("/whats-new/dismiss")
+def whats_new_dismiss():
+    from engine import APP_VERSION
+
+    settings.set("WHATS_NEW_SEEN_VERSION", APP_VERSION)
+    return {"dismissed": True}
