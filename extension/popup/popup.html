@@ -1,0 +1,30 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    body { font: 13px system-ui, sans-serif; width: 260px; margin: 0; padding: 12px; }
+    .status { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: #8b949e; }
+    .dot.on { background: #1a7f37; }
+    button { width: 100%; padding: 8px; margin-top: 6px; cursor: pointer; }
+    details { margin-top: 10px; color: #57606a; }
+    input { width: 100%; box-sizing: border-box; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div class="status">
+    <span class="dot" id="dot"></span>
+    <span id="status-text">Checking…</span>
+  </div>
+  <button id="fill-here" disabled>Fill this page</button>
+  <details>
+    <summary>Recovery pairing</summary>
+    <p>Only needed if you moved the extension folder. Paste the code from
+      the app's Apply Assist page:</p>
+    <input id="recovery-code" placeholder="pairing code">
+    <button id="recovery-save">Save</button>
+  </details>
+  <script src="popup.js"></script>
+</body>
+</html>

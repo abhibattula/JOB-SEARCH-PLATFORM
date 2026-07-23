@@ -8,9 +8,9 @@ US2 (P2 AI drafts) → US3 (P3 UI overhaul) → Polish/Ship.
 
 ## Phase 1: Setup
 
-- [ ] T001 Extension scaffolding: create `extension/` (manifest.json MV3 — storage/tabs/alarms, host_permissions http://127.0.0.1/*, content_scripts <all_urls> all_frames:true run_at document_idle, minimum_chrome_version 116; empty module files background/{service-worker,socket,protocol,tabs,badge}.js, content/{main,scanner,filler,overlay}.js, content/overlay.css, popup/{popup.html,popup.js}); gitignore `extension/pairing.json`; Chrome loads it unpacked without errors
-- [ ] T002 [P] DB migrations (additive, in `engine/db.py` _MIGRATIONS): answers.provenance/drafted_at/source_job_id; jobs (applications) follow_up_at/notes; new table ai_drafts; settings key bridge_secret generated on first init_db; tests in `tests/test_db.py` extend the migration + concurrent-init suites
-- [ ] T003 [P] Protocol schemas `engine/autofill/ext_protocol.py` (pydantic envelope v1 + every message/FillItem/Descriptor from contracts/bridge-protocol.md, 1MB bound, strict validation) with `tests/test_ext_protocol.py` round-trip + malformed/oversized rejection tests
+- [x] T001 Extension scaffolding: create `extension/` (manifest.json MV3 — storage/tabs/alarms, host_permissions http://127.0.0.1/*, content_scripts <all_urls> all_frames:true run_at document_idle, minimum_chrome_version 116; empty module files background/{service-worker,socket,protocol,tabs,badge}.js, content/{main,scanner,filler,overlay}.js, content/overlay.css, popup/{popup.html,popup.js}); gitignore `extension/pairing.json`; Chrome loads it unpacked without errors
+- [x] T002 [P] DB migrations (additive, in `engine/db.py` _MIGRATIONS): answers.provenance/drafted_at/source_job_id; jobs (applications) follow_up_at/notes; new table ai_drafts; settings key bridge_secret generated on first init_db; tests in `tests/test_db.py` extend the migration + concurrent-init suites
+- [x] T003 [P] Protocol schemas `engine/autofill/ext_protocol.py` (pydantic envelope v1 + every message/FillItem/Descriptor from contracts/bridge-protocol.md, 1MB bound, strict validation) with `tests/test_ext_protocol.py` round-trip + malformed/oversized rejection tests
 
 ## Phase 2: Foundational (blocking prerequisites)
 

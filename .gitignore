@@ -32,3 +32,6 @@ Thumbs.db
 *.tmp
 *.swp
 jobengine-smoke-data/
+
+# 010: pairing.json is stamped per-machine by the app, never committed
+extension/pairing.json

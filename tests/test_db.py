@@ -420,6 +420,8 @@ class TestAnswerBank:
         assert cols == {
             "id", "question_normalized", "question_raw", "answer",
             "category", "source", "confirmed_at", "updated_at",
+            # 010: AI-draft provenance
+            "drafted_at", "source_job_id",
         }
 
     def test_answer_bank_question_normalized_is_unique(self, tmp_db):
@@ -654,3 +656,35 @@ class Test008SourceFilter:
         jobs, total = db.query_jobs(window=None, statuses=None, entry_level=None,
                                     source="jobspy")
         assert total == 1 and jobs[0]["source"] == "jobspy"
+
+
+class Test010Migrations:
+    """010: additive schema for AI drafts, follow-ups, and the bridge."""
+
+    def _columns(self, table):
+        with db._conn() as conn:
+            return {r["name"] for r in conn.execute(f"PRAGMA table_info({table})")}
+
+    def test_answer_bank_gains_draft_provenance_columns(self, tmp_db):
+        db.init_db()
+        cols = self._columns("answer_bank")
+        assert {"drafted_at", "source_job_id"} <= cols
+
+    def test_jobs_gain_follow_up_at(self, tmp_db):
+        db.init_db()
+        assert "follow_up_at" in self._columns("jobs")
+
+    def test_ai_drafts_table_exists_with_expected_shape(self, tmp_db):
+        db.init_db()
+        cols = self._columns("ai_drafts")
+        assert {"id", "job_id", "question", "draft_text", "status", "tier",
+                "created_at"} <= cols
+
+    def test_bridge_secret_generated_once_and_stable(self, tmp_db):
+        db.init_db()
+        secret = db.get_bridge_secret()
+        assert isinstance(secret, str) and len(secret) == 64
+        int(secret, 16)  # valid hex
+        assert db.get_bridge_secret() == secret  # stable across calls
+        db.init_db()
+        assert db.get_bridge_secret() == secret  # stable across re-init

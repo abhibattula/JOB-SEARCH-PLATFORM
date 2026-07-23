@@ -83,6 +83,16 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT
 );
 
+CREATE TABLE IF NOT EXISTS ai_drafts (
+    id INTEGER PRIMARY KEY,
+    job_id INTEGER REFERENCES jobs(id),
+    question TEXT NOT NULL,
+    draft_text TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'drafted',
+    tier TEXT,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS h1b_employers (
     normalized_name TEXT PRIMARY KEY,
     display_name TEXT,
@@ -179,6 +189,8 @@ _MIGRATIONS = {
         ("applied_at", "TEXT"),
         ("stage_updated_at", "TEXT"),
         ("notes", "TEXT"),
+        # 010: user-set follow-up date (tracker nudges / next actions)
+        ("follow_up_at", "TEXT"),
         # 008: freshness/delisting + semantic ranking
         ("last_seen_at", "TEXT"),
         ("delisted", "INTEGER DEFAULT 0"),
@@ -200,6 +212,12 @@ _MIGRATIONS = {
         # 008: profile-driven search + semantic ranking
         ("search_terms", "TEXT"),
         ("resume_embedding", "BLOB"),
+    ],
+    # 010: AI draft provenance rides answer_bank.source ('user'|'confirmed'|
+    # 'auto_saved'); these columns record when/where a draft originated
+    "answer_bank": [
+        ("drafted_at", "TEXT"),
+        ("source_job_id", "INTEGER"),
     ],
     # 007: sponsorship intelligence
     "companies": [
@@ -806,6 +824,24 @@ def jobs_needing_embedding(limit: int = 300) -> list[dict]:
 def save_job_embedding(job_id: int, blob: bytes) -> None:
     with _conn() as conn:
         conn.execute("UPDATE jobs SET embedding = ? WHERE id = ?", (blob, job_id))
+
+
+def get_bridge_secret() -> str:
+    """010: the machine-local token the browser companion must present on
+    its first WebSocket frame. Not a password — a session gate so no OTHER
+    local software can drive fills. Generated once, lazily; INSERT OR
+    IGNORE makes concurrent first calls converge on one value."""
+    import secrets as _secrets
+
+    with _conn() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
+            ("bridge_secret", _secrets.token_hex(32)),
+        )
+        row = conn.execute(
+            "SELECT value FROM settings WHERE key = 'bridge_secret'"
+        ).fetchone()
+    return row["value"]
 
 
 def get_setting(key: str) -> str | None:
