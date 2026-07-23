@@ -70,15 +70,15 @@ US4 7 · US5 9 · US6 4 · Polish/Ship 1 (numbering is execution order).
 
 ## Phase 7: US5 — In-app updates, What's New, Diagnostics (P5)
 
-- [ ] T043 [test] [US5] Failing tests in tests/test_updates.py: platform asset selection from a releases-API fixture, semver compare, SHA-256 verify (reject mismatch/partial), download progress state machine (idle→downloading→verifying→ready/failed/blocked), install refused unless `ready`
-- [ ] T044 [US5] Implement engine/updates.py download/verify/install-handoff (`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /STARTAPP=1`, detached, app exit) + once-daily startup check throttle
-- [ ] T045 [US5] Routes + UI: `/api/updates/download|progress|install`, upgraded check-update response, update banner with progress bar in base/settings templates (web/routes_api.py, web/static/app.js)
-- [ ] T046 [US5] What's New: versioned changelog dict, `GET /partials/whats-new` overlay + dismiss endpoint stamping `WHATS_NEW_SEEN_VERSION` (render + route tests first)
-- [ ] T047 [US5] Diagnostics page: `/diagnostics` + `GET /api/diagnostics/all` (pdf, local-llm, browser-preflight, embeddings, source-reachability with real error text + timings), `GET /api/diagnostics/logs` zip export, `POST /api/diagnostics/cleanup-legacy-browser`; chromium-launch-selftest gains error text (tests first in tests/test_diagnostics.py)
-- [ ] T048 [US5] Installer hardening in packaging/windows.iss: `AppMutex=JobEngineRunning`, `CloseApplications=yes`, `RestartApplications=no`, `VersionInfoVersion`, stale-payload cleanup, `[Run]` relaunch entry gated on `/STARTAPP` param
-- [ ] T049 [US5] CI (.github/workflows/release.yml): publish SHA-256 of each asset in the release body; assert git tag == windows.iss version == engine.APP_VERSION at build time
-- [ ] T050 [US5] macOS: updater returns manual-download path for .dmg (no silent install), documented in USER_MANUAL
-- [ ] T051 [US5] Upgrade-with-data test: fixture v0.7-shape populated DB → migrations produce correct schema/data + backup file (tests/test_db.py), documented as release gate in quickstart
+- [X] T043 [test] [US5] Failing tests in tests/test_updates.py: platform asset selection from a releases-API fixture, semver compare, SHA-256 verify (reject mismatch/partial), download progress state machine (idle→downloading→verifying→ready/failed/blocked), install refused unless `ready`
+- [X] T044 [US5] Implement engine/updates.py download/verify/install-handoff (`/VERYSILENT /SUPPRESSMSGBOXES /NORESTART /STARTAPP=1`, detached, app exit) + once-daily startup check throttle
+- [X] T045 [US5] Routes + UI: `/api/updates/download|progress|install`, upgraded check-update response, update banner with progress bar in base/settings templates (web/routes_api.py, web/static/app.js)
+- [X] T046 [US5] What's New: versioned changelog dict, `GET /partials/whats-new` overlay + dismiss endpoint stamping `WHATS_NEW_SEEN_VERSION` (render + route tests first)
+- [X] T047 [US5] Diagnostics page: `/diagnostics` + `GET /api/diagnostics/all` (pdf, local-llm, browser-preflight, embeddings, source-reachability with real error text + timings), `GET /api/diagnostics/logs` zip export, `POST /api/diagnostics/cleanup-legacy-browser`; chromium-launch-selftest gains error text (tests first in tests/test_diagnostics.py)
+- [X] T048 [US5] Installer hardening in packaging/windows.iss: `AppMutex=JobEngineRunning`, `CloseApplications=yes`, `RestartApplications=no`, `VersionInfoVersion`, stale-payload cleanup, `[Run]` relaunch entry gated on `/STARTAPP` param
+- [X] T049 [US5] CI (.github/workflows/release.yml): publish SHA-256 of each asset in the release body; assert git tag == windows.iss version == engine.APP_VERSION at build time
+- [X] T050 [US5] macOS: updater returns manual-download path for .dmg (no silent install), documented in USER_MANUAL
+- [X] T051 [US5] Upgrade-with-data test: fixture v0.7-shape populated DB → migrations produce correct schema/data + backup file (tests/test_db.py), documented as release gate in quickstart
 
 ## Phase 8: US6 — Smarter matching within free limits (P6)
 

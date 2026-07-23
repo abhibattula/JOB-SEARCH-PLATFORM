@@ -1,0 +1,13 @@
+{# 008 (FR-032): version-specific changes, shown once per version. #}
+<div class="mission-panel whats-new" role="dialog" aria-label="What's new in this version">
+  <h2>What's new in v{{ version }}</h2>
+  <ul>
+    {% for entry in entries %}
+    <li>{{ entry }}</li>
+    {% endfor %}
+  </ul>
+  <button type="button"
+          onclick="fetch('/api/whats-new/dismiss', {method:'POST'}).then(() => document.getElementById('whats-new-region').innerHTML = '')">
+    Got it
+  </button>
+</div>

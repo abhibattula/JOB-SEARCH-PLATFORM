@@ -31,6 +31,24 @@ def _current_theme() -> str:
 
 templates.env.globals["current_theme"] = _current_theme
 
+# 008 (FR-032): plain-language changelog behind the What's New overlay —
+# keyed by APP_VERSION, shown once per version.
+WHATS_NEW: dict[str, list[str]] = {
+    "0.8.0": [
+        "Apply Assist now opens your installed Edge or Chrome directly — no "
+        "browser download step, and when something fails you see exactly why.",
+        "The desktop window behaves: select and copy any text, copy apply "
+        "links with one click, open postings in your own browser, download PDFs.",
+        "Fresher, more genuine jobs: 2-week default window, closed postings "
+        "auto-delisted, 450+ company career boards monitored (editable in "
+        "Settings), Google Jobs added, one-click LinkedIn searches.",
+        "Your resume fills your whole profile (with your consent), and the "
+        "job search now follows your profile's terms and locations.",
+        "Updates install from inside the app with a progress bar.",
+        "New Diagnostics page (Settings → Diagnostics) if anything misbehaves.",
+    ],
+}
+
 
 def _bootstrap_sponsorship() -> None:
     """Load the bundled USCIS data on first run so installed users get
@@ -181,6 +199,16 @@ def create_app() -> FastAPI:
         db.init_db()
         threading.Thread(target=_bootstrap_sponsorship, daemon=True).start()
 
+        def _quiet_update_check() -> None:
+            from engine import updates
+
+            try:
+                updates.startup_check()  # once daily; silent offline (FR-030)
+            except Exception:
+                pass
+
+        threading.Thread(target=_quiet_update_check, daemon=True).start()
+
     @app.get("/", response_class=HTMLResponse)
     def index(
         request: Request,
@@ -288,6 +316,54 @@ def create_app() -> FastAPI:
     def analytics_page(request: Request):
         return templates.TemplateResponse(
             request, "analytics.html", {"stats": db.application_analytics()}
+        )
+
+    @app.get("/partials/update-banner", response_class=HTMLResponse)
+    def update_banner(request: Request):
+        """008 (FR-030): rendered when the daily startup check (or a manual
+        check) found a newer release."""
+        from engine import updates
+
+        with updates._lock:
+            info = updates._state.get("last_check")
+        if not info or not info.get("newer"):
+            return HTMLResponse("")
+        return templates.TemplateResponse(
+            request, "partials/update_banner.html", {"update": info}
+        )
+
+    @app.get("/partials/whats-new", response_class=HTMLResponse)
+    def whats_new(request: Request):
+        """008 (FR-032): version-specific overlay, shown exactly once."""
+        from engine import APP_VERSION, settings as settings_mod
+
+        entries = WHATS_NEW.get(APP_VERSION) or []
+        if not entries or settings_mod.get("WHATS_NEW_SEEN_VERSION") == APP_VERSION:
+            return HTMLResponse("")
+        return templates.TemplateResponse(
+            request,
+            "partials/whats_new.html",
+            {"entries": entries, "version": APP_VERSION},
+        )
+
+    @app.get("/diagnostics", response_class=HTMLResponse)
+    def diagnostics_page(request: Request):
+        from engine import paths
+        from engine.autofill import browser_setup
+
+        log_path = paths.data_dir() / "app.log"
+        tail = ""
+        if log_path.exists():
+            tail = "\n".join(
+                log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-40:]
+            )
+        return templates.TemplateResponse(
+            request,
+            "diagnostics.html",
+            {
+                "log_tail": tail,
+                "legacy_bytes": browser_setup.legacy_size_bytes(),
+            },
         )
 
     @app.get("/settings", response_class=HTMLResponse)

@@ -90,6 +90,35 @@
     });
   });
 
+  /* ---------- in-app update (008 FR-030) ---------- */
+  window.runUpdate = async function (btn) {
+    btn.disabled = true;
+    const bar = document.getElementById("update-progress");
+    function status(text) { if (bar) { bar.textContent = text; } }
+    try {
+      const resp = await fetch("/api/updates/download", { method: "POST" });
+      if (!resp.ok && resp.status !== 409) {
+        throw new Error((await resp.json()).detail || "download failed");
+      }
+      for (;;) {
+        const p = await (await fetch("/api/updates/progress")).json();
+        if (p.state === "downloading") { status("downloading " + p.pct + "%"); }
+        else if (p.state === "verifying") { status("verifying…"); }
+        else if (p.state === "ready") { break; }
+        else if (p.state === "failed" || p.state === "blocked") {
+          throw new Error(p.error || p.state);
+        }
+        await new Promise(function (r) { setTimeout(r, 700); });
+      }
+      status("installing — the app will close and restart itself…");
+      const inst = await fetch("/api/updates/install", { method: "POST" });
+      if (!inst.ok) { throw new Error((await inst.json()).detail || "install refused"); }
+    } catch (err) {
+      status("✕ " + err.message + " — use the manual download link instead");
+      btn.disabled = false;
+    }
+  };
+
   /* ---------- polling gate (FR-024) ----------
      Polling is paused while the user is mid-edit inside the region:
      any focused input/textarea/select, or an open notes <details>. */

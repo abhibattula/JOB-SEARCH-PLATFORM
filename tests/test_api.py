@@ -975,3 +975,111 @@ class Test008SearchTermsFlow:
         stored = edb.get_profile()["search_terms"]
         assert stored["terms"] == ["my own term"]
         assert stored["derived_from"] == "user"
+
+
+class Test008UpdateRoutes:
+    """008 US5 (T045): in-app update download/install routes + banner."""
+
+    def test_progress_starts_idle(self, client):
+        from engine import updates
+
+        updates.reset_state()
+        body = client.get("/api/updates/progress").json()
+        assert body["state"] == "idle"
+
+    def test_download_starts_and_rejects_double_start(self, client, monkeypatch):
+        from engine import updates
+
+        updates.reset_state()
+        monkeypatch.setattr(updates, "start_download", lambda background=True: True)
+        assert client.post("/api/updates/download").json()["started"] is True
+        monkeypatch.setattr(updates, "start_download", lambda background=True: False)
+        assert client.post("/api/updates/download").status_code == 409
+
+    def test_install_refused_when_not_ready(self, client):
+        from engine import updates
+
+        updates.reset_state()
+        resp = client.post("/api/updates/install")
+        assert resp.status_code == 409
+
+    def test_update_banner_appears_when_newer_cached(self, client):
+        from engine import updates
+
+        updates.reset_state()
+        with updates._lock:
+            updates._state["last_check"] = {
+                "newer": True, "latest": "9.9.9",
+                "asset_name": "JobEngine-Setup-9.9.9.exe",
+                "asset_url": "https://x", "size": 1, "sha256": "0" * 64,
+            }
+        resp = client.get("/partials/update-banner")
+        assert "9.9.9" in resp.text
+        updates.reset_state()
+        assert "9.9.9" not in client.get("/partials/update-banner").text
+
+
+class Test008WhatsNew:
+    """008 US5 (T046): What's New shown exactly once per version."""
+
+    def test_shown_once_then_dismissed(self, client, monkeypatch):
+        from engine import APP_VERSION
+        from web import main as web_main
+
+        monkeypatch.setitem(web_main.WHATS_NEW, APP_VERSION, ["A change entry"])
+        first = client.get("/partials/whats-new")
+        assert first.status_code == 200
+        assert "What's new" in first.text
+        assert client.post("/api/whats-new/dismiss").json()["dismissed"] is True
+        assert "What's new" not in client.get("/partials/whats-new").text
+
+
+class Test008Diagnostics:
+    """008 US5 (T047): one page that runs every self-check with real error
+    text, exports logs, and reclaims the legacy browser download."""
+
+    def test_all_reports_each_check_with_error_text(self, client, monkeypatch):
+        from web import routes_api
+
+        def ok_check():
+            return "fine"
+
+        def broken_check():
+            raise RuntimeError("the specific reason")
+
+        # replace the WHOLE registry: the real local-llm/sources checks do
+        # real inference and real network — never in unit tests
+        monkeypatch.setattr(
+            routes_api, "DIAGNOSTIC_CHECKS",
+            {"pdf": ok_check, "browser": broken_check},
+        )
+        results = {r["name"]: r for r in client.get("/api/diagnostics/all").json()["checks"]}
+        assert results["pdf"]["ok"] is True
+        assert results["browser"]["ok"] is False
+        assert "the specific reason" in results["browser"]["error"]
+        assert "ms" in results["pdf"]
+
+    def test_logs_export_returns_zip(self, client):
+        from engine import paths
+
+        (paths.data_dir()).mkdir(parents=True, exist_ok=True)
+        (paths.data_dir() / "app.log").write_text("log line", encoding="utf-8")
+        resp = client.get("/api/diagnostics/logs")
+        assert resp.status_code == 200
+        assert resp.headers["content-type"] == "application/zip"
+        assert resp.content[:2] == b"PK"
+
+    def test_cleanup_legacy_browser_reports_freed(self, client, tmp_path):
+        from engine import paths
+
+        legacy = paths.data_dir() / "browsers"
+        legacy.mkdir(parents=True, exist_ok=True)
+        (legacy / "big.bin").write_bytes(b"x" * 2048)
+        body = client.post("/api/diagnostics/cleanup-legacy-browser").json()
+        assert body["freed_bytes"] == 2048
+        assert not legacy.exists()
+
+    def test_diagnostics_page_serves(self, client):
+        resp = client.get("/diagnostics")
+        assert resp.status_code == 200
+        assert "Diagnostics" in resp.text

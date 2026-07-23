@@ -433,9 +433,12 @@ def check_update(request: Request):
         if result is None:
             return HTMLResponse("✕ Couldn't reach GitHub — check your connection.")
         if result["newer"]:
+            # 008 (FR-030): a real in-app update, not just a link
             return HTMLResponse(
                 f'⬆ Version {result["latest"]} is available — '
-                f'<a href="{result["url"]}" target="_blank" rel="noopener">download it</a>.'
+                f'<button type="button" onclick="runUpdate(this)">Update now</button> '
+                f'<span id="update-progress" class="data"></span> '
+                f'<a href="{result["url"]}" target="_blank" rel="noopener">manual download ↗</a>'
             )
         return HTMLResponse("✓ You're on the latest version.")
     return result or {"error": "check failed"}
@@ -977,5 +980,155 @@ def chromium_launch_selftest():
     try:
         ok = browser_controller.chromium_selftest()
         return {"ok": bool(ok)}
-    except Exception:
-        return {"ok": False}
+    except Exception as exc:
+        # 008: the audit found this returned a bare false with no reason —
+        # the error text is the whole point of a self-test
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"[:300]}
+
+
+# --- 008 diagnostics (FR-033) -----------------------------------------------
+
+
+def _diag_pdf() -> str:
+    from engine import resume_pdf
+
+    data = resume_pdf.render_resume(
+        {"experience": [], "education": [], "projects": [],
+         "skills": ["self-test — unicode dash", "résumé"]},
+        {"first_name": "Self", "last_name": "Test"},
+        tailoring=None,
+    )
+    if data[:5] != b"%PDF-":
+        raise RuntimeError("render did not produce a PDF header")
+    return f"{len(data)} bytes"
+
+
+def _diag_local_llm() -> str:
+    from engine import local_llm
+
+    reply = local_llm.chat(
+        [{"role": "user", "content": "Reply with a short greeting."}]
+    )
+    if not reply:
+        raise RuntimeError("empty reply from the local model")
+    return "responded"
+
+
+def _diag_browser() -> str:
+    from engine.autofill import browser_controller
+
+    result = browser_controller.preflight()
+    if not result["ok"]:
+        raise RuntimeError(result["error"] or "browser launch failed")
+    return f"ready ({result['channel']})"
+
+
+def _diag_sources() -> str:
+    from engine.ingest.base import polite_get
+
+    response = polite_get(
+        "https://boards-api.greenhouse.io/v1/boards/stripe/jobs"
+    )
+    return f"reachable (HTTP {response.status_code})"
+
+
+# Named check registry — the Diagnostics page runs each and shows the REAL
+# error text on failure (audit: bare ok:false told the user nothing).
+DIAGNOSTIC_CHECKS: dict = {
+    "pdf": _diag_pdf,
+    "local-llm": _diag_local_llm,
+    "browser": _diag_browser,
+    "sources": _diag_sources,
+}
+
+
+@router.get("/diagnostics/all")
+def diagnostics_all():
+    import time as time_mod
+
+    checks = []
+    for name, fn in DIAGNOSTIC_CHECKS.items():
+        started = time_mod.perf_counter()
+        try:
+            detail = fn()
+            checks.append({
+                "name": name, "ok": True, "detail": detail, "error": None,
+                "ms": int((time_mod.perf_counter() - started) * 1000),
+            })
+        except Exception as exc:
+            checks.append({
+                "name": name, "ok": False, "detail": None,
+                "error": f"{type(exc).__name__}: {exc}"[:300],
+                "ms": int((time_mod.perf_counter() - started) * 1000),
+            })
+    return {"checks": checks}
+
+
+@router.get("/diagnostics/logs")
+def diagnostics_logs():
+    import io
+    import zipfile
+
+    from engine import paths
+
+    buffer = io.BytesIO()
+    with zipfile.ZipFile(buffer, "w", zipfile.ZIP_DEFLATED) as archive:
+        for name in ("app.log", "crash.marker"):
+            path = paths.data_dir() / name
+            if path.exists():
+                archive.writestr(name, path.read_text(encoding="utf-8", errors="replace"))
+    return Response(
+        buffer.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition": "attachment; filename=jobengine-logs.zip"},
+    )
+
+
+@router.post("/diagnostics/cleanup-legacy-browser")
+def cleanup_legacy_browser():
+    from engine.autofill import browser_setup
+
+    return {"freed_bytes": browser_setup.cleanup_legacy()}
+
+
+# --- 008 self-update routes (FR-030) ----------------------------------------
+
+
+@router.post("/updates/download")
+def updates_download():
+    from engine import updates
+
+    if not updates.start_download():
+        raise HTTPException(status_code=409, detail="a download is already running")
+    return {"started": True}
+
+
+@router.get("/updates/progress")
+def updates_progress():
+    from engine import updates
+
+    return updates.progress()
+
+
+@router.post("/updates/install")
+def updates_install():
+    from engine import updates
+
+    try:
+        updates.install()
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    # the installer takes over; give this response time to flush, then exit
+    import os
+    import threading as threading_mod
+
+    threading_mod.Timer(1.5, os._exit, args=(0,)).start()
+    return {"installing": True}
+
+
+@router.post("/whats-new/dismiss")
+def whats_new_dismiss():
+    from engine import APP_VERSION
+
+    settings.set("WHATS_NEW_SEEN_VERSION", APP_VERSION)
+    return {"dismissed": True}
