@@ -28,7 +28,9 @@ def fetch_jobs(entries: list[dict]) -> Iterator[RawJob]:
             yield RawJob(
                 title=job.get("title", "").strip(),
                 company=entry["name"],
-                url=job.get("jobUrl") or job.get("applyUrl"),
+                # 009 (FR-002): applyUrl is the application FORM; jobUrl is
+                # just the posting tab — store the form
+                url=job.get("applyUrl") or job.get("jobUrl"),
                 source=SOURCE_NAME,
                 location=location,
                 is_remote=bool(job.get("isRemote"))

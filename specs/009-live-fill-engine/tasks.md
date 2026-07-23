@@ -10,14 +10,14 @@ US4 2 · Polish/Ship 2.
 
 ## Phase 1: Setup
 
-- [ ] T001 Create pytest.ini (register `browser` marker; `addopts = -m "not browser"`); add an explicit `python -m pytest -m browser -q` step to both jobs in .github/workflows/release.yml (after the fast suite)
+- [X] T001 Create pytest.ini (register `browser` marker; `addopts = -m "not browser"`); add an explicit `python -m pytest -m browser -q` step to both jobs in .github/workflows/release.yml (after the fast suite)
 
 ## Phase 2: Foundational (blocking)
 
-- [ ] T002 [test] Failing tests in tests/test_fields.py: raw-attribute descriptors classify — `first_name`/`last_name`/`given_name` name attrs, `family-name` autocomplete, `years_experience`, `how_did_you_hear`, `salary_expectations`, `cover_letter` (underscore/hyphen separators)
-- [ ] T003 Implement `[\s_-]*` separator fixes + synonyms in engine/autofill/fields.py (classify/match_option behavior otherwise preserved)
-- [ ] T004 [P] apply-URL resolution: failing tests in tests/test_apply_urls.py (lever→/apply idempotent, ashby→/application idempotent, greenhouse as-is, unknown as-is, query/fragment preserved) → implement engine/autofill/apply_urls.py; plus tests/test_sources.py ashby applyUrl-preference test → 1-line fix in engine/ingest/ashby.py
-- [ ] T005 [P] adapters: failing tests in tests/test_adapters.py (Greenhouse `first_name`/`job_application[...]`, Lever `name`/`urls[LinkedIn]`/`resume`, Ashby `_systemfield_*`, shared autocomplete map, `ats_from_url`, unknown→None) → implement engine/autofill/adapters.py
+- [X] T002 [test] Failing tests in tests/test_fields.py: raw-attribute descriptors classify — `first_name`/`last_name`/`given_name` name attrs, `family-name` autocomplete, `years_experience`, `how_did_you_hear`, `salary_expectations`, `cover_letter` (underscore/hyphen separators)
+- [X] T003 Implement `[\s_-]*` separator fixes + synonyms in engine/autofill/fields.py (classify/match_option behavior otherwise preserved)
+- [X] T004 [P] apply-URL resolution: failing tests in tests/test_apply_urls.py (lever→/apply idempotent, ashby→/application idempotent, greenhouse as-is, unknown as-is, query/fragment preserved) → implement engine/autofill/apply_urls.py; plus tests/test_sources.py ashby applyUrl-preference test → 1-line fix in engine/ingest/ashby.py
+- [X] T005 [P] adapters: failing tests in tests/test_adapters.py (Greenhouse `first_name`/`job_application[...]`, Lever `name`/`urls[LinkedIn]`/`resume`, Ashby `_systemfield_*`, shared autocomplete map, `ats_from_url`, unknown→None) → implement engine/autofill/adapters.py
 
 ## Phase 3: US1 — Apply Assist actually fills (P1)
 
