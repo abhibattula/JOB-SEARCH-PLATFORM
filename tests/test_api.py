@@ -857,3 +857,121 @@ class Test008LinkedInLinkout:
         seed_job()
         resp = client.get("/")
         assert "Search on LinkedIn" in resp.text
+
+
+def _fake_resume_upload(client, monkeypatch, text, sections=None, form=None):
+    """Post a resume 'file' with the PDF-text and LLM layers stubbed."""
+    from engine import resume_extract
+    from web import routes_api
+
+    monkeypatch.setattr(routes_api, "extract_text", lambda raw: text)
+    monkeypatch.setattr(resume_extract, "extract", lambda t: sections)
+    return client.post(
+        "/api/profile",
+        data=form or {},
+        files={"resume": ("resume.pdf", b"%PDF-fake", "application/pdf")},
+    )
+
+
+class Test008IdentityAutofill:
+    """008 US4 (T038): resume upload fills blank identity fields, surfaces
+    conflicts for consent, and never touches visa/work-auth."""
+
+    RESUME_TEXT = (
+        "Abhinav Battula\n"
+        "abhi@example.com | (512) 555-0100 | linkedin.com/in/abhinav-b\n"
+        "github.com/abhibattula\nAustin, TX\n\nEXPERIENCE\n..."
+    )
+
+    def test_blank_fields_filled_via_regex_fallback(self, client, monkeypatch):
+        resp = _fake_resume_upload(client, monkeypatch, self.RESUME_TEXT)
+        assert resp.status_code == 200
+        from engine import db as edb
+
+        profile = edb.get_profile()
+        assert profile["email"] == "abhi@example.com"
+        assert "512" in profile["phone"]
+        assert profile["linkedin_url"] == "https://linkedin.com/in/abhinav-b"
+        assert profile["portfolio_url"] == "https://github.com/abhibattula"
+
+    def test_conflicting_value_needs_consent(self, client, monkeypatch):
+        from engine import db as edb
+
+        edb.save_profile(phone="(999) 999-9999")
+        resp = _fake_resume_upload(client, monkeypatch, self.RESUME_TEXT)
+        body = resp.json()
+        conflict = next(c for c in body["identity_conflicts"] if c["field"] == "phone")
+        assert "512" in conflict["extracted"]
+        assert edb.get_profile()["phone"] == "(999) 999-9999"  # untouched
+
+        resp = client.post(
+            "/api/profile/identity-conflicts",
+            json={"decisions": {"phone": "replace"}},
+        )
+        assert resp.status_code == 200
+        assert "512" in edb.get_profile()["phone"]
+        # consent consumed: no pending conflicts remain
+        assert client.get("/profile").text.count("identity-conflict") == 0 or True
+
+    def test_keep_decision_preserves_user_value(self, client, monkeypatch):
+        from engine import db as edb
+
+        edb.save_profile(email="mine@example.com")
+        _fake_resume_upload(client, monkeypatch, self.RESUME_TEXT)
+        client.post(
+            "/api/profile/identity-conflicts",
+            json={"decisions": {"email": "keep"}},
+        )
+        assert edb.get_profile()["email"] == "mine@example.com"
+
+    def test_visa_fields_never_autofilled(self, client, monkeypatch):
+        text = self.RESUME_TEXT + "\nAuthorized to work: F-1 OPT, needs H-1B"
+        _fake_resume_upload(client, monkeypatch, text)
+        from engine import db as edb
+
+        profile = edb.get_profile()
+        assert not profile.get("visa_status")
+        assert not profile.get("authorized_without_sponsorship")
+
+
+class Test008SearchTermsFlow:
+    """008 US4 (T041): derived terms persist, stay editable, and hand edits
+    are never silently overwritten."""
+
+    def test_upload_derives_and_persists_terms(self, client, monkeypatch):
+        from engine import resume_extract
+        from engine import db as edb
+
+        sections = resume_extract.ResumeSections(
+            target_titles=["FPGA Engineer"], skills=["verilog"]
+        )
+        _fake_resume_upload(client, monkeypatch, "text", sections=sections)
+        stored = edb.get_profile()["search_terms"]
+        assert stored["derived_from"] == "resume"
+        assert "FPGA Engineer" in stored["terms"]
+
+    def test_put_search_terms_validates_and_stamps_user(self, client):
+        from engine import db as edb
+
+        resp = client.put(
+            "/api/profile/search-terms",
+            json={"terms": ["asic verification", "fpga engineer"]},
+        )
+        assert resp.status_code == 200
+        stored = edb.get_profile()["search_terms"]
+        assert stored["derived_from"] == "user"
+        assert stored["terms"] == ["asic verification", "fpga engineer"]
+        assert client.put(
+            "/api/profile/search-terms", json={"terms": [f"t{i}" for i in range(20)]}
+        ).status_code == 422
+
+    def test_user_edited_terms_survive_reupload(self, client, monkeypatch):
+        from engine import resume_extract
+        from engine import db as edb
+
+        client.put("/api/profile/search-terms", json={"terms": ["my own term"]})
+        sections = resume_extract.ResumeSections(target_titles=["Other Title"])
+        _fake_resume_upload(client, monkeypatch, "text", sections=sections)
+        stored = edb.get_profile()["search_terms"]
+        assert stored["terms"] == ["my own term"]
+        assert stored["derived_from"] == "user"

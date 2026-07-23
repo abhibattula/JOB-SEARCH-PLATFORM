@@ -60,12 +60,12 @@ US4 7 · US5 9 · US6 4 · Polish/Ship 1 (numbering is execution order).
 
 ## Phase 6: US4 — Profile fills itself; search follows it (P4)
 
-- [ ] T036 [test] [US4] Failing tests in tests/test_resume_extract.py: `Contact`/`target_titles` submodels parse; regex fallback extracts email/phone/URLs from header lines with no AI tier; never returns fabricated values
-- [ ] T037 [US4] Implement contact + target_titles extraction (schema, _SYSTEM prompt, regex fallback) in engine/resume_extract.py
-- [ ] T038 [test] [US4] Failing tests in tests/test_api.py: resume upload fills only blank identity fields; conflicting non-blank fields returned as `identity_conflicts`; `POST /api/profile/identity-conflicts` applies keep/replace; visa/work-auth never auto-filled
-- [ ] T039 [US4] Implement identity auto-fill + consent flow in web/routes_api.py save_profile/reextract + conflict UI in web/templates/profile.html
-- [ ] T040 [test] [US4] Failing tests in tests/test_search_terms.py: derivation from target_titles/experience/skills capped at 8, stable ordering, empty-profile → []; PUT /profile/search-terms validates and stamps `derived_from:"user"`
-- [ ] T041 [US4] Implement engine/search_terms.py + persistence + `PUT /api/profile/search-terms` + editable terms UI on profile.html (with "these drive the job search" note)
+- [X] T036 [test] [US4] Failing tests in tests/test_resume_extract.py: `Contact`/`target_titles` submodels parse; regex fallback extracts email/phone/URLs from header lines with no AI tier; never returns fabricated values
+- [X] T037 [US4] Implement contact + target_titles extraction (schema, _SYSTEM prompt, regex fallback) in engine/resume_extract.py
+- [X] T038 [test] [US4] Failing tests in tests/test_api.py: resume upload fills only blank identity fields; conflicting non-blank fields returned as `identity_conflicts`; `POST /api/profile/identity-conflicts` applies keep/replace; visa/work-auth never auto-filled
+- [X] T039 [US4] Implement identity auto-fill + consent flow in web/routes_api.py save_profile/reextract + conflict UI in web/templates/profile.html
+- [X] T040 [test] [US4] Failing tests in tests/test_search_terms.py: derivation from target_titles/experience/skills capped at 8, stable ordering, empty-profile → []; PUT /profile/search-terms validates and stamps `derived_from:"user"`
+- [X] T041 [US4] Implement engine/search_terms.py + persistence + `PUT /api/profile/search-terms` + editable terms UI on profile.html (with "these drive the job search" note)
 - [X] T042 [US4] Consume profile in sourcing: jobspy terms×locations from profile (fallback to built-in constants), target_locations pre-fills the feed location filter as documented (web/main.py); tests first in tests/test_ingest*/test_api.py
 
 ## Phase 7: US5 — In-app updates, What's New, Diagnostics (P5)

@@ -620,6 +620,16 @@ async def save_profile(
             sections = resume_extract.extract(text)
             if sections is not None:
                 fields["resume_sections"] = sections.model_dump()
+        # 008 (FR-022/FR-023): identity details — the LLM's contact block
+        # when available, the pattern-based fallback otherwise, so
+        # auto-fill works on every tier. Applied after the form fields
+        # below (fill-only-blank + consent, never a silent overwrite).
+        contact_pending = (fields.get("resume_sections") or {}).get("contact")
+        if not contact_pending or not any(
+            (v or "").strip() for v in contact_pending.values()
+        ):
+            contact_pending = resume_extract.extract_contact(text).model_dump()
+        fields["_contact_pending"] = contact_pending
     if target_locations is not None:
         fields["target_locations"] = [
             part.strip() for part in target_locations.split(",") if part.strip()
@@ -647,12 +657,110 @@ async def save_profile(
     }.items():
         if value is not None:
             fields[key] = value
+
+    # 008 (FR-022): apply identity auto-fill AFTER the form values above so
+    # a value the user just typed always wins; blanks fill silently,
+    # disagreements become explicit keep-or-replace decisions. Visa/work-
+    # authorization fields are deliberately not in this list (FR-024).
+    identity_conflicts: list[dict] = []
+    contact_pending = fields.pop("_contact_pending", None)
+    if contact_pending:
+        existing = db.get_profile() or {}
+        for field in ("first_name", "last_name", "email", "phone",
+                      "linkedin_url", "portfolio_url"):
+            extracted_value = (contact_pending.get(field) or "").strip()
+            if not extracted_value:
+                continue
+            current = fields.get(field)
+            if current is None:
+                current = existing.get(field) or ""
+            current = current.strip()
+            if not current:
+                fields[field] = extracted_value
+            elif current != extracted_value:
+                identity_conflicts.append({
+                    "field": field, "current": current, "extracted": extracted_value,
+                })
+        location = (contact_pending.get("location") or "").strip()
+        if location and not fields.get("target_locations") and not (
+            existing.get("target_locations") or []
+        ):
+            fields["target_locations"] = [location]
+        settings.set(
+            "PENDING_IDENTITY_CONFLICTS",
+            json.dumps(identity_conflicts) if identity_conflicts else "",
+        )
+        # FR-025: derive search terms from the fresh extraction — unless the
+        # user has taken ownership of them (derived_from == "user").
+        from engine import search_terms as search_terms_mod
+
+        stored_terms = existing.get("search_terms") or {}
+        if not (isinstance(stored_terms, dict) and stored_terms.get("derived_from") == "user"):
+            merged = dict(existing)
+            merged.update(fields)
+            derived = search_terms_mod.derive(merged)
+            if derived:
+                fields["search_terms"] = {
+                    "terms": derived, "derived_from": "resume",
+                    "updated_at": db._utcnow(),
+                }
+
     if fields:
         db.save_profile(**fields)
     if "text/html" in (request.headers.get("accept") or ""):
         target = "/profile?extraction_conflict=1" if extraction_conflict else "/profile"
         return RedirectResponse(target, status_code=303)
-    return {**_profile_payload(), "extraction_conflict": extraction_conflict}
+    return {
+        **_profile_payload(),
+        "extraction_conflict": extraction_conflict,
+        "identity_conflicts": identity_conflicts,
+    }
+
+
+class IdentityDecisions(BaseModel):
+    decisions: dict[str, str]  # field -> "keep" | "replace"
+
+
+@router.post("/profile/identity-conflicts")
+def resolve_identity_conflicts(body: IdentityDecisions):
+    """008 (FR-022): explicit consent for extracted values that disagreed
+    with what the user typed. 'replace' adopts the extracted value; 'keep'
+    (or no decision) leaves the user's value. Either way the conflict is
+    consumed."""
+    pending = json.loads(settings.get("PENDING_IDENTITY_CONFLICTS") or "[]")
+    by_field = {c["field"]: c for c in pending}
+    updates = {}
+    for field, decision in body.decisions.items():
+        conflict = by_field.pop(field, None)
+        if conflict and decision == "replace":
+            updates[field] = conflict["extracted"]
+    if updates:
+        db.save_profile(**updates)
+    settings.set(
+        "PENDING_IDENTITY_CONFLICTS",
+        json.dumps(list(by_field.values())) if by_field else "",
+    )
+    return {"applied": list(updates), "remaining": list(by_field)}
+
+
+class SearchTermsRequest(BaseModel):
+    terms: list[str]
+
+
+@router.put("/profile/search-terms")
+def put_search_terms(body: SearchTermsRequest):
+    """008 (FR-025): the user takes ownership of the search terms."""
+    from engine.search_terms import MAX_TERMS
+
+    terms = [t.strip() for t in body.terms if t and t.strip()]
+    if len(terms) > MAX_TERMS:
+        raise HTTPException(
+            status_code=422, detail=f"at most {MAX_TERMS} search terms"
+        )
+    db.save_profile(search_terms={
+        "terms": terms, "derived_from": "user", "updated_at": db._utcnow(),
+    })
+    return {"terms": terms, "derived_from": "user"}
 
 
 @router.put("/profile/resume-sections")
@@ -687,10 +795,25 @@ def reextract_resume_sections():
     sections = resume_extract.extract(profile["resume_text"])
     if sections is None:
         return {"extracted": False, "reason": "no-ai-tier"}
-    db.save_profile(
-        resume_sections=sections.model_dump(),
-        sections_edited_at=None,
-    )
+    updates: dict = {
+        "resume_sections": sections.model_dump(),
+        "sections_edited_at": None,
+    }
+    # 008: re-extraction also refreshes derived search terms (same
+    # ownership rule — user-edited terms are never overwritten)
+    stored_terms = profile.get("search_terms") or {}
+    if not (isinstance(stored_terms, dict) and stored_terms.get("derived_from") == "user"):
+        from engine import search_terms as search_terms_mod
+
+        merged = dict(profile)
+        merged.update(updates)
+        derived = search_terms_mod.derive(merged)
+        if derived:
+            updates["search_terms"] = {
+                "terms": derived, "derived_from": "resume",
+                "updated_at": db._utcnow(),
+            }
+    db.save_profile(**updates)
     return _profile_payload()
 
 

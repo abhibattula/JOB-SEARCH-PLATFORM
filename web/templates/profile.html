@@ -49,6 +49,35 @@
 
     {% include "partials/profile_answer_bank.html" %}
 
+    {% if identity_conflicts %}
+    <div class="error-banner" id="identity-conflicts" role="alert">
+      <p><strong>Your resume says something different</strong> — choose what
+        to keep for each field:</p>
+      {% for c in identity_conflicts %}
+      <p class="identity-conflict">
+        <span class="data">{{ c.field | replace('_', ' ') }}</span>:
+        yours “{{ c.current }}” · resume “{{ c.extracted }}”
+        <button type="button" class="ghost"
+                onclick="resolveIdentity('{{ c.field }}', 'keep')">Keep mine</button>
+        <button type="button" class="ghost"
+                onclick="resolveIdentity('{{ c.field }}', 'replace')">Use resume's</button>
+      </p>
+      {% endfor %}
+    </div>
+    <script>
+      window.resolveIdentity = async function (field, decision) {
+        const payload = {decisions: {}};
+        payload.decisions[field] = decision;
+        await fetch('/api/profile/identity-conflicts', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify(payload),
+        });
+        location.reload();
+      };
+    </script>
+    {% endif %}
+
     <h2>Resume &amp; job search</h2>
     {% include "partials/resume_builder.html" %}
     {% if profile and profile.resume_filename %}
@@ -90,11 +119,36 @@
              value="{{ profile.skills | join(', ') if profile and profile.skills }}"
              placeholder="e.g. Python, Verilog, FPGA">
     </label>
-    <label>Preferred locations (comma-separated — pre-fills the feed filter, never hides jobs)
+    <label>Preferred locations (comma-separated — steers the job search and pre-fills the feed filter, never hides jobs)
       <input type="text" name="target_locations"
              value="{{ profile.target_locations | join(', ') if profile and profile.target_locations }}"
-             placeholder="e.g. CA, TX, Remote">
+             placeholder="e.g. Austin TX, San Jose CA, Remote">
     </label>
+
+    <label>Search terms (comma-separated, max 8 — <strong>these drive the job
+      search</strong>; derived from your resume{% if profile and profile.search_terms and profile.search_terms.derived_from == 'user' %}, currently your own edits{% endif %})
+      <input type="text" id="search-terms-input"
+             value="{{ profile.search_terms.terms | join(', ') if profile and profile.search_terms and profile.search_terms.terms }}"
+             placeholder="e.g. new grad software engineer, fpga engineer">
+    </label>
+    <p class="settings-actions">
+      <button type="button" class="ghost" id="save-search-terms">Save search terms</button>
+      <span id="search-terms-result" class="data"></span>
+    </p>
+    <script>
+      document.getElementById('save-search-terms').addEventListener('click', async () => {
+        const out = document.getElementById('search-terms-result');
+        const terms = document.getElementById('search-terms-input').value
+          .split(',').map(t => t.trim()).filter(Boolean);
+        const resp = await fetch('/api/profile/search-terms', {
+          method: 'PUT',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({terms}),
+        });
+        out.textContent = resp.ok ? '✓ saved — next refresh uses these'
+                                  : '✕ ' + ((await resp.json()).detail || 'failed');
+      });
+    </script>
 
     <button type="submit">Save profile</button>
   </form>

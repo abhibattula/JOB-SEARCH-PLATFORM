@@ -268,6 +268,11 @@ def create_app() -> FastAPI:
     def profile_page(request: Request):
         from engine.autofill import answer_bank
 
+        import json as json_mod
+
+        from engine import settings as settings_mod
+
+        pending = settings_mod.get("PENDING_IDENTITY_CONFLICTS") or "[]"
         return templates.TemplateResponse(
             request,
             "profile.html",
@@ -275,6 +280,7 @@ def create_app() -> FastAPI:
                 "profile": db.get_profile(),
                 "answer_bank_entries": answer_bank.list_all(),
                 "extraction_conflict": request.query_params.get("extraction_conflict") == "1",
+                "identity_conflicts": json_mod.loads(pending or "[]"),
             },
         )
 
