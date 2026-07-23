@@ -138,6 +138,9 @@ class TestQueueRoutes:
         assert "chromium_installed" not in body
         assert body["queue_active"] is True
         assert body["current_job_id"] == j1
+        # 010: status carries the active backend + companion state
+        assert body["backend"] in ("extension", "playwright")
+        assert "connected" in body["extension"]
 
 
 class TestDepthRoutes:

@@ -114,6 +114,9 @@ def autofill_status():
         "outcomes": snapshot["outcomes"],
         # 009 (FR-007): live watch activity
         "activity": snapshot["activity"],
+        # 010 (FR-003/FR-004): which fill path is active + companion state
+        "backend": snapshot["backend"],
+        "extension": snapshot["extension"],
     }
 
 

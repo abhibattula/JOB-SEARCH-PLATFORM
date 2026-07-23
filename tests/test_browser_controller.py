@@ -507,3 +507,73 @@ class TestFacade009:
             ),
         )
         bc.stop_queue()  # conftest calls this around every test — must be free
+
+
+class TestFacade010Backend:
+    """010: start_queue picks extension vs Playwright; status reports it."""
+
+    def _live_extension(self, monkeypatch):
+        from engine.autofill import ext_backend
+        opened = []
+        monkeypatch.setattr(ext_backend, "is_live", lambda max_age_s=10.0: True)
+        monkeypatch.setattr(ext_backend, "open_job",
+                            lambda job_id, url: opened.append(("open_job", job_id)))
+        monkeypatch.setattr(ext_backend, "close_current",
+                            lambda: opened.append(("close", None)))
+        monkeypatch.setattr(ext_backend, "status",
+                            lambda: {"connected": True, "version": "1.0.0",
+                                     "last_seen_age_s": 1.0})
+        return opened
+
+    def test_extension_backend_chosen_when_live(self, tmp_db, monkeypatch):
+        opened = self._live_extension(monkeypatch)
+        # the Playwright dispatch must NOT be used for opening
+        monkeypatch.setattr(bc, "_dispatch",
+                            lambda name, payload=None, wait=None:
+                            opened.append(("dispatch", name)))
+        j1 = seed_job("https://x.example/1")
+        bc.start_queue([j1])
+        assert ("open_job", j1) in opened
+        assert not any(o[0] == "dispatch" and o[1] == "OPEN_JOB" for o in opened)
+        assert bc.queue_snapshot()["backend"] == "extension"
+
+    def test_playwright_backend_when_extension_absent(self, tmp_db, monkeypatch):
+        from engine.autofill import ext_backend
+        monkeypatch.setattr(ext_backend, "is_live", lambda max_age_s=10.0: False)
+        dispatched = []
+        monkeypatch.setattr(bc, "_dispatch",
+                            lambda name, payload=None, wait=None:
+                            dispatched.append(name))
+        j1 = seed_job("https://x.example/1")
+        bc.start_queue([j1])
+        assert "OPEN_JOB" in dispatched
+        assert bc.queue_snapshot()["backend"] == "playwright"
+
+    def test_backend_sticky_across_advance(self, tmp_db, monkeypatch):
+        opened = self._live_extension(monkeypatch)
+        monkeypatch.setattr(bc, "_dispatch", lambda *a, **k: None)
+        j1, j2 = seed_job("https://x.example/1"), seed_job("https://x.example/2")
+        bc.start_queue([j1, j2])
+        # even if the socket dropped mid-queue, advance stays on extension
+        from engine.autofill import ext_backend
+        monkeypatch.setattr(ext_backend, "is_live", lambda max_age_s=10.0: False)
+        bc.advance()
+        assert ("open_job", j2) in opened
+
+    def test_forced_override_to_playwright(self, tmp_db, monkeypatch):
+        self._live_extension(monkeypatch)
+        monkeypatch.setenv("AUTOFILL_BACKEND", "playwright")
+        dispatched = []
+        monkeypatch.setattr(bc, "_dispatch",
+                            lambda name, payload=None, wait=None:
+                            dispatched.append(name))
+        j1 = seed_job("https://x.example/1")
+        bc.start_queue([j1])
+        assert "OPEN_JOB" in dispatched
+        assert bc.queue_snapshot()["backend"] == "playwright"
+
+    def test_status_reports_extension_block(self, tmp_db, monkeypatch):
+        self._live_extension(monkeypatch)
+        snap = bc.queue_snapshot()
+        assert snap["extension"]["connected"] is True
+        assert snap["extension"]["version"] == "1.0.0"

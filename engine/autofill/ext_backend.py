@@ -136,6 +136,17 @@ def open_job(job_id: int, url: str) -> None:
     send(_outbound("open_tab", req_id=req_id, job_id=job_id, url=url))
 
 
+def open_practice(url: str) -> None:
+    """OPEN_PRACTICE for the companion — the bundled practice application
+    watched as a job-less session (PRACTICE_JOB_ID)."""
+    from . import browser_controller as bc
+
+    req_id = _secrets.token_hex(8)
+    with _lock:
+        _watch["pending_open"][req_id] = bc.PRACTICE_JOB_ID
+    send(_outbound("open_tab", req_id=req_id, job_id=bc.PRACTICE_JOB_ID, url=url))
+
+
 def close_current() -> None:
     with _lock:
         tab_id = _watch["tab_id"]
