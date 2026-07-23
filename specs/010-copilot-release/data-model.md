@@ -37,7 +37,10 @@ Rules:
 Lifecycle: `drafted` on fill; → `confirmed` via app review (writes/updates
 answers row, provenance `confirmed`); → `auto_saved` on confirmed
 submission (writes answers row, provenance `auto_saved`); → `discarded`
-by user. Rows are pruned with their job's fill report (same retention).
+by user. Retention: rows are deleted when their job is deleted, and
+`drafted`-status rows older than 30 days are pruned at startup (fill
+reports themselves remain session-scoped in-memory as in 009 — this
+table is the only persisted draft record).
 
 ### applications / job status (existing)
 

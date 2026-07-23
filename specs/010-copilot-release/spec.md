@@ -289,9 +289,9 @@ inconsistent with the rest.
 
 **UI overhaul (US3)**
 
-- **FR-017**: The home screen MUST lead with top current matches (with
-  scores), application-stage counts, and a next-actions list (AI drafts to
-  review, follow-ups due, import review pending).
+- **FR-017**: The home screen MUST lead with the top 5 current matches
+  (with scores), application-stage counts, and a next-actions list (AI
+  drafts to review, follow-ups due, import review pending).
 - **FR-018**: The Apply Assist screen MUST be organized around the
   companion: connection card (state + install walkthrough entry), queue
   with live per-job activity, mode indicator, and an AI-drafts review

@@ -142,7 +142,8 @@ web/
 ├── main.py                      # CHANGED — bridge router, dashboard route,
 │                                # companion walkthrough page
 ├── templates/                   # CHANGED — home dashboard, autofill screen,
-│   │                            # tracker board, walkthrough + identity pass
+│   │                            # applied view's board mode (no separate
+│   │                            # board.html), walkthrough + identity pass
 │   └── partials/                # connection card, drafts list, next actions
 └── static/styles.css            # CHANGED — single design-token layer
                                  # (CSS variables), light/dark
