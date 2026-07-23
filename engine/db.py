@@ -246,7 +246,17 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
         }
         for column, ddl_type in columns:
             if column not in existing:
-                conn.execute(f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}")
+                try:
+                    conn.execute(
+                        f"ALTER TABLE {table} ADD COLUMN {column} {ddl_type}"
+                    )
+                except sqlite3.OperationalError as exc:
+                    # Another connection (thread or process) added it between
+                    # our table_info snapshot and this ALTER — losing that
+                    # race must not abort the migration run: the aborted
+                    # half-migrated schema is worse than the harmless dup.
+                    if "duplicate column" not in str(exc):
+                        raise
     # 008 backfill: existing rows were last confirmed at their first ingest
     conn.execute("UPDATE jobs SET last_seen_at = first_seen WHERE last_seen_at IS NULL")
     conn.execute("UPDATE jobs SET delisted = 0 WHERE delisted IS NULL")
@@ -284,22 +294,30 @@ def _restore_db(path: Path, backup: Path) -> None:
     shutil.copy2(backup, path)
 
 
+_init_lock = threading.Lock()
+
+
 def init_db() -> None:
-    path = get_db_path()
-    backup: Path | None = None
-    if path.exists():
-        with _conn() as conn:
-            needs = _pending_migrations(conn)
-        if needs:
-            backup = _backup_db(path)
-    try:
-        with _conn() as conn:
-            conn.executescript(_SCHEMA)
-            _apply_migrations(conn)
-    except Exception:
-        if backup is not None:
-            _restore_db(path, backup)
-        raise
+    # Serialized: app startup, the profile-import thread, and the Apply
+    # Assist worker can all first-touch a fresh data dir concurrently, and
+    # a raced migration failure used to restore the pre-migration backup
+    # over the winner's committed schema.
+    with _init_lock:
+        path = get_db_path()
+        backup: Path | None = None
+        if path.exists():
+            with _conn() as conn:
+                needs = _pending_migrations(conn)
+            if needs:
+                backup = _backup_db(path)
+        try:
+            with _conn() as conn:
+                conn.executescript(_SCHEMA)
+                _apply_migrations(conn)
+        except Exception:
+            if backup is not None:
+                _restore_db(path, backup)
+            raise
 
 
 def normalize_company(name: str) -> str:

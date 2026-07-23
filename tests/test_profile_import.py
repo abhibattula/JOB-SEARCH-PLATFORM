@@ -59,6 +59,15 @@ class TestStateMachine:
         assert proposal is not None
         assert proposal["resume_filename"] == "r.pdf"
 
+    def test_background_thread_is_joinable(self, monkeypatch):
+        """The conftest teardown joins the import thread before stubs
+        unwind — a leaked thread would race the next test's fresh db."""
+        db.save_profile(resume_text="resume text")
+        stub_extraction(monkeypatch, sections=None)
+        assert profile_import.start_import(background=True) is True
+        profile_import.join_for_tests()
+        assert profile_import.status()["state"] in ("ready", "failed")
+
     def test_concurrent_start_refused(self, monkeypatch):
         db.save_profile(resume_text="resume text")
         with profile_import._lock:

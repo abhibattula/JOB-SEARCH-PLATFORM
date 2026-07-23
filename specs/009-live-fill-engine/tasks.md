@@ -53,7 +53,7 @@ US4 2 · Polish/Ship 2.
 
 ## Phase 7: Polish & Ship
 
-- [ ] T026 Offline-tier gate: slow test (skipif model absent) — real chunked extraction of a bundled 3-page fixture resume text on the local model returns sections with ≥1 experience entry; plus packaging/smoke_test.py additions (status.activity, import status idle, /practice/apply 200)
+- [x] T026 Offline-tier gate: slow test (skipif model absent) — real chunked extraction of a bundled 3-page fixture resume text on the local model returns sections with ≥1 experience entry; plus packaging/smoke_test.py additions (status.activity, import status idle, /practice/apply 200)
 - [ ] T027 Final gate, in order: docs (README/USER_MANUAL/USER_GUIDE — live watcher, practice run, import review, offline-first); version 0.9.0 (engine/__init__.py, windows.iss, jobengine.spec) + What's New entry; full pytest ×2 AND `pytest -m browser` green; frozen build + smoke; live gate per quickstart (real Greenhouse/Lever/Ashby/Indeed); merge → mirror `001-ai-job-engine` → tag v0.9.0 → both installers verified on the Release page
 
 ## Dependencies

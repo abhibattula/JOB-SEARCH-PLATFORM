@@ -47,7 +47,7 @@ FPGA Retro Console (2024)
 SKILLS
 SystemVerilog, Verilog, UVM, Python, C/C++, RISC-V, FPGA (Xilinx/Intel), AXI/PCIe, Git, Linux,
 Synopsys VCS, Verdi, Vivado, Quartus, Formal verification basics.
-""" * 2  # ~2x to force multiple chunks
+""" * 4  # ~7,200 chars — exceeds CHUNK_TARGET_CHARS so the chunked path really runs
 
 
 class TestOfflineExtractionGate:

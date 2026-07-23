@@ -28,6 +28,7 @@ LIST_FIELDS = ("skills", "target_titles", "target_locations")
 
 _lock = threading.Lock()
 _state: dict = {}
+_thread: threading.Thread | None = None
 
 
 def reset_state() -> None:
@@ -66,10 +67,21 @@ def start_import(background: bool = True) -> bool:
                       chunk_total=0, error=None, proposal=None,
                       started_at=db._utcnow())
     if background:
-        threading.Thread(target=_run_import, daemon=True).start()
+        global _thread
+        _thread = threading.Thread(target=_run_import, daemon=True)
+        _thread.start()
     else:
         _run_import()
     return True
+
+
+def join_for_tests(timeout: float = 10.0) -> None:
+    """Wait for a background import to finish. Tests MUST call this before
+    their monkeypatches unwind — a leaked thread that outlives its stubs
+    sees the real local model and runs minutes of real inference."""
+    thread = _thread
+    if thread is not None and thread.is_alive():
+        thread.join(timeout)
 
 
 def _run_import() -> None:

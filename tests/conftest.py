@@ -37,11 +37,16 @@ def _isolated_browser_controller_state():
 
 
 @pytest.fixture(autouse=True)
-def _isolated_profile_import_state():
+def _isolated_profile_import_state(monkeypatch):
     """009: engine.profile_import keeps its state machine in module-level
-    globals (session-scoped by design). Reset around every test."""
+    globals (session-scoped by design). Reset around every test, and join
+    any background import thread BEFORE monkeypatch teardown (depending on
+    `monkeypatch` orders this teardown first) — a leaked thread that
+    outlives its stubs sees the real bundled model and races the next
+    test's fresh database."""
     from engine import profile_import
 
     profile_import.reset_state()
     yield
+    profile_import.join_for_tests()
     profile_import.reset_state()

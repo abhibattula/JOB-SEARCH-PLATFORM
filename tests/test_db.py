@@ -36,6 +36,37 @@ class TestInit:
         jobs, total = db.query_jobs()
         assert jobs == [] and total == 0
 
+    def test_init_concurrent_threads_leave_schema_complete(self, tmp_path, monkeypatch):
+        """009 regression: a background thread (profile import) and a request
+        thread both first-touching a fresh data dir raced _apply_migrations —
+        the loser's 'duplicate column name' aborted init_db and left
+        user_profile missing later migration columns."""
+        import threading
+
+        errors: list[Exception] = []
+
+        def hammer():
+            try:
+                db.init_db()
+            except Exception as exc:  # noqa: BLE001 — collect for the assert
+                errors.append(exc)
+
+        for round_no in range(5):
+            monkeypatch.setenv(
+                "JOBS_DB_PATH", str(tmp_path / f"race{round_no}" / "jobs.db")
+            )
+            threads = [threading.Thread(target=hammer) for _ in range(8)]
+            for t in threads:
+                t.start()
+            for t in threads:
+                t.join()
+            assert not errors, f"concurrent init_db raised: {errors[0]}"
+            db.save_profile(
+                authorized_without_sponsorship="yes", sections_edited_at=None
+            )
+            profile = db.get_profile()
+            assert profile["authorized_without_sponsorship"] == "yes"
+
 
 class TestUpsert:
     def test_insert_then_update_same_url(self, tmp_db):
