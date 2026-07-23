@@ -418,94 +418,6 @@ class TestProfileApi:
         # server-local path never leaks into the API payload
         assert "resume_file_path" not in payload
 
-    def test_upload_extracts_sections_when_tier_available(self, client, monkeypatch):
-        """007-T013 (FR-016): extraction runs on upload and lands in the
-        payload; no prior edits -> no conflict flag."""
-        from engine import resume_extract
-        from engine.resume_extract import ResumeSections
-
-        monkeypatch.setattr(
-            resume_extract, "extract",
-            lambda text: ResumeSections(skills=["python"]),
-        )
-        response = client.post(
-            "/api/profile",
-            files={"resume": ("resume.pdf", self._pdf(), "application/pdf")},
-        )
-        assert response.status_code == 200
-        body = response.json()
-        assert body["extraction_conflict"] is False
-        assert body["resume_sections"]["skills"] == ["python"]
-
-    def test_upload_with_edited_sections_flags_conflict(self, client, monkeypatch):
-        """007-T013 (FR-016 + clarification): user-edited sections are
-        never silently overwritten — re-upload flags the conflict and
-        keeps the edits until the user explicitly chooses."""
-        from engine import db, resume_extract
-        from engine.resume_extract import ResumeSections
-
-        db.save_profile(
-            resume_sections={"experience": [], "education": [], "projects": [],
-                             "skills": ["edited-by-hand"]},
-            sections_edited_at="2026-07-21 10:00:00.000000",
-        )
-        monkeypatch.setattr(
-            resume_extract, "extract",
-            lambda text: ResumeSections(skills=["freshly-extracted"]),
-        )
-        response = client.post(
-            "/api/profile",
-            files={"resume": ("resume.pdf", self._pdf(), "application/pdf")},
-        )
-        assert response.status_code == 200
-        body = response.json()
-        assert body["extraction_conflict"] is True
-        assert body["resume_sections"]["skills"] == ["edited-by-hand"]  # kept
-
-    def test_put_resume_sections_validates_and_stamps_edit_time(self, client):
-        """007-T013 (FR-017): manual section editing — full replace,
-        schema-validated, sections_edited_at stamped."""
-        good = {"experience": [], "education": [], "projects": [], "skills": ["rust"]}
-        response = client.put("/api/profile/resume-sections", json=good)
-        assert response.status_code == 200
-        payload = client.get("/api/profile").json()
-        assert payload["resume_sections"]["skills"] == ["rust"]
-        assert payload["sections_edited_at"] is not None
-
-        bad = {"experience": "not-a-list"}
-        assert client.put("/api/profile/resume-sections", json=bad).status_code == 422
-
-    def test_reextract_requires_resume_and_consents(self, client, monkeypatch):
-        """007-T013 (FR-016): explicit re-extract replaces edited sections
-        and clears the edit stamp; 409 without a resume; graceful reply
-        without an AI tier."""
-        from engine import db, resume_extract
-        from engine.resume_extract import ResumeSections
-
-        assert client.post("/api/profile/reextract").status_code == 409
-
-        client.post(
-            "/api/profile",
-            files={"resume": ("resume.pdf", self._pdf(), "application/pdf")},
-        )
-        client.put(
-            "/api/profile/resume-sections",
-            json={"experience": [], "education": [], "projects": [], "skills": ["edited"]},
-        )
-        monkeypatch.setattr(
-            resume_extract, "extract",
-            lambda text: ResumeSections(skills=["re-extracted"]),
-        )
-        response = client.post("/api/profile/reextract")
-        assert response.status_code == 200
-        payload = client.get("/api/profile").json()
-        assert payload["resume_sections"]["skills"] == ["re-extracted"]
-        assert payload["sections_edited_at"] is None
-
-        monkeypatch.setattr(resume_extract, "extract", lambda text: None)
-        body = client.post("/api/profile/reextract").json()
-        assert body == {"extracted": False, "reason": "no-ai-tier"}
-
     def test_resume_pdf_download_and_409(self, client):
         """007-T018 (FR-018): tailored/untailored resume PDF download;
         409 when no sections exist yet."""
@@ -873,82 +785,9 @@ def _fake_resume_upload(client, monkeypatch, text, sections=None, form=None):
     )
 
 
-class Test008IdentityAutofill:
-    """008 US4 (T038): resume upload fills blank identity fields, surfaces
-    conflicts for consent, and never touches visa/work-auth."""
-
-    RESUME_TEXT = (
-        "Abhinav Battula\n"
-        "abhi@example.com | (512) 555-0100 | linkedin.com/in/abhinav-b\n"
-        "github.com/abhibattula\nAustin, TX\n\nEXPERIENCE\n..."
-    )
-
-    def test_blank_fields_filled_via_regex_fallback(self, client, monkeypatch):
-        resp = _fake_resume_upload(client, monkeypatch, self.RESUME_TEXT)
-        assert resp.status_code == 200
-        from engine import db as edb
-
-        profile = edb.get_profile()
-        assert profile["email"] == "abhi@example.com"
-        assert "512" in profile["phone"]
-        assert profile["linkedin_url"] == "https://linkedin.com/in/abhinav-b"
-        assert profile["portfolio_url"] == "https://github.com/abhibattula"
-
-    def test_conflicting_value_needs_consent(self, client, monkeypatch):
-        from engine import db as edb
-
-        edb.save_profile(phone="(999) 999-9999")
-        resp = _fake_resume_upload(client, monkeypatch, self.RESUME_TEXT)
-        body = resp.json()
-        conflict = next(c for c in body["identity_conflicts"] if c["field"] == "phone")
-        assert "512" in conflict["extracted"]
-        assert edb.get_profile()["phone"] == "(999) 999-9999"  # untouched
-
-        resp = client.post(
-            "/api/profile/identity-conflicts",
-            json={"decisions": {"phone": "replace"}},
-        )
-        assert resp.status_code == 200
-        assert "512" in edb.get_profile()["phone"]
-        # consent consumed: no pending conflicts remain
-        assert client.get("/profile").text.count("identity-conflict") == 0 or True
-
-    def test_keep_decision_preserves_user_value(self, client, monkeypatch):
-        from engine import db as edb
-
-        edb.save_profile(email="mine@example.com")
-        _fake_resume_upload(client, monkeypatch, self.RESUME_TEXT)
-        client.post(
-            "/api/profile/identity-conflicts",
-            json={"decisions": {"email": "keep"}},
-        )
-        assert edb.get_profile()["email"] == "mine@example.com"
-
-    def test_visa_fields_never_autofilled(self, client, monkeypatch):
-        text = self.RESUME_TEXT + "\nAuthorized to work: F-1 OPT, needs H-1B"
-        _fake_resume_upload(client, monkeypatch, text)
-        from engine import db as edb
-
-        profile = edb.get_profile()
-        assert not profile.get("visa_status")
-        assert not profile.get("authorized_without_sponsorship")
-
-
 class Test008SearchTermsFlow:
-    """008 US4 (T041): derived terms persist, stay editable, and hand edits
-    are never silently overwritten."""
-
-    def test_upload_derives_and_persists_terms(self, client, monkeypatch):
-        from engine import resume_extract
-        from engine import db as edb
-
-        sections = resume_extract.ResumeSections(
-            target_titles=["FPGA Engineer"], skills=["verilog"]
-        )
-        _fake_resume_upload(client, monkeypatch, "text", sections=sections)
-        stored = edb.get_profile()["search_terms"]
-        assert stored["derived_from"] == "resume"
-        assert "FPGA Engineer" in stored["terms"]
+    """Search terms stay directly editable; derivation now happens through
+    the 009 import flow (see tests/test_profile_import.py)."""
 
     def test_put_search_terms_validates_and_stamps_user(self, client):
         from engine import db as edb
@@ -964,17 +803,6 @@ class Test008SearchTermsFlow:
         assert client.put(
             "/api/profile/search-terms", json={"terms": [f"t{i}" for i in range(20)]}
         ).status_code == 422
-
-    def test_user_edited_terms_survive_reupload(self, client, monkeypatch):
-        from engine import resume_extract
-        from engine import db as edb
-
-        client.put("/api/profile/search-terms", json={"terms": ["my own term"]})
-        sections = resume_extract.ResumeSections(target_titles=["Other Title"])
-        _fake_resume_upload(client, monkeypatch, "text", sections=sections)
-        stored = edb.get_profile()["search_terms"]
-        assert stored["terms"] == ["my own term"]
-        assert stored["derived_from"] == "user"
 
 
 class Test008UpdateRoutes:
@@ -1083,3 +911,128 @@ class Test008Diagnostics:
         resp = client.get("/diagnostics")
         assert resp.status_code == 200
         assert "Diagnostics" in resp.text
+
+
+class Test009ImportRoutes:
+    """009 US3 (T021): the upload endpoint stores and delegates — ALL AI
+    work happens in the background import; the review endpoints drive the
+    rest."""
+
+    def test_upload_is_storage_only_and_starts_import(self, client, monkeypatch):
+        from engine import matcher, profile_import, resume_extract
+        from web import routes_api
+
+        def forbidden(*a, **kw):
+            raise AssertionError("no AI work may run inside the upload request")
+
+        monkeypatch.setattr(resume_extract, "extract", forbidden)
+        monkeypatch.setattr(matcher, "extract_skills", forbidden)
+        monkeypatch.setattr(routes_api, "extract_text", lambda raw: "resume text")
+        started = []
+        monkeypatch.setattr(
+            profile_import, "start_import",
+            lambda background=True: started.append(background) or True,
+        )
+        resp = client.post(
+            "/api/profile",
+            files={"resume": ("resume.pdf", b"%PDF-fake", "application/pdf")},
+        )
+        assert resp.status_code == 200
+        from engine import db as edb
+
+        profile = edb.get_profile()
+        assert profile["resume_text"] == "resume text"
+        assert profile["resume_filename"] == "resume.pdf"
+        assert started == [True]
+
+    def test_manual_field_save_does_not_start_import(self, client, monkeypatch):
+        from engine import profile_import
+
+        monkeypatch.setattr(
+            profile_import, "start_import",
+            lambda background=True: (_ for _ in ()).throw(
+                AssertionError("no import without a fresh upload")
+            ),
+        )
+        resp = client.post("/api/profile", data={"first_name": "Abhinav"})
+        assert resp.status_code == 200
+
+    def test_import_endpoint_contract(self, client, monkeypatch):
+        from engine import profile_import
+
+        # no resume yet
+        assert client.post("/api/profile/import").status_code == 409
+        from engine import db as edb
+
+        edb.save_profile(resume_text="text")
+        monkeypatch.setattr(
+            profile_import, "start_import", lambda background=True: True
+        )
+        assert client.post("/api/profile/import").json()["started"] is True
+        monkeypatch.setattr(
+            profile_import, "start_import", lambda background=True: False
+        )
+        assert client.post("/api/profile/import").status_code == 409
+
+    def test_status_and_proposal_endpoints(self, client, monkeypatch):
+        from engine import profile_import
+
+        body = client.get("/api/profile/import/status").json()
+        assert body["state"] == "idle"
+        assert client.get("/api/profile/import/proposal").status_code == 404
+        monkeypatch.setattr(
+            profile_import, "proposal",
+            lambda: {"has_differences": True, "fields": []},
+        )
+        assert client.get("/api/profile/import/proposal").json()["has_differences"] is True
+
+    def test_apply_endpoint(self, client, monkeypatch):
+        from engine import profile_import
+
+        monkeypatch.setattr(
+            profile_import, "apply_import",
+            lambda decisions: {"applied": list(decisions)},
+        )
+        resp = client.post(
+            "/api/profile/import/apply", json={"decisions": {"email": "apply"}}
+        )
+        assert resp.status_code == 200
+        assert resp.json()["applied"] == ["email"]
+
+    def test_apply_without_proposal_409s(self, client):
+        resp = client.post(
+            "/api/profile/import/apply", json={"decisions": {"email": "apply"}}
+        )
+        assert resp.status_code == 409
+
+    def test_reextract_delegates_to_import(self, client, monkeypatch):
+        from engine import db as edb, profile_import
+
+        edb.save_profile(resume_text="text")
+        called = []
+        monkeypatch.setattr(
+            profile_import, "start_import",
+            lambda background=True: called.append(1) or True,
+        )
+        resp = client.post("/api/profile/reextract")
+        assert resp.status_code == 200
+        assert called == [1]
+
+    def test_import_partial_renders_progress_review_or_empty(self, client, monkeypatch):
+        from engine import profile_import
+
+        assert client.get("/partials/profile/import").text.strip() == ""
+        with profile_import._lock:
+            profile_import._state.update(state="extracting", stage="sections",
+                                         chunk_done=2, chunk_total=5)
+        text = client.get("/partials/profile/import").text
+        assert "part 2 of 5" in text
+        with profile_import._lock:
+            profile_import._state.update(
+                state="ready",
+                proposal={"has_differences": False, "fields": [],
+                          "resume_filename": "r.pdf", "tier": "local",
+                          "generated_at": "now"},
+            )
+        text = client.get("/partials/profile/import").text
+        assert "already matches" in text

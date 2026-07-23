@@ -426,3 +426,23 @@ class TestLinkedInLinkout:
 
         url = linkedin_linkout.url_for_job({"title": "Design Verification Engineer"})
         assert "keywords=Design+Verification+Engineer" in url
+
+
+class TestAshbyApplyUrl009:
+    def test_stored_url_prefers_apply_url(self, monkeypatch):
+        """009 (FR-002 / root cause A2): Ashby's jobUrl is the posting tab;
+        applyUrl is the application form — store the form."""
+        from engine.ingest import ashby
+
+        payload = {"jobs": [{
+            "title": "SWE", "isListed": True, "publishedAt": "2026-07-20",
+            "location": "SF",
+            "jobUrl": "https://jobs.ashbyhq.com/acme/123",
+            "applyUrl": "https://jobs.ashbyhq.com/acme/123/application",
+            "descriptionPlain": "d",
+        }]}
+        monkeypatch.setattr(
+            ashby, "polite_get", lambda url, **kw: fake_response(payload)
+        )
+        jobs = list(ashby.fetch_jobs([{"name": "Acme", "slug": "acme"}]))
+        assert jobs[0].url == "https://jobs.ashbyhq.com/acme/123/application"

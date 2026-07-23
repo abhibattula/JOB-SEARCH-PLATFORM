@@ -1,0 +1,26 @@
+{# 009 (FR-012): live extraction progress — the upload request itself
+   returns instantly; this banner is the visible heartbeat that replaced
+   the frozen-window minutes of v0.8.0. #}
+{% if status.state == 'failed' %}
+<div class="error-banner" id="import-failed" role="alert">
+  <strong>Reading your resume failed.</strong>
+  <span class="data">{{ status.error }}</span>
+  <button type="button" data-toast="Import restarted"
+          onclick="fetch('/api/profile/import', {method:'POST'}).then(() => htmx.trigger('#import-region','load'))">
+    Retry
+  </button>
+</div>
+<script>reveal(document.getElementById('import-failed'));</script>
+{% else %}
+<div class="notice" id="import-progress" role="status" aria-live="polite">
+  <strong>Reading your resume…</strong>
+  <span class="data">
+    {%- if status.stage == 'contact' -%}contact details
+    {%- elif status.stage == 'skills' -%}skills (the slow part on the offline model)
+    {%- elif status.stage == 'sections' -%}
+      sections{% if status.chunk_total > 1 %} — part {{ status.chunk_done }} of {{ status.chunk_total }}{% endif %}
+    {%- else -%}starting…{%- endif -%}
+  </span>
+  <span class="htmx-indicator">·</span>
+</div>
+{% endif %}

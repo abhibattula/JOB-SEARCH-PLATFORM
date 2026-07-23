@@ -144,3 +144,17 @@ class Test008Defaults:
         assert settings.get("JOBSPY_RESULTS_PER_SEARCH") == "40"
         assert settings.get("LLM_JSON_MODEL") == "openai/gpt-oss-120b"
         assert settings.get("LLM_PROVIDER_PRESET") == "groq"
+
+
+class Test009OfflineFirstSetting:
+    def test_prefer_local_defaults_on(self, tmp_db):
+        assert settings.get("PREFER_LOCAL_LLM") == "1"
+
+    def test_settings_page_offers_the_toggle(self, tmp_db):
+        from fastapi.testclient import TestClient
+
+        from web.main import create_app
+
+        client = TestClient(create_app())
+        resp = client.get("/settings")
+        assert 'name="prefer_local_llm"' in resp.text

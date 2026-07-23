@@ -19,6 +19,16 @@ from typing import Any
 
 FieldDescriptor = dict[str, Any]
 
+# Deliberately excludes <button> and input[type=submit|button|reset] — the
+# fill engine has nothing to click, so it collects nothing clickable in the
+# first place (first layer of the never-clicks invariant; the second is
+# that no fill path contains a click call). Lives here (pure module) so
+# every serializer shares one definition.
+FIELD_QUERY_SELECTOR = (
+    "input:not([type=submit]):not([type=button]):not([type=reset]),"
+    " textarea, select"
+)
+
 _WORK_AUTH_RE = re.compile(
     r"authoriz(e|ation)\w*\s.{0,30}work|legally\s.{0,20}work|work\s.{0,20}(authorization|permit)",
     re.IGNORECASE,
@@ -28,21 +38,27 @@ _EEO_RE = re.compile(
     r"disabilit\w*|veteran|race\b|ethnicit\w*|gender\s*identity|\beeo\b|equal\s*employment",
     re.IGNORECASE,
 )
+# 009 (FR-005): word separators are [\s_-]* — real ATS markup carries raw
+# attributes like first_name / first-name / firstname, which plain \s*
+# never matched (root cause A7: fills silently depended on visible labels).
 _YEARS_EXPERIENCE_RE = re.compile(
-    r"years?\s.{0,15}experience|experience\s.{0,15}years?", re.IGNORECASE
+    r"years?[\s_-].{0,15}experience|experience[\s_-].{0,15}years?", re.IGNORECASE
 )
-_SALARY_RE = re.compile(r"salary|compensation|pay\s.{0,10}expect", re.IGNORECASE)
+_SALARY_RE = re.compile(r"salary|compensation|pay[\s_-].{0,10}expect", re.IGNORECASE)
 _HOW_HEARD_RE = re.compile(
-    r"how\s.{0,15}(did you\s)?hear|referral\s*source|how\sdid\syou\sfind", re.IGNORECASE
+    r"how[\s_-].{0,15}hear|referral[\s_-]*source|how[\s_-]did[\s_-]you[\s_-]find",
+    re.IGNORECASE,
 )
 _LINKEDIN_RE = re.compile(r"linkedin", re.IGNORECASE)
-_PORTFOLIO_RE = re.compile(r"portfolio|github|personal\s*website|website\s*url", re.IGNORECASE)
+_PORTFOLIO_RE = re.compile(
+    r"portfolio|github|personal[\s_-]*website|website[\s_-]*url", re.IGNORECASE
+)
 _PHONE_RE = re.compile(r"phone|mobile|telephone", re.IGNORECASE)
 _EMAIL_RE = re.compile(r"\bemail\b", re.IGNORECASE)
-_FIRST_NAME_RE = re.compile(r"first\s*name", re.IGNORECASE)
-_LAST_NAME_RE = re.compile(r"last\s*name", re.IGNORECASE)
-_FULL_NAME_RE = re.compile(r"full\s*name|your\s*name|\bname\b", re.IGNORECASE)
-_COVER_LETTER_RE = re.compile(r"cover\s*letter", re.IGNORECASE)
+_FIRST_NAME_RE = re.compile(r"first[\s_-]*name|given[\s_-]*name", re.IGNORECASE)
+_LAST_NAME_RE = re.compile(r"last[\s_-]*name|family[\s_-]*name|surname", re.IGNORECASE)
+_FULL_NAME_RE = re.compile(r"full[\s_-]*name|your[\s_-]*name|\bname\b", re.IGNORECASE)
+_COVER_LETTER_RE = re.compile(r"cover[\s_-]*letter", re.IGNORECASE)
 _RESUME_RE = re.compile(r"resume|r[eé]sum[eé]|\bcv\b", re.IGNORECASE)
 
 
@@ -102,10 +118,17 @@ def classify(field: FieldDescriptor) -> str:
     if _PORTFOLIO_RE.search(text):
         return "portfolio_url"
 
-    # Basic identity fields.
-    if field_type == "tel" or _PHONE_RE.search(text):
+    # Basic identity fields. The HTML autocomplete attribute is the
+    # highest-confidence identity signal a form can carry (009 FR-005).
+    if autocomplete == "given-name":
+        return "first_name"
+    if autocomplete == "family-name":
+        return "last_name"
+    if autocomplete == "name":
+        return "full_name"
+    if field_type == "tel" or autocomplete == "tel" or _PHONE_RE.search(text):
         return "phone"
-    if is_email_shaped:
+    if is_email_shaped or autocomplete == "email":
         return "email"
     if _FIRST_NAME_RE.search(text):
         return "first_name"

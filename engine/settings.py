@@ -25,6 +25,10 @@ DEFAULTS = {
     "LLM_PROVIDER_PRESET": "groq",
     "WHATS_NEW_SEEN_VERSION": "",
     "UPDATE_LAST_CHECK": "",
+    # 009 (FR-017): the bundled offline model serves all AI features by
+    # default (user decision — private, $0); the cloud key is the
+    # automatic fallback when the local tier fails.
+    "PREFER_LOCAL_LLM": "1",
 }
 
 

@@ -41,6 +41,8 @@ jobs:
       - name: Version consistency gate (tag == iss == APP_VERSION)
         run: python packaging/check_version.py
       - run: python -m pytest -q
+      - name: Real-browser fixture suite (runner's installed Edge/Chrome, headless)
+        run: python -m pytest -m browser -q
       - name: Cache bundled model
         uses: actions/cache@v4
         with:
@@ -96,6 +98,8 @@ jobs:
       - name: Version consistency gate (tag == iss == APP_VERSION)
         run: python packaging/check_version.py
       - run: python -m pytest -q
+      - name: Real-browser fixture suite (runner's installed Edge/Chrome, headless)
+        run: python -m pytest -m browser -q
       - name: Cache bundled model
         uses: actions/cache@v4
         with:

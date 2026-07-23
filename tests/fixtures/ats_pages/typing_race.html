@@ -1,0 +1,30 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Typing race</title></head>
+<body>
+<form>
+  <label>First Name<input id="fn" name="first_name" type="text"></label>
+  <label>Email<input name="email" type="email"></label>
+</form>
+<script src="/_mirror.js"></script>
+<script>
+  // The PAGE simulates the user typing into first_name for ~5s while the
+  // engine watches — the focused-field guard must never overwrite it.
+  var el = document.getElementById("fn");
+  el.focus();
+  var text = "UserTyped";
+  var i = 0;
+  var timer = setInterval(function () {
+    el.focus();
+    el.value = text.slice(0, ++i);
+    el.dispatchEvent(new Event("input", {bubbles: true}));
+    if (i >= text.length) {
+      // keep focus a while longer, then blur with the final value
+      setTimeout(function () {
+        el.blur();
+        el.dispatchEvent(new Event("change", {bubbles: true}));
+        clearInterval(timer);
+      }, 2000);
+      clearInterval(timer);
+    }
+  }, 500);
+</script>
+</body></html>

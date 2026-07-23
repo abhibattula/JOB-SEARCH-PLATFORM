@@ -376,6 +376,7 @@ def get_settings():
         "llm_model": settings.get("LLM_MODEL"),
         "llm_json_model": settings.get("LLM_JSON_MODEL"),
         "jobspy_linkedin": settings.get("JOBSPY_LINKEDIN") == "1",
+        "prefer_local_llm": settings.get("PREFER_LOCAL_LLM") != "0",
         "schedule_refresh": settings.get("SCHEDULE_REFRESH") == "1",
         "alerts_enabled": settings.get("ALERTS_ENABLED") != "0",
         "max_score_per_run": int(settings.get("MAX_SCORE_PER_RUN") or "150"),
@@ -392,6 +393,7 @@ async def save_settings(
     llm_model: str | None = Form(None),
     llm_json_model: str | None = Form(None),
     jobspy_linkedin: str | None = Form(None),
+    prefer_local_llm: str | None = Form(None),
     schedule_refresh: str | None = Form(None),
     alerts_enabled: str | None = Form(None),
     theme: str | None = Form(None),
@@ -408,6 +410,8 @@ async def save_settings(
         settings.set("LLM_JSON_MODEL", llm_json_model.strip())
     if jobspy_linkedin is not None:
         settings.set("JOBSPY_LINKEDIN", "1" if jobspy_linkedin == "1" else "0")
+    if prefer_local_llm is not None:
+        settings.set("PREFER_LOCAL_LLM", "1" if prefer_local_llm == "1" else "0")
     if schedule_refresh is not None:
         settings.set("SCHEDULE_REFRESH", "1" if schedule_refresh == "1" else "0")
     if alerts_enabled is not None:
@@ -602,7 +606,7 @@ async def save_profile(
     portfolio_url: str | None = Form(None),
 ):
     fields: dict = {}
-    extraction_conflict = False
+    uploaded = False
     if resume is not None and resume.filename:
         raw = await resume.read()
         if len(raw) > MAX_RESUME_BYTES:
@@ -611,47 +615,23 @@ async def save_profile(
             text = extract_text(raw)
         except NoTextError as exc:
             raise HTTPException(status_code=422, detail=str(exc))
-        from engine import matcher, resume_extract
-
+        # 009 (FR-012/FR-016): STORAGE ONLY — every piece of AI work
+        # (skills, sections, contact) now runs in the background import
+        # (engine/profile_import.py) with visible progress and an explicit
+        # review screen. The old inline extraction froze this request for
+        # minutes with zero feedback.
         fields["resume_text"] = text
         fields["resume_filename"] = resume.filename
         fields["resume_file_path"] = _store_resume_file(raw, resume.filename)
-        fields["skills"] = matcher.extract_skills(text)  # [] without an LLM key
-        # 007 (FR-016): structured extraction — but user-edited sections
-        # are never silently overwritten; flag the conflict and let the
-        # user choose keep vs re-extract (POST /api/profile/reextract).
-        existing = db.get_profile() or {}
-        if existing.get("sections_edited_at"):
-            extraction_conflict = True
-        else:
-            sections = resume_extract.extract(text)
-            if sections is not None:
-                fields["resume_sections"] = sections.model_dump()
-        # 008 (FR-022/FR-023): identity details — the LLM's contact block
-        # when available, the pattern-based fallback otherwise, so
-        # auto-fill works on every tier. Applied after the form fields
-        # below (fill-only-blank + consent, never a silent overwrite).
-        contact_pending = (fields.get("resume_sections") or {}).get("contact")
-        if not contact_pending or not any(
-            (v or "").strip() for v in contact_pending.values()
-        ):
-            contact_pending = resume_extract.extract_contact(text).model_dump()
-        fields["_contact_pending"] = contact_pending
+        uploaded = True
     if target_locations is not None:
         fields["target_locations"] = [
             part.strip() for part in target_locations.split(",") if part.strip()
         ]
     if skills is not None:
-        manual_skills = [part.strip() for part in skills.split(",") if part.strip()]
-        # If a resume was ALSO uploaded in this same request, union rather
-        # than overwrite (006-E) — never lose either the fresh extraction
-        # or an explicit manual edit, regardless of which the user did.
-        extracted = fields.get("skills")
-        fields["skills"] = (
-            list(dict.fromkeys(manual_skills + list(extracted)))
-            if extracted is not None
-            else manual_skills
-        )
+        fields["skills"] = [
+            part.strip() for part in skills.split(",") if part.strip()
+        ]
     for key, value in {
         "authorized_without_sponsorship": authorized_without_sponsorship,
         "visa_status": visa_status,
@@ -665,63 +645,62 @@ async def save_profile(
         if value is not None:
             fields[key] = value
 
-    # 008 (FR-022): apply identity auto-fill AFTER the form values above so
-    # a value the user just typed always wins; blanks fill silently,
-    # disagreements become explicit keep-or-replace decisions. Visa/work-
-    # authorization fields are deliberately not in this list (FR-024).
-    identity_conflicts: list[dict] = []
-    contact_pending = fields.pop("_contact_pending", None)
-    if contact_pending:
-        existing = db.get_profile() or {}
-        for field in ("first_name", "last_name", "email", "phone",
-                      "linkedin_url", "portfolio_url"):
-            extracted_value = (contact_pending.get(field) or "").strip()
-            if not extracted_value:
-                continue
-            current = fields.get(field)
-            if current is None:
-                current = existing.get(field) or ""
-            current = current.strip()
-            if not current:
-                fields[field] = extracted_value
-            elif current != extracted_value:
-                identity_conflicts.append({
-                    "field": field, "current": current, "extracted": extracted_value,
-                })
-        location = (contact_pending.get("location") or "").strip()
-        if location and not fields.get("target_locations") and not (
-            existing.get("target_locations") or []
-        ):
-            fields["target_locations"] = [location]
-        settings.set(
-            "PENDING_IDENTITY_CONFLICTS",
-            json.dumps(identity_conflicts) if identity_conflicts else "",
-        )
-        # FR-025: derive search terms from the fresh extraction — unless the
-        # user has taken ownership of them (derived_from == "user").
-        from engine import search_terms as search_terms_mod
-
-        stored_terms = existing.get("search_terms") or {}
-        if not (isinstance(stored_terms, dict) and stored_terms.get("derived_from") == "user"):
-            merged = dict(existing)
-            merged.update(fields)
-            derived = search_terms_mod.derive(merged)
-            if derived:
-                fields["search_terms"] = {
-                    "terms": derived, "derived_from": "resume",
-                    "updated_at": db._utcnow(),
-                }
-
     if fields:
         db.save_profile(**fields)
+    if uploaded:
+        from engine import profile_import
+
+        profile_import.start_import()
     if "text/html" in (request.headers.get("accept") or ""):
-        target = "/profile?extraction_conflict=1" if extraction_conflict else "/profile"
-        return RedirectResponse(target, status_code=303)
-    return {
-        **_profile_payload(),
-        "extraction_conflict": extraction_conflict,
-        "identity_conflicts": identity_conflicts,
-    }
+        return RedirectResponse("/profile", status_code=303)
+    return {**_profile_payload(), "import_started": uploaded}
+
+
+# --- 009 profile import (FR-012/FR-014/FR-015) -------------------------------
+
+
+@router.post("/profile/import")
+def start_profile_import():
+    from engine import profile_import
+
+    profile = db.get_profile() or {}
+    if not profile.get("resume_text"):
+        raise HTTPException(status_code=409, detail="no resume on file — upload one first")
+    if not profile_import.start_import():
+        raise HTTPException(status_code=409, detail="an import is already running")
+    return {"started": True}
+
+
+@router.get("/profile/import/status")
+def profile_import_status():
+    from engine import profile_import
+
+    return profile_import.status()
+
+
+@router.get("/profile/import/proposal")
+def profile_import_proposal():
+    from engine import profile_import
+
+    built = profile_import.proposal()
+    if built is None:
+        raise HTTPException(status_code=404, detail="no proposal ready")
+    return built
+
+
+class ImportDecisions(BaseModel):
+    decisions: dict[str, str]  # field -> "apply" | "keep" | "merge"
+
+
+@router.post("/profile/import/apply")
+def profile_import_apply(body: ImportDecisions):
+    from engine import profile_import
+
+    try:
+        result = profile_import.apply_import(body.decisions)
+    except RuntimeError as exc:
+        raise HTTPException(status_code=409, detail=str(exc))
+    return {**result, "profile": _profile_payload()}
 
 
 class IdentityDecisions(BaseModel):
@@ -791,37 +770,15 @@ async def put_resume_sections(request: Request):
 
 @router.post("/profile/reextract")
 def reextract_resume_sections():
-    """The explicit-consent path after an extraction_conflict (FR-016):
-    replaces sections from the stored resume text and clears the edit
-    stamp — the ONLY way extraction may overwrite user edits."""
-    from engine import resume_extract
+    """009: compat shim — re-extraction is now the background import flow
+    (progress + review screen). Consent semantics live in apply_import."""
+    from engine import profile_import
 
     profile = db.get_profile()
     if not profile or not profile.get("resume_text"):
         raise HTTPException(status_code=409, detail="no resume on file")
-    sections = resume_extract.extract(profile["resume_text"])
-    if sections is None:
-        return {"extracted": False, "reason": "no-ai-tier"}
-    updates: dict = {
-        "resume_sections": sections.model_dump(),
-        "sections_edited_at": None,
-    }
-    # 008: re-extraction also refreshes derived search terms (same
-    # ownership rule — user-edited terms are never overwritten)
-    stored_terms = profile.get("search_terms") or {}
-    if not (isinstance(stored_terms, dict) and stored_terms.get("derived_from") == "user"):
-        from engine import search_terms as search_terms_mod
-
-        merged = dict(profile)
-        merged.update(updates)
-        derived = search_terms_mod.derive(merged)
-        if derived:
-            updates["search_terms"] = {
-                "terms": derived, "derived_from": "resume",
-                "updated_at": db._utcnow(),
-            }
-    db.save_profile(**updates)
-    return _profile_payload()
+    started = profile_import.start_import()
+    return {"started": started}
 
 
 @router.get("/jobs/{job_id}/resume-pdf")

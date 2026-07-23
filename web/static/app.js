@@ -90,6 +90,18 @@
     });
   });
 
+  /* ---------- attention (009 FR-011) ----------
+     Anything needing the user's eyes scrolls into view and flashes —
+     review screens, conflicts, pending answers were historically easy
+     to miss mid-page. */
+  window.reveal = function (el) {
+    if (!el || el.dataset.revealed) { return; }
+    el.dataset.revealed = "1";
+    el.scrollIntoView({ behavior: "smooth", block: "center" });
+    el.classList.add("flash-attention");
+    setTimeout(function () { el.classList.remove("flash-attention"); }, 2400);
+  };
+
   /* ---------- in-app update (008 FR-030) ---------- */
   window.runUpdate = async function (btn) {
     btn.disabled = true;

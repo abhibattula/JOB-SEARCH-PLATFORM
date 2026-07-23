@@ -166,6 +166,33 @@ def main() -> int:
     update_body = urllib.request.urlopen(update_req, timeout=30).read()
     print(f"check-update -> {update_body[:200]!r}")
 
+    # 009: the live fill engine's status contract + the import state
+    # machine + the practice application must all exist in the frozen app.
+    status_body = json.loads(
+        urllib.request.urlopen(base + "/api/autofill/status", timeout=30).read()
+    )
+    print(f"autofill/status activity -> {status_body.get('activity')}")
+    if "activity" not in status_body:
+        proc.terminate()
+        print("FAIL: autofill status payload lacks the 009 activity block")
+        return 1
+    import_status = json.loads(
+        urllib.request.urlopen(base + "/api/profile/import/status", timeout=30).read()
+    )
+    print(f"profile/import/status -> {import_status}")
+    if import_status.get("state") != "idle":
+        proc.terminate()
+        print(f"FAIL: import state machine not idle at startup: {import_status}")
+        return 1
+    practice_html = urllib.request.urlopen(
+        base + "/practice/apply", timeout=30
+    ).read().decode("utf-8", errors="replace")
+    print(f"practice page -> {len(practice_html)} bytes")
+    if 'name="first_name"' not in practice_html:
+        proc.terminate()
+        print("FAIL: practice application page missing or malformed")
+        return 1
+
     proc.terminate()
     time.sleep(2)
     if proc.poll() is None:

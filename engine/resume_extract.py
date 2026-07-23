@@ -144,17 +144,79 @@ def extract_contact(resume_text: str) -> Contact:
     )
 
 
-def extract(resume_text: str) -> ResumeSections | None:
-    """Extract structured sections, or None when no AI tier is available
-    or the model's output never validates (one bounded retry — the UI
-    then falls back to manual entry; this function never raises)."""
+# 009 (FR-013): local-tier chunking. ~5000 chars ≈ 1.4k tokens — squarely
+# inside a 1.5B model's competence band and far under the 8192 context.
+CHUNK_TARGET_CHARS = 5000
+MAX_LOCAL_PROMPT_CHARS = 6000
+
+
+def _split_chunks(text: str, target: int = CHUNK_TARGET_CHARS) -> list[str]:
+    """Split on blank-line boundaries nearest the target size — section
+    headers travel with their content, lines are never cut."""
+    paragraphs = (text or "").split("\n\n")
+    chunks: list[str] = []
+    current = ""
+    for paragraph in paragraphs:
+        candidate = f"{current}\n\n{paragraph}" if current else paragraph
+        if current and len(candidate) > target:
+            chunks.append(current)
+            current = paragraph
+        else:
+            current = candidate
+    if current:
+        chunks.append(current)
+    # a single paragraph larger than the local prompt bound still must fit:
+    # hard-wrap it on line boundaries as a last resort
+    bounded: list[str] = []
+    for chunk in chunks:
+        while len(chunk) > MAX_LOCAL_PROMPT_CHARS:
+            cut = chunk.rfind("\n", 0, MAX_LOCAL_PROMPT_CHARS)
+            if cut <= 0:
+                cut = MAX_LOCAL_PROMPT_CHARS
+            bounded.append(chunk[:cut])
+            chunk = chunk[cut:]
+        bounded.append(chunk)
+    return [c for c in bounded if c.strip()]
+
+
+def _merge(parts: list[ResumeSections]) -> ResumeSections | None:
+    """Deterministic merge: ordered concat for entry lists, casefold-deduped
+    union for skills/titles, first non-empty value per contact field."""
+    if not parts:
+        return None
+    merged = ResumeSections()
+    seen_skills: set[str] = set()
+    seen_titles: set[str] = set()
+    contact_fields: dict[str, str] = {}
+    for part in parts:
+        merged.experience.extend(part.experience)
+        merged.education.extend(part.education)
+        merged.projects.extend(part.projects)
+        for skill in part.skills:
+            if skill.casefold() not in seen_skills:
+                seen_skills.add(skill.casefold())
+                merged.skills.append(skill)
+        for title in part.target_titles:
+            if title.casefold() not in seen_titles:
+                seen_titles.add(title.casefold())
+                merged.target_titles.append(title)
+        if part.contact is not None:
+            for field, value in part.contact.model_dump().items():
+                if value and not contact_fields.get(field):
+                    contact_fields[field] = value
+    if contact_fields:
+        merged.contact = Contact(**contact_fields)
+    merged.target_titles = merged.target_titles[:5]
+    return merged
+
+
+def _extract_single(resume_text: str, part_note: str = "") -> ResumeSections | None:
     from . import matcher
 
-    if matcher.scoring_tier() == "basic":
-        return None
+    system = _SYSTEM + part_note
     messages = [
-        {"role": "system", "content": _SYSTEM},
-        {"role": "user", "content": resume_text[:24000]},
+        {"role": "system", "content": system},
+        {"role": "user", "content": resume_text},
     ]
     for attempt in (1, 2):
         try:
@@ -164,3 +226,40 @@ def extract(resume_text: str) -> ResumeSections | None:
         except Exception as exc:  # malformed JSON, schema mismatch, LLM error
             log.warning("resume extraction attempt %d failed: %s", attempt, exc)
     return None
+
+
+def extract(resume_text: str, on_progress=None) -> ResumeSections | None:
+    """Extract structured sections, or None when no AI tier is available or
+    nothing validates. Never raises.
+
+    Cloud tier: single shot (large context, strong model — unchanged).
+    Local tier (009 FR-013): chunked map-reduce — the old single 24k-char
+    prompt overflowed the local context and failed silently 100% of the
+    time. Every local prompt stays ≤ MAX_LOCAL_PROMPT_CHARS; one failed
+    chunk costs only that chunk; on_progress(done, total) feeds the UI."""
+    from . import matcher
+
+    tier = matcher.scoring_tier()
+    if tier == "basic":
+        return None
+    if tier != "local":
+        return _extract_single(resume_text[:24000])
+
+    chunks = _split_chunks(resume_text)
+    total = len(chunks)
+    parts: list[ResumeSections] = []
+    for i, chunk in enumerate(chunks, start=1):
+        note = (
+            f" This is part {i} of {total} of the resume — extract ONLY what"
+            " appears in this part; emit empty arrays/objects for anything"
+            " absent."
+        )
+        part = _extract_single(chunk, part_note=note)
+        if part is not None:
+            parts.append(part)
+        if on_progress is not None:
+            try:
+                on_progress(i, total)
+            except Exception:
+                pass
+    return _merge(parts)

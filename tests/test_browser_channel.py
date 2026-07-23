@@ -176,6 +176,22 @@ class TestPreflight:
 
 
 class TestReasonClassOutcomes:
+    """009: launch/nav failures carry distinct reasons; scan trouble needs
+    3 consecutive failed ticks; zero visible fields is NOT a failure — the
+    watcher keeps watching and the activity feed guides the user."""
+
+    def _inline_dispatch(self, monkeypatch):
+        from engine.autofill import worker
+
+        # sanctioned inline mode: these tests run the worker-side handlers
+        # on the test thread, so the (working) confinement guard is waived
+        monkeypatch.setattr(worker, "_assert_worker_thread", lambda: None)
+        monkeypatch.setattr(
+            bc, "_dispatch",
+            lambda name, payload=None, wait=None:
+                bc._worker_open_job(payload["job_id"]) if name == "OPEN_JOB" else None,
+        )
+
     def test_launch_failure_marks_launch_failed(self, tmp_db, monkeypatch):
         job_id = seed_job()
 
@@ -183,19 +199,22 @@ class TestReasonClassOutcomes:
             raise bc.BrowserUnavailable("msedge: nope; chrome: nope")
 
         monkeypatch.setattr(bc, "_ensure_context", boom)
+        self._inline_dispatch(monkeypatch)
         bc.start_queue([job_id])
-        snapshot = bc.queue_snapshot()
-        outcome = next(o for o in snapshot["outcomes"] if o["job_id"] == job_id)
+        outcome = next(
+            o for o in bc.queue_snapshot()["outcomes"] if o["job_id"] == job_id
+        )
         assert outcome["reason"] == "launch_failed"
         assert "nope" in outcome["detail"]
         assert bc.current_job()["fell_back"] is True
+        assert bc.queue_snapshot()["activity"]["phase"] == "error"
 
     def test_nav_failure_marks_nav_failed(self, tmp_db, monkeypatch):
         job_id = seed_job()
-        context = FakeContext()
-        page = FakePage(goto_error=RuntimeError("net::ERR_NAME_NOT_RESOLVED"))
-        context.new_page = lambda: page
+        page = ChannelFakePage(goto_error=RuntimeError("net::ERR_NAME_NOT_RESOLVED"))
+        context = ChannelFakeContext(page)
         monkeypatch.setattr(bc, "_ensure_context", lambda: context)
+        self._inline_dispatch(monkeypatch)
         bc.start_queue([job_id])
         outcome = next(
             o for o in bc.queue_snapshot()["outcomes"] if o["job_id"] == job_id
@@ -203,35 +222,73 @@ class TestReasonClassOutcomes:
         assert outcome["reason"] == "nav_failed"
         assert "ERR_NAME_NOT_RESOLVED" in outcome["detail"]
 
-    def test_scan_failure_marks_scan_failed(self, tmp_db, monkeypatch):
+    def test_scan_failed_needs_three_consecutive_bad_ticks(self, tmp_db, monkeypatch):
+        from tests.test_watcher import FakeFrame
+
         job_id = seed_job()
-        context = FakeContext()
-        page = FakePage(serialize_error=RuntimeError("Execution context destroyed"))
-        context.new_page = lambda: page
+        bad_frame = FakeFrame(fail_serialize=True)
+        page = ChannelFakePage(frames=[bad_frame])
+        context = ChannelFakeContext(page)
         monkeypatch.setattr(bc, "_ensure_context", lambda: context)
-        bc.start_queue([job_id])
+        self._inline_dispatch(monkeypatch)
+        bc.start_queue([job_id])  # open runs one forced tick -> 1 failure
+        outcomes = bc.queue_snapshot()["outcomes"]
+        assert not any(o["reason"] == "scan_failed" for o in outcomes)
+        bc._tick_if_active()
+        bc._tick_if_active()  # third consecutive failure
         outcome = next(
             o for o in bc.queue_snapshot()["outcomes"] if o["job_id"] == job_id
         )
         assert outcome["reason"] == "scan_failed"
-
-    def test_unrecognized_page_marks_unrecognized(self, tmp_db, monkeypatch):
-        job_id = seed_job()
-        context = FakeContext()
-        page = FakePage(fields=[])  # nothing classifiable on the page
-        context.new_page = lambda: page
-        monkeypatch.setattr(bc, "_ensure_context", lambda: context)
-        bc.start_queue([job_id])
-        outcome = next(
-            o for o in bc.queue_snapshot()["outcomes"] if o["job_id"] == job_id
+        # a later healthy tick clears it (no terminal states while current)
+        bad_frame.fail_serialize = False
+        bc._tick_if_active()
+        assert not any(
+            o["reason"] == "scan_failed"
+            for o in bc.queue_snapshot()["outcomes"]
         )
-        assert outcome["reason"] == "unrecognized"
 
-    def test_batch_summary_counts_all_reason_classes_as_manual(
+    def test_zero_fields_is_waiting_not_failure(self, tmp_db, monkeypatch):
+        from tests.test_watcher import FakeFrame
+
+        job_id = seed_job()
+        page = ChannelFakePage(frames=[FakeFrame(descriptors=[])])
+        context = ChannelFakeContext(page)
+        monkeypatch.setattr(bc, "_ensure_context", lambda: context)
+        self._inline_dispatch(monkeypatch)
+        bc.start_queue([job_id])
+        assert bc.queue_snapshot()["outcomes"] == []
+        activity = bc.queue_snapshot()["activity"]
+        assert activity["phase"] == "waiting_for_form"
+        assert "Apply" in activity["message"]
+
+    def test_fields_fill_and_activity_counts(self, tmp_db, monkeypatch):
+        from engine import db as edb
+        from tests.test_watcher import FakeFrame, descriptor
+
+        edb.save_profile(first_name="Ada", email="ada@example.com")
+        job_id = seed_job()
+        frame = FakeFrame(descriptors=[
+            descriptor(name="first_name"),
+            descriptor(name="email", type="email"),
+        ])
+        page = ChannelFakePage(frames=[frame])
+        context = ChannelFakeContext(page)
+        monkeypatch.setattr(bc, "_ensure_context", lambda: context)
+        self._inline_dispatch(monkeypatch)
+        bc.start_queue([job_id])
+        activity = bc.queue_snapshot()["activity"]
+        assert activity["phase"] == "watching"
+        assert activity["fields_seen"] == 2
+        assert activity["fields_filled"] == 2
+        report = bc.queue_snapshot()["fill_report"]
+        assert {r["outcome"] for r in report} == {"filled"}
+
+    def test_batch_summary_counts_fallback_reasons_as_manual(
         self, tmp_db, monkeypatch
     ):
         j1, j2 = seed_job("https://x.example/1"), seed_job("https://x.example/2")
-        monkeypatch.setattr(bc, "_open_job", lambda job_id: None)
+        monkeypatch.setattr(bc, "_dispatch", lambda name, payload=None, wait=None: None)
         bc.start_queue([j1, j2])
         with bc._lock:
             bc._state.outcomes[j1] = {"reason": "launch_failed", "detail": "x"}
@@ -240,3 +297,32 @@ class TestReasonClassOutcomes:
         summary = bc.queue_snapshot()["summary"]
         assert summary["manual"] == 1
         assert summary["skipped"] == 1
+
+
+class ChannelFakePage:
+    def __init__(self, goto_error=None, frames=None):
+        self.goto_error = goto_error
+        self._frames = frames if frames is not None else []
+        self.closed = False
+
+    def goto(self, url, timeout=None):
+        if self.goto_error:
+            raise self.goto_error
+
+    @property
+    def frames(self):
+        return self._frames
+
+    def close(self):
+        self.closed = True
+
+
+class ChannelFakeContext:
+    def __init__(self, page):
+        self._page = page
+
+    def new_page(self):
+        return self._page
+
+    def close(self):
+        pass

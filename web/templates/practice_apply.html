@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Practice Application — Aurora Semiconductors</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 680px; margin: 2rem auto;
+           padding: 0 1rem; color: #1c2733; background: #f6f8fa; }
+    h1 { font-size: 1.4rem; } h2 { font-size: 1.05rem; margin-top: 1.6rem; }
+    .card { background: #fff; border: 1px solid #d5dde5; border-radius: 8px;
+            padding: 1.2rem 1.4rem; }
+    label { display: block; margin: 0.8rem 0 0.2rem; font-weight: 600; font-size: 0.9rem; }
+    input, select, textarea { width: 100%; padding: 0.45rem 0.6rem; font-size: 0.95rem;
+            border: 1px solid #b8c4cf; border-radius: 5px; box-sizing: border-box; }
+    button { margin-top: 1.4rem; padding: 0.6rem 1.4rem; font-size: 1rem;
+            background: #2757a8; color: #fff; border: 0; border-radius: 6px; }
+    iframe { width: 100%; height: 170px; border: 1px dashed #b8c4cf; border-radius: 6px; }
+    .hint { color: #5b6b7b; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <h1>Aurora Semiconductors — Design Verification Engineer (New Grad)</h1>
+  <p class="hint">This is Job Engine's bundled <strong>practice application</strong>.
+    Nothing here is submitted anywhere — watch Apply Assist fill your real
+    profile data into a realistic form, including a section that renders
+    late and a section inside an embedded frame.</p>
+
+  <form class="card" onsubmit="return false">
+    <h2>Your details</h2>
+    <label for="first_name">First Name</label>
+    <input id="first_name" name="first_name" type="text" autocomplete="given-name">
+    <label for="last_name">Last Name</label>
+    <input id="last_name" name="last_name" type="text" autocomplete="family-name">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" autocomplete="email">
+    <label for="phone">Phone</label>
+    <input id="phone" name="phone" type="tel" autocomplete="tel">
+
+    <h2>Resume</h2>
+    <label for="resume">Resume/CV</label>
+    <input id="resume" name="resume" type="file">
+
+    <h2>Work authorization</h2>
+    <label for="work_authorization">Are you legally authorized to work in the United States?</label>
+    <select id="work_authorization" name="work_authorization">
+      <option value="">Please select</option>
+      <option>Yes, I am authorized to work in the US</option>
+      <option>No, I am not authorized</option>
+    </select>
+
+    <div id="delayed-section">
+      <p class="hint">… more questions loading (this section renders 1.5s
+        late, like a real script-driven form) …</p>
+    </div>
+    <script>
+      setTimeout(function () {
+        document.getElementById('delayed-section').innerHTML =
+          '<h2>About you<\/h2>' +
+          '<label for="how_did_you_hear">How did you hear about this role?<\/label>' +
+          '<input id="how_did_you_hear" name="how_did_you_hear" type="text">' +
+          '<label for="cover_letter">Anything else you want us to know?<\/label>' +
+          '<textarea id="cover_letter" name="cover_letter" rows="3"><\/textarea>';
+      }, 1500);
+    </script>
+
+    <h2>Links (embedded section)</h2>
+    <p class="hint">This part lives inside an iframe — historically invisible
+      to the fill engine; now it fills like everything else.</p>
+    <iframe src="/practice/frame" title="Links section"></iframe>
+
+    <button type="button" onclick="alert('This is only practice — nothing is submitted. In a real application, YOU always click the real submit button.')">
+      Submit application (practice — does nothing)
+    </button>
+  </form>
+</body>
+</html>

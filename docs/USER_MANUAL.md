@@ -597,3 +597,34 @@ UNKNOWN badges everywhere = run `python cli.py load-sponsorship`.
 - **Diagnostics page** (top nav): real self-checks with error text, log
   export, legacy-browser cleanup; crashes in background threads are logged
   and surfaced once on the next launch.
+
+
+## 13. What changed in v0.9.0 (The Live Fill Engine)
+
+- **Apply Assist was rebuilt from scratch.** The old engine scanned a page
+  once, the instant it loaded — before script-driven forms existed — and
+  navigated to description pages instead of application forms, so it never
+  filled anything real. The new engine: one dedicated browser worker,
+  jobs opened at their true form URLs (Lever `/apply`, Ashby
+  `/application`), and a **continuous ~2s watch** over every frame of the
+  page that fills each empty recognized field the moment it appears. Slow
+  renders, iframe embeds, forms behind the Apply button, and multi-page
+  Next flows all fill. It still never clicks anything, never overwrites a
+  non-empty field, and never touches the field you're typing in.
+- **Test Apply Assist**: a bundled practice application (with a delayed
+  section and an iframe section) fills with your real profile data in
+  seconds. The same pages run as an automated real-browser test suite
+  before every release.
+- **Profile import rebuilt**: upload returns instantly; extraction runs in
+  the background with a live progress banner; a review screen lists every
+  field (current vs from-resume) with Keep / Use resume's / Merge —
+  applying is the only way anything changes. On the offline model, long
+  resumes are processed in bounded parts (the old version failed silently
+  on the offline model 100% of the time due to a context limit, now
+  fixed with an 8K context + chunking).
+- **Offline model first**: all AI features default to the bundled model
+  (private, $0). A saved cloud key becomes the automatic fallback; the
+  Settings checkbox "Prefer the bundled offline model" flips the order.
+- The old "Enable Apply Assist"/Chromium-download flow, the one-shot
+  "couldn't read this page" dead end, and the silent identity auto-fill
+  are all gone.

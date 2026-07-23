@@ -31,13 +31,9 @@
     The posting may be down — try <em>Open posting</em> from the job page,
     or skip to the next application.
     {% elif my_outcome.reason == 'scan_failed' %}
-    <strong>The page loaded but couldn't be read.</strong>
+    <strong>The page loaded but couldn't be read for a while.</strong>
     <span class="data">{{ my_outcome.detail }}</span>
-    Complete this one manually in the open browser window, or try
-    <em>Re-scan this page</em>.
-    {% else %}
-    <strong>This page's fields couldn't be confidently read.</strong>
-    Complete it manually in the open browser window — nothing was filled.
+    The watcher keeps trying — fill manually if it doesn't recover.
     {% endif %}
   </div>
   {% endif %}
@@ -54,6 +50,24 @@
     </p>
     {% endif %}
   </div>
+
+  {# 009 (FR-007): the live watch feed — the engine's heartbeat, visible #}
+  {% if snapshot and snapshot.activity %}
+  {% set act = snapshot.activity %}
+  {% if act.phase == 'waiting_for_form' %}
+  <div class="notice watch-guidance" role="status">
+    <strong>▸ No form fields visible yet.</strong> Click the site's own
+    <em>Apply</em> button in the browser window — fields fill the moment
+    the form appears. The engine checks every couple of seconds.
+  </div>
+  {% elif act.phase in ('watching', 'opening') %}
+  <p class="data watch-activity" role="status">
+    ▸ {{ act.message or 'watching page…' }}
+  </p>
+  {% elif act.phase == 'error' and act.message %}
+  <p class="data watch-activity" role="status">{{ act.message }}</p>
+  {% endif %}
+  {% endif %}
 
   {% if snapshot and snapshot.queue %}
   <ul class="mission-queue" aria-label="Application queue">
@@ -97,6 +111,7 @@
 
   {% if current.pending %}
   <div class="autofill-pending" id="autofill-pending-form">
+  <script>reveal(document.getElementById("autofill-pending-form"));</script>
     <p>
       <strong>Question needs your review</strong>
       {% if current.pending.category in ('work_authorization', 'sponsorship_requirement', 'eeo_disclosure') %}

@@ -168,3 +168,53 @@ class TestMatchOption:
     def test_empty_inputs(self):
         assert fields.match_option("", ["Yes", "No"]) is None
         assert fields.match_option("Yes", []) is None
+
+
+def raw_attr_field(**overrides):
+    """A descriptor the way real ATS forms present it: NO label/placeholder/
+    aria — only raw name/id attributes (the exact shape that silently never
+    classified before 009: \s* does not match underscores)."""
+    field = {"tag": "input", "type": "text", "name": "", "id": "",
+             "label_text": "", "placeholder": "", "aria_label": "",
+             "autocomplete": ""}
+    field.update(overrides)
+    return field
+
+
+class TestRawAttributeClassification009:
+    def test_greenhouse_style_underscore_names(self):
+        assert fields.classify(raw_attr_field(name="first_name")) == "first_name"
+        assert fields.classify(raw_attr_field(name="last_name")) == "last_name"
+        assert fields.classify(raw_attr_field(name="full_name")) == "full_name"
+        assert fields.classify(raw_attr_field(id="given_name")) == "first_name"
+        assert fields.classify(raw_attr_field(id="family_name")) == "last_name"
+
+    def test_qa_bank_underscore_names(self):
+        assert fields.classify(raw_attr_field(name="years_experience")) == "years_experience"
+        assert fields.classify(raw_attr_field(name="how_did_you_hear")) == "how_heard"
+        assert fields.classify(raw_attr_field(name="pay_expectation")) == "salary_expectation"
+        assert fields.classify(
+            raw_attr_field(tag="textarea", name="cover_letter")
+        ) == "cover_letter"
+        assert fields.classify(raw_attr_field(name="personal_website")) == "portfolio_url"
+
+    def test_hyphen_and_compact_variants(self):
+        assert fields.classify(raw_attr_field(name="first-name")) == "first_name"
+        assert fields.classify(raw_attr_field(name="firstname")) == "first_name"
+        assert fields.classify(raw_attr_field(id="lastname")) == "last_name"
+
+    def test_autocomplete_attribute_classifies(self):
+        assert fields.classify(raw_attr_field(autocomplete="given-name")) == "first_name"
+        assert fields.classify(raw_attr_field(autocomplete="family-name")) == "last_name"
+        assert fields.classify(raw_attr_field(autocomplete="name")) == "full_name"
+        assert fields.classify(raw_attr_field(autocomplete="email")) == "email"
+        assert fields.classify(raw_attr_field(autocomplete="tel")) == "phone"
+
+    def test_lever_bare_name_attribute_is_full_name(self):
+        assert fields.classify(raw_attr_field(name="name")) == "full_name"
+
+    def test_sensitive_categories_still_win_over_identity(self):
+        # regression guard: separator widening must not weaken precedence
+        field = raw_attr_field(name="first_name",
+                              label_text="Are you authorized to work in the US?")
+        assert fields.classify(field) == "work_authorization"

@@ -162,3 +162,123 @@ class TestContactAndTitles008:
     def test_llm_prompt_requests_contact_block(self):
         assert "contact" in resume_extract._SYSTEM
         assert "target_titles" in resume_extract._SYSTEM
+
+
+class TestChunkedLocalExtraction009:
+    """009 US3 (T017): the local tier processes long resumes in bounded
+    parts (root cause B2: a 24k-char single-shot prompt deterministically
+    overflowed n_ctx=4096 and extraction failed silently 100% of the time)."""
+
+    def test_split_chunks_respects_blank_line_boundaries(self):
+        paragraphs = [f"SECTION {i}\n" + ("line of resume text. " * 40)
+                      for i in range(10)]
+        text = "\n\n".join(paragraphs)
+        chunks = resume_extract._split_chunks(text, target=2000)
+        assert len(chunks) > 1
+        assert all(len(c) <= 3500 for c in chunks)  # near target, never huge
+        # nothing lost, order preserved, splits only at blank lines
+        assert "\n\n".join(chunks).replace("\n\n", "\n").replace("\n", " ") \
+            .replace("  ", " ").strip() != ""
+        joined = "".join(chunks)
+        for i in range(10):
+            assert f"SECTION {i}" in joined
+
+    def test_split_never_cuts_mid_line(self):
+        text = "\n\n".join("A" * 900 for _ in range(8))
+        for chunk in resume_extract._split_chunks(text, target=2000):
+            for line in chunk.splitlines():
+                assert line == "" or set(line) == {"A"}
+                assert len(line) in (0, 900)  # lines survive intact
+
+    def test_merge_concatenates_ordered_and_dedupes(self):
+        part1 = resume_extract.ResumeSections(
+            experience=[{"title": "Intern", "organization": "Acme"}],
+            skills=["Python", "Verilog"],
+            target_titles=["FPGA Engineer"],
+            contact={"email": "a@x.com"},
+        )
+        part2 = resume_extract.ResumeSections(
+            experience=[{"title": "RA", "organization": "Uni"}],
+            education=[{"degree": "BS CE", "institution": "UT"}],
+            skills=["python", "SystemVerilog"],  # 'python' dupes casefolded
+            target_titles=["FPGA Engineer", "DV Engineer"],
+            contact={"email": "ignored@later.com", "phone": "(512) 555-0100"},
+        )
+        merged = resume_extract._merge([part1, part2])
+        assert [e.title for e in merged.experience] == ["Intern", "RA"]
+        assert merged.education[0].degree == "BS CE"
+        assert merged.skills == ["Python", "Verilog", "SystemVerilog"]
+        assert merged.target_titles == ["FPGA Engineer", "DV Engineer"]
+        # contact: first non-empty value per field wins
+        assert merged.contact.email == "a@x.com"
+        assert merged.contact.phone == "(512) 555-0100"
+
+    def test_merge_of_nothing_is_none(self):
+        assert resume_extract._merge([]) is None
+
+    def test_local_tier_uses_chunks_and_bounded_prompts(self, monkeypatch):
+        from engine import matcher
+
+        sizes = []
+
+        def fake_chat(messages, **kw):
+            sizes.append(len(messages[-1]["content"]))
+            return json.dumps({"skills": ["python"]})
+
+        monkeypatch.setattr(matcher, "_chat", fake_chat)
+        monkeypatch.setattr(matcher, "scoring_tier", lambda: "local")
+        long_resume = "\n\n".join("Paragraph of resume text. " * 60
+                                  for _ in range(20))  # ~30k chars
+        result = resume_extract.extract(long_resume)
+        assert result is not None
+        assert len(sizes) > 1  # chunked, not single-shot
+        assert all(size <= 6000 for size in sizes), max(sizes)
+
+    def test_local_chunk_failure_degrades_partially(self, monkeypatch):
+        from engine import matcher
+
+        calls = {"n": 0}
+
+        def flaky_chat(messages, **kw):
+            calls["n"] += 1
+            if "PART-TWO-MARKER" in messages[-1]["content"]:
+                raise RuntimeError("model hiccup")
+            return json.dumps({"skills": [f"skill{calls['n']}"]})
+
+        monkeypatch.setattr(matcher, "_chat", flaky_chat)
+        monkeypatch.setattr(matcher, "scoring_tier", lambda: "local")
+        text = ("A" * 4000) + "\n\n" + ("PART-TWO-MARKER " * 300) + "\n\n" + ("B" * 4000)
+        result = resume_extract.extract(text)
+        assert result is not None  # the good chunks survived
+        assert result.skills  # something extracted
+
+    def test_cloud_tier_keeps_single_shot(self, monkeypatch):
+        from engine import matcher
+
+        calls = []
+
+        def fake_chat(messages, **kw):
+            calls.append(len(messages[-1]["content"]))
+            return json.dumps({"skills": ["python"]})
+
+        monkeypatch.setattr(matcher, "_chat", fake_chat)
+        monkeypatch.setattr(matcher, "scoring_tier", lambda: "cloud")
+        long_resume = "x" * 30000
+        resume_extract.extract(long_resume)
+        assert len(calls) == 1  # unchanged single-shot on cloud
+
+
+class TestProgressCallback009:
+    def test_on_progress_reports_chunk_counts(self, monkeypatch):
+        from engine import matcher
+
+        monkeypatch.setattr(
+            matcher, "_chat", lambda messages, **kw: json.dumps({"skills": []})
+        )
+        monkeypatch.setattr(matcher, "scoring_tier", lambda: "local")
+        progress = []
+        long_resume = "\n\n".join("text " * 300 for _ in range(10))
+        resume_extract.extract(long_resume, on_progress=lambda done, total: progress.append((done, total)))
+        assert progress
+        done, total = progress[-1]
+        assert done == total and total >= 2

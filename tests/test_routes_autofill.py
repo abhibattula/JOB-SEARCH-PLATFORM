@@ -60,7 +60,7 @@ class TestQueueRoutes:
             browser_controller, "preflight",
             lambda: {"ok": True, "channel": "msedge", "error": None},
         )
-        monkeypatch.setattr(browser_controller, "_open_job", lambda job_id: None)
+        monkeypatch.setattr(browser_controller, "_dispatch", lambda name, payload=None, wait=None: None)
         job_id = seed_job()
 
         resp = client.post("/api/autofill/queue", json={"job_ids": [job_id]})
@@ -77,7 +77,7 @@ class TestQueueRoutes:
             browser_controller, "preflight",
             lambda: {"ok": True, "channel": "msedge", "error": None},
         )
-        monkeypatch.setattr(browser_controller, "_open_job", lambda job_id: None)
+        monkeypatch.setattr(browser_controller, "_dispatch", lambda name, payload=None, wait=None: None)
         j1, j2 = seed_job("https://x.example/1"), seed_job("https://x.example/2")
         client.post("/api/autofill/queue", json={"job_ids": [j1, j2]})
 
@@ -93,7 +93,7 @@ class TestQueueRoutes:
             browser_controller, "preflight",
             lambda: {"ok": True, "channel": "msedge", "error": None},
         )
-        monkeypatch.setattr(browser_controller, "_open_job", lambda job_id: None)
+        monkeypatch.setattr(browser_controller, "_dispatch", lambda name, payload=None, wait=None: None)
         j1 = seed_job()
         client.post("/api/autofill/queue", json={"job_ids": [j1]})
 
@@ -111,7 +111,7 @@ class TestQueueRoutes:
             browser_controller, "preflight",
             lambda: {"ok": True, "channel": "msedge", "error": None},
         )
-        monkeypatch.setattr(browser_controller, "_open_job", lambda job_id: None)
+        monkeypatch.setattr(browser_controller, "_dispatch", lambda name, payload=None, wait=None: None)
         j1 = seed_job()
         client.post("/api/autofill/queue", json={"job_ids": [j1]})
 
@@ -127,7 +127,7 @@ class TestQueueRoutes:
             browser_controller, "preflight",
             lambda: {"ok": True, "channel": "msedge", "error": None},
         )
-        monkeypatch.setattr(browser_controller, "_open_job", lambda job_id: None)
+        monkeypatch.setattr(browser_controller, "_dispatch", lambda name, payload=None, wait=None: None)
         j1 = seed_job()
         client.post("/api/autofill/queue", json={"job_ids": [j1]})
 
@@ -150,7 +150,7 @@ class TestDepthRoutes:
             browser_controller, "preflight",
             lambda: {"ok": True, "channel": "msedge", "error": None},
         )
-        monkeypatch.setattr(browser_controller, "_open_job", lambda jid: None)
+        monkeypatch.setattr(browser_controller, "_dispatch", lambda name, payload=None, wait=None: None)
         resp = client.post("/api/autofill/queue", json={"job_ids": job_ids})
         assert resp.json()["started"] is True
 
@@ -189,10 +189,10 @@ class TestDepthRoutes:
         j1 = seed_job("https://x.example/1")
         self._start_queue(client, monkeypatch, [j1])
         monkeypatch.setattr(
-            browser_controller, "rescan", lambda: {"rescanned": True, "filled": 3}
+            browser_controller, "rescan", lambda: {"forced": True}
         )
         body = client.post("/api/autofill/rescan").json()
-        assert body == {"rescanned": True, "filled": 3}
+        assert body == {"forced": True}
 
     def test_resume_queue_route_and_409_without_interruption(self, client, monkeypatch):
         from engine.autofill import browser_controller
@@ -229,7 +229,7 @@ class TestConfirmAnswerRoute:
             browser_controller, "preflight",
             lambda: {"ok": True, "channel": "msedge", "error": None},
         )
-        monkeypatch.setattr(browser_controller, "_open_job", lambda job_id: None)
+        monkeypatch.setattr(browser_controller, "_dispatch", lambda name, payload=None, wait=None: None)
         job_id = seed_job()
         client.post("/api/autofill/queue", json={"job_ids": [job_id]})
 
@@ -381,7 +381,7 @@ class Test008BrowserRoutes:
             browser_controller, "preflight",
             lambda: {"ok": True, "channel": "msedge", "error": None},
         )
-        monkeypatch.setattr(browser_controller, "_open_job", lambda job_id: None)
+        monkeypatch.setattr(browser_controller, "_dispatch", lambda name, payload=None, wait=None: None)
         job_id = seed_job("https://x.example/pf2")
         resp = client.post("/api/autofill/queue", json={"job_ids": [job_id]})
         assert resp.status_code == 200
@@ -396,7 +396,7 @@ class Test008BrowserRoutes:
             browser_controller, "preflight",
             lambda: {"ok": True, "channel": "msedge", "error": None},
         )
-        monkeypatch.setattr(browser_controller, "_open_job", lambda job_id: None)
+        monkeypatch.setattr(browser_controller, "_dispatch", lambda name, payload=None, wait=None: None)
         job_id = seed_job("https://x.example/pf3")
         client.post("/api/autofill/queue", json={"job_ids": [job_id]})
         with browser_controller._lock:
@@ -408,3 +408,54 @@ class Test008BrowserRoutes:
         assert body["outcomes"] == [
             {"job_id": job_id, "reason": "nav_failed", "detail": "timeout"}
         ]
+
+
+class Test009Practice:
+    """009 US2 (T013): the bundled practice application — the ten-second
+    on-machine proof, queued through the normal engine."""
+
+    def test_practice_pages_render(self, client):
+        page = client.get("/practice/apply")
+        assert page.status_code == 200
+        text = page.text
+        assert 'name="first_name"' in text
+        assert 'name="email"' in text
+        assert 'name="phone"' in text
+        assert 'type="file"' in text
+        assert "<select" in text  # work-authorization dropdown
+        assert "setTimeout" in text  # the delayed-render section
+        assert "/practice/frame" in text  # the embedded-frame section
+        frame = client.get("/practice/frame")
+        assert frame.status_code == 200
+        assert 'name="urls[LinkedIn]"' in frame.text
+
+    def test_practice_route_starts_a_practice_queue(self, client, monkeypatch):
+        from engine.autofill import browser_controller
+
+        monkeypatch.setattr(
+            browser_controller, "preflight",
+            lambda: {"ok": True, "channel": "msedge", "error": None},
+        )
+        started = {}
+        monkeypatch.setattr(
+            browser_controller, "start_practice",
+            lambda url: started.setdefault("url", url) or {"job_id": -1},
+        )
+        resp = client.post("/api/autofill/practice")
+        assert resp.status_code == 200
+        assert resp.json()["started"] is True
+        assert started["url"].endswith("/practice/apply")
+
+    def test_practice_refused_while_queue_active(self, client, monkeypatch):
+        from engine.autofill import browser_controller
+
+        monkeypatch.setattr(
+            browser_controller, "preflight",
+            lambda: {"ok": True, "channel": "msedge", "error": None},
+        )
+        monkeypatch.setattr(browser_controller, "start_practice", lambda url: None)
+        assert client.post("/api/autofill/practice").status_code == 409
+
+    def test_autofill_page_offers_test_button(self, client):
+        resp = client.get("/autofill")
+        assert "Test Apply Assist" in resp.text

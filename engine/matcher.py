@@ -48,11 +48,16 @@ def llm_available() -> bool:
 
 
 def scoring_tier() -> str:
-    """Which tier will actually serve the next call: cloud > local > basic.
-    'basic' means neither an LLM tier is available; callers fall back to
-    engine/basic_match.py entirely (no _chat call at all) in that case."""
+    """Which tier will actually serve the next call. 009 (FR-017): with
+    PREFER_LOCAL_LLM on (the default), the bundled offline model serves
+    everything when present — even with a cloud key saved; the key becomes
+    the automatic fallback on local failure. 'basic' means no LLM tier at
+    all; callers use engine/basic_match.py (no _chat call)."""
     from . import settings
 
+    prefer_local = settings.get("PREFER_LOCAL_LLM") != "0"
+    if prefer_local and local_llm.available():
+        return "local"
     if settings.get("LLM_API_KEY"):
         return "cloud"
     if local_llm.available():
@@ -104,17 +109,24 @@ def _chat_local(messages: list[dict], purpose: str = "prose") -> str:
 
 
 def _chat(messages: list[dict], purpose: str = "prose") -> str:
-    """Tier dispatcher: cloud (Groq/OpenAI-compatible API) > local (bundled
-    model) > raise. purpose="json" routes structured tasks to the
-    schema-reliable model/decoding on each tier (008 FR-026/FR-028).
-    Existing callers already try/except around _chat and degrade
-    gracefully on failure."""
+    """Tier dispatcher, driven by scoring_tier() (single source of truth).
+    009 (FR-017): a preferred-local failure falls through to the cloud key
+    automatically when one exists. purpose="json" routes structured tasks
+    to the schema-reliable model/decoding on each tier."""
     from . import settings
 
-    if settings.get("LLM_API_KEY"):
+    tier = scoring_tier()
+    if tier == "local":
+        try:
+            return _chat_local(messages, purpose=purpose)
+        except Exception:
+            if settings.get("LLM_API_KEY"):
+                log.warning("local tier failed — falling through to cloud",
+                            exc_info=True)
+                return _chat_cloud(messages, purpose=purpose)
+            raise
+    if tier == "cloud":
         return _chat_cloud(messages, purpose=purpose)
-    if local_llm.available():
-        return _chat_local(messages, purpose=purpose)
     raise RuntimeError("no LLM tier available (no cloud key, no local model)")
 
 

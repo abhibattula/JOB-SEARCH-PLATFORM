@@ -5,7 +5,7 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel
 
 log = logging.getLogger(__name__)
@@ -112,19 +112,46 @@ def autofill_status():
         "summary": snapshot["summary"],
         # 008 (FR-009): per-job reason classes
         "outcomes": snapshot["outcomes"],
+        # 009 (FR-007): live watch activity
+        "activity": snapshot["activity"],
     }
 
 
 @router.post("/rescan")
 def rescan_current_page():
-    """007 (FR-003 fallback): manual re-classify-and-fill of the current
-    page, for SPA re-renders that never navigate."""
+    """009: forces an immediate fill pass (the watcher already re-scans
+    every ~2s on its own)."""
     from engine.autofill import browser_controller
 
     result = browser_controller.rescan()
     if result is None:
         raise HTTPException(status_code=409, detail="no active Apply Assist session")
     return result
+
+
+@router.post("/practice")
+def start_practice(request: Request):
+    """009 (FR-009): queue the bundled practice application — the ten-second
+    on-machine proof that the fill engine works, using the user's real
+    profile data through the normal engine."""
+    global _last_preflight
+    from engine.autofill import browser_controller
+
+    check = browser_controller.preflight()
+    _last_preflight = check
+    if not check["ok"]:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Couldn't start a browser: {check['error']} — install"
+            " Microsoft Edge or Google Chrome, then try again.",
+        )
+    url = str(request.base_url).rstrip("/") + "/practice/apply"
+    result = browser_controller.start_practice(url)
+    if result is None:
+        raise HTTPException(
+            status_code=409, detail="an Apply Assist session is already running"
+        )
+    return {"started": True}
 
 
 @router.post("/resume-queue")

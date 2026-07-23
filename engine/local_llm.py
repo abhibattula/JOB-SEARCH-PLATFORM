@@ -32,10 +32,13 @@ def available() -> bool:
     return _model_path().exists()
 
 
-def _load_model(path: Path):
+def _load_model(path: Path, n_ctx: int = 8192):
+    """009 (FR-013): 8192 context — 4096 made long structured-extraction
+    prompts overflow deterministically (Qwen2.5 supports 32k; the KV-cache
+    cost at 8k for a 1.5B model is a couple hundred MB, acceptable)."""
     from llama_cpp import Llama
 
-    return Llama(model_path=str(path), n_ctx=4096, verbose=False)
+    return Llama(model_path=str(path), n_ctx=n_ctx, verbose=False)
 
 
 def _get_model():

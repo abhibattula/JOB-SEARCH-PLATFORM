@@ -1,0 +1,18 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Delayed GH-style form</title></head>
+<body>
+<h1>Software Engineer, New Grad</h1>
+<div id="app">loading…</div>
+<script src="/_mirror.js"></script>
+<script>
+  // A1 regression: the form mounts 1.2s AFTER load — the one-shot engine
+  // saw zero fields here forever.
+  setTimeout(function () {
+    document.getElementById("app").innerHTML =
+      '<label>First Name<input name="first_name" type="text"></label>' +
+      '<label>Last Name<input name="last_name" type="text"></label>' +
+      '<label>Email<input name="email" type="email"></label>' +
+      '<label>Phone<input name="phone" type="tel"></label>' +
+      '<label>Resume<input name="resume" type="file"></label>';
+  }, 1200);
+</script>
+</body></html>

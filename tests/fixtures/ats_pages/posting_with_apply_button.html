@@ -1,0 +1,18 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Posting — apply to reveal</title></head>
+<body>
+<h1>Hardware Engineer</h1>
+<p>Great job. Really great.</p>
+<button id="apply-btn" type="button">Apply for this job</button>
+<div id="form-area"></div>
+<script src="/_mirror.js"></script>
+<script>
+  document.getElementById("apply-btn").addEventListener("click", function () {
+    document.getElementById("form-area").innerHTML =
+      '<label>First Name<input name="first_name" type="text"></label>' +
+      '<label>Email<input name="email" type="email"></label>';
+  });
+  // The PAGE simulates the USER clicking Apply 2.5s in — the engine never
+  // clicks anything; it must catch the revealed form on a later tick.
+  setTimeout(function () { document.getElementById("apply-btn").click(); }, 2500);
+</script>
+</body></html>
