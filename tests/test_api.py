@@ -181,7 +181,7 @@ class TestPages:
         settings.set("THEME", theme)
         job = seed_job()
         for path in ("/", "/analytics", "/profile", "/settings", "/autofill",
-                     f"/jobs/{job['id']}"):
+                     "/companion", f"/jobs/{job['id']}"):
             resp = client.get(path)
             assert resp.status_code == 200, path
             assert f'data-theme="{theme}"' in resp.text, path
@@ -1036,3 +1036,89 @@ class Test009ImportRoutes:
             )
         text = client.get("/partials/profile/import").text
         assert "already matches" in text
+
+
+class Test010NextActionsAndSubmission:
+    def _job(self):
+        seed_job()
+        jobs, _ = db.query_jobs(window=None, statuses=None, entry_level=None)
+        return jobs[0]["id"]
+
+    def test_next_actions_empty_by_default(self, client):
+        resp = client.get("/api/next-actions")
+        assert resp.status_code == 200
+        assert resp.json()["actions"] == []
+
+    def test_follow_up_surfaces_in_next_actions(self, client):
+        job_id = self._job()
+        client.post(f"/api/jobs/{job_id}/follow-up",
+                    json={"follow_up_at": "2020-01-01", "notes": "ping recruiter"})
+        actions = client.get("/api/next-actions").json()["actions"]
+        assert any(a["kind"] == "follow_up" and a["job_id"] == job_id
+                   for a in actions)
+
+    def test_submission_confirm_true_applies_and_saves(self, client):
+        from engine.autofill import drafts
+
+        job_id = self._job()
+        drafts.record(job_id, "Why?", "My drafted answer.", "local")
+        resp = client.post(f"/api/jobs/{job_id}/submission-confirm",
+                           json={"confirmed": True})
+        assert resp.json()["applied"] is True
+        assert db.get_job(job_id)["status"] == "applied"
+
+    def test_submission_confirm_false_changes_nothing(self, client):
+        job_id = self._job()
+        resp = client.post(f"/api/jobs/{job_id}/submission-confirm",
+                           json={"confirmed": False})
+        assert resp.json()["applied"] is False
+        assert db.get_job(job_id)["status"] == "none"
+
+    def test_follow_up_unknown_job_404(self, client):
+        resp = client.post("/api/jobs/99999/follow-up",
+                           json={"follow_up_at": "2020-01-01"})
+        assert resp.status_code == 404
+
+
+class Test010Dashboard:
+    def test_home_shows_dashboard_lead(self, client):
+        job = seed_job()
+        db.set_match(job["id"], 88.0, '{"match_score": 88}')
+        resp = client.get("/")
+        assert resp.status_code == 200
+        assert 'class="dashboard"' in resp.text
+        assert "Top matches" in resp.text
+        assert "Next actions" in resp.text
+        assert "Your applications" in resp.text
+
+    def test_dashboard_lists_scored_match(self, client):
+        job = seed_job()
+        db.set_match(job["id"], 91.0, '{"match_score": 91}')
+        resp = client.get("/")
+        assert "Software Engineer, New Grad" in resp.text
+        assert "91" in resp.text
+
+    def test_home_still_serves_feed(self, client):
+        # dashboard is additive — the feed contract is unchanged
+        seed_job()
+        resp = client.get("/")
+        assert 'class="toolbar"' in resp.text  # feed toolbar still present
+
+
+class Test010BoardFollowUp:
+    def test_board_card_has_followup_affordance(self, client):
+        job = seed_job()
+        client.post(f"/api/jobs/{job['id']}/status", json={"status": "applied"})
+        board = client.get("/", params={"status": "applied", "view": "board"})
+        assert board.status_code == 200
+        assert "board-followup" in board.text
+        assert "fu-date" in board.text
+
+    def test_saved_followup_prefills_card(self, client):
+        job = seed_job()
+        client.post(f"/api/jobs/{job['id']}/status", json={"status": "applied"})
+        client.post(f"/api/jobs/{job['id']}/follow-up",
+                    json={"follow_up_at": "2026-08-01", "notes": "email recruiter"})
+        board = client.get("/", params={"status": "applied", "view": "board"})
+        assert "2026-08-01" in board.text
+        assert "email recruiter" in board.text

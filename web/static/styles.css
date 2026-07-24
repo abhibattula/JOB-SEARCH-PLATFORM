@@ -33,6 +33,9 @@
   --danger: #b3382d;
   --danger-tint: #fbeeec;
   --new-tint: #f4faf7;
+  /* 010: AI draft accent (distinct from status lamps — it's an action cue) */
+  --draft: #6b3fa0;
+  --draft-tint: #f3eefb;
   /* type */
   --mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
   --sans: "Segoe UI", system-ui, sans-serif;
@@ -74,6 +77,8 @@
   --danger: #ef7367;
   --danger-tint: #2d1512;
   --new-tint: #12211a;
+  --draft: #c9a6f0;
+  --draft-tint: #1e1630;
 }
 
 /* …and the OS preference decides only when no explicit choice is set. */
@@ -96,6 +101,8 @@
     --danger: #ef7367;
     --danger-tint: #2d1512;
     --new-tint: #12211a;
+    --draft: #c9a6f0;
+    --draft-tint: #1e1630;
   }
 }
 
@@ -322,3 +329,92 @@ a.tailor-btn:hover, a.tailor-btn:focus-visible { text-decoration: none; filter: 
 .watch-activity { letter-spacing: 0.01em; }
 .watch-guidance { border-left: 3px solid var(--accent, #2757a8);
   padding: 0.6rem 0.9rem; margin: 0.6rem 0; }
+
+/* ---------- 010: Copilot Release components ---------- */
+
+/* AI draft cues */
+.ai-draft-badge {
+  display: inline-block; font-size: var(--fs-xs); font-weight: 600;
+  color: var(--draft); background: var(--draft-tint);
+  border: 1px solid var(--draft); border-radius: var(--r-sm);
+  padding: 0 var(--s2); margin-left: var(--s2); vertical-align: middle;
+}
+.ai-drafts-review {
+  border: 1px solid var(--draft); background: var(--draft-tint);
+  border-radius: var(--r-lg); padding: var(--s4); margin: var(--s4) 0;
+}
+.ai-drafts-review h3 { margin: 0 0 var(--s2); color: var(--draft); }
+.ai-draft { margin: var(--s3) 0; padding-top: var(--s3);
+  border-top: 1px solid var(--line); }
+.ai-draft textarea { width: 100%; margin: var(--s1) 0; }
+
+/* Companion connection card + walkthrough */
+.status-card {
+  display: flex; align-items: center; gap: var(--s3);
+  padding: var(--s3) var(--s4); border: 1px solid var(--line);
+  border-radius: var(--r-lg); background: var(--surface-raised);
+  margin: var(--s4) 0;
+}
+.status-card.connected { border-color: var(--ok); background: var(--ok-tint); }
+.status-card .dot {
+  width: 10px; height: 10px; border-radius: 50%;
+  background: var(--muted); flex: none;
+}
+.status-card .dot.on { background: var(--ok); }
+.companion-page .steps { line-height: 1.7; }
+.companion-page .path-row {
+  display: flex; align-items: center; gap: var(--s2);
+  margin: var(--s2) 0; flex-wrap: wrap;
+}
+.companion-page code {
+  background: var(--surface-sunken); padding: var(--s1) var(--s2);
+  border-radius: var(--r-sm); font-family: var(--mono); font-size: var(--fs-sm);
+}
+.companion-page .note { margin-top: var(--s5); color: var(--muted); }
+.companion-page .fallback { color: var(--muted); font-size: var(--fs-sm);
+  margin-top: var(--s5); }
+.backend-indicator {
+  font-size: var(--fs-sm); color: var(--muted);
+  display: inline-flex; align-items: center; gap: var(--s2);
+}
+.backend-indicator .pill {
+  background: var(--accent-tint); color: var(--accent);
+  border-radius: var(--r-sm); padding: 0 var(--s2); font-weight: 600;
+}
+
+/* Home dashboard */
+.dashboard { display: grid; gap: var(--s5); }
+.dash-grid {
+  display: grid; gap: var(--s4);
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 260px), 1fr));
+}
+.dash-card {
+  border: 1px solid var(--line); border-radius: var(--r-lg);
+  background: var(--surface-raised); padding: var(--s4);
+}
+.dash-card h2 { font-size: var(--fs-lg); margin: 0 0 var(--s3); }
+.stat-row { display: flex; gap: var(--s5); flex-wrap: wrap; }
+.stat { display: flex; flex-direction: column; }
+.stat .num { font-size: var(--fs-2xl); font-weight: 700; line-height: 1; }
+.stat .lbl { font-size: var(--fs-sm); color: var(--muted); }
+.next-actions { list-style: none; padding: 0; margin: 0; }
+.next-actions li {
+  display: flex; justify-content: space-between; align-items: center;
+  padding: var(--s2) 0; border-bottom: 1px solid var(--line);
+}
+.next-actions li:last-child { border-bottom: 0; }
+.na-kind {
+  font-size: var(--fs-xs); text-transform: uppercase; letter-spacing: 0.04em;
+  color: var(--muted); margin-right: var(--s2);
+}
+.match-row {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: var(--s2) 0; border-bottom: 1px solid var(--line);
+}
+.match-row:last-child { border-bottom: 0; }
+.score-chip {
+  font-variant-numeric: tabular-nums; font-weight: 700;
+  border-radius: var(--r-md); padding: var(--s1) var(--s2);
+  background: var(--accent-tint); color: var(--accent); flex: none;
+}
+.score-chip.high { background: var(--ok-tint); color: var(--ok); }

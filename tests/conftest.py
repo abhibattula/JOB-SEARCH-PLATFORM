@@ -47,6 +47,10 @@ def _isolated_profile_import_state(monkeypatch):
     from engine import profile_import
 
     profile_import.reset_state()
+    from engine.autofill import ext_backend
+
+    ext_backend.reset_for_tests()
     yield
     profile_import.join_for_tests()
     profile_import.reset_state()
+    ext_backend.reset_for_tests()

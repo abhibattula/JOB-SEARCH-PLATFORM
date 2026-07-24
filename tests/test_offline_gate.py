@@ -4,7 +4,7 @@ the case that failed silently 100% of the time in v0.8.0 (context
 overflow). Minutes of real inference: run with `pytest -m slow`."""
 import pytest
 
-from engine import local_llm, resume_extract
+from engine import local_llm, qa, resume_extract
 
 pytestmark = pytest.mark.slow
 
@@ -63,3 +63,42 @@ class TestOfflineExtractionGate:
         assert len(result.experience) >= 1
         assert result.skills, "no skills extracted"
         assert progress and progress[-1][0] == progress[-1][1] >= 2  # really chunked
+
+
+class TestOfflineDraftGate:
+    """010 US2: the offline model must produce a grounded, concise draft for
+    an open-ended question — and refuse (None) when there is nothing to
+    ground in, never fabricating."""
+
+    PROFILE = {
+        "resume_text": (
+            "Abhinav Battula — Computer Engineer. Hardware Engineering Intern "
+            "at Aurora Semiconductors: built UVM testbenches for a PCIe Gen5 "
+            "controller, raised functional coverage from 71% to 94%. Skills: "
+            "SystemVerilog, UVM, Python, RISC-V, FPGA."
+        ),
+        "first_name": "Abhinav",
+    }
+    JOB = {"title": "Design Verification Engineer", "company": "Figma",
+           "description": "Own UVM-based verification for our custom silicon."}
+
+    def test_real_local_model_drafts_grounded_answer(self, tmp_db, monkeypatch):
+        if not local_llm.available():
+            pytest.skip("bundled local model not present")
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        draft = qa.draft("Why do you want to work here?", "free_text_unknown",
+                         self.PROFILE, self.JOB)
+        assert draft, "offline drafting returned nothing"
+        assert len(draft) <= 900  # concise, not a wall of text
+        # grounded in the applicant's real facts, not generic filler
+        lowered = draft.lower()
+        assert any(term in lowered for term in
+                   ("uvm", "verification", "systemverilog", "aurora", "pcie"))
+
+    def test_refuses_without_grounding(self, tmp_db, monkeypatch):
+        if not local_llm.available():
+            pytest.skip("bundled local model not present")
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        # empty resume/profile → nothing to ground in → None (never fabricate)
+        assert qa.draft("Why us?", "free_text_unknown",
+                        {"resume_text": ""}, self.JOB) is None

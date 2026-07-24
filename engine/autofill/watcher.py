@@ -22,16 +22,16 @@ import logging
 from dataclasses import dataclass
 
 from . import adapters
+from . import field_core
 from . import fields as fields_mod
 
 log = logging.getLogger(__name__)
 
 MAX_FRAMES = 15
 
-# Outcomes that permanently settle an element for this job — anything else
-# is retried on later ticks (e.g. a value may become available after the
-# user confirms a drafted answer).
-_TERMINAL_OUTCOMES = {"filled", "skipped_existing", "no_match", "needs_manual"}
+# Re-exported for existing tests/consumers; the vocabulary now lives in
+# field_core, shared with the extension backend (010).
+_TERMINAL_OUTCOMES = field_core.TERMINAL_OUTCOMES
 
 # Serializes AND stamps in one pass. __jeDoc is a per-document token: it
 # survives SPA re-renders (same window) but resets on real navigation, so
@@ -128,59 +128,36 @@ def tick(page, *, get_value, record, handled: dict) -> TickResult:
 
 
 def _process_field(frame, ats, descriptor, get_value, record, handled, result) -> None:
-    if not descriptor.get("visible") and (descriptor.get("type") or "") != "file":
+    """Apply one field_core decision via Playwright locators. The decision
+    rules live in field_core (shared with the extension backend); this
+    function only executes them and records outcomes."""
+    decision = field_core.decide(ats, descriptor, handled, get_value)
+    if decision.action == "ignore":
         return
     result.fields_seen += 1
     key = _key(descriptor)
-    if handled.get(key) in _TERMINAL_OUTCOMES:
+    if decision.action == "skip":
         return
-
-    tag = adapters.classify(ats, descriptor) or fields_mod.classify(descriptor)
-
-    # A value already present is sacred — the user's own input above all.
-    if (descriptor.get("value") or "").strip():
-        if tag != "free_text_unknown":
-            record(descriptor, tag, "", "skipped_existing")
-            handled[key] = "skipped_existing"
-        return
-    if descriptor.get("focused"):
-        return  # never touch the field the user is typing in
-
-    value = get_value(tag, descriptor)
-    if value is None:
+    if decision.action == "settle":
+        record(descriptor, decision.tag, "", decision.outcome)
+        handled[key] = decision.outcome
         return
 
     try:
         locator = frame.locator(f'[data-je-idx="{descriptor["je_idx"]}"]')
 
-        if tag == "resume_upload" or (descriptor.get("type") or "") == "file":
+        if decision.kind == "file":
             try:
-                locator.set_input_files(value)
+                locator.set_input_files(decision.value)
             except Exception as exc:
                 if _is_closed_error(exc):
                     raise
                 # custom widgets rejecting programmatic attachment are
                 # reported, never fatal (007 edge case, preserved)
-                record(descriptor, tag, "", "needs_manual")
+                record(descriptor, decision.tag, "", "needs_manual")
                 handled[key] = "needs_manual"
                 return
-            name = str(value).replace("\\", "/").rsplit("/", 1)[-1]
-            record(descriptor, tag, name, "filled")
-            handled[key] = "filled"
-            result.filled_now += 1
-            return
-
-        if descriptor.get("options"):
-            matched = fields_mod.match_option(str(value), descriptor["options"])
-            if matched is None:
-                record(descriptor, tag, "", "no_match")
-                handled[key] = "no_match"
-                return
-            state = locator.evaluate(RECHECK_JS)
-            if (state.get("value") or "").strip() or state.get("focused"):
-                return
-            locator.select_option(label=matched)
-            record(descriptor, tag, matched, "filled")
+            record(descriptor, decision.tag, decision.preview, "filled")
             handled[key] = "filled"
             result.filled_now += 1
             return
@@ -189,15 +166,14 @@ def _process_field(frame, ats, descriptor, get_value, record, handled, result) -
         state = locator.evaluate(RECHECK_JS)
         if (state.get("value") or "").strip() or state.get("focused"):
             return
-        if (descriptor.get("type") or "") == "checkbox":
-            if value:
-                locator.check()
-            else:
-                return
+        if decision.kind == "select":
+            locator.select_option(label=decision.option_label)
+        elif decision.kind == "checkbox":
+            locator.check()
         else:
-            locator.fill(str(value))
-        preview = "•••" if tag == "login_password" else str(value)
-        record(descriptor, tag, preview, "filled")
+            locator.fill(str(decision.value))
+        record(descriptor, decision.tag, decision.preview, "filled",
+               decision.ai_draft)
         handled[key] = "filled"
         result.filled_now += 1
     except Exception as exc:

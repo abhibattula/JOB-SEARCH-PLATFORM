@@ -9,6 +9,7 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
+import logging
 import socket
 import threading
 import time
@@ -134,6 +135,19 @@ def main() -> None:
     port_file = paths.data_dir()
     port_file.mkdir(parents=True, exist_ok=True)
     (port_file / "port.txt").write_text(str(port), encoding="utf-8")
+
+    # 010: materialize the browser companion + stamp pairing.json with this
+    # launch's port — the extension re-reads it on every connect attempt,
+    # so a dynamic port never needs pairing UX. Failure here must not stop
+    # the app (companion is optional; fallback engine still works).
+    try:
+        from scripts import stamp_extension
+
+        stamp_extension.stamp(port)
+    except Exception:
+        logging.getLogger(__name__).warning(
+            "could not stamp companion extension", exc_info=True
+        )
 
     # Import the app object directly (a "module:attr" string breaks under PyInstaller)
     from web.main import app as web_app

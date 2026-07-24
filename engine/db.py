@@ -83,6 +83,18 @@ CREATE TABLE IF NOT EXISTS settings (
     value TEXT
 );
 
+CREATE TABLE IF NOT EXISTS ai_drafts (
+    id INTEGER PRIMARY KEY,
+    -- job_id is a plain int, not a FK: ad-hoc ("Fill this page") and
+    -- practice sessions have no jobs row (NULL / sentinel ids)
+    job_id INTEGER,
+    question TEXT NOT NULL,
+    draft_text TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'drafted',
+    tier TEXT,
+    created_at TEXT NOT NULL
+);
+
 CREATE TABLE IF NOT EXISTS h1b_employers (
     normalized_name TEXT PRIMARY KEY,
     display_name TEXT,
@@ -179,6 +191,8 @@ _MIGRATIONS = {
         ("applied_at", "TEXT"),
         ("stage_updated_at", "TEXT"),
         ("notes", "TEXT"),
+        # 010: user-set follow-up date (tracker nudges / next actions)
+        ("follow_up_at", "TEXT"),
         # 008: freshness/delisting + semantic ranking
         ("last_seen_at", "TEXT"),
         ("delisted", "INTEGER DEFAULT 0"),
@@ -200,6 +214,12 @@ _MIGRATIONS = {
         # 008: profile-driven search + semantic ranking
         ("search_terms", "TEXT"),
         ("resume_embedding", "BLOB"),
+    ],
+    # 010: AI draft provenance rides answer_bank.source ('user'|'confirmed'|
+    # 'auto_saved'); these columns record when/where a draft originated
+    "answer_bank": [
+        ("drafted_at", "TEXT"),
+        ("source_job_id", "INTEGER"),
     ],
     # 007: sponsorship intelligence
     "companies": [
@@ -478,7 +498,7 @@ _JOB_COLUMNS = (
     "j.id, j.title, j.location, j.is_remote, j.url, j.source, j.posted_date,"
     " j.first_seen, j.is_entry_level, j.sponsorship, j.match_score, j.status,"
     " json_extract(j.match_json, '$.method') AS match_method,"
-    " j.stage, j.applied_at, j.stage_updated_at, j.notes,"
+    " j.stage, j.applied_at, j.stage_updated_at, j.notes, j.follow_up_at,"
     " j.last_seen_at, j.delisted,"
     " c.name AS company, c.sponsor_grade, c.cap_exempt"
 )
@@ -658,6 +678,32 @@ def set_notes(job_id: int, notes: str) -> None:
             raise KeyError(f"no job with id {job_id}")
 
 
+def set_follow_up(job_id: int, follow_up_at: str | None, notes: str | None) -> None:
+    """010 FR-019: per-application follow-up date and/or notes. Either may
+    be None to leave that column untouched isn't the semantics here — the
+    caller passes what it wants set; None clears."""
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE jobs SET follow_up_at = ?, notes = COALESCE(?, notes)"
+            " WHERE id = ?",
+            (follow_up_at, notes, job_id),
+        )
+        if cur.rowcount == 0:
+            raise KeyError(f"no job with id {job_id}")
+
+
+def due_follow_ups(today: str) -> list[dict]:
+    """Applied jobs whose follow-up date has arrived (<= today) — feeds the
+    home screen's next-actions."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT id, title FROM jobs WHERE follow_up_at IS NOT NULL"
+            " AND follow_up_at <= ? ORDER BY follow_up_at",
+            (today,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def application_analytics() -> dict:
     """Aggregates for the analytics page. 'Response' = any stage movement past
     'applied' (including rejection); 'interview' = interview or offer."""
@@ -806,6 +852,32 @@ def jobs_needing_embedding(limit: int = 300) -> list[dict]:
 def save_job_embedding(job_id: int, blob: bytes) -> None:
     with _conn() as conn:
         conn.execute("UPDATE jobs SET embedding = ? WHERE id = ?", (blob, job_id))
+
+
+def list_all_jobs_minimal() -> list[dict]:
+    """id + url for every job — used by ad-hoc tracker linkage (010) to
+    match a browsed page back to a known posting."""
+    with _conn() as conn:
+        rows = conn.execute("SELECT id, url FROM jobs").fetchall()
+    return [dict(r) for r in rows]
+
+
+def get_bridge_secret() -> str:
+    """010: the machine-local token the browser companion must present on
+    its first WebSocket frame. Not a password — a session gate so no OTHER
+    local software can drive fills. Generated once, lazily; INSERT OR
+    IGNORE makes concurrent first calls converge on one value."""
+    import secrets as _secrets
+
+    with _conn() as conn:
+        conn.execute(
+            "INSERT OR IGNORE INTO settings (key, value) VALUES (?, ?)",
+            ("bridge_secret", _secrets.token_hex(32)),
+        )
+        row = conn.execute(
+            "SELECT value FROM settings WHERE key = 'bridge_secret'"
+        ).fetchone()
+    return row["value"]
 
 
 def get_setting(key: str) -> str | None:

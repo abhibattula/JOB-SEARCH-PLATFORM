@@ -2,6 +2,9 @@
 all business logic lives in engine/, this module only wires HTTP to it."""
 from __future__ import annotations
 
+import logging
+import os
+import sys
 from pathlib import Path
 
 from fastapi import FastAPI, Request
@@ -11,8 +14,11 @@ from fastapi.templating import Jinja2Templates
 
 from engine import db, paths
 
+log = logging.getLogger(__name__)
+
 from .routes_api import parse_feed_params, router as api_router
 from .routes_autofill import router as autofill_router
+from .routes_bridge import router as bridge_router
 
 from engine import APP_VERSION
 
@@ -34,6 +40,26 @@ templates.env.globals["current_theme"] = _current_theme
 # 008 (FR-032): plain-language changelog behind the What's New overlay —
 # keyed by APP_VERSION, shown once per version.
 WHATS_NEW: dict[str, list[str]] = {
+    "1.0.0": [
+        "Apply Assist now fills in YOUR OWN browser. Install the new browser "
+        "companion (one-time, free — see the Companion page) and applications "
+        "fill in your everyday Chrome or Edge, where you're already logged in "
+        "to job sites. No companion? Apply Assist still works in a separate "
+        "assistant window, exactly as before.",
+        "\"Fill this page\": found a job while browsing? Click the companion "
+        "and it fills the application you're already looking at.",
+        "AI now drafts answers to open-ended questions (\"Why this company?\") "
+        "from your resume — filled in, clearly flagged, for you to review and "
+        "edit before you submit. Confirmed answers are saved and reused. Visa/"
+        "sponsorship/EEO questions are never AI-answered.",
+        "New home dashboard: your top matches, application stats, and a "
+        "next-actions list (drafts to review, follow-ups due) the moment you "
+        "open the app.",
+        "Tracker board gains per-application notes and follow-up dates; due "
+        "follow-ups surface on the home screen.",
+        "It's still $0, still private (AI runs on the bundled offline model by "
+        "default), and it still never clicks submit for you — you always do.",
+    ],
     "0.9.0": [
         "Apply Assist finally FILLS: it now watches the open page "
         "continuously and fills fields the moment they exist — slow-loading "
@@ -209,12 +235,28 @@ def create_app() -> FastAPI:
     )
     app.include_router(api_router)
     app.include_router(autofill_router)
+    app.include_router(bridge_router)
 
     @app.on_event("startup")
     def _startup() -> None:
         import threading
 
         db.init_db()
+
+        # 010: dev-server equivalent of desktop.py's companion stamping —
+        # when uvicorn runs web.main directly (quickstart dev flow), stamp
+        # the extension for the conventional dev port so the companion can
+        # pair. The desktop app stamps with its real dynamic port instead.
+        if not getattr(sys, "frozen", False):
+            try:
+                from scripts import stamp_extension
+
+                stamp_extension.stamp(
+                    int(os.environ.get("JOBS_DEV_PORT", "8000"))
+                )
+            except Exception:
+                log.debug("dev companion stamp skipped", exc_info=True)
+
         threading.Thread(target=_bootstrap_sponsorship, daemon=True).start()
 
         def _quiet_update_check() -> None:
@@ -250,6 +292,27 @@ def create_app() -> FastAPI:
             ineligible, min_score, seen, strong_sponsors, page, source, limit,
         )
         context["board_view"] = view == "board"
+        # 010 FR-017: the home lead — top matches, application stats.
+        # next-actions load client-side from /api/next-actions.
+        top_matches, _ = db.query_jobs(
+            window=None, statuses=("none", "saved"), entry_level=None,
+            sort="score", limit=5,
+        )
+        analytics = db.application_analytics()
+        _, saved_total = db.query_jobs(window=None, statuses=("saved",),
+                                       entry_level=None)
+        context["dashboard"] = {
+            "top_matches": [
+                {"id": j["id"], "title": j["title"], "company": j["company"],
+                 "match_score": j.get("match_score")}
+                for j in top_matches if j.get("match_score") is not None
+            ],
+            "stats": {
+                "applied": analytics.get("total_applied", 0),
+                "interview": analytics.get("interviews", 0),
+                "saved": saved_total,
+            },
+        }
         # 008 (FR-033): surface an unclean previous shutdown exactly once
         from engine import paths
 
@@ -434,6 +497,18 @@ def create_app() -> FastAPI:
     def practice_frame(request: Request):
         return templates.TemplateResponse(request, "practice_frame.html", {})
 
+    @app.get("/companion", response_class=HTMLResponse)
+    def companion_page(request: Request):
+        """010 (FR-001/FR-022): the guided one-time install for the browser
+        companion. Shows the exact folder path to load unpacked and a live
+        connection check."""
+        from scripts import stamp_extension
+
+        ext_path = str(stamp_extension.dest_dir())
+        return templates.TemplateResponse(
+            request, "companion.html", {"ext_path": ext_path}
+        )
+
     @app.get("/autofill", response_class=HTMLResponse)
     def autofill_page(request: Request):
         jobs, _ = db.query_jobs(
@@ -443,21 +518,26 @@ def create_app() -> FastAPI:
 
     @app.get("/partials/autofill/status", response_class=HTMLResponse)
     def autofill_status_partial(request: Request):
-        from engine.autofill import browser_controller
+        from engine.autofill import browser_controller, drafts
 
         snapshot = browser_controller.queue_snapshot()
         current = browser_controller.current_job()
         current_title = None
+        draft_rows = []
         if current is not None:
             entry = next(
                 (e for e in snapshot["queue"] if e["job_id"] == current["job_id"]), None
             )
             if entry:
                 current_title = f'{entry["title"]} — {entry["company"]}'
+            lookup_id = (current["job_id"]
+                         if current["job_id"] and current["job_id"] > 0 else None)
+            draft_rows = drafts.list_for_job(lookup_id)
         return templates.TemplateResponse(
             request,
             "partials/autofill_status.html",
-            {"current": current, "snapshot": snapshot, "current_title": current_title},
+            {"current": current, "snapshot": snapshot,
+             "current_title": current_title, "drafts": draft_rows},
         )
 
     return app

@@ -88,6 +88,10 @@ class _State:
         self.interrupted: bool = False
         self.summary: dict | None = None
         self.activity: dict = _fresh_activity()
+        # 010: which fill path this queue runs on. Chosen at start_queue,
+        # sticky for the run: "extension" (companion in the user's Chrome)
+        # or "playwright" (assistant window). None while idle.
+        self.backend: str | None = None
 
 
 _state = _State()
@@ -107,6 +111,43 @@ def _dispatch(name: str, payload: dict | None = None, wait: float | None = None)
     from . import worker
 
     return worker.dispatch(name, payload, wait)
+
+
+def _choose_backend() -> str:
+    """Pick the fill path at queue start. AUTOFILL_BACKEND forces it;
+    otherwise the companion wins when a live socket exists, else the
+    assistant window. Chosen once, then sticky for the run (010 FR-005)."""
+    import os
+
+    forced = os.environ.get("AUTOFILL_BACKEND", "auto")
+    if forced in ("extension", "playwright"):
+        return forced
+    from . import ext_backend
+
+    return "extension" if ext_backend.is_live() else "playwright"
+
+
+def _open_job_on_backend(job_id: int) -> None:
+    """Route OPEN_JOB to the active backend."""
+    if _state.backend == "extension":
+        from .. import db
+        from . import apply_urls, ext_backend
+
+        job = db.get_job(job_id)
+        url = apply_urls.resolve(job) if job else None
+        if url:
+            ext_backend.open_job(job_id, url)
+    else:
+        _dispatch("OPEN_JOB", {"job_id": job_id})
+
+
+def _close_on_backend() -> None:
+    if _state.backend == "extension":
+        from . import ext_backend
+
+        ext_backend.close_current()
+    else:
+        _dispatch("CLOSE_PAGE")
 
 
 def _utcnow_iso() -> str:
@@ -321,6 +362,29 @@ def _value_for_tag(tag: str, raw: dict, profile: dict, job_id: int):
     existing = answer_bank.lookup(question)
     if existing:
         return existing["answer"]
+
+    # 010: open-ended, AI-eligible questions get a grounded draft filled and
+    # flagged for review (draft → fill → flag). Sensitive/unrecognized
+    # questions stay on the confirm-before-use pause (005 FR-011), never
+    # AI-answered.
+    from .. import qa
+
+    if qa.is_ai_eligible(tag):
+        from .. import db
+        from . import drafts, field_core
+
+        job = db.get_job(job_id) if job_id and job_id > 0 else None
+        maxlength = raw.get("maxlength")
+        draft_text = qa.draft(question, tag, profile, job, maxlength=maxlength)
+        if draft_text:
+            from .. import matcher
+
+            drafts.record(job_id if job_id and job_id > 0 else None,
+                          question, draft_text, matcher.scoring_tier())
+            return field_core.Draft(draft_text)
+        # drafting refused (thin grounding / no model) — leave for manual
+        return None
+
     with _lock:
         if _state.pending is None:
             draft = answer_bank.suggest(question, tag, profile)
@@ -353,11 +417,12 @@ def start_queue(job_ids: list[int]) -> dict | None:
         _state.interrupted = False
         _state.summary = None
         _state.activity = _fresh_activity()
+        _state.backend = _choose_backend() if job_ids else None
         if job_ids:
             _state.activity.update(phase="opening",
                                    message="opening the application page…")
     if job_ids:
-        _dispatch("OPEN_JOB", {"job_id": job_ids[0]})
+        _open_job_on_backend(job_ids[0])
     return current_job()
 
 
@@ -383,7 +448,16 @@ def start_practice(url: str) -> dict | None:
         _state.activity = _fresh_activity()
         _state.activity.update(phase="opening",
                                message="opening the practice application…")
-    _dispatch("OPEN_PRACTICE", {"url": url})
+        # Practice fills in the user's own Chrome when the companion is
+        # live (they watch it work where they'll actually apply); else the
+        # assistant window.
+        _state.backend = _choose_backend()
+    if _state.backend == "extension":
+        from . import ext_backend
+
+        ext_backend.open_practice(url)
+    else:
+        _dispatch("OPEN_PRACTICE", {"url": url})
     return current_job()
 
 
@@ -427,7 +501,8 @@ def resolve_pending(answer: str) -> None:
             if ledger:
                 for key in [k for k, v in ledger.items() if v == "no_match"]:
                     del ledger[key]
-    if active:
+        backend = _state.backend
+    if active and backend != "extension":
         _dispatch("FORCE_TICK", wait=0.5)
 
 
@@ -472,10 +547,10 @@ def advance() -> dict | None:
             _state.activity = _fresh_activity()
             _state.activity.update(phase="opening",
                                    message="opening the application page…")
-    _dispatch("CLOSE_PAGE")
+    _close_on_backend()
     if finished:
         return None
-    _dispatch("OPEN_JOB", {"job_id": next_job_id})
+    _open_job_on_backend(next_job_id)
     return current_job()
 
 
@@ -485,7 +560,11 @@ def rescan() -> dict | None:
     with _lock:
         if not _state.running or not (0 <= _state.index < len(_state.job_ids)):
             return None
-    _dispatch("FORCE_TICK")
+        backend = _state.backend
+    # The companion scans continuously on its own (MutationObserver + poll),
+    # so there is no tick to force; the Playwright watcher needs the nudge.
+    if backend != "extension":
+        _dispatch("FORCE_TICK")
     return {"forced": True}
 
 
@@ -504,7 +583,14 @@ def resume_queue() -> dict | None:
         job_id = _state.job_ids[_state.index]
         _state.activity.update(phase="opening",
                                message="reopening the application page…")
-    if practice and practice_url:
+    if _state.backend == "extension":
+        from . import ext_backend
+
+        if practice and practice_url:
+            ext_backend.open_practice(practice_url)
+        else:
+            _open_job_on_backend(job_id)
+    elif practice and practice_url:
         _dispatch("OPEN_PRACTICE", {"url": practice_url})
     else:
         _dispatch("OPEN_JOB", {"job_id": job_id})
@@ -513,8 +599,9 @@ def resume_queue() -> dict | None:
 
 def stop_queue() -> None:
     global _page
-    had_session = _page is not None or _context is not None
     with _lock:
+        backend = _state.backend
+        had_pw_session = _page is not None or _context is not None
         _state.running = False
         _state.job_ids = []
         _state.index = -1
@@ -528,7 +615,12 @@ def stop_queue() -> None:
         _state.interrupted = False
         _state.summary = None
         _state.activity = _fresh_activity()
-    if had_session:
+        _state.backend = None
+    if backend == "extension":
+        from . import ext_backend
+
+        ext_backend.close_current()
+    elif had_pw_session:
         _dispatch("CLOSE_PAGE")
 
 
@@ -557,6 +649,8 @@ def queue_snapshot() -> dict:
     for i, job_id in enumerate(job_ids):
         if job_id == PRACTICE_JOB_ID:
             title, company = "Practice application", "Job Engine"
+        elif job_id == -2:  # ext_backend.ADHOC_JOB_ID
+            title, company = "This page", "Fill this page"
         else:
             job = db.get_job(job_id) or {}
             title = job.get("title") or f"#{job_id}"
@@ -569,6 +663,11 @@ def queue_snapshot() -> dict:
             "job_id": job_id, "title": title, "company": company, "state": state,
         })
     done = index if running else len(job_ids)
+    from . import ext_backend
+
+    ext_status = ext_backend.status()
+    with _lock:
+        backend = _state.backend
     return {
         "queue": queue,
         "progress": {"done": done, "total": len(job_ids)},
@@ -577,6 +676,14 @@ def queue_snapshot() -> dict:
         "summary": summary,
         "outcomes": outcomes,
         "activity": activity,
+        # 010: which fill path this run uses, and the live companion state
+        # (rendered as "filling in your Chrome" vs the assistant window)
+        "backend": backend,
+        "extension": {
+            "connected": ext_status["connected"],
+            "version": ext_status["version"],
+            "last_seen_age_s": ext_status["last_seen_age_s"],
+        },
     }
 
 
@@ -700,8 +807,8 @@ def _tick_if_active(force: bool = False) -> None:
             _record(job_id, descriptor, tag, "", "paused")
         return value
 
-    def record(descriptor, tag, preview, outcome):
-        _record(job_id, descriptor, tag, preview, outcome)
+    def record(descriptor, tag, preview, outcome, ai_draft=False):
+        _record(job_id, descriptor, tag, preview, outcome, ai_draft)
 
     try:
         result = watcher.tick(page, get_value=get_value, record=record, handled=ledger)
@@ -745,7 +852,8 @@ def _tick_if_active(force: bool = False) -> None:
     )
 
 
-def _record(job_id: int, descriptor: dict, tag: str, preview: str, outcome: str) -> None:
+def _record(job_id: int, descriptor: dict, tag: str, preview: str, outcome: str,
+            ai_draft: bool = False) -> None:
     label = (descriptor.get("label_text") or descriptor.get("placeholder")
              or descriptor.get("aria_label") or descriptor.get("name") or "")
     with _lock:
@@ -754,4 +862,7 @@ def _record(job_id: int, descriptor: dict, tag: str, preview: str, outcome: str)
             "tag": tag,
             "value_preview": (preview or "")[:60],
             "outcome": outcome,
+            # 010: filled from an AI draft — the UI flags it "review before
+            # submitting" and the review list is fed from the ai_drafts table
+            "ai_draft": ai_draft,
         })

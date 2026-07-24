@@ -88,10 +88,13 @@
       <tbody>
         {% for entry in snapshot.fill_report %}
         <tr>
-          <td>{{ entry.label or entry.tag }}</td>
+          <td>{{ entry.label or entry.tag }}
+            {%- if entry.ai_draft %} <span class="ai-draft-badge" title="AI draft — review before submitting">AI draft</span>{% endif -%}
+          </td>
           <td class="data">{{ entry.value_preview }}</td>
           <td class="data">
-            {%- if entry.outcome == 'filled' -%}✓ filled
+            {%- if entry.ai_draft and entry.outcome == 'filled' -%}✎ AI draft — review
+            {%- elif entry.outcome == 'filled' -%}✓ filled
             {%- elif entry.outcome == 'needs_manual' -%}⚠ attach manually
             {%- elif entry.outcome == 'skipped_existing' -%}· kept your value
             {%- elif entry.outcome == 'no_match' -%}· no matching option
@@ -103,6 +106,48 @@
       </tbody>
     </table>
   </details>
+  {% endif %}
+
+  {% if drafts %}
+  <div class="ai-drafts-review" id="ai-drafts-review">
+    <script>reveal(document.getElementById("ai-drafts-review"));</script>
+    <h3>AI drafts to review <span class="muted">({{ drafts | length }})</span></h3>
+    <p class="muted">These answers were drafted from your resume and filled
+      into the form, flagged for you. Edit and confirm to save them for
+      reuse — nothing is submitted until you click the site's submit button.</p>
+    {% for d in drafts %}
+    <form class="ai-draft" data-draft-id="{{ d.id }}"
+          onsubmit="return confirmDraft(event, {{ d.id }})">
+      <label class="muted">{{ d.question }}</label>
+      <textarea name="text" rows="3">{{ d.draft_text }}</textarea>
+      <div class="settings-actions">
+        <button type="submit">Confirm &amp; save</button>
+        <button type="button" class="ghost" onclick="discardDraft({{ d.id }})">Discard</button>
+      </div>
+    </form>
+    {% endfor %}
+    <script>
+      window.confirmDraft = async function (e, id) {
+        e.preventDefault();
+        const text = e.target.querySelector('textarea').value;
+        await fetch('/api/autofill/drafts/' + id, {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({action: 'confirm', text}),
+        });
+        e.target.remove();
+        if (window.toast) { toast('Answer saved'); }
+        return false;
+      };
+      window.discardDraft = async function (id) {
+        await fetch('/api/autofill/drafts/' + id, {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({action: 'discard'}),
+        });
+        const f = document.querySelector('[data-draft-id="' + id + '"]');
+        if (f) { f.remove(); }
+      };
+    </script>
+  </div>
   {% endif %}
 
   <p class="muted">Review the filled application in the browser window, make

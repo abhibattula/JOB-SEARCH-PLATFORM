@@ -114,15 +114,41 @@ Your resume text never leaves your machine except inside scoring calls to a
 cloud provider you've explicitly configured — the bundled model runs fully
 offline.
 
+## Fill in your own browser — the companion (v1.0)
+
+For the best experience, connect the **browser companion** so applications
+fill in *your everyday Chrome or Edge*, where you're already logged in to
+job sites:
+
+1. Open the **Companion** page (top nav, under Apply).
+2. It shows a folder path and three steps: open your browser's extensions
+   page (`chrome://extensions` or `edge://extensions`), turn on **Developer
+   mode**, and click **Load unpacked** on the folder shown (there's a Copy
+   button for the path). One time only — it's free, and app updates keep it
+   current automatically.
+3. The status turns green within a few seconds. Now Apply Assist fills in
+   your own browser, with a small progress panel on the page.
+
+Don't want to install it? Everything below still works without the
+companion — Apply Assist just uses a separate assistant window instead. The
+Apply Assist screen always tells you which mode is active.
+
 ## Apply Assist (auto-fill applications)
 
 1. Save jobs you want to apply to (☆ in the feed), then open **Apply
    Assist** from the top nav.
-2. Nothing to download: Apply Assist uses the Edge or Chrome already on
-   your machine (with its own separate profile). Click **Test Apply
-   Assist** first — a bundled practice application fills with your own
-   data in seconds, so you can see it working before any real posting.
-   **Check my browser** verifies the browser can start.
+2. Click **Test Apply Assist** first — a bundled practice application fills
+   with your own data in seconds (in your browser if the companion is
+   connected, else the assistant window), so you can see it working before
+   any real posting. **Check my browser** verifies a browser can start.
+   You can also just browse to any application and click the companion's
+   **"Fill this page"** button.
+3. **AI answers open-ended questions for you.** When an application asks
+   "Why do you want to work here?" or similar, the app drafts a short answer
+   from your resume, fills it, and flags it "AI draft — review". Edit and
+   confirm it in the drafts panel (or just submit — it's saved either way),
+   and it's reused next time. Visa/sponsorship/EEO questions are never
+   AI-answered.
 3. Pick your saved jobs (select all/none buttons) and **Start Apply
    Assist**. A dedicated browser window (separate from your everyday
    browser) opens on the first job's application page with recognized

@@ -1,0 +1,2 @@
+/* Injected inside the overlay's shadow root in T011 — page CSS cannot
+   reach in, ours cannot leak out. */

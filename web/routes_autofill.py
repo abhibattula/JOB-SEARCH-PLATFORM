@@ -114,6 +114,9 @@ def autofill_status():
         "outcomes": snapshot["outcomes"],
         # 009 (FR-007): live watch activity
         "activity": snapshot["activity"],
+        # 010 (FR-003/FR-004): which fill path is active + companion state
+        "backend": snapshot["backend"],
+        "extension": snapshot["extension"],
     }
 
 
@@ -191,6 +194,71 @@ def confirm_answer(body: ConfirmAnswerRequest):
         )
     browser_controller.resolve_pending(body.answer)
     return {"saved": True}
+
+
+@router.get("/drafts")
+def list_drafts():
+    """010 FR-012: the AI drafts awaiting review for the current job/session."""
+    from engine.autofill import browser_controller, drafts
+
+    current = browser_controller.current_job()
+    job_id = current["job_id"] if current else None
+    # a job_id sentinel <=0 (practice/ad-hoc) maps to the NULL-job draft list
+    lookup_id = job_id if (job_id and job_id > 0) else None
+    return {"drafts": drafts.list_for_job(lookup_id)}
+
+
+class DraftDecision(BaseModel):
+    action: str  # "confirm" | "discard"
+    text: str | None = None
+
+
+@router.post("/drafts/{draft_id}")
+def decide_draft(draft_id: int, body: DraftDecision):
+    """010 FR-013: confirm (optionally edited) a draft → saved answer +
+    re-fill if the field still holds the draft; or discard it."""
+    from engine.autofill import browser_controller, drafts
+
+    if body.action == "discard":
+        drafts.discard(draft_id)
+        return {"ok": True, "status": "discarded"}
+    if body.action == "confirm":
+        result = drafts.confirm(draft_id, body.text)
+        if result is None:
+            raise HTTPException(status_code=404, detail="draft not found")
+        # unlock the field so the confirmed text refills over the draft
+        browser_controller.resolve_pending(result["answer"])
+        return {"ok": True, "status": "confirmed", **result}
+    raise HTTPException(status_code=400, detail="action must be confirm or discard")
+
+
+class AdhocLinkRequest(BaseModel):
+    tab_id: int
+    create: bool = False
+
+
+@router.post("/adhoc/link")
+def adhoc_link(body: AdhocLinkRequest):
+    """010 FR-004a: offer to track an ad-hoc 'Fill this page' session as an
+    application. Matches the page URL to a known posting; with create=True
+    and no match, records a new job. Always user-initiated."""
+    from engine import db
+    from engine.autofill import ext_backend
+
+    linked = ext_backend.link_adhoc(body.tab_id)
+    if linked["job_id"] is None and body.create and linked.get("url"):
+        db.upsert_job({
+            "title": linked.get("title") or "Application",
+            "company": "", "url": linked["url"], "source": "manual",
+            "location": None, "is_remote": False, "description": "",
+            "posted_date": None,
+        })
+        job = next((j for j in db.list_all_jobs_minimal()
+                    if j["url"] == linked["url"]), None)
+        linked["job_id"] = job["id"] if job else None
+    if linked["job_id"] is not None:
+        db.set_status(linked["job_id"], "applied")
+    return linked
 
 
 @router.get("/answers")

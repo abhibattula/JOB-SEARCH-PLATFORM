@@ -1,0 +1,33 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>React controlled inputs</title></head>
+<body>
+<h1>Controlled-input form</h1>
+<form id="form">
+  <label>First Name<input name="first_name" type="text" id="fn"></label>
+  <label>Email<input name="email" type="email" id="em"></label>
+</form>
+<script src="/_mirror.js"></script>
+<script>
+  // Simulate a React controlled component: a plain `.value = x` assignment
+  // is immediately reverted unless the change is dispatched through the
+  // native setter + a bubbling 'input' event (which the filler does). If
+  // the filler used plain assignment, this handler would blank the field
+  // and /echo would never see the value.
+  var model = {first_name: "", email: ""};
+  ["fn", "em"].forEach(function (id) {
+    var el = document.getElementById(id);
+    el.addEventListener("input", function (e) {
+      // accept only programmatic changes that arrived via a real input event
+      if (e.isTrusted === false || e.isTrusted === true) {
+        model[el.name] = el.value;
+      }
+    });
+    // React re-render: force the DOM value back to the model each frame,
+    // so a value written WITHOUT firing 'input' gets wiped.
+    setInterval(function () {
+      if (document.activeElement !== el && el.value !== model[el.name]) {
+        el.value = model[el.name];
+      }
+    }, 100);
+  });
+</script>
+</body></html>

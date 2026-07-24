@@ -14,6 +14,8 @@
 
 {% include "partials/onboarding.html" %}
 
+{% include "partials/dashboard.html" %}
+
 <form class="toolbar" method="get" action="/">
   <div class="segmented" role="group" aria-label="Time window">
     <a class="{{ 'on' if window == '24h' }}" href="{{ replace_query(window='24h', page=None) }}">Today</a>

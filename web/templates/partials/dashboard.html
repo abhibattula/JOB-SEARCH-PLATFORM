@@ -1,0 +1,59 @@
+{# 010 FR-017: the home lead — top matches, application stats, next actions.
+   Rendered above the feed on the home page. #}
+{% if dashboard %}
+<section class="dashboard" aria-label="Dashboard">
+  <div class="dash-grid">
+    <div class="dash-card">
+      <h2>Top matches</h2>
+      {% if dashboard.top_matches %}
+      {% for m in dashboard.top_matches %}
+      <div class="match-row">
+        <a href="/jobs/{{ m.id }}">{{ m.title }} <span class="muted">— {{ m.company }}</span></a>
+        {% if m.match_score is not none %}
+        <span class="score-chip {{ 'high' if m.match_score >= 80 }}">{{ m.match_score | round | int }}</span>
+        {% endif %}
+      </div>
+      {% endfor %}
+      {% else %}
+      <p class="muted">No scored matches yet — add your resume and an AI key
+        in Settings, then refresh.</p>
+      {% endif %}
+    </div>
+
+    <div class="dash-card">
+      <h2>Your applications</h2>
+      <div class="stat-row">
+        <div class="stat"><span class="num">{{ dashboard.stats.applied }}</span><span class="lbl">applied</span></div>
+        <div class="stat"><span class="num">{{ dashboard.stats.interview }}</span><span class="lbl">interviewing</span></div>
+        <div class="stat"><span class="num">{{ dashboard.stats.saved }}</span><span class="lbl">saved</span></div>
+      </div>
+    </div>
+
+    <div class="dash-card">
+      <h2>Next actions</h2>
+      <ul class="next-actions" id="next-actions"
+          hx-get="/api/next-actions" hx-trigger="load" hx-swap="none">
+        <li class="muted">Checking…</li>
+      </ul>
+      <script>
+        document.body.addEventListener('htmx:afterRequest', function (e) {
+          const p = e.detail.pathInfo && e.detail.pathInfo.requestPath;
+          if (!p || p.indexOf('/api/next-actions') === -1) { return; }
+          let data;
+          try { data = JSON.parse(e.detail.xhr.responseText); } catch (_e) { return; }
+          const ul = document.getElementById('next-actions');
+          if (!ul) { return; }
+          if (!data.actions.length) {
+            ul.innerHTML = '<li class="muted">Nothing needs you right now.</li>';
+            return;
+          }
+          ul.innerHTML = data.actions.map(function (a) {
+            return '<li><span><span class="na-kind">' + a.kind.replace('_', ' ') +
+              '</span>' + a.label + '</span><a href="' + a.href + '">Open</a></li>';
+          }).join('');
+        });
+      </script>
+    </div>
+  </div>
+</section>
+{% endif %}

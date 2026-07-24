@@ -3,13 +3,43 @@
 {% block content %}
 <article class="autofill-page">
   <h1>Apply Assist</h1>
-  <p class="muted">Opens each saved job's real application page in a browser
-    window (your installed Edge or Chrome, with a separate profile just for
-    this — nothing to download) and fills recognized fields from your profile
-    and answer bank. You always review and click the actual apply/submit
-    button yourself — this never happens automatically. Automating
-    field-filling may touch the edges of some sites' Terms of Service; use
-    your judgment per site — this is a co-pilot, not a bot.</p>
+  <p class="muted">Fills recognized fields on each job's real application from
+    your profile and answer bank, and drafts answers to open-ended questions
+    (flagged for your review). You always review and click the actual
+    apply/submit button yourself — this never happens automatically.</p>
+
+  {# 010 FR-018: connection card + active-mode indicator #}
+  <div id="companion-card" class="status-card"
+       hx-get="/api/autofill/status" hx-trigger="load, every 3s" hx-swap="none">
+    <span class="dot" data-dot></span>
+    <span data-label>Checking for your browser companion…</span>
+    <span class="backend-indicator" data-backend></span>
+    <a href="/companion" class="ghost" style="margin-left:auto">Set up companion</a>
+  </div>
+  <script>
+    document.body.addEventListener('htmx:afterRequest', function (e) {
+      const p = e.detail.pathInfo && e.detail.pathInfo.requestPath;
+      if (!p || p.indexOf('/api/autofill/status') === -1) { return; }
+      let d; try { d = JSON.parse(e.detail.xhr.responseText); } catch (_e) { return; }
+      const card = document.getElementById('companion-card');
+      if (!card) { return; }
+      const ext = d.extension || {};
+      const dot = card.querySelector('[data-dot]');
+      const label = card.querySelector('[data-label]');
+      const backend = card.querySelector('[data-backend]');
+      card.classList.toggle('connected', !!ext.connected);
+      dot.classList.toggle('on', !!ext.connected);
+      label.textContent = ext.connected
+        ? 'Companion connected — fills happen in your browser'
+        : 'No companion — fills use a separate assistant window';
+      if (d.backend) {
+        backend.innerHTML = 'Active: <span class="pill">' +
+          (d.backend === 'extension' ? 'your browser' : 'assistant window') + '</span>';
+      } else {
+        backend.textContent = '';
+      }
+    });
+  </script>
 
   <div id="autofill-error" class="error-banner" style="display:none" role="alert"></div>
 

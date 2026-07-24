@@ -13,6 +13,13 @@
         <a href="/jobs/{{ job.id }}">{{ job.title }}</a>
         <p class="muted data">{{ job.company }}</p>
         {% if job.follow_up %}<span class="followup-flag" title="Applied over a week ago with no movement">⚑ follow up</span>{% endif %}
+        <details class="board-followup">
+          <summary class="muted">Notes &amp; follow-up</summary>
+          <label class="muted">Follow-up date
+            <input type="date" class="fu-date" value="{{ job.follow_up_at or '' }}"></label>
+          <textarea class="fu-notes" rows="2" placeholder="notes…">{{ job.notes or '' }}</textarea>
+          <button type="button" class="ghost fu-save" data-job-id="{{ job.id }}">Save</button>
+        </details>
         <div class="board-move">
           {% if not loop.first or stage != 'applied' %}{% endif %}
           <button type="button" class="board-move-btn" data-dir="-1"
@@ -72,6 +79,20 @@
       const idx = stages.indexOf(col.getAttribute("data-stage"));
       const next = stages[idx + parseInt(btn.getAttribute("data-dir"), 10)];
       if (next) { setStage(card.getAttribute("data-job-id"), next); }
+    });
+  });
+
+  // 010 FR-019: save per-application follow-up date + notes
+  document.querySelectorAll(".fu-save").forEach(function (btn) {
+    btn.addEventListener("click", async function () {
+      const card = btn.closest(".board-card");
+      const date = card.querySelector(".fu-date").value || null;
+      const notes = card.querySelector(".fu-notes").value;
+      const resp = await fetch("/api/jobs/" + btn.getAttribute("data-job-id") + "/follow-up", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ follow_up_at: date, notes: notes }),
+      });
+      window.toast(resp.ok ? "Saved" : "Save failed", resp.ok ? undefined : "error");
     });
   });
 })();

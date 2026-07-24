@@ -628,3 +628,40 @@ UNKNOWN badges everywhere = run `python cli.py load-sponsorship`.
 - The old "Enable Apply Assist"/Chromium-download flow, the one-shot
   "couldn't read this page" dead end, and the silent identity auto-fill
   are all gone.
+
+## 14. What changed in v1.0.0 (The Copilot Release)
+
+- **Apply Assist can now fill in YOUR own browser.** Install the browser
+  companion (a one-time, free Chrome/Edge extension — open the **Companion**
+  page and follow the three steps to "Load unpacked" the folder shown). Once
+  the status turns green, starting Apply Assist opens each job in your
+  everyday browser — where you're already logged in to job sites — and fills
+  there, with an on-page progress panel. No companion installed? Everything
+  still works in the separate assistant window exactly as in v0.9.0; the
+  Apply Assist screen always shows which mode is active.
+  - How it works: the desktop app stays the brain (it decides every value
+    from your profile, answer bank, credentials, and AI). The extension is a
+    thin arm — it reads the form, fills the values the app sends, and reports
+    back over an authenticated localhost connection. It never clicks, never
+    submits, never logs in, and never stores or logs your passwords.
+- **"Fill this page"**: found a posting while browsing? Click the companion's
+  toolbar button and it fills the application you're already looking at, then
+  offers to track it.
+- **AI drafts for open-ended questions.** When an application asks something
+  like "Why do you want to work here?", the app drafts an answer grounded in
+  your resume, fills it, and clearly flags it "AI draft — review". You edit
+  and confirm in the app (or just submit — the final text is saved either
+  way) and it's reused next time with no AI. Work-authorization, visa/
+  sponsorship, and demographic questions are **never** AI-answered — they
+  keep the explicit confirm-before-use flow. Drafts are concise (~60–120
+  words) and, if there's nothing real to ground an answer in, the field is
+  left for you rather than filled with a guess.
+- **Home dashboard**: opening the app now leads with your top matches (with
+  scores), application stats, and a next-actions list — drafts to review,
+  follow-ups due, resume import ready.
+- **Tracker follow-ups**: each application card on the board takes a
+  follow-up date and notes; due follow-ups appear on the home screen.
+- Still $0, still private (offline AI by default), still never auto-submits.
+  Windows still shows an "unknown publisher" notice on the installer (the app
+  isn't code-signed — click *More info → Run anyway*); the companion runs
+  locally and never leaves your machine.

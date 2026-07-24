@@ -73,6 +73,31 @@ def save(question_raw: str, answer: str, category: str | None = None) -> int:
     return row["id"]
 
 
+def save_with_provenance(question_raw: str, answer: str, provenance: str,
+                         source_job_id: int | None = None) -> int:
+    """Save a confirmed or auto-saved answer (010). `provenance` is one of
+    'user' | 'confirmed' | 'auto_saved' and rides answer_bank.source; the
+    draft origin is stamped in drafted_at/source_job_id."""
+    normalized = _normalize(question_raw)
+    now = _utcnow()
+    with db._conn() as conn:
+        conn.execute(
+            "INSERT INTO answer_bank (question_normalized, question_raw, answer,"
+            " category, source, drafted_at, source_job_id, confirmed_at,"
+            " updated_at) VALUES (?,?,?,?,?,?,?,?,?)"
+            " ON CONFLICT(question_normalized) DO UPDATE SET"
+            " answer=excluded.answer, source=excluded.source,"
+            " drafted_at=excluded.drafted_at, source_job_id=excluded.source_job_id,"
+            " updated_at=excluded.updated_at",
+            (normalized, question_raw, answer, None, provenance, now,
+             source_job_id, now, now),
+        )
+        row = conn.execute(
+            "SELECT id FROM answer_bank WHERE question_normalized = ?", (normalized,)
+        ).fetchone()
+    return row["id"]
+
+
 def list_all() -> list[dict]:
     """All confirmed answer-bank entries, newest-updated first — backs the
     Profile page's Common Questions management UI (006-B): the user can
