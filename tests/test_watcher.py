@@ -324,3 +324,40 @@ class TestScanFailureTolerance:
         with pytest.raises(RuntimeError, match="has been closed"):
             watcher.tick(ClosedPage(), get_value=profile_get_value,
                          record=Recorder(), handled={})
+
+
+class TestGuardedClick011:
+    """011: the Playwright fill path's click guard refuses submit-class
+    controls (parity with the extension's safeClick)."""
+
+    class _SigLocator:
+        def __init__(self, sig):
+            self._sig = sig
+            self.clicked = False
+
+        def evaluate(self, js):
+            return self._sig
+
+        def click(self):
+            self.clicked = True
+
+    def test_denylisted_control_is_never_clicked(self):
+        loc = self._SigLocator({"text": "Submit application", "type": "submit",
+                                "role": "button"})
+        with pytest.raises(watcher._DenylistedClick):
+            watcher._guarded_click(loc)
+        assert loc.clicked is False
+
+    def test_option_control_is_clicked(self):
+        loc = self._SigLocator({"text": "Yes", "type": "", "role": "option"})
+        watcher._guarded_click(loc)
+        assert loc.clicked is True
+
+    def test_wrapper_containing_submit_refused(self):
+        # a div whose evaluate() reports a folded 'submit' type (a descendant
+        # submit button) is refused
+        loc = self._SigLocator({"text": "Apply now", "type": "submit",
+                                "role": ""})
+        with pytest.raises(watcher._DenylistedClick):
+            watcher._guarded_click(loc)
+        assert loc.clicked is False

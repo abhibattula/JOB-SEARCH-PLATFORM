@@ -9,11 +9,52 @@
 
 window.jeScanner = (function () {
   // Same selector the app uses (mirrored; the app also re-exports it).
+  // 011: also custom dropdowns (ARIA comboboxes/listboxes, React-Select).
   const FIELD_SELECTOR = [
     "input:not([type=hidden]):not([type=submit]):not([type=button])",
     "select",
     "textarea",
+    "[role=combobox]",
+    "[role=listbox]",
+    "[aria-haspopup=listbox]",
+    "[class*=select__control]",
   ].join(",");
+
+  // 011: widget classification + displayed-value read — byte-parallel with
+  // engine/autofill/watcher.py SERIALIZE_JS jeWidget/jeValue.
+  function jeWidget(el) {
+    const tag = el.tagName.toLowerCase();
+    if (tag === "select") { return "native_select"; }
+    const role = (el.getAttribute("role") || "").toLowerCase();
+    const ac = (el.getAttribute("aria-autocomplete") || "").toLowerCase();
+    const isInput = tag === "input" || tag === "textarea";
+    if (isInput && (ac === "list" || ac === "both")) { return "typeahead"; }
+    if (role === "combobox" || role === "listbox" ||
+        el.getAttribute("aria-haspopup") === "listbox" ||
+        /select__control/.test(el.className || "")) {
+      return (isInput && ac) ? "typeahead" : "custom_combobox";
+    }
+    return "";
+  }
+
+  function jeValue(el, widget) {
+    const type = el.type || "";
+    if (type === "checkbox" || type === "radio") {
+      return el.checked ? "on" : "";
+    }
+    if (widget === "native_select") {
+      return el.value ? ((el.options[el.selectedIndex] || {}).text || "") : "";
+    }
+    if (widget === "custom_combobox" || widget === "typeahead") {
+      const sv = el.querySelector &&
+        el.querySelector('[class*=singleValue],[class*="-value"]');
+      if (sv) { return sv.textContent.trim(); }
+      if (el.value) { return el.value; }
+      const t = (el.textContent || "").trim();
+      return /^(select|choose|--)/i.test(t) ? "" : t;
+    }
+    return el.value || "";
+  }
 
   function docToken() {
     const root = document.documentElement;
@@ -41,7 +82,7 @@ window.jeScanner = (function () {
 
   function describe(el) {
     const type = el.type || "";
-    const isCheck = type === "checkbox" || type === "radio";
+    const widget = jeWidget(el);
     return {
       doc: docToken(),
       je_idx: stamp(el),
@@ -53,9 +94,11 @@ window.jeScanner = (function () {
       placeholder: el.placeholder || "",
       aria_label: el.getAttribute("aria-label") || "",
       autocomplete: el.autocomplete || "",
-      value: isCheck ? (el.checked ? "on" : "") : (el.value || ""),
+      value: jeValue(el, widget),
       options: el.tagName === "SELECT"
         ? Array.from(el.options).map((o) => o.text) : [],
+      widget: widget,
+      automation_id: el.getAttribute("data-automation-id") || "",
       maxlength: el.maxLength && el.maxLength > 0 ? el.maxLength : null,
       focused: el === document.activeElement,
       visible: !!(el.offsetParent || type === "file"),
