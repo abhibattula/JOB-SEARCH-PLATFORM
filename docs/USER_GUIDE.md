@@ -16,6 +16,9 @@ This is the daily-use manual. For first-time setup, follow
 
 ## Reading the feed
 
+- **Dates** read like **24 July 2026**; the **Posted** and **Match** column
+  headers show a **sort arrow** you can click (v1.3). Open any job and use the
+  **← Back** link to return to the feed exactly as you left it.
 - **Channel strip** (top of the feed): per-source status for the current or
   last refresh — `✓ greenhouse 41` means done with 41 new jobs, `▸` running,
   `✕` failed (other sources keep going; one bad source never blocks the rest).

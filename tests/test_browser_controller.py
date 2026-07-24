@@ -577,3 +577,60 @@ class TestFacade010Backend:
         snap = bc.queue_snapshot()
         assert snap["extension"]["connected"] is True
         assert snap["extension"]["version"] == "1.0.0"
+
+
+class TestBrowserRouting013:
+    """013: the assistant window opens the OS DEFAULT browser first (fixing the
+    Edge-first bug), and the companion is still preferred when connected."""
+
+    def test_channel_order_comes_from_default_browser(self, monkeypatch):
+        from engine.autofill import default_browser
+        monkeypatch.setattr(default_browser, "default_channel_order",
+                            lambda: ("chrome", "msedge"))
+        assert bc._channel_order() == ("chrome", "msedge")
+
+    def test_ensure_context_tries_default_browser_first(self, monkeypatch):
+        monkeypatch.setattr(bc, "_context", None, raising=False)
+        monkeypatch.setattr(bc, "_channel_order", lambda: ("chrome", "msedge"))
+        tried = []
+
+        class FakeChromium:
+            def launch_persistent_context(self, **kw):
+                tried.append(kw["channel"])
+                raise RuntimeError("no browser")
+
+        class FakePW:
+            chromium = FakeChromium()
+
+            def stop(self):
+                pass
+
+        class FakeSync:
+            def start(self):
+                return FakePW()
+
+        import playwright.sync_api as psa
+        monkeypatch.setattr(psa, "sync_playwright", lambda: FakeSync())
+        with pytest.raises(bc.BrowserUnavailable):
+            bc._ensure_context()
+        assert tried == ["chrome", "msedge"], "default browser must be tried first"
+
+    def test_choose_backend_prefers_live_companion(self, monkeypatch):
+        from engine.autofill import ext_backend
+        monkeypatch.delenv("AUTOFILL_BACKEND", raising=False)
+        seen = {}
+
+        def fake_is_live(max_age_s=10.0):
+            seen["age"] = max_age_s
+            return True
+
+        monkeypatch.setattr(ext_backend, "is_live", fake_is_live)
+        assert bc._choose_backend() == "extension"
+        # a brief heartbeat gap should still keep the companion (widened window)
+        assert seen["age"] >= 30
+
+    def test_choose_backend_falls_back_when_no_companion(self, monkeypatch):
+        from engine.autofill import ext_backend
+        monkeypatch.delenv("AUTOFILL_BACKEND", raising=False)
+        monkeypatch.setattr(ext_backend, "is_live", lambda max_age_s=10.0: False)
+        assert bc._choose_backend() == "playwright"

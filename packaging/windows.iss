@@ -3,7 +3,7 @@
 ; Produces packaging\Output\JobEngine-Setup-<version>.exe
 
 #define MyAppName "Job Engine"
-#define MyAppVersion "1.2.0"
+#define MyAppVersion "1.3.0"
 #define MyAppExeName "JobEngine.exe"
 
 [Setup]
@@ -32,6 +32,11 @@ RestartApplications=no
 ; Stamp the version into the installer's file properties so on-disk
 ; artifacts are identifiable (audit: no version resource anywhere).
 VersionInfoVersion={#MyAppVersion}
+; 013 (FR-012): the app icon — on the Setup wizard and the Add/Remove Programs
+; entry. The desktop/Start-menu shortcuts point at JobEngine.exe, whose icon is
+; embedded by PyInstaller, so they show it automatically.
+SetupIconFile=icon.ico
+UninstallDisplayIcon={app}\{#MyAppExeName}
 
 [Tasks]
 Name: "desktopicon"; Description: "{cm:CreateDesktopIcon}"; GroupDescription: "{cm:AdditionalIcons}"

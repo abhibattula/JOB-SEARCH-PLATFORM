@@ -233,3 +233,37 @@ class TestApply:
     def test_apply_without_proposal_raises(self):
         with pytest.raises(RuntimeError):
             profile_import.apply_import({"email": "apply"})
+
+
+class TestExtractionSkip013:
+    """013 (FR-007): re-importing an UNCHANGED resume must not re-run the
+    (slow) model extraction; a changed resume re-extracts."""
+
+    def test_reimport_same_resume_skips_extraction(self, monkeypatch):
+        from engine import matcher, resume_extract
+        db.save_profile(resume_text="python verilog fpga", resume_filename="r.pdf")
+        calls = []
+        monkeypatch.setattr(resume_extract, "extract",
+                            lambda text, on_progress=None: calls.append(text) or None)
+        monkeypatch.setattr(resume_extract, "extract_contact",
+                            lambda text: Contact())
+        monkeypatch.setattr(matcher, "extract_skills", lambda text: [])
+
+        assert profile_import.start_import(background=False) is True
+        assert profile_import.start_import(background=False) is True
+        assert len(calls) == 1, "unchanged resume re-ran extraction"
+
+    def test_changed_resume_reextracts(self, monkeypatch):
+        from engine import matcher, resume_extract
+        calls = []
+        monkeypatch.setattr(resume_extract, "extract",
+                            lambda text, on_progress=None: calls.append(text) or None)
+        monkeypatch.setattr(resume_extract, "extract_contact",
+                            lambda text: Contact())
+        monkeypatch.setattr(matcher, "extract_skills", lambda text: [])
+
+        db.save_profile(resume_text="first resume", resume_filename="r.pdf")
+        assert profile_import.start_import(background=False) is True
+        db.save_profile(resume_text="a DIFFERENT resume", resume_filename="r.pdf")
+        assert profile_import.start_import(background=False) is True
+        assert len(calls) == 2

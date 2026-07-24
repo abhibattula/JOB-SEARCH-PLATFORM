@@ -61,13 +61,17 @@ entirely on your machine for $0.
   the installer, so match scoring and tailoring work immediately — no
   account, no API key, no internet connection needed for the AI itself (an
   optional cloud key still gives the highest-quality results and is always
-  preferred when set).
+  preferred when set). The offline model uses **all your CPU cores** and your
+  **GPU when your setup supports it** (v1.3) — automatic, with a silent fall
+  back to CPU when there's no GPU; NVIDIA users can unlock full GPU with one
+  `pip install` of a CUDA `llama-cpp-python` wheel (the installer stays the CPU
+  build, same size).
 - **Apply Assist — fills in your own browser (v1.0)**: install the free
   one-time **browser companion** (a Chrome/Edge extension — see the in-app
   Companion page) and applications fill in *your everyday browser*, where
-  you're already signed in to job sites. Without it, Apply Assist still fills
-  in a dedicated assistant window exactly as before — the screen shows which
-  mode is active. Either way it opens each shortlisted job at its real
+  you're already signed in to job sites. Without it, Apply Assist fills in a
+  dedicated assistant window opened in your **default browser** (v1.3 — no
+  longer forced to Edge); the screen shows which mode and browser is active. Either way it opens each shortlisted job at its real
   application form and then **watches the page continuously**, filling every
   recognized field
   the moment it exists: slow-rendering forms, forms revealed by the site's

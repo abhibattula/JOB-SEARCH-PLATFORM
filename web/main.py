@@ -26,6 +26,27 @@ templates = Jinja2Templates(directory=paths.resource_path("web/templates"))
 templates.env.globals["app_version"] = APP_VERSION
 
 
+def _humandate(value) -> str:
+    """013 (FR-009): render a stored date/datetime string as "24 July 2026"
+    (day, title-case full month, year; no leading zero). Tolerant — returns
+    None/empty as "" and anything unparseable unchanged, so a template never
+    crashes on an odd value."""
+    if not value:
+        return ""
+    from datetime import datetime
+
+    text = str(value).strip()
+    head = text[:10]  # date portion of an ISO date or datetime
+    try:
+        dt = datetime.strptime(head, "%Y-%m-%d")
+    except ValueError:
+        return text
+    return f"{dt.day} {dt.strftime('%B %Y')}"
+
+
+templates.env.filters["humandate"] = _humandate
+
+
 def _current_theme() -> str:
     """Explicit user choice ('light'/'dark') or '' when unset — '' lets the
     CSS prefers-color-scheme fallback decide (FR-021)."""
@@ -40,6 +61,18 @@ templates.env.globals["current_theme"] = _current_theme
 # 008 (FR-032): plain-language changelog behind the What's New overlay —
 # keyed by APP_VERSION, shown once per version.
 WHATS_NEW: dict[str, list[str]] = {
+    "1.3.0": [
+        "Fixed: Apply Assist now fills in your default browser (and your "
+        "connected companion), instead of always opening Microsoft Edge — so "
+        "it fills where you're actually signed in.",
+        "Faster AI: the offline model now uses all your CPU cores, and your "
+        "GPU when your setup supports it; resume import skips re-reading an "
+        "unchanged resume.",
+        "Dates now read like '24 July 2026', the Posted and Match columns show "
+        "a clickable sort arrow, and every job page has a Back button.",
+        "The app now has its own icon on the window, taskbar, installer, and "
+        "browser tab.",
+    ],
     "1.2.0": [
         "New: the Discovery badge. As you browse job postings — LinkedIn, "
         "Indeed, Greenhouse/Lever/Ashby, or any company career page — a small "

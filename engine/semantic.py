@@ -42,13 +42,18 @@ def _load():
     with _lock:
         if _model is None:
             from llama_cpp import Llama
+            from .local_llm import _llm_kwargs
 
-            _model = Llama(
-                model_path=str(_model_path()),
-                embedding=True,
-                n_ctx=2048,
-                verbose=False,
-            )
+            # 013: GPU offload + CPU threads (graceful CPU fallback), same as
+            # the chat model — a no-op on the CPU wheel, a win on a GPU wheel.
+            kwargs = _llm_kwargs()
+            try:
+                _model = Llama(model_path=str(_model_path()), embedding=True,
+                               n_ctx=2048, verbose=False, **kwargs)
+            except Exception:
+                cpu = dict(kwargs, n_gpu_layers=0)
+                _model = Llama(model_path=str(_model_path()), embedding=True,
+                               n_ctx=2048, verbose=False, **cpu)
         return _model
 
 
