@@ -17,6 +17,16 @@ datas = [
     (os.path.join(ROOT, "companies.yml"), "."),
     (os.path.join(ROOT, "assets", "uscis"), "assets/uscis"),
 ]
+
+# 010: the browser companion (MV3 extension). Bundled as data so the app
+# can materialize it into the data dir and stamp pairing.json at launch —
+# the user loads that copy unpacked. A build-time assert catches a missing
+# manifest before shipping an installer with no companion.
+_ext_manifest = os.path.join(ROOT, "extension", "manifest.json")
+assert os.path.exists(_ext_manifest), (
+    f"companion extension manifest missing at {_ext_manifest}"
+)
+datas.append((os.path.join(ROOT, "extension"), "extension"))
 binaries = []
 
 # DejaVu TTFs (feature 007, resume/cover-letter PDF export) — fpdf2's core
@@ -162,6 +172,6 @@ if sys.platform == "darwin":
         bundle_identifier="dev.abhinav.jobengine",
         info_plist={
             "NSHighResolutionCapable": True,
-            "CFBundleShortVersionString": "0.9.0",
+            "CFBundleShortVersionString": "1.0.0",
         },
     )

@@ -193,6 +193,47 @@ def main() -> int:
         print("FAIL: practice application page missing or malformed")
         return 1
 
+    # 010: the browser companion must be materialized + stamped in the
+    # frozen build, the bridge must answer, and the new surfaces must serve.
+    bridge = json.loads(
+        urllib.request.urlopen(base + "/api/bridge/info", timeout=30).read()
+    )
+    print(f"bridge/info -> {bridge}")
+    if bridge.get("app_id") != "jobengine" or "protocol_v" not in bridge:
+        proc.terminate()
+        print(f"FAIL: bridge info malformed: {bridge}")
+        return 1
+    ext_manifest = os.path.join(data_dir, "extension", "manifest.json")
+    ext_pairing = os.path.join(data_dir, "extension", "pairing.json")
+    print(f"companion stamped -> manifest={os.path.exists(ext_manifest)} "
+          f"pairing={os.path.exists(ext_pairing)}")
+    if not (os.path.exists(ext_manifest) and os.path.exists(ext_pairing)):
+        proc.terminate()
+        print("FAIL: companion extension not materialized into the data dir")
+        return 1
+    companion_html = urllib.request.urlopen(
+        base + "/companion", timeout=30
+    ).read().decode("utf-8", errors="replace")
+    if "Load unpacked" not in companion_html:
+        proc.terminate()
+        print("FAIL: /companion walkthrough missing or malformed")
+        return 1
+    next_actions = json.loads(
+        urllib.request.urlopen(base + "/api/next-actions", timeout=30).read()
+    )
+    print(f"next-actions -> {next_actions}")
+    if "actions" not in next_actions:
+        proc.terminate()
+        print("FAIL: /api/next-actions did not answer")
+        return 1
+    status_010 = json.loads(
+        urllib.request.urlopen(base + "/api/autofill/status", timeout=30).read()
+    )
+    if "extension" not in status_010 or "backend" not in status_010:
+        proc.terminate()
+        print("FAIL: autofill status missing 010 backend/extension fields")
+        return 1
+
     proc.terminate()
     time.sleep(2)
     if proc.poll() is None:

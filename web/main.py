@@ -40,6 +40,26 @@ templates.env.globals["current_theme"] = _current_theme
 # 008 (FR-032): plain-language changelog behind the What's New overlay —
 # keyed by APP_VERSION, shown once per version.
 WHATS_NEW: dict[str, list[str]] = {
+    "1.0.0": [
+        "Apply Assist now fills in YOUR OWN browser. Install the new browser "
+        "companion (one-time, free — see the Companion page) and applications "
+        "fill in your everyday Chrome or Edge, where you're already logged in "
+        "to job sites. No companion? Apply Assist still works in a separate "
+        "assistant window, exactly as before.",
+        "\"Fill this page\": found a job while browsing? Click the companion "
+        "and it fills the application you're already looking at.",
+        "AI now drafts answers to open-ended questions (\"Why this company?\") "
+        "from your resume — filled in, clearly flagged, for you to review and "
+        "edit before you submit. Confirmed answers are saved and reused. Visa/"
+        "sponsorship/EEO questions are never AI-answered.",
+        "New home dashboard: your top matches, application stats, and a "
+        "next-actions list (drafts to review, follow-ups due) the moment you "
+        "open the app.",
+        "Tracker board gains per-application notes and follow-up dates; due "
+        "follow-ups surface on the home screen.",
+        "It's still $0, still private (AI runs on the bundled offline model by "
+        "default), and it still never clicks submit for you — you always do.",
+    ],
     "0.9.0": [
         "Apply Assist finally FILLS: it now watches the open page "
         "continuously and fills fields the moment they exist — slow-loading "
