@@ -50,6 +50,16 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
     }
     return false;
   }
+  // A content script announcing it's loaded — tell it whether its tab is
+  // being watched (closes the watch_start-before-inject race).
+  if (sender.tab && msg && msg._je_ready) {
+    chrome.tabs.sendMessage(
+      sender.tab.id,
+      { type: "watch_state", watched: watched.has(sender.tab.id) },
+      sender.frameId !== undefined ? { frameId: sender.frameId } : undefined,
+    ).catch(() => {});
+    return false;
+  }
   // From a content script (has sender.tab)
   if (sender.tab && msg && msg._je) {
     relayFromContent(sender.tab.id, sender.frameId, msg.payload);

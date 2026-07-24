@@ -82,6 +82,10 @@
     if (!message || !message.type) { return; }
     switch (message.type) {
       case "watch": startWatch(); break;
+      case "watch_state":
+        // reply to our own ready-probe: begin watching if the SW says so
+        if (message.watched) { startWatch(); }
+        break;
       case "unwatch": teardown(); break;
       case "fill":
         // only the addressed frame applies (frame_id is the app's routing;
@@ -94,4 +98,11 @@
       default: break;
     }
   });
+
+  // On load, ask the SW whether this tab is already being watched — closes
+  // the race where watch_start fired before this content script existed
+  // (tab just opened, or an SPA nav swapped documents).
+  try {
+    chrome.runtime.sendMessage({ _je_ready: true });
+  } catch (_e) { /* orphaned frame */ }
 })();
