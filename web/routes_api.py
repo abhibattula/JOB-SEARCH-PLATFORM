@@ -497,6 +497,75 @@ async def set_job_stage(job_id: int, request: Request, stage: str | None = None)
     return job_summary(db.get_job(job_id))
 
 
+class FollowUpRequest(BaseModel):
+    follow_up_at: str | None = None
+    notes: str | None = None
+
+
+@router.post("/jobs/{job_id}/follow-up")
+def set_follow_up(job_id: int, body: FollowUpRequest):
+    """010 FR-019: set/clear a follow-up date and/or notes on an application."""
+    try:
+        db.set_follow_up(job_id, body.follow_up_at, body.notes)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+    return {"ok": True}
+
+
+class SubmissionConfirm(BaseModel):
+    confirmed: bool
+
+
+@router.post("/jobs/{job_id}/submission-confirm")
+def submission_confirm(job_id: int, body: SubmissionConfirm):
+    """010 FR-020: the user confirms (or dismisses) a detected submission.
+    Confirming advances status to applied AND auto-saves the final text of
+    that job's AI drafts (clarify Q2). Never silent — dismissing changes
+    nothing."""
+    from engine.autofill import drafts, ext_backend
+
+    if not body.confirmed:
+        ext_backend.clear_submission(job_id)
+        return {"ok": True, "applied": False}
+    db.set_status(job_id, "applied")
+    saved = drafts.auto_save_for_job(job_id, {})
+    ext_backend.clear_submission(job_id)
+    return {"ok": True, "applied": True, "answers_saved": saved}
+
+
+@router.get("/next-actions")
+def next_actions():
+    """010 FR-017: the home screen's work list — derived, nothing stored."""
+    from datetime import datetime, timezone
+
+    from engine import profile_import
+    from engine.autofill import browser_controller, drafts, ext_backend
+
+    actions: list[dict] = []
+    current = browser_controller.current_job()
+    if current is not None:
+        lookup = current["job_id"] if current["job_id"] and current["job_id"] > 0 else None
+        n = len(drafts.list_for_job(lookup))
+        if n:
+            actions.append({"kind": "draft_review",
+                            "label": f"{n} AI draft(s) awaiting review",
+                            "href": "/autofill"})
+    for sub in ext_backend.pending_submissions():
+        actions.append({"kind": "submission_confirm", "job_id": sub["job_id"],
+                        "label": "Did you submit an application?",
+                        "href": "/autofill"})
+    today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+    for job in db.due_follow_ups(today):
+        actions.append({"kind": "follow_up", "job_id": job["id"],
+                        "label": f"Follow up: {job['title']}",
+                        "href": f"/jobs/{job['id']}"})
+    if profile_import.status().get("state") == "ready":
+        actions.append({"kind": "import_ready",
+                        "label": "Resume import ready to review",
+                        "href": "/profile"})
+    return {"actions": actions}
+
+
 @router.post("/jobs/{job_id}/notes")
 async def set_job_notes(job_id: int, request: Request):
     form = await request.form()

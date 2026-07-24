@@ -1036,3 +1036,45 @@ class Test009ImportRoutes:
             )
         text = client.get("/partials/profile/import").text
         assert "already matches" in text
+
+
+class Test010NextActionsAndSubmission:
+    def _job(self):
+        seed_job()
+        jobs, _ = db.query_jobs(window=None, statuses=None, entry_level=None)
+        return jobs[0]["id"]
+
+    def test_next_actions_empty_by_default(self, client):
+        resp = client.get("/api/next-actions")
+        assert resp.status_code == 200
+        assert resp.json()["actions"] == []
+
+    def test_follow_up_surfaces_in_next_actions(self, client):
+        job_id = self._job()
+        client.post(f"/api/jobs/{job_id}/follow-up",
+                    json={"follow_up_at": "2020-01-01", "notes": "ping recruiter"})
+        actions = client.get("/api/next-actions").json()["actions"]
+        assert any(a["kind"] == "follow_up" and a["job_id"] == job_id
+                   for a in actions)
+
+    def test_submission_confirm_true_applies_and_saves(self, client):
+        from engine.autofill import drafts
+
+        job_id = self._job()
+        drafts.record(job_id, "Why?", "My drafted answer.", "local")
+        resp = client.post(f"/api/jobs/{job_id}/submission-confirm",
+                           json={"confirmed": True})
+        assert resp.json()["applied"] is True
+        assert db.get_job(job_id)["status"] == "applied"
+
+    def test_submission_confirm_false_changes_nothing(self, client):
+        job_id = self._job()
+        resp = client.post(f"/api/jobs/{job_id}/submission-confirm",
+                           json={"confirmed": False})
+        assert resp.json()["applied"] is False
+        assert db.get_job(job_id)["status"] == "none"
+
+    def test_follow_up_unknown_job_404(self, client):
+        resp = client.post("/api/jobs/99999/follow-up",
+                           json={"follow_up_at": "2020-01-01"})
+        assert resp.status_code == 404

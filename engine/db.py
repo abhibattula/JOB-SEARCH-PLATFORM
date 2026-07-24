@@ -678,6 +678,32 @@ def set_notes(job_id: int, notes: str) -> None:
             raise KeyError(f"no job with id {job_id}")
 
 
+def set_follow_up(job_id: int, follow_up_at: str | None, notes: str | None) -> None:
+    """010 FR-019: per-application follow-up date and/or notes. Either may
+    be None to leave that column untouched isn't the semantics here — the
+    caller passes what it wants set; None clears."""
+    with _conn() as conn:
+        cur = conn.execute(
+            "UPDATE jobs SET follow_up_at = ?, notes = COALESCE(?, notes)"
+            " WHERE id = ?",
+            (follow_up_at, notes, job_id),
+        )
+        if cur.rowcount == 0:
+            raise KeyError(f"no job with id {job_id}")
+
+
+def due_follow_ups(today: str) -> list[dict]:
+    """Applied jobs whose follow-up date has arrived (<= today) — feeds the
+    home screen's next-actions."""
+    with _conn() as conn:
+        rows = conn.execute(
+            "SELECT id, title FROM jobs WHERE follow_up_at IS NOT NULL"
+            " AND follow_up_at <= ? ORDER BY follow_up_at",
+            (today,),
+        ).fetchall()
+    return [dict(r) for r in rows]
+
+
 def application_analytics() -> dict:
     """Aggregates for the analytics page. 'Response' = any stage movement past
     'applied' (including rejection); 'interview' = interview or offer."""
