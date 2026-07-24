@@ -498,7 +498,7 @@ _JOB_COLUMNS = (
     "j.id, j.title, j.location, j.is_remote, j.url, j.source, j.posted_date,"
     " j.first_seen, j.is_entry_level, j.sponsorship, j.match_score, j.status,"
     " json_extract(j.match_json, '$.method') AS match_method,"
-    " j.stage, j.applied_at, j.stage_updated_at, j.notes,"
+    " j.stage, j.applied_at, j.stage_updated_at, j.notes, j.follow_up_at,"
     " j.last_seen_at, j.delisted,"
     " c.name AS company, c.sponsor_grade, c.cap_exempt"
 )

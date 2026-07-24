@@ -1103,3 +1103,22 @@ class Test010Dashboard:
         seed_job()
         resp = client.get("/")
         assert 'class="toolbar"' in resp.text  # feed toolbar still present
+
+
+class Test010BoardFollowUp:
+    def test_board_card_has_followup_affordance(self, client):
+        job = seed_job()
+        client.post(f"/api/jobs/{job['id']}/status", json={"status": "applied"})
+        board = client.get("/", params={"status": "applied", "view": "board"})
+        assert board.status_code == 200
+        assert "board-followup" in board.text
+        assert "fu-date" in board.text
+
+    def test_saved_followup_prefills_card(self, client):
+        job = seed_job()
+        client.post(f"/api/jobs/{job['id']}/status", json={"status": "applied"})
+        client.post(f"/api/jobs/{job['id']}/follow-up",
+                    json={"follow_up_at": "2026-08-01", "notes": "email recruiter"})
+        board = client.get("/", params={"status": "applied", "view": "board"})
+        assert "2026-08-01" in board.text
+        assert "email recruiter" in board.text
