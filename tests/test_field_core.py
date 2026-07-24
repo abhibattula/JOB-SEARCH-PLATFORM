@@ -125,3 +125,68 @@ class TestVocabulary:
 
     def test_ledger_key_shape(self):
         assert field_core.key(make_descriptor()) == ("docA", "1")
+
+
+class TestWidgetAware011:
+    """011 T004: widget-aware decide — native select unchanged; custom
+    combobox → 'combobox'; typeahead → 'typeahead'; option-match still gates;
+    sensitive-question safety preserved regardless of widget (C1)."""
+
+    def test_native_select_still_select(self):
+        d = decide(make_descriptor(
+            tag="select", type="", name="work_auth",
+            label_text="Authorized to work?", widget="native_select",
+            options=["Select...", "Yes", "No"]), value="Yes")
+        assert d.action == "fill" and d.kind == "select"
+        assert d.option_label == "Yes"
+
+    def test_custom_combobox_emits_combobox(self):
+        d = decide(make_descriptor(
+            tag="how_heard", type="", name="source",
+            label_text="How did you hear about us?", widget="custom_combobox",
+            options=["Select...", "LinkedIn", "A friend"]), value="LinkedIn")
+        assert d.action == "fill" and d.kind == "combobox"
+        assert d.option_label == "LinkedIn"
+
+    def test_custom_combobox_without_readable_options_uses_value_as_label(self):
+        d = decide(make_descriptor(
+            tag="how_heard", type="", name="source",
+            label_text="How did you hear about us?", widget="custom_combobox",
+            options=None), value="LinkedIn")
+        assert d.action == "fill" and d.kind == "combobox"
+        assert d.option_label == "LinkedIn"
+
+    def test_combobox_no_matching_option_settles_no_match(self):
+        d = decide(make_descriptor(
+            tag="how_heard", type="", name="source",
+            label_text="How did you hear?", widget="custom_combobox",
+            options=["Twitter", "Friend"]), value="Job Engine")
+        assert d.action == "settle" and d.outcome == "no_match"
+
+    def test_typeahead_emits_typeahead(self):
+        d = decide(make_descriptor(
+            tag="location", type="text", name="city",
+            label_text="City", widget="typeahead"), value="Austin, TX")
+        assert d.action == "fill" and d.kind == "typeahead"
+        assert d.value == "Austin, TX"
+
+    def test_c1_sensitive_combobox_unanswered_skips_never_fills(self):
+        # a work-auth custom combobox with NO saved answer: get_value returns
+        # None (browser_controller sets the confirm-pending slot), so decide
+        # must SKIP — the widget kind must never bypass the value gate.
+        d = field_core.decide(
+            None,
+            make_descriptor(tag="work_authorization", type="", name="wauth",
+                            label_text="Are you authorized to work?",
+                            widget="custom_combobox",
+                            options=["Yes", "No"]),
+            {}, lambda tag, desc: None)
+        assert d.action == "skip"
+
+    def test_c1_combobox_is_never_ai_draft(self):
+        # even if a Draft somehow reached a combobox, it fills as a normal
+        # option pick, not a flagged free-text draft (drafts are free-text only)
+        d = decide(make_descriptor(
+            tag="how_heard", type="", name="source", widget="custom_combobox",
+            options=["LinkedIn"]), value=field_core.Draft("LinkedIn"))
+        assert d.kind == "combobox" and d.ai_draft is False

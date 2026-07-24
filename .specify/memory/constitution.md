@@ -1,7 +1,18 @@
 <!--
 Sync Impact Report
 ==================
-Version change: 1.1.0 → 1.1.1 (2026-07-22)
+Version change: 1.1.1 → 1.1.2 (2026-07-24)
+Modified sections:
+  - Principle I › closing paragraph — appended a Principle III CLARIFICATION
+    (feature 011): app-driven browser automation MAY click a form field's own
+    input widget to set a value (custom dropdown option, typeahead
+    suggestion), but MUST NEVER click submit/apply/next/continue/save/finish/
+    login/register/pay controls; the human still performs every submit/login
+    and advances every multi-step wizard. A bounded relaxation of the
+    implementation's prior zero-click rule, not a change to any principle.
+Templates status: all compatible (no template references the click rule).
+
+Previous report (1.1.0 → 1.1.1, 2026-07-22):
 Modified sections:
   - Additional Constraints › "Recency is a first-class requirement" — default
     feed window changed from 7 days to 14 days at the user's explicit
@@ -47,6 +58,13 @@ automation (Playwright) are permitted as of the approved feature 005 plan, subje
 to the constraints in Principle II (no size veto beyond what that plan accepts) and
 Principle III (automation MUST NOT bypass bot protection or auto-submit on the
 user's behalf — the human always performs the final submit/login action).
+Clarification (feature 011): the automation MAY click a form field's own
+input widget to SET A VALUE (e.g. open a custom dropdown and choose an
+option, or pick a typeahead suggestion) — this is field-filling, the same
+intent as typing. It MUST NEVER click a control that submits, applies,
+advances (next/continue), saves, finishes, logs in, registers, creates an
+account, or pays. The human still performs every submit/login and advances
+every multi-step wizard themselves.
 
 ### II. Zero-Subscription Cost
 
@@ -122,4 +140,4 @@ templates listed there. Plans and task lists MUST pass the Constitution Check ga
 deviations discovered during implementation MUST be either corrected or recorded in
 Complexity Tracking before the milestone is declared done.
 
-**Version**: 1.1.1 | **Ratified**: 2026-07-18 | **Last Amended**: 2026-07-22
+**Version**: 1.1.2 | **Ratified**: 2026-07-18 | **Last Amended**: 2026-07-24
