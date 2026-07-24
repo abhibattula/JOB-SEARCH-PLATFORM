@@ -275,8 +275,11 @@ def _handle_fields(msg) -> None:
             item.update(kind="checkbox", value="on")
         else:
             item.update(kind="text", value=str(decision.value))
+        if decision.ai_draft:
+            item["flag"] = "ai_draft"
         with _lock:
-            _inflight[fkey] = (raw, decision.tag, decision.preview)
+            _inflight[fkey] = (raw, decision.tag, decision.preview,
+                               decision.ai_draft)
         items.append(item)
 
     with _lock:
@@ -302,8 +305,13 @@ def _handle_fields(msg) -> None:
             "button; fields fill the moment the form appears"
         ),
     )
+    with bc._lock:
+        draft_count = sum(
+            1 for e in bc._state.fill_reports.get(job_id, [])
+            if e.get("ai_draft") and e["outcome"] == "filled"
+        )
     send(_outbound("overlay_state", tab_id=msg.tab_id, summary={
-        "seen": total_seen, "filled": filled_total, "drafts": 0,
+        "seen": total_seen, "filled": filled_total, "drafts": draft_count,
         "message": "you click the actual apply/submit",
     }))
 
@@ -324,10 +332,10 @@ def _handle_fill_result(msg) -> None:
             info = _inflight.pop(fkey, None)
         if info is None:
             continue
-        raw, tag, preview = info
+        raw, tag, preview, ai_draft = info
         lkey = field_core.key(raw)
         if item.outcome == "filled":
-            bc._record(job_id, raw, tag, preview, "filled")
+            bc._record(job_id, raw, tag, preview, "filled", ai_draft)
             with bc._lock:
                 bc._state.handled.setdefault(job_id, {})[lkey] = "filled"
             filled_now += 1

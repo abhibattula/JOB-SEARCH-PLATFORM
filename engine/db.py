@@ -85,7 +85,9 @@ CREATE TABLE IF NOT EXISTS settings (
 
 CREATE TABLE IF NOT EXISTS ai_drafts (
     id INTEGER PRIMARY KEY,
-    job_id INTEGER REFERENCES jobs(id),
+    -- job_id is a plain int, not a FK: ad-hoc ("Fill this page") and
+    -- practice sessions have no jobs row (NULL / sentinel ids)
+    job_id INTEGER,
     question TEXT NOT NULL,
     draft_text TEXT NOT NULL,
     status TEXT NOT NULL DEFAULT 'drafted',

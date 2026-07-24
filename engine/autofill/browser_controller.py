@@ -362,6 +362,29 @@ def _value_for_tag(tag: str, raw: dict, profile: dict, job_id: int):
     existing = answer_bank.lookup(question)
     if existing:
         return existing["answer"]
+
+    # 010: open-ended, AI-eligible questions get a grounded draft filled and
+    # flagged for review (draft → fill → flag). Sensitive/unrecognized
+    # questions stay on the confirm-before-use pause (005 FR-011), never
+    # AI-answered.
+    from .. import qa
+
+    if qa.is_ai_eligible(tag):
+        from .. import db
+        from . import drafts, field_core
+
+        job = db.get_job(job_id) if job_id and job_id > 0 else None
+        maxlength = raw.get("maxlength")
+        draft_text = qa.draft(question, tag, profile, job, maxlength=maxlength)
+        if draft_text:
+            from .. import matcher
+
+            drafts.record(job_id if job_id and job_id > 0 else None,
+                          question, draft_text, matcher.scoring_tier())
+            return field_core.Draft(draft_text)
+        # drafting refused (thin grounding / no model) — leave for manual
+        return None
+
     with _lock:
         if _state.pending is None:
             draft = answer_bank.suggest(question, tag, profile)
@@ -784,8 +807,8 @@ def _tick_if_active(force: bool = False) -> None:
             _record(job_id, descriptor, tag, "", "paused")
         return value
 
-    def record(descriptor, tag, preview, outcome):
-        _record(job_id, descriptor, tag, preview, outcome)
+    def record(descriptor, tag, preview, outcome, ai_draft=False):
+        _record(job_id, descriptor, tag, preview, outcome, ai_draft)
 
     try:
         result = watcher.tick(page, get_value=get_value, record=record, handled=ledger)
@@ -829,7 +852,8 @@ def _tick_if_active(force: bool = False) -> None:
     )
 
 
-def _record(job_id: int, descriptor: dict, tag: str, preview: str, outcome: str) -> None:
+def _record(job_id: int, descriptor: dict, tag: str, preview: str, outcome: str,
+            ai_draft: bool = False) -> None:
     label = (descriptor.get("label_text") or descriptor.get("placeholder")
              or descriptor.get("aria_label") or descriptor.get("name") or "")
     with _lock:
@@ -838,4 +862,7 @@ def _record(job_id: int, descriptor: dict, tag: str, preview: str, outcome: str)
             "tag": tag,
             "value_preview": (preview or "")[:60],
             "outcome": outcome,
+            # 010: filled from an AI draft — the UI flags it "review before
+            # submitting" and the review list is fed from the ai_drafts table
+            "ai_draft": ai_draft,
         })

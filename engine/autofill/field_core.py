@@ -32,6 +32,14 @@ def key(descriptor: dict) -> tuple:
     return (descriptor.get("doc"), descriptor.get("je_idx"))
 
 
+class Draft(str):
+    """A value that is an AI draft, not a settled fact. get_value may return
+    one; decide() then flags the fill as ai_draft (filled + flagged for
+    review) rather than a plain fill. Subclasses str so every existing
+    value path treats it as text transparently."""
+    __slots__ = ()
+
+
 @dataclass
 class Decision:
     """What to do with one serialized field.
@@ -51,6 +59,7 @@ class Decision:
     option_label: str | None = None
     preview: str = ""
     secret: bool = False
+    ai_draft: bool = False
 
 
 def decide(ats: str | None, descriptor: dict, handled: dict, get_value) -> Decision:
@@ -92,5 +101,7 @@ def decide(ats: str | None, descriptor: dict, handled: dict, get_value) -> Decis
                         preview=str(value))
 
     secret = tag == "login_password"
+    is_draft = isinstance(value, Draft)
     return Decision("fill", tag=tag, kind="text", value=str(value),
-                    preview="•••" if secret else str(value), secret=secret)
+                    preview="•••" if secret else str(value), secret=secret,
+                    ai_draft=is_draft)

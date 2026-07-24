@@ -103,9 +103,9 @@ class Recorder:
     def __init__(self):
         self.rows = []
 
-    def __call__(self, d, tag, preview, outcome):
+    def __call__(self, d, tag, preview, outcome, ai_draft=False):
         self.rows.append({"tag": tag, "preview": preview, "outcome": outcome,
-                          "je_idx": d.get("je_idx")})
+                          "je_idx": d.get("je_idx"), "ai_draft": ai_draft})
 
 
 def run_tick(page, handled=None, get_value=profile_get_value, record=None):

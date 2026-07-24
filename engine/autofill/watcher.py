@@ -172,7 +172,8 @@ def _process_field(frame, ats, descriptor, get_value, record, handled, result) -
             locator.check()
         else:
             locator.fill(str(decision.value))
-        record(descriptor, decision.tag, decision.preview, "filled")
+        record(descriptor, decision.tag, decision.preview, "filled",
+               decision.ai_draft)
         handled[key] = "filled"
         result.filled_now += 1
     except Exception as exc:
