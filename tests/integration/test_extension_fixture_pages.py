@@ -250,6 +250,48 @@ class TestCompanionFills:
         assert not any(v == "" for v in first_vals)
 
 
+class TestWorkday011:
+    def test_workday_style_fills_across_revealed_pages(self, context,
+                                                       app_server,
+                                                       fixture_server):
+        # US2 + C3: identity/contact fields + a custom source combo + a
+        # school typeahead fill; a page-2 section revealed 1.2s later also
+        # fills (per-page proof); Workday's own Next is never clicked.
+        assert _wait_connected(app_server["port"])
+        from engine.autofill import answer_bank
+        answer_bank.save("How did you hear about us?", "LinkedIn",
+                         category="how_heard")
+        answer_bank.save("School", "University of Texas at Austin",
+                         category="school")
+        answer_bank.save("City", "Austin, TX", category="location_city")
+        _seed_and_queue(fixture_server, "workday_style.html")
+        # page 1
+        assert _echoed("wd_first") == "Abhinav"
+        assert _echoed("wd_email") == "abhi@example.com"
+        assert _echoed("wd_source", timeout=15) == "LinkedIn"
+        assert _echoed("wd_school", timeout=15) == "University of Texas at Austin"
+        # page 2 (revealed after 1.2s) — proves per-page fill in-suite
+        assert _echoed("wd_city", timeout=15) == "Austin, TX"
+        # the app never advanced the wizard
+        time.sleep(1)
+        assert not any(e.get("name") == "__submitted" for e in _Handler.echoes)
+
+
+class TestIcimsTaleo011:
+    def test_icims_style_fills(self, context, app_server, fixture_server):
+        assert _wait_connected(app_server["port"])
+        _seed_and_queue(fixture_server, "icims_style.html")
+        assert _echoed("firstname") == "Abhinav"
+        assert _echoed("lastname") == "Battula"
+        assert _echoed("email") == "abhi@example.com"
+
+    def test_taleo_style_fills(self, context, app_server, fixture_server):
+        assert _wait_connected(app_server["port"])
+        _seed_and_queue(fixture_server, "taleo_style.html")
+        assert _echoed("firstName") == "Abhinav"
+        assert _echoed("lastName") == "Battula"
+
+
 class TestNeverClicks:
     def test_no_submit_echo_ever(self, context, app_server, fixture_server):
         assert _wait_connected(app_server["port"])

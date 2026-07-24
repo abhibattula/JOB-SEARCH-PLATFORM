@@ -1,0 +1,78 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Workday-style application</title></head>
+<body>
+<h1>Apply — page 1 of 2</h1>
+<form id="form">
+  <label>First Name<input data-automation-id="legalNameSection_firstName"
+    name="wd_first" type="text"></label>
+  <label>Last Name<input data-automation-id="legalNameSection_lastName"
+    name="wd_last" type="text"></label>
+  <label>Email<input data-automation-id="email" name="wd_email" type="email"></label>
+  <label>Phone<input data-automation-id="phone-number" name="wd_phone" type="tel"></label>
+
+  <!-- custom source combobox (data-automation-id=source) -->
+  <label id="src-label">How did you hear about us?</label>
+  <div role="combobox" data-automation-id="source" aria-label="How did you hear about us?"
+       id="src" tabindex="0"><span class="rs__singleValue" style="display:none"></span>
+       <span class="rs__ph">Select…</span></div>
+  <div id="src-menu" role="listbox" style="display:none"></div>
+
+  <!-- school typeahead -->
+  <label>School<input name="wd_school" id="school" type="text" role="combobox"
+    aria-autocomplete="list" autocomplete="off"></label>
+  <div id="school-menu" role="listbox"></div>
+
+  <div id="page2"></div>
+
+  <button type="button" id="wd-next">Next</button>
+</form>
+<script src="/_mirror.js"></script>
+<script>
+  // hidden mirror for the source combobox
+  var srcHidden = document.createElement('input');
+  srcHidden.type='text'; srcHidden.name='wd_source'; srcHidden.style.position='absolute';
+  srcHidden.style.left='-9999px'; document.getElementById('form').appendChild(srcHidden);
+  var src = document.getElementById('src');
+  var srcMenu = document.getElementById('src-menu');
+  var srcSv = src.querySelector('.rs__singleValue'); var srcPh = src.querySelector('.rs__ph');
+  src.addEventListener('click', function () {
+    srcMenu.innerHTML='';
+    ['LinkedIn','A friend','University career fair'].forEach(function (t) {
+      var o=document.createElement('div'); o.setAttribute('role','option'); o.textContent=t;
+      o.addEventListener('click', function () {
+        srcSv.textContent=t; srcSv.style.display=''; srcPh.style.display='none';
+        srcMenu.style.display='none'; srcHidden.value=t;
+        srcHidden.dispatchEvent(new Event('input',{bubbles:true}));
+      });
+      srcMenu.appendChild(o);
+    });
+    srcMenu.style.display='';
+  });
+  // school typeahead
+  var school=document.getElementById('school'); var sMenu=document.getElementById('school-menu');
+  var SCHOOLS=['University of Texas at Austin','Texas A&M University','MIT'];
+  school.addEventListener('input', function () {
+    var q=school.value.toLowerCase(); sMenu.innerHTML=''; if(!q) return;
+    SCHOOLS.filter(function(s){return s.toLowerCase().indexOf(q)!==-1;}).forEach(function(s){
+      var o=document.createElement('div'); o.setAttribute('role','option'); o.textContent=s;
+      o.addEventListener('click', function () {
+        var setter=Object.getOwnPropertyDescriptor(window.HTMLInputElement.prototype,'value').set;
+        setter.call(school,s); school.dispatchEvent(new Event('input',{bubbles:true})); sMenu.innerHTML='';
+      });
+      sMenu.appendChild(o);
+    });
+  });
+  // C3: reveal a "page 2" section 1.2s after load (simulating the user
+  // advancing) so the test proves per-page fill in-suite.
+  setTimeout(function () {
+    document.getElementById('page2').innerHTML =
+      '<h2>Page 2 of 2</h2>' +
+      '<label>City<input data-automation-id="addressSection_city" ' +
+      'name="wd_city" type="text"></label>';
+  }, 1200);
+  // Next must never be clicked by the app — echo if it is.
+  document.getElementById('wd-next').addEventListener('click', function () {
+    fetch('/echo',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:'__submitted',value:'yes'})});
+  });
+</script>
+</body></html>

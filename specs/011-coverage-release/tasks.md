@@ -34,12 +34,12 @@ practice page combo fills.
 
 ## Phase 4: US2 — Workday applications fill (P2)
 
-- [ ] T013 [US2] `engine/autofill/adapters.py`: Workday host detect (`*.myworkdayjobs.com`, `*.wd{N}.myworkdayjobs.com`) + `data-automation-id` field map (legalName first/last, email, phone-number, addressSection_*, source/how-heard, work-auth); classify uses `automation_id` first, then generic label. Tests in `tests/test_adapters.py` (Workday descriptors → correct tags).
-- [ ] T014 [US2] Fixture `tests/fixtures/ats_pages/workday_style.html`: data-automation-id identity/contact fields + one custom combo + one school typeahead + a "Next" button that must never be clicked (echo `__submitted` if it is). **C3 (FR-008): the fixture reveals a SECOND-PAGE section (more data-automation-id fields) 1.2s after load (simulating the user advancing), and the integration test asserts those later fields also fill — proving per-page fill in-suite, not only via the manual live gate.** Integration test fills page-1 fields + combo + typeahead + the revealed page-2 fields, and asserts Next is never clicked.
+- [x] T013 [US2] `engine/autofill/adapters.py`: Workday host detect (`*.myworkdayjobs.com`, `*.wd{N}.myworkdayjobs.com`) + `data-automation-id` field map (legalName first/last, email, phone-number, addressSection_*, source/how-heard, work-auth); classify uses `automation_id` first, then generic label. Tests in `tests/test_adapters.py` (Workday descriptors → correct tags).
+- [x] T014 [US2] Fixture `tests/fixtures/ats_pages/workday_style.html`: data-automation-id identity/contact fields + one custom combo + one school typeahead + a "Next" button that must never be clicked (echo `__submitted` if it is). **C3 (FR-008): the fixture reveals a SECOND-PAGE section (more data-automation-id fields) 1.2s after load (simulating the user advancing), and the integration test asserts those later fields also fill — proving per-page fill in-suite, not only via the manual live gate.** Integration test fills page-1 fields + combo + typeahead + the revealed page-2 fields, and asserts Next is never clicked.
 
 ## Phase 5: US3 — iCIMS / Taleo fill (P2)
 
-- [ ] T015 [US3] `engine/autofill/adapters.py`: iCIMS + Taleo host maps + legacy field-name patterns; tests in `tests/test_adapters.py`. Fixtures `icims_style.html` + `taleo_style.html`; integration test fills standard identity/contact fields on each.
+- [x] T015 [US3] `engine/autofill/adapters.py`: iCIMS + Taleo host maps + legacy field-name patterns; tests in `tests/test_adapters.py`. Fixtures `icims_style.html` + `taleo_style.html`; integration test fills standard identity/contact fields on each.
 
 ## Phase 6: Polish, packaging, ship
 
