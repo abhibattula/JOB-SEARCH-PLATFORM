@@ -281,6 +281,13 @@ def _handle_fields(msg) -> None:
         elif decision.kind == "select":
             item.update(kind="select", value=str(decision.value),
                         option_label=decision.option_label)
+        elif decision.kind == "combobox":
+            # 011: custom dropdown — the filler opens it and picks the option
+            item.update(kind="combobox", value=str(decision.value),
+                        option_label=decision.option_label)
+        elif decision.kind == "typeahead":
+            # 011: type then pick the matching suggestion
+            item.update(kind="typeahead", value=str(decision.value))
         elif decision.kind == "checkbox":
             item.update(kind="checkbox", value="on")
         else:

@@ -1,0 +1,37 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Typeahead</title></head>
+<body>
+<h1>Location typeahead</h1>
+<form id="form">
+  <label for="fn">First Name</label><input id="fn" name="first_name" type="text">
+  <label for="city">City</label>
+  <input id="city" name="city" type="text" role="combobox" aria-autocomplete="list"
+         autocomplete="off">
+  <div id="city-menu" role="listbox"></div>
+</form>
+<script src="/_mirror.js"></script>
+<script>
+  // As the user types, render matching [role=option] suggestions; clicking a
+  // suggestion sets the input and fires input (mirrored to /echo).
+  var city = document.getElementById('city');
+  var menu = document.getElementById('city-menu');
+  var CITIES = ['Austin, TX', 'Boston, MA', 'San Jose, CA', 'Seattle, WA'];
+  city.addEventListener('input', function () {
+    var q = city.value.toLowerCase();
+    menu.innerHTML = '';
+    if (!q) { return; }
+    CITIES.filter(function (c) { return c.toLowerCase().indexOf(q) !== -1; })
+      .forEach(function (c) {
+        var o = document.createElement('div');
+        o.setAttribute('role', 'option'); o.textContent = c;
+        o.addEventListener('click', function () {
+          var setter = Object.getOwnPropertyDescriptor(
+            window.HTMLInputElement.prototype, 'value').set;
+          setter.call(city, c);
+          city.dispatchEvent(new Event('input', { bubbles: true }));
+          menu.innerHTML = '';
+        });
+        menu.appendChild(o);
+      });
+  });
+</script>
+</body></html>

@@ -69,11 +69,55 @@ class TestManifestIntegrity:
         manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))
         assert all(cs.get("all_frames") for cs in manifest["content_scripts"])
 
-    def test_filler_never_clicks(self):
-        """Constitutional invariant, asserted on the shipped source: the
-        companion never clicks apply/submit/login."""
+    def test_filler_only_clicks_through_guard(self):
+        """011: the filler MAY now click a field's own widget to set a value,
+        but the ONLY raw element.click() is the single guarded one inside
+        safeClick(); every other click call must be safeClick(). safeClick
+        itself must consult the denylist before clicking."""
+        import re as _re
+
         filler = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
-        code = "\n".join(
-            line.split("//")[0] for line in filler.splitlines()
+        code = "\n".join(line.split("//")[0] for line in filler.splitlines())
+
+        # exactly one raw ".click(" that is not preceded by "safeClick"
+        raw_clicks = []
+        for m in _re.finditer(r"\.click\s*\(", code):
+            preceding = code[max(0, m.start() - 9):m.start()]
+            if not preceding.endswith("safeClick"):
+                raw_clicks.append(m)
+        assert len(raw_clicks) == 1, (
+            f"expected exactly one guarded raw .click(); found {len(raw_clicks)}"
         )
-        assert ".click(" not in code
+        # and it lives inside safeClick, after the denylist check
+        sc = _re.search(r"function safeClick\([^)]*\)\s*\{(.*?)\n  \}",
+                        code, _re.DOTALL)
+        assert sc, "safeClick function not found"
+        body = sc.group(1)
+        assert "isDenylisted" in body and ".click(" in body
+        assert body.index("isDenylisted") < body.index(".click(")
+
+    def test_filler_uses_the_click_guard(self):
+        filler = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
+        assert "jeClickGuard" in filler and "isDenylisted" in filler
+
+
+class TestDenylistParity:
+    """011: the JS denylist must be term-for-term identical to the Python
+    source of truth, or a submit could be clickable in one backend only."""
+
+    def test_js_and_python_deny_terms_identical(self):
+        from engine.autofill import click_guard as py_guard
+
+        js = (EXT / "content" / "click_guard.js").read_text(encoding="utf-8")
+        # extract the DENY_TERMS array literal from the JS
+        import re as _re
+        block = _re.search(r"DENY_TERMS\s*=\s*\[(.*?)\]", js, _re.DOTALL).group(1)
+        js_terms = _re.findall(r'"([^"]+)"', block)
+        assert set(js_terms) == set(py_guard.DENY_TERMS), (
+            f"denylist drift — JS:{sorted(js_terms)} PY:{sorted(py_guard.DENY_TERMS)}"
+        )
+
+    def test_click_guard_js_loaded_before_filler(self):
+        manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))
+        js = manifest["content_scripts"][0]["js"]
+        assert js.index("content/click_guard.js") < js.index("content/filler.js")

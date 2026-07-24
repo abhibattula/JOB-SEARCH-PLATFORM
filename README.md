@@ -231,20 +231,26 @@ spec/plan/tasks live under [specs/001-ai-job-engine/](specs/001-ai-job-engine/).
 ## Known limitations
 
 - **Workday career sites** (NVIDIA, AMD, Qualcomm…) sit behind Cloudflare
-  fingerprinting as of mid-2026 and reject plain HTTP clients; the source is
-  implemented and tested but ships with no default entries (we don't fight bot
-  protection). Their postings still arrive via the Indeed source. Apply
-  Assist applies the same principle: if a page's fields can't be confidently
-  read (Workday included), it just opens the tab for you to fill manually and
-  moves on to the next job — it never tries to bypass a site's protections.
+  fingerprinting as of mid-2026 and reject plain HTTP *ingestion* clients, so
+  the Workday *source* ships with no default entries (we don't fight bot
+  protection); their postings still arrive via the Indeed source. **Apply
+  Assist does fill Workday applications** as of v1.1.0 — because it runs in
+  your own logged-in browser (or the assistant window), not a scraper, so
+  Cloudflare isn't in the way; its name/contact/dropdown/typeahead fields
+  fill page by page as you advance the wizard. iCIMS and Taleo fill too.
+  Where a specific field can't be confidently read it's left for you — the
+  assistant never bypasses a site's protections and never auto-submits.
 - **LinkedIn** rate-limits anonymous scraping within a few hundred results,
   so scraping stays opt-in (Settings) and unreliable by nature; the feed's
   "Search on LinkedIn" button is the dependable path — it opens a genuine
   LinkedIn search for your terms (last 14 days) in your own browser.
 - Scanned-image resumes (no text layer) are not supported.
-- **Apply Assist is an assistant, not an autopilot**: it never clicks a
-  final submit or login button, and it never automates intra-form page
-  navigation (multi-step application wizards are advanced by you). Even
+- **Apply Assist is an assistant, not an autopilot**: it may click a form
+  field's own dropdown or suggestion to *set a value* (the same as typing),
+  but it never clicks Submit, Apply, Next/Continue, Save, or Log in — a hard
+  denylist enforced by test in both fill paths — and it never automates
+  intra-form page navigation (multi-step application wizards are advanced by
+  you). Even
   though a human performs every submission and login, automating page
   navigation and field-filling on third-party sites may still touch the
   edges of some sites' Terms of Service — the app shows a one-time notice

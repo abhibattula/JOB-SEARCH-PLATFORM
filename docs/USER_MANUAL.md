@@ -629,6 +629,36 @@ UNKNOWN badges everywhere = run `python cli.py load-sponsorship`.
   "couldn't read this page" dead end, and the silent identity auto-fill
   are all gone.
 
+## 15. What changed in v1.1.0 (The Coverage Release)
+
+- **Custom dropdowns fill.** The "fancy" click-to-open menus (a
+  `role="combobox"` / React-Select widget, not a plain menu) that ATSes use
+  for work authorization, sponsorship, EEO, and "how did you hear about us"
+  now fill from your saved answers — on Greenhouse/Lever/Ashby and the new
+  ATSes alike. The assistant opens the dropdown, picks the option matching
+  your answer, and confirms it took; if no option matches, it leaves the
+  field and reports it for you (never a wrong pick). Type-to-search boxes
+  (location, school) enter the value and pick the matching suggestion.
+- **Workday, iCIMS, and Taleo applications fill.** Workday (where NVIDIA,
+  AMD, Qualcomm, and Intel post) was nearly empty before; its name/contact/
+  address/source/work-auth fields and its location/school typeaheads now
+  fill, page by page as *you* advance the multi-step application. iCIMS and
+  Taleo standard fields fill too.
+- **The safety model, precisely.** To operate a custom dropdown the assistant
+  must click the dropdown and its option — so it now *may* click a form
+  field's own widget to set a value (the same intent as typing). It still
+  **never** clicks Submit, Apply, Next, Continue, Save, Finish, Log in,
+  Register, or Pay — a hard denylist (matched on a control's own text/type/
+  role, never its container) enforced by automated test in both the browser
+  companion and the assistant-window fallback, and proven against a page
+  where a Submit button is disguised as a dropdown option. You advance every
+  page and click every real submit yourself.
+- Works the same whether you use the browser companion or the assistant
+  window. Still $0, still offline-capable, still never auto-submits. (The
+  project's governing principles were clarified in writing to record that
+  field-value clicks are allowed while submit/login controls are never
+  clicked.)
+
 ## 14. What changed in v1.0.0 (The Copilot Release)
 
 - **Apply Assist can now fill in YOUR own browser.** Install the browser

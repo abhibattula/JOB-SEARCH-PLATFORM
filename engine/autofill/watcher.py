@@ -22,12 +22,61 @@ import logging
 from dataclasses import dataclass
 
 from . import adapters
+from . import click_guard
 from . import field_core
 from . import fields as fields_mod
 
 log = logging.getLogger(__name__)
 
 MAX_FRAMES = 15
+
+# 011: the ~1.5s per-widget budget for a custom dropdown's options or a
+# typeahead's suggestions to appear (clarify Q2). Playwright wants ms.
+OPTION_WAIT_MS = 1500
+
+# Reads an element's own text/type/role + a descendant submit signal, so the
+# Playwright path consults the SAME click_guard denylist the extension does.
+CLICK_SIGNAL_JS = """
+el => {
+  let type = (el.getAttribute && el.getAttribute('type')) || el.type || '';
+  if (el.querySelector && el.querySelector('[type=submit]')) { type = 'submit'; }
+  return {
+    text: el.textContent || el.value
+      || (el.getAttribute && el.getAttribute('aria-label')) || '',
+    type: type,
+    role: (el.getAttribute && el.getAttribute('role')) || '',
+  };
+}
+"""
+
+
+class _DenylistedClick(Exception):
+    """A locator the click_guard refused (a submit-class control)."""
+
+
+def _guarded_click(locator) -> None:
+    """The ONLY click the Playwright fill path makes. Refuses submit-class
+    controls exactly as the extension's safeClick does."""
+    sig = locator.evaluate(CLICK_SIGNAL_JS)
+    if click_guard.is_denylisted(text=sig.get("text", ""),
+                                 type=sig.get("type", ""),
+                                 role=sig.get("role", "")):
+        raise _DenylistedClick()
+    locator.click()
+
+
+def _fill_widget(frame, locator, decision) -> None:
+    """Set a custom dropdown or typeahead: open/type → wait ≤1.5s for the
+    matching option → guarded-click it → verify. Raises on miss/timeout so
+    the caller reports needs_manual and closes the popup."""
+    target = decision.option_label or str(decision.value)
+    if decision.kind == "typeahead":
+        locator.fill(str(decision.value))  # the site fetches suggestions
+    else:
+        _guarded_click(locator)  # open the dropdown
+    option = frame.get_by_role("option", name=target, exact=False).first
+    option.wait_for(timeout=OPTION_WAIT_MS)  # raises TimeoutError on no match
+    _guarded_click(option)
 
 # Re-exported for existing tests/consumers; the vocabulary now lives in
 # field_core, shared with the extension backend (010).
@@ -36,13 +85,47 @@ _TERMINAL_OUTCOMES = field_core.TERMINAL_OUTCOMES
 # Serializes AND stamps in one pass. __jeDoc is a per-document token: it
 # survives SPA re-renders (same window) but resets on real navigation, so
 # (doc, je_idx) uniquely names an element for idempotency bookkeeping.
-SERIALIZE_JS = """
+SERIALIZE_JS = r"""
 (selector) => {
   window.__jeDoc = window.__jeDoc || Math.random().toString(36).slice(2);
   window.__jeNext = window.__jeNext || 1;
+  // 011: widget classification + displayed-value read, kept byte-parallel
+  // with the extension's content/scanner.js jeWidget/jeValue helpers.
+  function jeWidget(el) {
+    var tag = el.tagName.toLowerCase();
+    if (tag === 'select') return 'native_select';
+    var role = (el.getAttribute('role') || '').toLowerCase();
+    var ac = (el.getAttribute('aria-autocomplete') || '').toLowerCase();
+    var isInput = tag === 'input' || tag === 'textarea';
+    if (isInput && (ac === 'list' || ac === 'both')) return 'typeahead';
+    if (role === 'combobox' || role === 'listbox' ||
+        el.getAttribute('aria-haspopup') === 'listbox' ||
+        /select__control/.test(el.className || '')) {
+      return (isInput && ac) ? 'typeahead' : 'custom_combobox';
+    }
+    return '';
+  }
+  function jeValue(el, widget) {
+    if (el.type === 'checkbox' || el.type === 'radio') {
+      return el.checked ? 'on' : '';
+    }
+    if (widget === 'native_select') {
+      return el.value ? ((el.options[el.selectedIndex] || {}).text || '') : '';
+    }
+    if (widget === 'custom_combobox' || widget === 'typeahead') {
+      var sv = el.querySelector &&
+        el.querySelector('[class*=singleValue],[class*="-value"]');
+      if (sv) { return sv.textContent.trim(); }
+      if (el.value) { return el.value; }
+      var t = (el.textContent || '').trim();
+      return /^(select|choose|--)/i.test(t) ? '' : t;
+    }
+    return el.value || '';
+  }
   const els = document.querySelectorAll(selector);
   return Array.from(els).map(el => {
     if (!el.dataset.jeIdx) { el.dataset.jeIdx = String(window.__jeNext++); }
+    const widget = jeWidget(el);
     return {
       doc: window.__jeDoc,
       je_idx: el.dataset.jeIdx,
@@ -55,12 +138,12 @@ SERIALIZE_JS = """
       placeholder: el.placeholder || '',
       aria_label: el.getAttribute('aria-label') || '',
       autocomplete: el.autocomplete || '',
-      value: (el.type === 'checkbox' || el.type === 'radio')
-        ? (el.checked ? 'on' : '')
-        : (el.value || ''),
+      value: jeValue(el, widget),
       options: el.tagName === 'SELECT'
         ? Array.from(el.options).map(o => o.text)
         : null,
+      widget: widget,
+      automation_id: el.getAttribute('data-automation-id') || '',
       focused: el === document.activeElement,
       visible: !!(el.offsetParent || el.type === 'file'),
     };
@@ -154,6 +237,31 @@ def _process_field(frame, ats, descriptor, get_value, record, handled, result) -
                     raise
                 # custom widgets rejecting programmatic attachment are
                 # reported, never fatal (007 edge case, preserved)
+                record(descriptor, decision.tag, "", "needs_manual")
+                handled[key] = "needs_manual"
+                return
+            record(descriptor, decision.tag, decision.preview, "filled")
+            handled[key] = "filled"
+            result.filled_now += 1
+            return
+
+        # 011: custom dropdown / typeahead — parity with the extension.
+        # Every click is guarded; a miss/timeout closes the popup and
+        # reports needs_manual (never a stuck-open widget, never a wrong pick).
+        if decision.kind in ("combobox", "typeahead"):
+            try:
+                _fill_widget(frame, locator, decision)
+            except _DenylistedClick:
+                record(descriptor, decision.tag, "", "needs_manual")
+                handled[key] = "needs_manual"
+                return
+            except Exception as exc:
+                if _is_closed_error(exc):
+                    raise
+                try:
+                    locator.press("Escape")
+                except Exception:
+                    pass
                 record(descriptor, decision.tag, "", "needs_manual")
                 handled[key] = "needs_manual"
                 return

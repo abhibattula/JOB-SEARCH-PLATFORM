@@ -49,6 +49,11 @@ class Descriptor(_Strict):
     maxlength: int | None = None
     focused: bool = False
     visible: bool = True
+    # 011: how the field is operated (drives the fill technique). "" = a
+    # plain input handled by the text/checkbox/file paths.
+    widget: Literal["native_select", "custom_combobox", "typeahead", ""] = ""
+    # 011: Workday's data-automation-id, the stable adapter key ("" if absent)
+    automation_id: str = ""
 
     def as_watcher_dict(self) -> dict:
         return self.model_dump()
@@ -135,7 +140,8 @@ class FillItem(_Strict):
     fill-and-forget on the extension side; masked here in repr so a log
     formatter can never leak them."""
     je_idx: str
-    kind: Literal["text", "select", "checkbox", "file", "secret"]
+    kind: Literal["text", "select", "checkbox", "file", "secret",
+                  "combobox", "typeahead"]
     value: str = ""
     option_label: str | None = None
     file_url: str | None = None

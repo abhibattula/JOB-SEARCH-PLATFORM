@@ -26,6 +26,12 @@ _ext_manifest = os.path.join(ROOT, "extension", "manifest.json")
 assert os.path.exists(_ext_manifest), (
     f"companion extension manifest missing at {_ext_manifest}"
 )
+# 011: the shared submit-denylist guard must ship with the companion — a
+# missing click_guard.js would leave the filler unable to click safely.
+_ext_guard = os.path.join(ROOT, "extension", "content", "click_guard.js")
+assert os.path.exists(_ext_guard), (
+    f"companion click_guard.js missing at {_ext_guard}"
+)
 datas.append((os.path.join(ROOT, "extension"), "extension"))
 binaries = []
 
@@ -172,6 +178,6 @@ if sys.platform == "darwin":
         bundle_identifier="dev.abhinav.jobengine",
         info_plist={
             "NSHighResolutionCapable": True,
-            "CFBundleShortVersionString": "1.0.1",
+            "CFBundleShortVersionString": "1.1.0",
         },
     )

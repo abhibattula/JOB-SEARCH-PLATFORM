@@ -127,3 +127,40 @@ class TestOutbound:
         item = proto.FillItem(je_idx="3", kind="secret", value="hunter2")
         assert "hunter2" not in repr(item)
         assert "hunter2" not in str(item)
+
+
+class TestWidgetKinds011:
+    """011: custom dropdown + typeahead fill kinds and the widget descriptor."""
+
+    def test_combobox_and_typeahead_kinds_accepted(self):
+        combo = proto.FillItem(je_idx="4", kind="combobox", value="Yes",
+                               option_label="Yes")
+        assert combo.kind == "combobox" and combo.option_label == "Yes"
+        ta = proto.FillItem(je_idx="5", kind="typeahead", value="Austin, TX")
+        assert ta.kind == "typeahead"
+
+    def test_descriptor_carries_widget_and_automation_id(self):
+        msg = proto.parse_inbound(envelope(
+            "fields", tab_id=1, frame_id=0, url="u", doc="d",
+            descriptors=[make_descriptor(widget="custom_combobox",
+                                         automation_id="legalNameSection_firstName")],
+        ))
+        d = msg.descriptors[0]
+        assert d.widget == "custom_combobox"
+        assert d.automation_id == "legalNameSection_firstName"
+        assert d.as_watcher_dict()["widget"] == "custom_combobox"
+
+    def test_descriptor_widget_defaults_empty(self):
+        msg = proto.parse_inbound(envelope(
+            "fields", tab_id=1, frame_id=0, url="u", doc="d",
+            descriptors=[make_descriptor()],
+        ))
+        assert msg.descriptors[0].widget == ""
+        assert msg.descriptors[0].automation_id == ""
+
+    def test_unknown_widget_value_rejected(self):
+        with pytest.raises(proto.ProtocolError):
+            proto.parse_inbound(envelope(
+                "fields", tab_id=1, frame_id=0, url="u", doc="d",
+                descriptors=[make_descriptor(widget="wobble")],
+            ))

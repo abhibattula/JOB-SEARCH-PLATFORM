@@ -40,6 +40,22 @@ templates.env.globals["current_theme"] = _current_theme
 # 008 (FR-032): plain-language changelog behind the What's New overlay —
 # keyed by APP_VERSION, shown once per version.
 WHATS_NEW: dict[str, list[str]] = {
+    "1.1.0": [
+        "Apply Assist fills a lot more now. Custom dropdowns — the fancy "
+        "click-to-open menus used for work authorization, EEO, and 'how did "
+        "you hear about us' — fill from your saved answers, on every job "
+        "board. Type-to-search boxes (location, school) pick the matching "
+        "suggestion.",
+        "Workday applications fill: NVIDIA, AMD, Qualcomm, Intel and other "
+        "Workday employers now get their name/contact/dropdown fields filled, "
+        "page by page as you advance the application. iCIMS and Taleo forms "
+        "fill too.",
+        "It still never clicks Submit, Apply, Next, or Log in — it only sets "
+        "field values (the same as typing). You advance every page and click "
+        "the real submit yourself, exactly as before.",
+        "After this update, open your browser's extensions page and click the "
+        "reload (↻) icon on the Job Engine Companion card once.",
+    ],
     "1.0.1": [
         "Fixed: the browser companion could fail to connect (the status dot "
         "stayed grey). The companion now reliably connects within about 30 "

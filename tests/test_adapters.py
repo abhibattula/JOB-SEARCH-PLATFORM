@@ -7,7 +7,7 @@ from engine.autofill import adapters
 def d(**overrides):
     field = {"tag": "input", "type": "text", "name": "", "id": "",
              "label_text": "", "placeholder": "", "aria_label": "",
-             "autocomplete": ""}
+             "autocomplete": "", "automation_id": ""}
     field.update(overrides)
     return field
 
@@ -76,7 +76,48 @@ class TestSharedAutocomplete:
         assert adapters.classify("ashby", d(autocomplete="tel")) == "phone"
 
 
+class TestWorkday011:
+    def test_host_detection_dynamic_subdomains(self):
+        assert adapters.ats_from_url(
+            "https://nvidia.wd5.myworkdayjobs.com/en-US/apply") == "workday"
+        assert adapters.ats_from_url(
+            "https://amd.wd1.myworkdayjobs.com/careers") == "workday"
+        assert adapters.ats_from_url(
+            "https://foo.myworkdayjobs.com/x") == "workday"
+
+    def test_data_automation_id_map(self):
+        assert adapters.classify(
+            "workday", d(automation_id="legalNameSection_firstName")) == "first_name"
+        assert adapters.classify(
+            "workday", d(automation_id="legalNameSection_lastName")) == "last_name"
+        assert adapters.classify("workday", d(automation_id="email")) == "email"
+        assert adapters.classify(
+            "workday", d(automation_id="phone-number")) == "phone"
+        assert adapters.classify(
+            "workday", d(automation_id="addressSection_city")) == "location_city"
+
+    def test_unknown_automation_id_falls_through(self):
+        assert adapters.classify(
+            "workday", d(automation_id="somethingWeirdTenantSpecific")) is None
+
+
+class TestIcimsTaleo011:
+    def test_icims_host_and_fields(self):
+        assert adapters.ats_from_url(
+            "https://careers-acme.icims.com/jobs/123/apply") == "icims"
+        assert adapters.classify("icims", d(id="firstname")) == "first_name"
+        assert adapters.classify("icims", d(id="lastname")) == "last_name"
+        assert adapters.classify("icims", d(id="email")) == "email"
+
+    def test_taleo_host_and_fields(self):
+        assert adapters.ats_from_url(
+            "https://acme.taleo.net/careersection/x") == "taleo"
+        assert adapters.classify("taleo", d(name="firstName")) == "first_name"
+        assert adapters.classify("taleo", d(name="lastName")) == "last_name"
+
+
 class TestUnknownAts:
     def test_none_ats_returns_none(self):
         assert adapters.classify(None, d(name="first_name")) is None
+        # workday keys on data-automation-id, so a bare name is not mapped
         assert adapters.classify("workday", d(name="first_name")) is None

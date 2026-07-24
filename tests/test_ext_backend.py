@@ -240,6 +240,67 @@ class TestPageEvents:
         assert bc._state.interrupted is False
 
 
+class TestWidgetFills011:
+    """011: custom dropdown + typeahead fill items, and the C1 sensitive-
+    question-as-combobox safety."""
+
+    def test_custom_combobox_emits_combobox_item(self, queue, sent):
+        open_the_tab(queue, sent)
+        sent.clear()
+        ext_backend.handle_message(fields_msg(descriptors=[
+            descriptor(je_idx="8", tag="div", type="", name="source",
+                       label_text="How did you hear about us?",
+                       widget="custom_combobox", options=["LinkedIn", "Friend"]),
+        ]))
+        # profile has no how_heard answer, so this only fills if the answer
+        # bank has it — seed one via the app path is overkill; assert the
+        # SHAPE when a value exists by using a field the profile answers:
+        # first_name as a (contrived) combobox
+        ext_backend.handle_message(fields_msg(descriptors=[
+            descriptor(je_idx="9", tag="div", type="", name="first_name",
+                       label_text="First name", widget="custom_combobox",
+                       options=["Abhinav", "Other"]),
+        ]))
+        fill = next(m for m in sent if m["type"] == "fill"
+                    and any(i.get("kind") == "combobox" for i in m["items"]))
+        item = next(i for i in fill["items"] if i["kind"] == "combobox")
+        assert item["option_label"] == "Abhinav"
+
+    def test_typeahead_emits_typeahead_item(self, queue, sent, monkeypatch):
+        from engine.autofill import answer_bank
+        monkeypatch.setattr(answer_bank, "lookup",
+                            lambda q: {"answer": "Austin, TX"})
+        open_the_tab(queue, sent)
+        sent.clear()
+        ext_backend.handle_message(fields_msg(descriptors=[
+            descriptor(je_idx="7", tag="input", type="text", name="city",
+                       id="city", label_text="City", widget="typeahead"),
+        ]))
+        fill = next(m for m in sent if m["type"] == "fill")
+        item = next(i for i in fill["items"] if i["je_idx"] == "7")
+        assert item["kind"] == "typeahead" and item["value"] == "Austin, TX"
+
+    def test_c1_sensitive_combobox_no_answer_sends_no_fill(self, queue, sent):
+        # a work-auth CUSTOM COMBOBOX with no saved answer must raise the
+        # pending confirmation and send NO fill item — never an AI draft,
+        # exactly like the native-select sensitive path.
+        open_the_tab(queue, sent)
+        sent.clear()
+        ext_backend.handle_message(fields_msg(descriptors=[
+            descriptor(je_idx="6", tag="div", type="", name="work_auth",
+                       id="work_auth",
+                       label_text="Are you legally authorized to work in the US?",
+                       widget="custom_combobox", options=["Yes", "No"]),
+        ]))
+        # no fill item for the sensitive combobox
+        for m in sent:
+            if m["type"] == "fill":
+                assert not any(i["je_idx"] == "6" for i in m["items"])
+        # and it is surfaced for confirmation
+        assert bc._state.pending is not None
+        assert bc._state.pending["category"] == "work_authorization"
+
+
 class TestAdHocFillHere:
     """010 FR-004a: 'Fill this page' on whatever the user is browsing."""
 

@@ -16,6 +16,7 @@
       "all_frames": true,
       "run_at": "document_idle",
       "js": [
+        "content/click_guard.js",
         "content/scanner.js",
         "content/filler.js",
         "content/overlay.js",

@@ -1,14 +1,58 @@
-<!DOCTYPE html><html><head><meta charset="utf-8"><title>Custom combobox</title></head>
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Custom combobox (fillable)</title></head>
 <body>
-<h1>Custom dropdown (no native select)</h1>
+<h1>Custom dropdown (ARIA combobox, no native select)</h1>
 <form id="form">
-  <label>First Name<input name="first_name" type="text"></label>
-  <!-- A React-Select-style widget: a div, not a <select>. It can only be
-       set by CLICKING options open — which the companion must NEVER do.
-       The engine must report needs_manual, never interact. -->
-  <div class="rs" data-field="work_auth" role="combobox" aria-label="Work authorization">
-    <div class="rs-value">Select…</div>
+  <label for="fn">First Name</label><input id="fn" name="first_name" type="text">
+  <!-- A React-Select-style widget: a div with role=combobox. The companion
+       must open it (click) and click the matching option — its own field,
+       never a submit. -->
+  <label id="wa-label">Are you legally authorized to work in the US?</label>
+  <div class="rs" role="combobox" aria-label="Are you legally authorized to work in the US?"
+       tabindex="0" id="wa">
+    <span class="rs__singleValue" style="display:none"></span>
+    <span class="rs__placeholder">Select…</span>
   </div>
+  <div id="wa-menu" role="listbox" style="display:none"></div>
+  <button type="submit" id="real-submit">Submit application</button>
 </form>
 <script src="/_mirror.js"></script>
+<script>
+  // A minimal but faithful custom combobox: clicking the control opens a
+  // listbox of [role=option]s; clicking an option sets a singleValue node
+  // and fires input on a hidden field the /echo mirror can see.
+  var wa = document.getElementById('wa');
+  var menu = document.getElementById('wa-menu');
+  var sv = wa.querySelector('.rs__singleValue');
+  var ph = wa.querySelector('.rs__placeholder');
+  var OPTIONS = ['Yes, I am authorized', 'No, I am not authorized'];
+  // hidden mirror field so /echo receives the chosen value under a name
+  var hidden = document.createElement('input');
+  hidden.type = 'text'; hidden.name = 'work_auth'; hidden.style.position='absolute';
+  hidden.style.left='-9999px'; document.getElementById('form').appendChild(hidden);
+  function openMenu() {
+    menu.innerHTML = '';
+    OPTIONS.forEach(function (text) {
+      var o = document.createElement('div');
+      o.setAttribute('role', 'option'); o.textContent = text;
+      o.addEventListener('click', function () {
+        sv.textContent = text; sv.style.display = ''; ph.style.display = 'none';
+        menu.style.display = 'none';
+        hidden.value = text;
+        hidden.dispatchEvent(new Event('input', { bubbles: true }));
+      });
+      menu.appendChild(o);
+    });
+    menu.style.display = '';
+  }
+  wa.addEventListener('click', openMenu);
+  wa.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape') { menu.style.display = 'none'; }
+  });
+  // if the app ever clicks the real submit, echo it so the test catches it
+  document.getElementById('real-submit').addEventListener('click', function (e) {
+    e.preventDefault();
+    fetch('/echo', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name:'__submitted', value:'yes'})});
+  });
+</script>
 </body></html>

@@ -26,7 +26,11 @@ FieldDescriptor = dict[str, Any]
 # every serializer shares one definition.
 FIELD_QUERY_SELECTOR = (
     "input:not([type=submit]):not([type=button]):not([type=reset]),"
-    " textarea, select"
+    " textarea, select,"
+    # 011: custom dropdowns that are not native <select> — React-Select and
+    # ARIA comboboxes/listboxes (Workday, Greenhouse's newer widgets, etc.)
+    " [role=combobox], [role=listbox], [aria-haspopup=listbox],"
+    " [class*=select__control]"
 )
 
 _WORK_AUTH_RE = re.compile(
@@ -47,6 +51,17 @@ _YEARS_EXPERIENCE_RE = re.compile(
 _SALARY_RE = re.compile(r"salary|compensation|pay[\s_-].{0,10}expect", re.IGNORECASE)
 _HOW_HEARD_RE = re.compile(
     r"how[\s_-].{0,15}hear|referral[\s_-]*source|how[\s_-]did[\s_-]you[\s_-]find",
+    re.IGNORECASE,
+)
+# 011: Workday-style typeahead fields — factual, answer-bank-driven (never
+# AI-drafted). "city"/"location" and "school"/"university".
+_LOCATION_CITY_RE = re.compile(
+    r"\bcity\b|current[\s_-]*location|where[\s_-].{0,20}(located|live)|"
+    r"\blocation\b(?!.*preferen)",
+    re.IGNORECASE,
+)
+_SCHOOL_RE = re.compile(
+    r"\bschool\b|\buniversity\b|\bcollege\b|\binstitution\b|alma[\s_-]*mater",
     re.IGNORECASE,
 )
 _LINKEDIN_RE = re.compile(r"linkedin", re.IGNORECASE)
@@ -111,6 +126,10 @@ def classify(field: FieldDescriptor) -> str:
         return "salary_expectation"
     if _HOW_HEARD_RE.search(text):
         return "how_heard"
+    if _SCHOOL_RE.search(text):
+        return "school"
+    if _LOCATION_CITY_RE.search(text):
+        return "location_city"
 
     # Links.
     if _LINKEDIN_RE.search(text):

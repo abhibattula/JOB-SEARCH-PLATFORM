@@ -27,7 +27,14 @@ _HOSTS = {
     "job-boards.greenhouse.io": "greenhouse",
     "jobs.lever.co": "lever",
     "jobs.ashbyhq.com": "ashby",
+    # 011: iCIMS + Taleo careers hosts (exact-or-subdomain match below)
+    "icims.com": "icims",
+    "taleo.net": "taleo",
 }
+
+# 011: Workday tenants are per-company dynamic subdomains
+# (e.g. nvidia.wd5.myworkdayjobs.com) — matched by suffix, not exact host.
+_WORKDAY_SUFFIX = "myworkdayjobs.com"
 
 # exact name/id attribute → taxonomy tag, per ATS
 _MAPS: dict[str, dict[str, str]] = {
@@ -66,6 +73,35 @@ _MAPS: dict[str, dict[str, str]] = {
         "_systemfield_resume": "resume_upload",
         "_systemfield_location": "free_text_unknown",
     },
+    # 011: iCIMS — stable lowercased field ids/names
+    "icims": {
+        "firstname": "first_name",
+        "lastname": "last_name",
+        "email": "email",
+        "phone": "phone",
+        "resume": "resume_upload",
+    },
+    # 011: Taleo — legacy camelCase names
+    "taleo": {
+        "firstName": "first_name",
+        "lastName": "last_name",
+        "email": "email",
+        "emailAddress": "email",
+        "phoneNumber": "phone",
+        "homePhone": "phone",
+    },
+}
+
+# 011: Workday keys on data-automation-id, not name/id — stable across
+# tenants. Consulted first for the "workday" ATS.
+_WORKDAY_AUTOMATION = {
+    "legalNameSection_firstName": "first_name",
+    "legalNameSection_lastName": "last_name",
+    "email": "email",
+    "phone-number": "phone",
+    "phoneNumber": "phone",
+    "addressSection_city": "location_city",
+    "source": "how_heard",
 }
 
 # HTML autocomplete attribute — the highest-confidence signal any form can
@@ -82,6 +118,9 @@ _AUTOCOMPLETE = {
 
 def ats_from_url(url: str | None) -> str | None:
     host = urlsplit(url or "").netloc.lower()
+    # Workday tenants are dynamic subdomains under myworkdayjobs.com
+    if host == _WORKDAY_SUFFIX or host.endswith(f".{_WORKDAY_SUFFIX}"):
+        return "workday"
     for known, ats in _HOSTS.items():
         if host == known or host.endswith(f".{known}"):
             return ats
@@ -91,6 +130,14 @@ def ats_from_url(url: str | None) -> str | None:
 def classify(ats: str | None, field: FieldDescriptor) -> str | None:
     """Deterministic tag for a known ATS's native attribute, else None
     (caller falls back to the generic classifier)."""
+    # 011: Workday keys on data-automation-id first.
+    if ats == "workday":
+        aid = field.get("automation_id") or ""
+        if aid in _WORKDAY_AUTOMATION:
+            return _WORKDAY_AUTOMATION[aid]
+        autocomplete = (field.get("autocomplete") or "").lower()
+        return _AUTOCOMPLETE.get(autocomplete)
+
     mapping = _MAPS.get(ats or "")
     if not mapping:
         return None

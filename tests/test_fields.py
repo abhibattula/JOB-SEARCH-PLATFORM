@@ -101,6 +101,15 @@ class TestQABank:
     def test_cover_letter_textarea(self):
         assert fields.classify(field(tag="textarea", label_text="Cover Letter")) == "cover_letter"
 
+    def test_location_city_011(self):
+        assert fields.classify(field(label_text="City")) == "location_city"
+        assert fields.classify(field(label_text="Where are you located?")) == "location_city"
+        assert fields.classify(field(label_text="Current location")) == "location_city"
+
+    def test_school_011(self):
+        assert fields.classify(field(label_text="School")) == "school"
+        assert fields.classify(field(label_text="University or institution")) == "school"
+
 
 class TestLoginFieldsRequireCorroboratingContext:
     """Checklist item: login_* tags must not fire on a bare type=password/

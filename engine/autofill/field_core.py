@@ -87,12 +87,28 @@ def decide(ats: str | None, descriptor: dict, handled: dict, get_value) -> Decis
         name = str(value).replace("\\", "/").rsplit("/", 1)[-1]
         return Decision("fill", tag=tag, kind="file", value=value, preview=name)
 
-    if descriptor.get("options"):
-        matched = fields_mod.match_option(str(value), descriptor["options"])
-        if matched is None:
-            return Decision("settle", tag=tag, outcome="no_match")
-        return Decision("fill", tag=tag, kind="select", value=value,
-                        option_label=matched, preview=matched)
+    # 011: widget-aware option handling. A typeahead types then picks a
+    # suggestion; a custom combobox is opened and an option clicked; a native
+    # <select> keeps its exact prior path. Non-combobox descriptors that
+    # merely carry options are treated as native selects (unchanged).
+    widget = descriptor.get("widget") or ""
+    if widget == "typeahead":
+        return Decision("fill", tag=tag, kind="typeahead", value=str(value),
+                        option_label=str(value), preview=str(value))
+    if widget == "custom_combobox" or descriptor.get("options"):
+        options = descriptor.get("options")
+        if options:
+            matched = fields_mod.match_option(str(value), options)
+            if matched is None:
+                return Decision("settle", tag=tag, outcome="no_match")
+            label = matched
+        else:
+            # custom combobox whose options aren't readable until opened:
+            # pick by the value's own text (the filler matches visible text)
+            label = str(value)
+        kind = "combobox" if widget == "custom_combobox" else "select"
+        return Decision("fill", tag=tag, kind=kind, value=value,
+                        option_label=label, preview=label)
 
     if (descriptor.get("type") or "") == "checkbox":
         if not value:
