@@ -378,3 +378,98 @@ class TestReconnectRearmsWatch:
         sent.clear()
         ext_backend.register(sent.append, lambda code: None, "1.0.1")
         assert not [m for m in sent if m["type"] == "watch_start"]
+
+
+class TestDiscoveryProtocol012:
+    """012: score_request / save_job inbound message validation."""
+
+    def test_score_request_parses(self):
+        msg = ext_protocol.parse_inbound(json.dumps({
+            "v": 1, "type": "score_request", "tab_id": 7,
+            "url": "https://x/1", "title": "SWE", "company": "Acme",
+            "description": "python",
+        }))
+        assert isinstance(msg, ext_protocol.ScoreRequest)
+        assert msg.tab_id == 7 and msg.company == "Acme"
+
+    def test_save_job_parses_with_optional_location(self):
+        msg = ext_protocol.parse_inbound(json.dumps({
+            "v": 1, "type": "save_job", "tab_id": 7, "url": "https://x/1",
+            "title": "SWE", "company": "Acme", "description": "d",
+        }))
+        assert isinstance(msg, ext_protocol.SaveJob)
+        assert msg.location == ""
+
+    def test_unknown_type_rejected(self):
+        with pytest.raises(ext_protocol.ProtocolError):
+            ext_protocol.parse_inbound(json.dumps({"v": 1, "type": "bogus"}))
+
+    def test_oversize_rejected(self):
+        big = "x" * (ext_protocol.MAX_MESSAGE_BYTES + 1)
+        with pytest.raises(ext_protocol.ProtocolError):
+            ext_protocol.parse_inbound(json.dumps({
+                "v": 1, "type": "score_request", "tab_id": 1, "url": "u",
+                "title": "t", "company": "c", "description": big,
+            }))
+
+
+class TestDiscoveryHandlers012:
+    """012: the discovery handlers are INDEPENDENT of the fill session —
+    they never read or mutate _watch / bc._state."""
+
+    def _profile(self):
+        db.save_profile(first_name="A", last_name="B", email="a@b.com",
+                        resume_text="python verilog fpga", skills=[])
+
+    def test_score_request_emits_score_result(self, tmp_db, sent):
+        self._profile()
+        ext_backend.handle_message(ext_protocol.ScoreRequest(
+            tab_id=99, url="https://x/1", title="FPGA Engineer",
+            company="Acme", description="python fpga"))
+        results = [m for m in sent if m["type"] == "score_result"]
+        assert results, "no score_result emitted"
+        r = results[0]
+        assert r["tab_id"] == 99
+        assert "match_score" in r and "sponsor_grade" in r
+        assert r["needs_resume"] is False
+        # independence: no watch session was created
+        assert ext_backend._watch["tab_id"] is None
+
+    def test_save_job_persists_marks_saved_and_dedups(self, tmp_db, sent):
+        ext_backend.handle_message(ext_protocol.SaveJob(
+            tab_id=5, url="https://x/save/1", title="SWE", company="Acme",
+            description="d", location="SF"))
+        first = [m for m in sent if m["type"] == "save_result"][-1]
+        assert first["already"] is False
+        job = db.get_job_by_url("https://x/save/1")
+        assert job is not None and job["status"] == "saved" and job["source"] == "manual"
+        # repeat save of the same url → already, no duplicate
+        sent.clear()
+        ext_backend.handle_message(ext_protocol.SaveJob(
+            tab_id=5, url="https://x/save/1", title="SWE", company="Acme",
+            description="d", location="SF"))
+        second = [m for m in sent if m["type"] == "save_result"][-1]
+        assert second["already"] is True
+        with db._conn() as conn:
+            n = conn.execute("SELECT COUNT(*) c FROM jobs WHERE url=?",
+                             ("https://x/save/1",)).fetchone()["c"]
+        assert n == 1
+        # independence
+        assert ext_backend._watch["tab_id"] is None
+
+    def test_save_job_cross_source_duplicate_reports_already(self, tmp_db, sent):
+        # an existing job from another source, same (company,title,location)
+        db.upsert_job({"title": "SWE", "company": "Acme",
+                       "url": "https://greenhouse/acme/1", "source": "greenhouse",
+                       "location": "SF", "description": "d", "posted_date": None})
+        sent.clear()
+        ext_backend.handle_message(ext_protocol.SaveJob(
+            tab_id=5, url="https://linkedin/acme/9", title="SWE", company="Acme",
+            description="d", location="SF"))
+        res = [m for m in sent if m["type"] == "save_result"][-1]
+        assert res["already"] is True
+        # the cross-source dup is not duplicated
+        with db._conn() as conn:
+            n = conn.execute(
+                "SELECT COUNT(*) c FROM jobs WHERE title='SWE'").fetchone()["c"]
+        assert n == 1

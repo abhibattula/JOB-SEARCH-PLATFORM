@@ -1,6 +1,19 @@
 <!--
 Sync Impact Report
 ==================
+Version change: 1.1.2 → 1.1.3 (2026-07-24)
+Modified sections:
+  - Principle I › closing paragraph — appended a Principle III CLARIFICATION
+    (feature 012): the companion MAY READ the current page's public job
+    metadata (title/company/description the user is already viewing) to render
+    a LOCAL-ONLY, READ-ONLY discovery overlay (a match/sponsorship badge). This
+    reads nothing it isn't shown, clicks/mutates/submits NOTHING on the page,
+    scrapes no search-result lists or other pages, and sends the metadata only
+    to the local app. A bounded read-only addition — not a relaxation of the
+    no-click/no-submit rule (III) or the polite-ingestion rule (III proper).
+Templates status: all compatible (no template references the read rule).
+
+Previous report (1.1.1 → 1.1.2, 2026-07-24):
 Version change: 1.1.1 → 1.1.2 (2026-07-24)
 Modified sections:
   - Principle I › closing paragraph — appended a Principle III CLARIFICATION
@@ -65,6 +78,15 @@ intent as typing. It MUST NEVER click a control that submits, applies,
 advances (next/continue), saves, finishes, logs in, registers, creates an
 account, or pays. The human still performs every submit/login and advances
 every multi-step wizard themselves.
+Clarification (feature 012): the companion MAY READ the current page's public
+job metadata (the title/company/description the user is already viewing) to
+render a LOCAL-ONLY, READ-ONLY discovery overlay (a match-score + sponsorship
+badge). The discovery path clicks, types into, submits, or mutates NOTHING on
+the page (it only renders its own shadow-DOM badge), scrapes no search-result
+lists or other pages, and sends the read metadata only to the local app over
+the existing authenticated companion channel. This is a bounded read-only
+addition, not a relaxation of the no-click/no-submit rule above or of the
+polite-ingestion rule in Principle III.
 
 ### II. Zero-Subscription Cost
 
@@ -140,4 +162,4 @@ templates listed there. Plans and task lists MUST pass the Constitution Check ga
 deviations discovered during implementation MUST be either corrected or recorded in
 Complexity Tracking before the milestone is declared done.
 
-**Version**: 1.1.2 | **Ratified**: 2026-07-18 | **Last Amended**: 2026-07-24
+**Version**: 1.1.3 | **Ratified**: 2026-07-18 | **Last Amended**: 2026-07-24

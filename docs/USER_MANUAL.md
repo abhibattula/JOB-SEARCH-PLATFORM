@@ -629,6 +629,38 @@ UNKNOWN badges everywhere = run `python cli.py load-sponsorship`.
   "couldn't read this page" dead end, and the silent identity auto-fill
   are all gone.
 
+## 16. What changed in v1.2.0 (The Discovery Copilot)
+
+- **A match + sponsorship badge on any job you browse.** With the companion
+  connected, visiting a job posting — LinkedIn, Indeed, a Greenhouse/Lever/
+  Ashby board, or a company careers page — pops up a small badge showing your
+  **match score** against your resume and the company's **H-1B sponsorship**
+  flag (the A–F grade, a cap-exempt likelihood, or "unknown" when the evidence
+  is insufficient — never a fabricated grade). **Save to Job Engine** captures
+  the posting into your feed and Saved list in one click, with no duplicates.
+- **How it detects a posting.** The primary signal is the site-agnostic
+  schema.org `JobPosting` structured data most boards emit; LinkedIn and Indeed
+  get dedicated readers because they don't always publish it cleanly. Only
+  single postings show a badge — never search-result lists or non-job pages.
+- **How it scores.** The local app scores on demand over the same authenticated
+  companion bridge, reusing the offline basic-match scorer (instant, no cloud
+  key) and the existing sponsorship intelligence — two-tier: an instant lookup
+  if the company is already graded, else an on-demand match against the bundled
+  H-1B records so even a brand-new company gets a grade.
+- **Strictly read-only and private.** The badge only *reads* the page you're
+  already viewing and renders its own card. It never clicks, types into,
+  submits, or mutates the page (enforced by automated test), scrapes no lists
+  or other pages, and sends the posting details only to your local app —
+  nothing leaves your machine. It's independent of Apply Assist: it can't
+  disturb an active fill, and a fill can't disturb it.
+- **Out of the way.** Bottom-right, collapsible (▁) and dismissable (✕), never
+  covering the page's controls; it appears only while the app is running and
+  the companion is connected, and prompts you to add a resume if you haven't so
+  the match is real, not a guess. Reload the companion once after updating (see
+  §14). Still $0, still offline, still never auto-submits. (The governing
+  principles were clarified in writing to record that reading the current
+  page's public job metadata for a local-only, read-only overlay is permitted.)
+
 ## 15. What changed in v1.1.0 (The Coverage Release)
 
 - **Custom dropdowns fill.** The "fancy" click-to-open menus (a

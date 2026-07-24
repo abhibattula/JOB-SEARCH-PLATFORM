@@ -208,13 +208,24 @@ def main() -> int:
     print(f"companion stamped -> manifest={os.path.exists(ext_manifest)} "
           f"pairing={os.path.exists(ext_pairing)}")
     ext_guard = os.path.join(data_dir, "extension", "content", "click_guard.js")
+    # 012: the discovery content script must ship too, or the browse-time badge
+    # silently does nothing in the frozen build.
+    ext_discovery = os.path.join(data_dir, "extension", "content", "discovery.js")
     if not (os.path.exists(ext_manifest) and os.path.exists(ext_pairing)
-            and os.path.exists(ext_guard)):
+            and os.path.exists(ext_guard) and os.path.exists(ext_discovery)):
         proc.terminate()
         print("FAIL: companion extension not fully materialized "
               f"(manifest={os.path.exists(ext_manifest)} "
               f"pairing={os.path.exists(ext_pairing)} "
-              f"click_guard={os.path.exists(ext_guard)})")
+              f"click_guard={os.path.exists(ext_guard)} "
+              f"discovery={os.path.exists(ext_discovery)})")
+        return 1
+    ext_manifest_data = json.loads(
+        open(ext_manifest, encoding="utf-8").read())
+    if ext_manifest_data.get("version") != "1.2.0":
+        proc.terminate()
+        print(f"FAIL: shipped extension manifest version "
+              f"{ext_manifest_data.get('version')} != 1.2.0")
         return 1
     companion_html = urllib.request.urlopen(
         base + "/companion", timeout=30

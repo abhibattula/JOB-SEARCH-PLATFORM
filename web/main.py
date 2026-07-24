@@ -40,6 +40,21 @@ templates.env.globals["current_theme"] = _current_theme
 # 008 (FR-032): plain-language changelog behind the What's New overlay —
 # keyed by APP_VERSION, shown once per version.
 WHATS_NEW: dict[str, list[str]] = {
+    "1.2.0": [
+        "New: the Discovery badge. As you browse job postings — LinkedIn, "
+        "Indeed, Greenhouse/Lever/Ashby, or any company career page — a small "
+        "badge appears showing your match score against your resume and an "
+        "H-1B sponsorship flag for the company.",
+        "One click on the badge saves the posting straight into your Job "
+        "Engine feed (and your Saved list) — no copy-pasting links, titles, or "
+        "companies.",
+        "It's read-only: the badge only reads what's on the page and shows its "
+        "own card. It never clicks, types, or submits anything, and the page "
+        "details are scored on your own machine — nothing leaves your computer.",
+        "The badge appears only while the app is running and the companion is "
+        "connected. After this update, open your browser's extensions page and "
+        "click the reload (↻) icon on the Job Engine Companion card once.",
+    ],
     "1.1.0": [
         "Apply Assist fills a lot more now. Custom dropdowns — the fancy "
         "click-to-open menus used for work authorization, EEO, and 'how did "

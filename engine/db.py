@@ -925,6 +925,17 @@ def get_company_by_name(name: str) -> dict | None:
     return dict(row) if row else None
 
 
+def get_job_by_url(url: str) -> dict | None:
+    """012: exact-URL lookup for the discovery badge's already-saved check and
+    the save handler's id/status resolution. Indexed on the existing
+    jobs.url UNIQUE column."""
+    with _conn() as conn:
+        row = conn.execute(
+            "SELECT id, title, status, source FROM jobs WHERE url = ?", (url,)
+        ).fetchone()
+    return dict(row) if row else None
+
+
 def store_h1b_employers(employers: dict) -> None:
     """Upsert normalized -> {display_name, approvals, denials, wage medians,
     lca_titles} records."""

@@ -106,6 +106,27 @@ class Pong(_Strict):
     pass
 
 
+class ScoreRequest(_Strict):
+    """012: a job posting the user is browsing, to be scored on demand. The
+    discovery content script sends this; `tab_id` is stamped by the SW. The
+    fill session is never involved."""
+    tab_id: int
+    url: str
+    title: str = ""
+    company: str = ""
+    description: str = ""
+
+
+class SaveJob(_Strict):
+    """012: save the browsed posting into the feed/tracker (source=manual)."""
+    tab_id: int
+    url: str
+    title: str = ""
+    company: str = ""
+    description: str = ""
+    location: str = ""
+
+
 _INBOUND: dict[str, type[_Strict]] = {
     "hello": Hello,
     "tab_opened": TabOpened,
@@ -114,6 +135,8 @@ _INBOUND: dict[str, type[_Strict]] = {
     "page_event": PageEvent,
     "fill_here": FillHere,
     "pong": Pong,
+    "score_request": ScoreRequest,
+    "save_job": SaveJob,
 }
 
 

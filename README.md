@@ -89,6 +89,20 @@ entirely on your machine for $0.
   your review before anything is saved or typed. Saved logins autofill from
   your OS's own credential store (never this app's database) the same way —
   filled, never auto-submitted.
+- **Discovery badge — score any job you browse (v1.2)**: with the companion
+  connected, a small badge appears on any job posting you visit — LinkedIn,
+  Indeed, Greenhouse/Lever/Ashby, or a company career page — showing your
+  **match score** against your resume and the company's **H-1B sponsorship**
+  flag (the same A–F grade / cap-exempt signal the feed uses, "unknown" when
+  there isn't enough evidence). One click **Save to Job Engine** drops the
+  posting into your feed and Saved list — no copy-pasting links, titles, or
+  companies. It's strictly **read-only**: the badge only reads the page you're
+  already viewing and shows its own card; it never clicks, types, or submits
+  anything, scores everything **on your machine** (nothing leaves your
+  computer), and stays completely out of Apply Assist's way. Detection uses the
+  site-agnostic schema.org JobPosting signal plus dedicated LinkedIn/Indeed
+  readers. The badge only shows while the app is running and the companion is
+  connected, and can be collapsed or dismissed.
 - **Resume builder + tailored PDFs**: uploading a resume returns
   instantly and extraction runs in the background with live progress; a
   **review screen** then shows every profile field — yours vs the
@@ -162,8 +176,10 @@ it fill a bundled practice application with your own data, or just browse to
 any real posting and click the companion's **"Fill this page"** button. For
 open-ended questions ("Why this company?") it drafts an answer from your
 resume and flags it for your review — you always edit/confirm and click
-*Submit* yourself. Full walkthrough in
-[docs/USER_GUIDE.md](docs/USER_GUIDE.md).
+*Submit* yourself. And once the companion is connected, just **browse** any job
+posting — the **Discovery badge** pops up with your match score and the
+company's sponsorship flag, with one click to **Save to Job Engine**. Full
+walkthrough in [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 
 > The extension loads *unpacked* (developer mode) rather than from the Chrome
 > Web Store, so Chrome may show a "Disable developer mode extensions?" nag on

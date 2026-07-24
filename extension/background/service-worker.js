@@ -29,6 +29,11 @@ state.onMessage = (msg) => {
                            msg.frame_id); break;
     case "overlay_state": toContent(msg.tab_id, { type: "overlay_state",
                                                   summary: msg.summary }, 0); break;
+    // 012 discovery: score/save replies go to the requesting tab's top frame.
+    case "score_result": toContent(msg.tab_id, { ...msg, type: "score_result" }, 0);
+      break;
+    case "save_result": toContent(msg.tab_id, { ...msg, type: "save_result" }, 0);
+      break;
     default: break;
   }
 };

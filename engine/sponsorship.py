@@ -163,6 +163,47 @@ def store_employers(employers: dict) -> None:
     db.store_h1b_employers(employers)
 
 
+def grade_company(name: str, employers: dict | None = None) -> dict:
+    """Grade a single company on demand from the public H-1B records.
+
+    The reusable core of the per-company grading loop (feature 012): a job-board
+    company name → `{sponsor_grade, cap_exempt, approvals, has_sponsor_data,
+    denials, wage_level, lca_titles}`. `apply_to_companies` (batch) and
+    `discovery.score_page` (on demand for a browsed posting) both call this so
+    the two paths can never diverge. `employers` may be passed to avoid reloading
+    the in-memory dict per call; None loads it. Never fabricates a grade below
+    the petition floor (grade() returns None → "unknown"); the cap-exempt flag is
+    independent evidence and always applies.
+    """
+    is_cap_exempt = cap_exempt(name)
+    if employers is None:
+        employers = db.load_h1b_employers()
+    hit = match_employer(name, employers) if employers else None
+    if hit is None:
+        return {
+            "sponsor_grade": None, "cap_exempt": is_cap_exempt, "approvals": 0,
+            "has_sponsor_data": False, "denials": 0, "wage_level": None,
+            "lca_titles": None,
+        }
+    display, approvals = hit
+    record = employers.get(db.normalize_company(display)) or {}
+    record = record if isinstance(record, dict) else {}
+    denials = int(record.get("denials") or 0)
+    wage_level = record.get("wage_level_median")
+    lca_titles = record.get("lca_titles")
+    return {
+        "sponsor_grade": grade(approvals, denials,
+                               has_eng_lca=bool(lca_titles), wage_level=wage_level),
+        "cap_exempt": is_cap_exempt,
+        "approvals": int(approvals or 0),
+        "has_sponsor_data": True,
+        "denials": denials,
+        "wage_level": wage_level,
+        "wage_offered": record.get("wage_offered_median"),
+        "lca_titles": lca_titles,
+    }
+
+
 def apply_to_companies() -> int:
     """Match every not-yet-checked company against stored employer records.
 
@@ -175,28 +216,18 @@ def apply_to_companies() -> int:
         return 0
     matched = 0
     for company in db.get_unchecked_companies():
-        is_cap_exempt = cap_exempt(company["name"])
-        hit = match_employer(company["name"], employers)
-        if hit is not None:
-            display, approvals = hit
-            record = employers.get(db.normalize_company(display)) or {}
-            record = record if isinstance(record, dict) else {}
-            denials = int(record.get("denials") or 0)
-            wage_level = record.get("wage_level_median")
+        graded = grade_company(company["name"], employers)
+        if graded["has_sponsor_data"]:
             db.set_company_sponsorship(
                 company["id"],
-                approvals=approvals,
-                sponsor_score=score_from_approvals(approvals),
-                lca_titles=record.get("lca_titles"),
-                denials=denials,
-                wage_level_median=wage_level,
-                wage_offered_median=record.get("wage_offered_median"),
-                cap_exempt=is_cap_exempt,
-                sponsor_grade=grade(
-                    approvals, denials,
-                    has_eng_lca=bool(record.get("lca_titles")),
-                    wage_level=wage_level,
-                ),
+                approvals=graded["approvals"],
+                sponsor_score=score_from_approvals(graded["approvals"]),
+                lca_titles=graded["lca_titles"],
+                denials=graded["denials"],
+                wage_level_median=graded["wage_level"],
+                wage_offered_median=graded["wage_offered"],
+                cap_exempt=graded["cap_exempt"],
+                sponsor_grade=graded["sponsor_grade"],
             )
             matched += 1
         else:
@@ -204,7 +235,7 @@ def apply_to_companies() -> int:
             # cap-exempt flag is independent evidence and still applies.
             db.set_company_sponsorship(
                 company["id"], approvals=0, sponsor_score="UNKNOWN",
-                cap_exempt=is_cap_exempt,
+                cap_exempt=graded["cap_exempt"],
             )
     return matched
 
