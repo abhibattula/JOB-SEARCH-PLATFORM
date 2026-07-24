@@ -564,14 +564,25 @@ class Test008ShellSupport:
     and copying (FR-002/FR-004)."""
 
     def test_open_launches_system_browser(self, client, monkeypatch):
+        """013 (FR-003): postings open via the OS DEFAULT handler — on Windows
+        os.startfile (respects the user's default browser, not Edge), else
+        webbrowser.open. Either way the URL is opened exactly once."""
+        import os
+        import sys
         import webbrowser
 
-        opened = []
-        monkeypatch.setattr(webbrowser, "open", lambda url: opened.append(url) or True)
+        via_startfile, via_webbrowser = [], []
+        monkeypatch.setattr(webbrowser, "open",
+                            lambda url: via_webbrowser.append(url) or True)
+        if hasattr(os, "startfile"):
+            monkeypatch.setattr(os, "startfile", lambda url: via_startfile.append(url))
         resp = client.post("/api/open", json={"url": "https://example.com/job"})
         assert resp.status_code == 200
         assert resp.json() == {"opened": True}
-        assert opened == ["https://example.com/job"]
+        assert (via_startfile + via_webbrowser) == ["https://example.com/job"]
+        if sys.platform == "win32":
+            assert via_startfile == ["https://example.com/job"]   # default handler
+            assert via_webbrowser == []
 
     def test_open_rejects_non_http_schemes(self, client, monkeypatch):
         import webbrowser
@@ -1122,3 +1133,25 @@ class Test010BoardFollowUp:
         board = client.get("/", params={"status": "applied", "view": "board"})
         assert "2026-08-01" in board.text
         assert "email recruiter" in board.text
+
+
+class Test013FeedPolish:
+    """013: human dates, persistent sort arrows, and the job-detail Back."""
+
+    def test_feed_shows_human_date(self, client):
+        from web.main import _humandate
+        job = seed_job()  # posted_date None → "seen ~ <human first_seen>"
+        expected = _humandate(db.get_job(job["id"])["first_seen"])
+        assert expected  # e.g. "24 July 2026"
+        assert expected in client.get("/").text
+
+    def test_feed_has_sort_indicators_on_both_columns(self, client):
+        seed_job()
+        html = client.get("/").text
+        assert "sort=date" in html and "sort=score" in html
+        assert 'class="sort' in html   # persistent indicator span present
+
+    def test_job_detail_has_back_control(self, client):
+        job = seed_job()
+        html = client.get(f"/jobs/{job['id']}").text
+        assert 'class="back"' in html

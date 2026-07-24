@@ -154,6 +154,11 @@ a = Analysis(
 )
 pyz = PYZ(a.pure)
 
+# 013 (FR-012): the app icon — the Windows exe icon also becomes the window +
+# taskbar icon (pywebview inherits it), and the macOS .icns is set on the bundle.
+_ICON_ICO = os.path.join(SPECPATH, "icon.ico")
+_ICON_ICNS = os.path.join(SPECPATH, "icon.icns")
+
 exe = EXE(
     pyz,
     a.scripts,
@@ -162,7 +167,7 @@ exe = EXE(
     # JE_DEBUG_CONSOLE=1 at build time produces a console build for diagnosing
     # frozen-only failures (windowed builds swallow tracebacks).
     console=os.environ.get("JE_DEBUG_CONSOLE") == "1",
-    icon=None,
+    icon=_ICON_ICO if os.path.exists(_ICON_ICO) else None,
 )
 coll = COLLECT(
     exe,
@@ -172,12 +177,15 @@ coll = COLLECT(
 )
 
 if sys.platform == "darwin":
+    from engine import APP_VERSION as _APP_VERSION
+
     app = BUNDLE(
         coll,
         name="Job Engine.app",
+        icon=_ICON_ICNS if os.path.exists(_ICON_ICNS) else None,
         bundle_identifier="dev.abhinav.jobengine",
         info_plist={
             "NSHighResolutionCapable": True,
-            "CFBundleShortVersionString": "1.1.0",
+            "CFBundleShortVersionString": _APP_VERSION,
         },
     )

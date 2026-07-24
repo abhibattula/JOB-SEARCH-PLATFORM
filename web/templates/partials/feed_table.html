@@ -20,9 +20,9 @@
   <thead>
     <tr>
       <th>Role</th><th>Company</th><th>Location</th>
-      <th><a href="{{ replace_query(sort='date', page=None) }}" title="Sort by newest">Posted{{ ' ▾' if sort == 'date' }}</a></th>
+      <th><a href="{{ replace_query(sort='date', page=None) }}" title="Sort by newest">Posted <span class="sort {{ 'active' if sort == 'date' }}">{{ '▾' if sort == 'date' else '⇅' }}</span></a></th>
       <th>Sponsor</th>
-      <th><a href="{{ replace_query(sort='score', page=None) }}" title="Sort by match score">Match{{ ' ▾' if sort == 'score' }}</a></th>
+      <th><a href="{{ replace_query(sort='score', page=None) }}" title="Sort by match score">Match <span class="sort {{ 'active' if sort == 'score' }}">{{ '▾' if sort == 'score' else '⇅' }}</span></a></th>
       {% if pipeline_view %}<th>Stage</th><th>Notes</th>{% endif %}
       <th></th>
     </tr>
@@ -41,8 +41,8 @@
       <td class="data">{{ 'Remote' if job.is_remote and not job.location else (job.location or '—') }}</td>
       <td class="data">
         {%- if job.posted_approx -%}
-        <span title="This source didn't provide a posted date — showing when the job was first seen here">seen ~ {{ job.first_seen[:10] }}</span>
-        {%- else -%}{{ job.posted_date[:10] }}{%- endif -%}
+        <span title="This source didn't provide a posted date — showing when the job was first seen here">seen ~ {{ job.first_seen | humandate }}</span>
+        {%- else -%}{{ job.posted_date | humandate }}{%- endif -%}
       </td>
       <td>
         <span class="badge {{ job.sponsorship|lower }}">{{ job.sponsorship }}</span>

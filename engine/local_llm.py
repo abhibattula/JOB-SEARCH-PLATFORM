@@ -32,13 +32,44 @@ def available() -> bool:
     return _model_path().exists()
 
 
-def _load_model(path: Path, n_ctx: int = 8192):
+def _llm_kwargs() -> dict:
+    """013 (FR-005/006): GPU offload + CPU-thread tuning.
+
+    n_gpu_layers: env JOBS_GPU_LAYERS, else -1 (auto — attempt full offload; a
+    no-op on the CPU-only bundled wheel, a big win on a CUDA/Metal wheel).
+    n_threads: env JOBS_LLM_THREADS, else all cores (llama.cpp otherwise
+    under-uses them)."""
+    import os
+
+    threads_env = os.environ.get("JOBS_LLM_THREADS")
+    gpu_env = os.environ.get("JOBS_GPU_LAYERS")
+    return {
+        "n_threads": int(threads_env) if threads_env else (os.cpu_count() or 1),
+        "n_gpu_layers": int(gpu_env) if gpu_env not in (None, "") else -1,
+    }
+
+
+def _load_model(path: Path, n_ctx: int = 8192, _factory=None):
     """009 (FR-013): 8192 context — 4096 made long structured-extraction
     prompts overflow deterministically (Qwen2.5 supports 32k; the KV-cache
-    cost at 8k for a 1.5B model is a couple hundred MB, acceptable)."""
-    from llama_cpp import Llama
+    cost at 8k for a 1.5B model is a couple hundred MB, acceptable).
 
-    return Llama(model_path=str(path), n_ctx=n_ctx, verbose=False)
+    013: pass GPU/thread tuning; if constructing with GPU offload fails (a GPU
+    wheel whose device init errors), retry ONCE on CPU (n_gpu_layers=0) so the
+    offline path never breaks — graceful fallback, no error surfaced."""
+    if _factory is None:
+        from llama_cpp import Llama as _factory
+
+    kwargs = _llm_kwargs()
+    try:
+        return _factory(model_path=str(path), n_ctx=n_ctx, verbose=False, **kwargs)
+    except Exception:
+        if kwargs.get("n_gpu_layers") == 0:
+            raise  # already CPU — a real failure, let the caller handle it
+        log.warning("model load with GPU offload failed; retrying on CPU",
+                    exc_info=True)
+        cpu_kwargs = dict(kwargs, n_gpu_layers=0)
+        return _factory(model_path=str(path), n_ctx=n_ctx, verbose=False, **cpu_kwargs)
 
 
 def _get_model():

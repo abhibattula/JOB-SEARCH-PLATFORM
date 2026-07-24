@@ -38,6 +38,19 @@ def open_external(body: OpenRequest):
     parsed = urlparse(body.url)
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         raise HTTPException(status_code=400, detail="only http/https links can be opened")
+    # 013 (FR-003): open via the OS DEFAULT handler so the posting lands in the
+    # user's default browser (not whatever webbrowser resolves to — Edge in a
+    # frozen Windows app). os.startfile uses the shell default; fall back to
+    # webbrowser elsewhere / on failure.
+    import os
+    import sys
+
+    if sys.platform == "win32" and hasattr(os, "startfile"):
+        try:
+            os.startfile(body.url)  # noqa: S606 — validated http/https above
+            return {"opened": True}
+        except OSError:
+            pass
     import webbrowser
 
     webbrowser.open(body.url)

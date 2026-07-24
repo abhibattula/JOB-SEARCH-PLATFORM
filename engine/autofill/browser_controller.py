@@ -37,9 +37,14 @@ log = logging.getLogger(__name__)
 FIELD_QUERY_SELECTOR = fields_mod.FIELD_QUERY_SELECTOR
 
 # 008 (FR-007): Apply Assist drives the user's INSTALLED branded browser via
-# Playwright channels — nothing is downloaded. Edge ships inbox on
-# US-market Windows 11; Chrome is the fallback.
-_CHANNELS = ("msedge", "chrome")
+# Playwright channels — nothing is downloaded.
+# 013 (FR-002): try the user's OS DEFAULT browser FIRST (fixes the Edge-first
+# bug where fills opened in a browser the user wasn't signed in to), then the
+# remaining automatable channels as a fallback.
+def _channel_order() -> tuple[str, ...]:
+    from . import default_browser
+
+    return default_browser.default_channel_order()
 
 # Reason classes that mean "complete this one manually". 009: `unrecognized`
 # is gone — an unreadable-looking page just keeps being watched.
@@ -124,7 +129,7 @@ def _choose_backend() -> str:
         return forced
     from . import ext_backend
 
-    return "extension" if ext_backend.is_live() else "playwright"
+    return "extension" if ext_backend.is_live(max_age_s=30) else "playwright"
 
 
 def _open_job_on_backend(job_id: int) -> None:
@@ -217,7 +222,7 @@ def _ensure_context():
 
     _playwright = sync_playwright().start()
     errors = []
-    for channel in _CHANNELS:
+    for channel in _channel_order():
         try:
             _context = _playwright.chromium.launch_persistent_context(
                 user_data_dir=str(_profile_dir()),
@@ -245,7 +250,7 @@ def preflight() -> dict:
     errors = []
     try:
         with sync_playwright() as p:
-            for channel in _CHANNELS:
+            for channel in _channel_order():
                 try:
                     probe = p.chromium.launch(channel=channel, headless=True)
                     probe.close()
@@ -679,6 +684,10 @@ def queue_snapshot() -> dict:
         # 010: which fill path this run uses, and the live companion state
         # (rendered as "filling in your Chrome" vs the assistant window)
         "backend": backend,
+        # 013 (FR-004): the Playwright channel actually launched, so the user
+        # can see whether the assistant window is Chrome or Edge. None for the
+        # companion path (there the browser is the user's own).
+        "browser_channel": _launched_channel,
         "extension": {
             "connected": ext_status["connected"],
             "version": ext_status["version"],

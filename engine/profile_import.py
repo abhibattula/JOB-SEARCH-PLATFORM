@@ -30,6 +30,13 @@ _lock = threading.Lock()
 _state: dict = {}
 _thread: threading.Thread | None = None
 
+# 013 (FR-007): cache the resume-only extraction (the slow model call keyed by
+# the resume text hash), so re-importing an UNCHANGED resume skips inference.
+# The proposal is always rebuilt against the CURRENT profile, so this reuses
+# only what depends solely on the resume (contact/skills/sections).
+_extract_cache: dict = {"hash": None, "contact": None, "skills": None,
+                        "sections": None}
+
 
 def reset_state() -> None:
     with _lock:
@@ -38,6 +45,7 @@ def reset_state() -> None:
             "state": "idle", "stage": None, "chunk_done": 0, "chunk_total": 0,
             "error": None, "proposal": None, "started_at": None,
         })
+        _extract_cache.update(hash=None, contact=None, skills=None, sections=None)
 
 
 reset_state()
@@ -88,30 +96,43 @@ def _run_import() -> None:
     from . import matcher, resume_extract
 
     try:
+        import hashlib
+
         profile = db.get_profile() or {}
         text = profile.get("resume_text") or ""
+        text_hash = hashlib.sha256(text.encode("utf-8", "replace")).hexdigest()
 
-        with _lock:
-            _state["stage"] = "contact"
-        regex_contact = resume_extract.extract_contact(text)
-
-        with _lock:
-            _state["stage"] = "skills"
-        try:
-            extracted_skills = matcher.extract_skills(text)
-        except Exception:
-            log.warning("skill extraction failed", exc_info=True)
-            extracted_skills = []
-
-        with _lock:
-            _state["stage"] = "sections"
-
-        def on_progress(done: int, total: int) -> None:
+        if _extract_cache["hash"] == text_hash:
+            # 013 (FR-007): identical resume — reuse the resume-only extraction
+            # (skip the slow model call), but rebuild the proposal below against
+            # the CURRENT profile so current-vs-resume stays accurate.
+            regex_contact = _extract_cache["contact"]
+            extracted_skills = _extract_cache["skills"]
+            sections = _extract_cache["sections"]
+        else:
             with _lock:
-                _state["chunk_done"] = done
-                _state["chunk_total"] = total
+                _state["stage"] = "contact"
+            regex_contact = resume_extract.extract_contact(text)
 
-        sections = resume_extract.extract(text, on_progress=on_progress)
+            with _lock:
+                _state["stage"] = "skills"
+            try:
+                extracted_skills = matcher.extract_skills(text)
+            except Exception:
+                log.warning("skill extraction failed", exc_info=True)
+                extracted_skills = []
+
+            with _lock:
+                _state["stage"] = "sections"
+
+            def on_progress(done: int, total: int) -> None:
+                with _lock:
+                    _state["chunk_done"] = done
+                    _state["chunk_total"] = total
+
+            sections = resume_extract.extract(text, on_progress=on_progress)
+            _extract_cache.update(hash=text_hash, contact=regex_contact,
+                                  skills=extracted_skills, sections=sections)
 
         built = _build_proposal(profile, sections, regex_contact, extracted_skills)
         with _lock:

@@ -629,6 +629,36 @@ UNKNOWN badges everywhere = run `python cli.py load-sponsorship`.
   "couldn't read this page" dead end, and the silent identity auto-fill
   are all gone.
 
+## 17. What changed in v1.3.0 (The Refinements Release)
+
+- **Apply Assist fills in the right browser.** Before, the assistant window
+  always tried Microsoft Edge first — so if your default browser and your
+  companion + logins were in Chrome, fills opened in the wrong place. Now Apply
+  Assist opens your **OS default browser** (and strongly prefers the **connected
+  companion**, your own browser), and the Apply Assist panel shows where the
+  fill is happening ("your browser (companion)" vs "the assistant window —
+  Chrome/Edge"). "Open posting" also opens in your default browser.
+- **Faster on-device AI.** The offline model now uses **all your CPU cores** and
+  your **GPU** when your AI runtime supports it — with an automatic, silent
+  fallback to CPU if there's no GPU (the default) or GPU init fails, so nothing
+  ever breaks. **Resume import** no longer re-runs the (slow) model on a resume
+  it already read. Tuning env vars: `JOBS_LLM_THREADS`, `JOBS_GPU_LAYERS`.
+  - **Enabling an NVIDIA GPU** (optional): the installer ships the CPU AI build
+    (small, works everywhere). To use an NVIDIA GPU, install a CUDA-enabled
+    `llama-cpp-python` wheel into the environment (one `pip install`), then GPU
+    offload turns on automatically. No larger download is forced on anyone.
+- **Human-readable dates.** The feed and job detail show dates like **"24 July
+  2026"** instead of "2026-07-24" (dates a source didn't provide are still shown
+  as approximate, "seen ~ …").
+- **Discoverable sorting.** The **Posted** and **Match** columns each show a
+  clickable sort arrow (faint when inactive, solid on the active column).
+- **Back button.** Every job page has a **← Back** control that returns you to
+  the feed exactly as you left it (or to the feed if you opened the job
+  directly).
+- **The app has an icon** now — on the window, taskbar, installer and its
+  shortcuts, and the browser tab. Still $0, still offline-first, still never
+  auto-submits, and the installer is the same size as before.
+
 ## 16. What changed in v1.2.0 (The Discovery Copilot)
 
 - **A match + sponsorship badge on any job you browse.** With the companion

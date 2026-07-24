@@ -418,3 +418,13 @@ a.tailor-btn:hover, a.tailor-btn:focus-visible { text-decoration: none; filter: 
   background: var(--accent-tint); color: var(--accent); flex: none;
 }
 .score-chip.high { background: var(--ok-tint); color: var(--ok); }
+
+/* 013 (FR-010): persistent, discoverable sort affordance on sortable columns */
+.feed th .sort { opacity: .4; font-size: .85em; margin-left: .15em; }
+.feed th .sort.active { opacity: 1; }
+.feed th a:hover .sort { opacity: .75; }
+
+/* 013 (FR-011): Back control on the job detail page */
+.job-detail .back { display: inline-block; margin-bottom: .6rem;
+  color: var(--accent, #2757a8); text-decoration: none; font-size: .9rem; }
+.job-detail .back:hover { text-decoration: underline; }

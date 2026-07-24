@@ -51,6 +51,17 @@
     {% endif %}
   </div>
 
+  {# 013 (FR-004): where the fill is actually happening, so a companion-in-
+     Chrome / assistant-in-Edge mismatch is visible, never silent. #}
+  {% if snapshot and snapshot.backend %}
+  <p class="data fill-where" role="status">
+    Filling in:
+    {%- if snapshot.backend == 'extension' %} <strong>your browser</strong> (companion)
+    {%- else %} <strong>the assistant window</strong>{% if snapshot.browser_channel %} · {{ 'Microsoft Edge' if snapshot.browser_channel == 'msedge' else 'Google Chrome' }}{% endif %}
+    {%- endif -%}
+  </p>
+  {% endif %}
+
   {# 009 (FR-007): the live watch feed — the engine's heartbeat, visible #}
   {% if snapshot and snapshot.activity %}
   {% set act = snapshot.activity %}

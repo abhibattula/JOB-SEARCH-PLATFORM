@@ -85,6 +85,15 @@ def main() -> int:
             print(f"FAIL: {path} returned {code}")
             return 1
 
+    # 013 (FR-012): the app icon ships and is served as the favicon.
+    fav = urllib.request.urlopen(base + "/static/favicon.ico", timeout=10)
+    fav_head = fav.read(4)
+    print(f"GET /static/favicon.ico -> {fav.status} magic={fav_head[:4]!r}")
+    if fav.status != 200 or fav_head[:4] != b"\x00\x00\x01\x00":  # ICO magic
+        proc.terminate()
+        print("FAIL: favicon.ico missing or not a valid .ico")
+        return 1
+
     # Force a refresh and wait briefly so any lazily-imported source (the
     # exact category of bug this test exists to catch) actually executes.
     req = urllib.request.Request(base + "/api/refresh?force=1", method="POST", data=b"")

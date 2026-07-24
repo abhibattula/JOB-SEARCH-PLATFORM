@@ -2,11 +2,15 @@
 {% block title %}{{ job.title }} · {{ job.company }}{% endblock %}
 {% block content %}
 <article class="job-detail">
+  {# 013 (FR-011): Back returns to the previous view (feed filters/scroll
+     preserved) when there's history, else lands on the feed. #}
+  <a class="back" href="/"
+     onclick="if (document.referrer &amp;&amp; history.length > 1) { history.back(); return false; }">← Back</a>
   <header class="job-head">
     <div>
       <h1>{{ job.title }}</h1>
       <p class="sub">{{ job.company }} · <span class="data">{{ job.location or ('Remote' if job.is_remote else '—') }}</span>
-        · posted <span class="data">{{ (job.posted_date or job.first_seen)[:10] }}</span>
+        · posted <span class="data">{{ (job.posted_date or job.first_seen) | humandate }}</span>
         · via <span class="data">{{ job.source }}</span></p>
     </div>
     <div class="job-actions">
