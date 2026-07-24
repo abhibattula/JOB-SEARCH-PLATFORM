@@ -134,9 +134,41 @@ model — a free Groq key on the Settings page is optional and only upgrades
 quality further. Sponsorship data ships preloaded. All data stays on your
 computer (`%LOCALAPPDATA%\JobEngine` / `~/Library/Application Support/JobEngine`).
 The installer is large (~1.5GB) because it bundles the offline AI model and
-the semantic-ranking model. Apply Assist needs **no download at all** — it
-drives the Edge or Chrome already installed on your machine. From v0.8.0 on,
-newer versions install from inside the app (Settings → Check for updates).
+the semantic-ranking model. From v0.8.0 on, newer versions install from
+inside the app (Settings → Check for updates).
+
+### Connect the browser companion (v1.0, optional but recommended)
+
+The companion (a Chrome/Edge extension) lets Apply Assist fill applications
+in **your own browser**, where you're already logged in to job sites.
+Without it, Apply Assist still works in a separate assistant window — so this
+is optional. It's free, installs from the copy bundled with the app (nothing
+to download), and takes about a minute:
+
+1. In the app, open the **Companion** page (top nav, under *Apply*). It shows
+   a folder path with a **Copy** button — this is the extension folder the
+   app keeps up to date for you.
+2. In Chrome or Edge, open the extensions page: paste `chrome://extensions`
+   (Chrome) or `edge://extensions` (Edge) into the address bar.
+3. Turn on **Developer mode** (top-right toggle).
+4. Click **Load unpacked** and pick the folder from step 1 (paste the copied
+   path into the folder dialog).
+5. Back in the app, the Companion page's status turns **green** within a few
+   seconds — you're connected. You only do this once; app updates keep the
+   extension current automatically.
+
+**Using it:** click **Test Apply Assist** on the Apply Assist page to watch
+it fill a bundled practice application with your own data, or just browse to
+any real posting and click the companion's **"Fill this page"** button. For
+open-ended questions ("Why this company?") it drafts an answer from your
+resume and flags it for your review — you always edit/confirm and click
+*Submit* yourself. Full walkthrough in
+[docs/USER_GUIDE.md](docs/USER_GUIDE.md).
+
+> The extension loads *unpacked* (developer mode) rather than from the Chrome
+> Web Store, so Chrome may show a "Disable developer mode extensions?" nag on
+> startup — that's expected and harmless; the companion runs entirely on your
+> machine and never sends your data anywhere.
 
 ## Quick start (from source)
 
