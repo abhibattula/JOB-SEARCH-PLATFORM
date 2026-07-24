@@ -62,10 +62,14 @@ entirely on your machine for $0.
   account, no API key, no internet connection needed for the AI itself (an
   optional cloud key still gives the highest-quality results and is always
   preferred when set).
-- **Apply Assist — a live fill engine**: opens each shortlisted job at its
-  real application form in **your own installed Edge or Chrome** (a
-  separate profile dedicated to the app — nothing to download, ever) and
-  then **watches the page continuously**, filling every recognized field
+- **Apply Assist — fills in your own browser (v1.0)**: install the free
+  one-time **browser companion** (a Chrome/Edge extension — see the in-app
+  Companion page) and applications fill in *your everyday browser*, where
+  you're already signed in to job sites. Without it, Apply Assist still fills
+  in a dedicated assistant window exactly as before — the screen shows which
+  mode is active. Either way it opens each shortlisted job at its real
+  application form and then **watches the page continuously**, filling every
+  recognized field
   the moment it exists: slow-rendering forms, forms revealed by the site's
   own Apply button, every page of a multi-step application, and forms
   embedded in iframes. A **Test Apply Assist** button runs a bundled
@@ -74,7 +78,10 @@ entirely on your machine for $0.
   name, contact info, links, **your resume file itself**, work
   authorization/sponsorship dropdowns (matched to the site's own option
   wording), and common short-answer questions — from your profile and a
-  reusable answer bank. Multi-page applications keep filling as *you* click
+  reusable answer bank. **Open-ended questions** ("Why this company?") get an
+  **AI draft** grounded in your resume, filled and flagged for your review
+  before you submit; confirmed answers are saved and reused, and sensitive
+  (visa/EEO) questions are never AI-answered. Multi-page applications keep filling as *you* click
   the site's own Next button; a per-field fill report shows exactly what was
   entered; closing the browser mid-queue is resumable; a batch summary wraps
   every run. **You always click the actual submit/login button yourself; the

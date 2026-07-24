@@ -58,7 +58,7 @@ fixtures + practice + real local model.
 ## Phase 6: Polish, packaging, ship
 
 - [x] T026 Packaging: `packaging/jobengine.spec` bundles `extension/` (datas + build-time assert on manifest presence); `packaging/windows.iss` unchanged paths verified; `packaging/smoke_test.py` additions (extension assets stamped + pairing.json present, /api/bridge/info answers, /companion 200, /api/next-actions 200); version 1.0.0 in engine/__init__.py + windows.iss + jobengine.spec; What's New entry in web/main.py
-- [ ] T027 Docs: README.md, docs/USER_MANUAL.md (§ companion install + AI drafts + dashboard), docs/USER_GUIDE.md, quickstart walkthrough screenshots-by-text; SmartScreen note; CLAUDE.md already points at 010
+- [x] T027 Docs: README.md, docs/USER_MANUAL.md (§ companion install + AI drafts + dashboard), docs/USER_GUIDE.md, quickstart walkthrough screenshots-by-text; SmartScreen note; CLAUDE.md already points at 010
 - [ ] T028 Final gate, in order: full pytest ×2 AND `pytest -m browser` (both engines' suites) AND slow gates green → frozen build + extended smoke → scripted live gate (extension on real Greenhouse/Lever/Ashby postings, parity vs 0.9.0 counts) + manual checklist per quickstart → merge → mirror `001-ai-job-engine` → tag v1.0.0 → verify BOTH installers on the Release page
 
 ## Dependencies
