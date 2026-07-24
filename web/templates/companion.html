@@ -46,7 +46,7 @@
       <div class="path-row">
         <code id="ext-path">{{ ext_path }}</code>
         <button type="button" class="ghost"
-                onclick="navigator.clipboard.writeText(document.getElementById('ext-path').textContent).then(function(){ if (window.toast) toast('Path copied'); })">
+                onclick="copyText(document.getElementById('ext-path').textContent); if (window.toast) toast('Path copied');">
           Copy path
         </button>
       </div>
