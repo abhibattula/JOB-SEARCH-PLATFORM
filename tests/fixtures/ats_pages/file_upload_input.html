@@ -1,0 +1,17 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>File upload</title></head>
+<body>
+<h1>Application with resume upload</h1>
+<form id="form">
+  <label>First Name<input name="first_name" type="text"></label>
+  <label>Resume<input name="resume" type="file" id="resume"></label>
+</form>
+<script src="/_mirror.js"></script>
+<script>
+  // Echo the attached file's name when the DataTransfer path works.
+  document.getElementById("resume").addEventListener("change", function (e) {
+    var f = e.target.files && e.target.files[0];
+    fetch("/echo", {method: "POST", headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({name: "resume_filename", value: f ? f.name : ""})});
+  });
+</script>
+</body></html>
