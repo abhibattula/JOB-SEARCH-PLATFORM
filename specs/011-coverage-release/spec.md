@@ -5,6 +5,21 @@
 **Status**: Draft
 **Input**: User description: "Raise Apply Assist's fill coverage on harder application pages — custom dropdowns, typeaheads, and the Workday/iCIMS/Taleo ATS families — by allowing the companion to click a field's own widget to set a value, while a hard denylist keeps it from ever clicking submit/apply/next/login. One free v1.1.0 release."
 
+## Clarifications
+
+### Session 2026-07-24
+
+- Q: What scope does the never-click submit denylist evaluate — the clicked
+  element only, or its ancestors too? → A: The clicked element's own
+  text/type/role plus elements it CONTAINS; ancestors are ignored (so an
+  option inside a form that also holds a Submit button is not wrongly
+  blocked, while an actual submit button — or a wrapper containing one — is).
+- Q: How long to wait for a custom dropdown's options / typeahead
+  suggestions before abandoning the field and reporting "fill manually"? →
+  A: ~1.5 seconds per widget (long enough for typical React-Select/Workday
+  popups and debounced typeaheads; short enough a broken widget doesn't stall
+  the run).
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - Custom dropdowns fill themselves (Priority: P1)
@@ -154,9 +169,11 @@ the same way it would with the companion.
   value.
 - **FR-002**: The assistant MUST NEVER click a control that submits, applies,
   advances (next/continue), saves, finishes, logs in, registers, creates an
-  account, or pays — identified by the control's visible text, type, and
-  role — regardless of how the page is styled. This MUST hold in every fill
-  path (the user's own browser and the fallback assistant window) and be
+  account, or pays — identified by the control's OWN visible text, type, and
+  role, and those of elements it contains (NOT its ancestors, so a valid
+  option inside a form that also holds a Submit button is still clickable) —
+  regardless of how the page is styled. This MUST hold in every fill path
+  (the user's own browser and the fallback assistant window) and be
   guaranteed by automated test.
 - **FR-003**: Every field-value fill MUST still honor the existing
   guarantees: a non-empty field is never overwritten, a field the user is
@@ -173,9 +190,10 @@ the same way it would with the companion.
 - **FR-005**: For a typeahead/suggestion box, the assistant MUST enter the
   value and select the matching suggestion; on no matching suggestion it MUST
   leave the field and report "fill manually".
-- **FR-006**: When a dropdown is opened but yields no usable options within a
-  short wait, the assistant MUST abandon the field, close the popup, and
+- **FR-006**: When a dropdown is opened but yields no usable options within
+  ~1.5 seconds, the assistant MUST abandon the field, close the popup, and
   report "fill manually" — never leaving the page in an opened/stuck state.
+  The same ~1.5s budget applies to a typeahead awaiting suggestions.
 
 **ATS coverage (US2, US3)**
 
@@ -242,8 +260,9 @@ the same way it would with the companion.
   clicks a submit/apply/next/continue/save/login control **zero** times — no
   exceptions — including on pages where such a control is styled to look like
   a dropdown option.
-- **SC-004**: A typeahead box with a matching suggestion is filled correctly;
-  one with no matching suggestion is left untouched (no partial value).
+- **SC-004**: A typeahead box with a matching suggestion is filled correctly
+  within the ~1.5s wait budget; one with no matching suggestion is left
+  untouched (no partial value) and does not stall the rest of the run.
 - **SC-005**: Every new fill ability produces the same result in the user's
   own browser and in the fallback assistant window (parity verified on the
   same test pages).
