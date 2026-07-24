@@ -51,7 +51,7 @@ fixtures + practice + real local model.
 - [x] T022 [US3] Home dashboard: `/` route → `web/templates/home.html` (top 5 matches with scores, stage stats, next-actions list); feed remains at `/feed` (nav updated); `GET /api/next-actions` (draft_review/follow_up/import_ready/submission_confirm derived) in `web/routes_api.py`; tests in `tests/test_api.py` (Test010NextActions) + `tests/test_web.py` route/render tests
 - [x] T023 [US3] Apply Assist screen rework `web/templates/autofill.html` + partials: connection card (extension state, /companion link, backend mode indicator), queue with 009 activity feed, drafts review list, practice button; tests: test_routes_autofill payload assertions + template render
 - [x] T024 [US3] Tracker board polish — the applied view's `view=board` mode (rendered via feed.html/applied templates in `web/main.py`, no board.html exists): notes + follow-up date per application (`POST /api/jobs/{id}/follow-up`), due follow-ups → next-actions, submission-confirm chip on affected cards; tests in test_api (Test010FollowUps)
-- [ ] T025 [US3] Global identity sweep: remaining templates (feed, profile, settings, analytics, practice, companion) restyled on tokens; a11y preserved (existing aria-live/focus/theme tests green; add axe-style checks where cheap)
+- [x] T025 [US3] Global identity sweep: remaining templates (feed, profile, settings, analytics, practice, companion) restyled on tokens; a11y preserved (existing aria-live/focus/theme tests green; add axe-style checks where cheap)
 
 **Checkpoint US3**: every page coherent in both themes; dashboards live.
 
