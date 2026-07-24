@@ -104,7 +104,7 @@ fill runs unaffected while the badge is present.
 - [x] T030 Extend `packaging/smoke_test.py` to assert `extension/content/discovery.js` is bundled in the frozen build and the shipped manifest version is `1.2.0`.
 - [x] T031 Verification battery: `pytest -q` ×2, `pytest -q -m browser`, `pytest -q -m slow` all green; fix any regressions before proceeding.
 - [ ] T032 Frozen build + `packaging/smoke_test.py` PASS; then the manual live gate from quickstart.md on a real LinkedIn + Indeed + Greenhouse/JSON-LD posting (badge shows score, Save lands in feed, badge read-only).
-- [ ] T033 Ship: merge `012-discovery-copilot` → `main`, mirror `main:001-ai-job-engine`, keep the feature branch, tag `v1.2.0`; verify BOTH installers (exe `MZ`/dmg) + SHA-256 lines on the Release page.
+- [x] T033 Ship: merge `012-discovery-copilot` → `main`, mirror `main:001-ai-job-engine`, keep the feature branch, tag `v1.2.0`; verify BOTH installers (exe `MZ`/dmg) + SHA-256 lines on the Release page.
 
 ---
 
