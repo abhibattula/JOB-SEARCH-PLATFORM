@@ -136,16 +136,24 @@ def seed_job(url="https://x.example/apply/1"):
 
 
 class TestChannelLaunch:
-    def test_launches_installed_edge_first(self, tmp_db, fake_playwright):
+    # 013: the channel ORDER now comes from the OS default browser
+    # (browser_controller._channel_order → default_browser). These tests pin
+    # that order so they assert the launch-iteration contract deterministically
+    # on any runner (the mac CI has no Edge default; the order there is
+    # chrome-first). The default-detection itself is covered by
+    # test_default_browser.py and test_browser_controller.py.
+    def test_launches_default_channel_first(self, tmp_db, fake_playwright, monkeypatch):
+        monkeypatch.setattr(bc, "_channel_order", lambda: ("msedge", "chrome"))
         chromium, _ = fake_playwright()
         context = bc._ensure_context()
         assert isinstance(context, FakeContext)
         call = chromium.persistent_calls[0]
-        assert call["channel"] == "msedge"
+        assert call["channel"] == "msedge"   # the pinned default, tried first
         assert call["headless"] is False
         assert "browser-profile" in str(call["user_data_dir"])
 
-    def test_falls_back_to_chrome(self, tmp_db, fake_playwright):
+    def test_falls_back_to_next_channel(self, tmp_db, fake_playwright, monkeypatch):
+        monkeypatch.setattr(bc, "_channel_order", lambda: ("msedge", "chrome"))
         chromium, _ = fake_playwright(fail_channels=("msedge",))
         bc._ensure_context()
         assert [c["channel"] for c in chromium.persistent_calls] == [
@@ -162,7 +170,8 @@ class TestChannelLaunch:
 
 
 class TestPreflight:
-    def test_preflight_ok_reports_channel(self, tmp_db, fake_playwright):
+    def test_preflight_ok_reports_channel(self, tmp_db, fake_playwright, monkeypatch):
+        monkeypatch.setattr(bc, "_channel_order", lambda: ("msedge", "chrome"))
         fake_playwright()
         result = bc.preflight()
         assert result == {"ok": True, "channel": "msedge", "error": None}
