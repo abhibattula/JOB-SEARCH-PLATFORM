@@ -40,6 +40,16 @@ templates.env.globals["current_theme"] = _current_theme
 # 008 (FR-032): plain-language changelog behind the What's New overlay —
 # keyed by APP_VERSION, shown once per version.
 WHATS_NEW: dict[str, list[str]] = {
+    "1.0.1": [
+        "Fixed: the browser companion could fail to connect (the status dot "
+        "stayed grey). The companion now reliably connects within about 30 "
+        "seconds of the app starting, and automatically reconnects on its own "
+        "after your computer sleeps or the app restarts.",
+        "After this update, open your browser's extensions page "
+        "(chrome://extensions or edge://extensions) and click the reload (↻) "
+        "icon on the Job Engine Companion card once — browsers keep running an "
+        "unpacked extension's old code until you reload it.",
+    ],
     "1.0.0": [
         "Apply Assist now fills in YOUR OWN browser. Install the new browser "
         "companion (one-time, free — see the Companion page) and applications "
