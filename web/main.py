@@ -456,6 +456,18 @@ def create_app() -> FastAPI:
     def practice_frame(request: Request):
         return templates.TemplateResponse(request, "practice_frame.html", {})
 
+    @app.get("/companion", response_class=HTMLResponse)
+    def companion_page(request: Request):
+        """010 (FR-001/FR-022): the guided one-time install for the browser
+        companion. Shows the exact folder path to load unpacked and a live
+        connection check."""
+        from scripts import stamp_extension
+
+        ext_path = str(stamp_extension.dest_dir())
+        return templates.TemplateResponse(
+            request, "companion.html", {"ext_path": ext_path}
+        )
+
     @app.get("/autofill", response_class=HTMLResponse)
     def autofill_page(request: Request):
         jobs, _ = db.query_jobs(

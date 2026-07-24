@@ -1,0 +1,71 @@
+{% extends "base.html" %}
+{% block title %}Connect your browser · Job Engine{% endblock %}
+{% block content %}
+<article class="companion-page">
+  <h1>Connect Job Engine to your browser</h1>
+  <p class="lead">Apply Assist can fill applications right in <strong>your own
+    Chrome or Edge</strong> — where you're already signed in to job sites —
+    instead of a separate window. This is a one-time, $0 setup.</p>
+
+  <div id="companion-status" class="status-card"
+       hx-get="/api/autofill/status" hx-trigger="load, every 3s"
+       hx-swap="none">
+    <span class="dot" data-dot></span>
+    <span data-label>Checking connection…</span>
+  </div>
+  <script>
+    // Reflect the live connection state (the app already knows via the
+    // bridge heartbeat) without a full-page reload.
+    document.body.addEventListener('htmx:afterRequest', function (e) {
+      if (!e.detail.pathInfo || !e.detail.pathInfo.requestPath) { return; }
+      if (e.detail.pathInfo.requestPath.indexOf('/api/autofill/status') === -1) { return; }
+      let data;
+      try { data = JSON.parse(e.detail.xhr.responseText); } catch (_e) { return; }
+      const ext = data.extension || {};
+      const card = document.getElementById('companion-status');
+      const dot = card.querySelector('[data-dot]');
+      const label = card.querySelector('[data-label]');
+      if (ext.connected) {
+        card.classList.add('connected');
+        dot.classList.add('on');
+        label.textContent = 'Connected — filling happens in your browser';
+      } else {
+        card.classList.remove('connected');
+        dot.classList.remove('on');
+        label.textContent = 'Not connected yet — follow the steps below';
+      }
+    });
+  </script>
+
+  <ol class="steps">
+    <li>Open your browser's extensions page: paste
+      <code>chrome://extensions</code> (Chrome) or
+      <code>edge://extensions</code> (Edge) into the address bar.</li>
+    <li>Turn on <strong>Developer mode</strong> (top-right toggle).</li>
+    <li>Click <strong>Load unpacked</strong> and choose this exact folder:
+      <div class="path-row">
+        <code id="ext-path">{{ ext_path }}</code>
+        <button type="button" class="ghost"
+                onclick="navigator.clipboard.writeText(document.getElementById('ext-path').textContent).then(function(){ if (window.toast) toast('Path copied'); })">
+          Copy path
+        </button>
+      </div>
+    </li>
+    <li>That's it — the status above turns green within a few seconds. You
+      only do this once; app updates keep the companion current
+      automatically.</li>
+  </ol>
+
+  <details class="note">
+    <summary>Windows shows "unknown publisher" — is that a problem?</summary>
+    <p>No. The app isn't code-signed yet (that costs money and the app is
+      free), so Windows SmartScreen shows a one-time "unrecognized app"
+      notice on the installer — click <em>More info → Run anyway</em>. The
+      browser companion itself loads locally and never leaves your machine.</p>
+  </details>
+
+  <p class="fallback">Prefer not to install anything? Apply Assist still
+    works without the companion — it opens a separate assistant browser
+    window and fills there, exactly as before.</p>
+</article>
+{% endblock %}

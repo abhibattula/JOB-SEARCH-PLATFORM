@@ -181,7 +181,7 @@ class TestPages:
         settings.set("THEME", theme)
         job = seed_job()
         for path in ("/", "/analytics", "/profile", "/settings", "/autofill",
-                     f"/jobs/{job['id']}"):
+                     "/companion", f"/jobs/{job['id']}"):
             resp = client.get(path)
             assert resp.status_code == 200, path
             assert f'data-theme="{theme}"' in resp.text, path
