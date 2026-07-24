@@ -32,7 +32,8 @@
       } else {
         card.classList.remove('connected');
         dot.classList.remove('on');
-        label.textContent = 'Not connected yet — follow the steps below';
+        label.textContent = 'Not connected yet — if you already installed it, '
+          + 'give it up to 30 seconds';
       }
     });
   </script>
@@ -51,10 +52,27 @@
         </button>
       </div>
     </li>
-    <li>That's it — the status above turns green within a few seconds. You
-      only do this once; app updates keep the companion current
+    <li>That's it — the status above turns green within about 30 seconds. You
+      only do this once; app updates keep the companion's files current
       automatically.</li>
   </ol>
+
+  <details class="note">
+    <summary>Status still grey after a minute?</summary>
+    <ol>
+      <li>Make sure the app is running (it is — you're reading this page).</li>
+      <li>Click the <strong>Job Engine Companion</strong> icon in your
+        browser's toolbar. That wakes the companion immediately.</li>
+      <li><strong>After updating the app</strong>, open
+        <code>chrome://extensions</code> and click the <strong>↻ reload</strong>
+        icon on the Job Engine Companion card (or restart your browser).
+        Browsers cache an unpacked extension's background script until you do,
+        so a newly updated companion keeps running the old code otherwise.</li>
+      <li>Confirm the folder you loaded is exactly the path above — if you
+        moved it, click <em>Remove</em> on the extension card and load it
+        again.</li>
+    </ol>
+  </details>
 
   <details class="note">
     <summary>Windows shows "unknown publisher" — is that a problem?</summary>

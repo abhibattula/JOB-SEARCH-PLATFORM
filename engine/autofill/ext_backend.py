@@ -29,11 +29,21 @@ _file_tokens: dict[str, tuple[str, float]] = {}  # token -> (path, issued_at)
 
 def register(send, close, version: str):
     """Install a new companion session. Returns the PREVIOUS session's
-    close callable when one existed (caller closes it with 4409)."""
+    close callable when one existed (caller closes it with 4409).
+
+    A reconnect usually means the MV3 service worker was terminated and
+    restarted, which wipes the extension's in-memory tab bookkeeping. Tab IDs
+    themselves survive, so re-send watch_start for the tab we were watching —
+    otherwise the content scripts are never told to scan again and filling
+    silently stops mid-queue (v1.0.0 bug)."""
     with _lock:
         old_close = _session["close"]
         _session.update(send=send, close=close, version=version,
                         last_seen=time.monotonic())
+        tab_id = _watch["tab_id"]
+        job_id = _watch["job_id"]
+    if tab_id is not None:
+        send(_outbound("watch_start", tab_id=tab_id, job_id=job_id))
     return old_close
 
 

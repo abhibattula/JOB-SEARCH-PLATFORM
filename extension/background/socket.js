@@ -14,9 +14,37 @@ const PING_MS = 20000;
 const BACKOFF_MIN_MS = 1000;
 const BACKOFF_MAX_MS = 30000;
 
+// The ONLY mechanism that can wake a TERMINATED MV3 service worker. Timers
+// (setTimeout/setInterval) are destroyed along with the worker after ~30s
+// idle, so recovery must never depend on them — v1.0.0 did, and the
+// companion died permanently the first time the worker went inactive.
+// 0.5 minutes is Chrome's minimum alarm period.
+export const WATCHDOG_ALARM = "je-watchdog";
+const WATCHDOG_PERIOD_MINUTES = 0.5;
+
+export function armWatchdog() {
+  // create() with an existing name replaces it — safe to call repeatedly
+  // (module top level, onInstalled, and onStartup all call this).
+  chrome.alarms.create(WATCHDOG_ALARM, {
+    periodInMinutes: WATCHDOG_PERIOD_MINUTES,
+  });
+}
+
+export function onWatchdogTick() {
+  // Woken by the alarm: reconnect if we're down, otherwise refresh the
+  // heartbeat the app uses to decide the companion is live.
+  if (!state.connected || !state.ws) {
+    state.backoff = BACKOFF_MIN_MS;
+    connect();
+  } else {
+    send({ v: 1, type: "ping", seq: 0 });
+  }
+}
+
 export const state = {
   ws: null,
   connected: false,
+  connecting: false, // an _openSocket() is in flight — prevents double sockets
   backoff: BACKOFF_MIN_MS,
   onMessage: null, // set by service-worker.js
   recoveryPairing: null, // {port, secret} entered in the popup, optional
@@ -60,6 +88,25 @@ async function verifyIdentity(port) {
 }
 
 export async function connect() {
+  // Guard against overlapping connects — on a worker revival the module
+  // top-level connect() and the watchdog alarm can both fire, and two live
+  // sockets make the app supersede one (4409) and the connection flap so the
+  // very next open_tab/fill is lost. One socket at a time.
+  if (state.connecting) { return; }
+  if (state.ws &&
+      (state.ws.readyState === WebSocket.OPEN ||
+       state.ws.readyState === WebSocket.CONNECTING)) {
+    return;
+  }
+  state.connecting = true;
+  try {
+    await _openSocket();
+  } finally {
+    state.connecting = false;
+  }
+}
+
+async function _openSocket() {
   const pairing = await readPairing();
   if (!pairing || !pairing.port) {
     scheduleReconnect();
@@ -113,14 +160,18 @@ export async function connect() {
 }
 
 function scheduleReconnect() {
+  // Fast retry WITHIN this worker's lifetime only. If the worker is
+  // terminated before it fires, the watchdog alarm above is what brings us
+  // back — this timer is an optimisation, never the recovery guarantee.
   const delay = state.backoff;
   state.backoff = Math.min(state.backoff * 2, BACKOFF_MAX_MS);
   setTimeout(connect, delay);
 }
 
 export function startKeepalive() {
-  // A ping every 20s doubles as the SW-alive heartbeat and the liveness
-  // signal the app uses to choose the extension backend.
+  // Sub-alarm-resolution ping: WebSocket traffic resets the worker's idle
+  // timer (Chrome >= 116), so a live connection keeps itself alive between
+  // 30s alarm ticks. Dies with the worker — that's fine, the alarm recovers.
   setInterval(() => {
     if (state.connected) { send({ v: 1, type: "ping", seq: 0 }); }
   }, PING_MS);

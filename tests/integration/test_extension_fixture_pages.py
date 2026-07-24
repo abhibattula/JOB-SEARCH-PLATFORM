@@ -233,3 +233,45 @@ class TestNeverClicks:
         _echoed("first_name")
         time.sleep(2)
         assert not any(e.get("name") == "__submitted" for e in _Handler.echoes)
+
+
+class TestSurvivesServiceWorkerTermination:
+    """The v1.0.0 hotfix regression: Chrome terminates an idle MV3 service
+    worker after ~30s. v1.0.0 scheduled reconnects with setTimeout, which is
+    destroyed with the worker — so the companion went permanently dead and the
+    connection dot never came back. The chrome.alarms watchdog must revive it.
+
+    This test deliberately idles past the termination window, so it is slow by
+    construction.
+    """
+
+    def test_still_live_after_idle_past_worker_timeout(self, context,
+                                                       app_server,
+                                                       fixture_server):
+        from engine.autofill import ext_backend
+
+        assert _wait_connected(app_server["port"]), "never connected at all"
+
+        # Idle well past Chrome's ~30s idle-termination window without any
+        # app->extension traffic, then require the companion to still be
+        # reachable (either kept alive, or woken and reconnected by the alarm).
+        time.sleep(75)
+
+        assert ext_backend.is_live(max_age_s=45), (
+            "companion went dead after idling past the service-worker timeout "
+            "— the chrome.alarms watchdog is not reviving it"
+        )
+
+    def test_fills_after_a_long_idle(self, context, app_server, fixture_server):
+        assert _wait_connected(app_server["port"])
+        time.sleep(75)
+        # The companion must be reachable again after the idle window — the
+        # watchdog gets up to one alarm period (30s) to revive it. Confirm
+        # that BEFORE queueing: start_queue picks its backend from liveness at
+        # that instant, and would (correctly) fall back to the assistant
+        # window if the socket happened to be down.
+        assert _wait_connected(app_server["port"], timeout=45), (
+            "companion did not come back after idling past the worker timeout"
+        )
+        _seed_and_queue(fixture_server, "greenhouse_delayed.html")
+        assert _echoed("first_name", timeout=25) == "Abhinav"
