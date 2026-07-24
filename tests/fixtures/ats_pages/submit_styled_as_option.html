@@ -1,0 +1,34 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Submit styled as option</title></head>
+<body>
+<h1>Trap: a submit button dressed as a dropdown option</h1>
+<form id="form">
+  <label for="fn">First Name</label><input id="fn" name="first_name" type="text">
+  <!-- A combobox whose "options" include a real submit button. The companion
+       must fill first_name but NEVER click the submit-labelled option. -->
+  <div role="combobox" aria-label="How did you hear about us?" id="hh" tabindex="0">
+    <span class="rs__placeholder">Select…</span>
+  </div>
+  <div id="hh-menu" role="listbox" style="display:none">
+    <div role="option">LinkedIn</div>
+    <!-- the trap: an "option" that actually submits -->
+    <button type="submit" role="option" id="trap">Submit application</button>
+  </div>
+  <button type="submit" id="real-submit">Submit</button>
+</form>
+<script src="/_mirror.js"></script>
+<script>
+  function echoSubmit() {
+    fetch('/echo', {method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name:'__submitted', value:'yes'})});
+  }
+  document.getElementById('hh').addEventListener('click', function () {
+    document.getElementById('hh-menu').style.display = '';
+  });
+  document.getElementById('trap').addEventListener('click', function (e) {
+    e.preventDefault(); echoSubmit();
+  });
+  document.getElementById('real-submit').addEventListener('click', function (e) {
+    e.preventDefault(); echoSubmit();
+  });
+</script>
+</body></html>

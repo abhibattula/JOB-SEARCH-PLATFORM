@@ -198,19 +198,43 @@ class TestCompanionFills:
         _seed_and_queue(fixture_server, "react_controlled.html")
         assert _echoed("first_name") == "Abhinav"
 
-    def test_custom_dropdown_never_clicked_reported_manual(self, context,
-                                                           app_server,
-                                                           fixture_server):
+    def test_custom_dropdown_fills_to_saved_value_011(self, context,
+                                                      app_server,
+                                                      fixture_server):
+        # 011: a custom (non-native) dropdown now fills. Seed the answer bank
+        # so the work-auth combobox has a value the companion can pick.
         assert _wait_connected(app_server["port"])
-        job_id = _seed_and_queue(fixture_server, "react_select_dropdown.html")
-        # first_name still fills; the combobox is left untouched (no echo,
-        # no click) — the page has no way to report a click, and the report
-        # never marks it filled
+        from engine.autofill import answer_bank
+        answer_bank.save("Are you legally authorized to work in the US?",
+                         "Yes, I am authorized", category="work_authorization")
+        _seed_and_queue(fixture_server, "react_select_dropdown.html")
         assert _echoed("first_name") == "Abhinav"
-        from engine.autofill import browser_controller as bc
-        report = bc._state.fill_reports.get(job_id) or []
-        assert not any(r["tag"] == "work_authorization"
-                       and r["outcome"] == "filled" for r in report)
+        # the combobox's hidden mirror echoes the chosen option text
+        assert _echoed("work_auth", timeout=15) == "Yes, I am authorized"
+        # and the page's real Submit was never clicked
+        time.sleep(1)
+        assert not any(e.get("name") == "__submitted" for e in _Handler.echoes)
+
+    def test_typeahead_fills_matching_suggestion_011(self, context, app_server,
+                                                     fixture_server):
+        assert _wait_connected(app_server["port"])
+        from engine.autofill import answer_bank
+        answer_bank.save("City", "Austin, TX", category="location_city")
+        _seed_and_queue(fixture_server, "typeahead.html")
+        assert _echoed("first_name") == "Abhinav"
+        assert _echoed("city", timeout=15) == "Austin, TX"
+
+    def test_submit_styled_as_option_never_clicked_011(self, context,
+                                                       app_server,
+                                                       fixture_server):
+        # the strongest denylist proof: a page whose dropdown "options"
+        # include a real submit button. The companion fills first_name and
+        # must NEVER trip a submit — even the option-shaped one.
+        assert _wait_connected(app_server["port"])
+        _seed_and_queue(fixture_server, "submit_styled_as_option.html")
+        assert _echoed("first_name") == "Abhinav"
+        time.sleep(3)
+        assert not any(e.get("name") == "__submitted" for e in _Handler.echoes)
 
     def test_typing_race_never_overwrites_user(self, context, app_server,
                                                fixture_server):
