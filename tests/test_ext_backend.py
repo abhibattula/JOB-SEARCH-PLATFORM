@@ -294,3 +294,26 @@ class TestAdHocFillHere:
         assert linked["job_id"] is not None
         job = db.get_job(linked["job_id"])
         assert "jobs.lever.co/acme/123" in job["url"]
+
+
+class TestReconnectRearmsWatch:
+    """Hotfix: an MV3 service worker restart wipes the extension's in-memory
+    `watched` map. If the app doesn't re-send watch_start on the new
+    connection, content scripts are never told to scan and filling silently
+    stops mid-queue."""
+
+    def test_reconnect_resends_watch_start(self, queue, sent):
+        open_the_tab(queue, sent)
+        # the worker dies and a fresh one connects
+        ext_backend.unregister(sent.append)
+        sent.clear()
+        ext_backend.register(sent.append, lambda code: None, "1.0.1")
+        watch = [m for m in sent if m["type"] == "watch_start"]
+        assert watch, "reconnect did not re-arm the watch"
+        assert watch[0]["tab_id"] == 40 and watch[0]["job_id"] == queue
+
+    def test_reconnect_without_active_session_sends_nothing(self, tmp_db, sent):
+        ext_backend.reset_for_tests()
+        sent.clear()
+        ext_backend.register(sent.append, lambda code: None, "1.0.1")
+        assert not [m for m in sent if m["type"] == "watch_start"]

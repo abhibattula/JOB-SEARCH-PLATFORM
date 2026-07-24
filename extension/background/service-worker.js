@@ -1,12 +1,22 @@
 // Service worker entry: owns the socket, routes app↔content messages.
 import { setConnected } from "./badge.js";
-import { connect, startKeepalive, state, send } from "./socket.js";
+import {
+  armWatchdog, connect, onWatchdogTick, send, startKeepalive, state,
+  WATCHDOG_ALARM,
+} from "./socket.js";
 import {
   openTab, closeTab, watchStart, watchStop, toContent, relayFromContent,
   watched,
 } from "./tabs.js";
 
 setConnected(false);
+
+// Registered at TOP LEVEL so Chrome knows to spin this worker back up when
+// the alarm fires — this is what makes the companion survive the ~30s idle
+// termination that killed v1.0.0's connection permanently.
+chrome.alarms.onAlarm.addListener((alarm) => {
+  if (alarm.name === WATCHDOG_ALARM) { onWatchdogTick(); }
+});
 
 // App → extension commands arrive on the socket.
 state.onMessage = (msg) => {
@@ -67,5 +77,13 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return false;
 });
 
+// Also re-arm on install/browser start so the alarm exists even if this
+// worker never ran otherwise.
+chrome.runtime.onInstalled.addListener(() => { armWatchdog(); connect(); });
+chrome.runtime.onStartup.addListener(() => { armWatchdog(); connect(); });
+
+// Runs on EVERY worker startup (including alarm-triggered wakes): make sure
+// the watchdog exists, then try to connect immediately.
+armWatchdog();
 startKeepalive();
 connect();
