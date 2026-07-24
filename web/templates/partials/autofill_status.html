@@ -81,8 +81,13 @@
   {% endif %}
 
   {% if snapshot and snapshot.fill_report %}
+  {% set _filled = snapshot.fill_report | selectattr('outcome', 'equalto', 'filled') | list | length %}
+  {% set _manual = snapshot.fill_report | selectattr('outcome', 'equalto', 'needs_manual') | list | length %}
+  <p class="data fill-coverage" role="status">
+    Filled {{ _filled }} field{{ 's' if _filled != 1 }}{% if _manual %} · {{ _manual }} need{{ 's' if _manual == 1 }} you{% endif %}
+  </p>
   <details class="fill-report" open>
-    <summary>Filled {{ snapshot.fill_report | selectattr('outcome', 'equalto', 'filled') | list | length }} field{{ 's' if (snapshot.fill_report | selectattr('outcome', 'equalto', 'filled') | list | length) != 1 }} on this page</summary>
+    <summary>Filled {{ _filled }} field{{ 's' if _filled != 1 }} on this page</summary>
     <table class="feed-table">
       <thead><tr><th>Field</th><th>Value</th><th>Status</th></tr></thead>
       <tbody>

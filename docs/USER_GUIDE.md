@@ -149,6 +149,14 @@ Apply Assist screen always tells you which mode is active.
    confirm it in the drafts panel (or just submit — it's saved either way),
    and it's reused next time. Visa/sponsorship/EEO questions are never
    AI-answered.
+4. **Custom dropdowns, typeaheads, and Workday fill too (v1.1).** The
+   click-to-open "fancy" dropdowns (work authorization, EEO, how-did-you-hear)
+   and type-to-search boxes (location, school) fill from your saved answers,
+   and **Workday / iCIMS / Taleo** applications now fill — including page by
+   page as you click the site's own Next. Save your common answers in
+   Profile → Common Questions so there's a value to fill. The app clicks a
+   dropdown only to pick your answer; it still never clicks Submit/Next/Login
+   — that's always you.
 3. Pick your saved jobs (select all/none buttons) and **Start Apply
    Assist**. A dedicated browser window (separate from your everyday
    browser) opens on the first job's application page with recognized

@@ -48,6 +48,41 @@
       <option>No, I am not authorized</option>
     </select>
 
+    <h2>How did you hear about us? <span class="hint">(custom dropdown — v1.1)</span></h2>
+    <label id="hh-combo-label">How did you hear about this role?</label>
+    <div role="combobox" aria-label="How did you hear about this role?"
+         id="hh-combo" tabindex="0"
+         style="border:1px solid #b8c4cf;border-radius:5px;padding:0.45rem 0.6rem;cursor:pointer">
+      <span class="rs__singleValue" style="display:none"></span>
+      <span class="rs__ph" style="color:#5b6b7b">Select…</span>
+    </div>
+    <div id="hh-combo-menu" role="listbox" style="display:none;border:1px solid #d5dde5;border-radius:5px;margin-top:2px"></div>
+    <script>
+      (function () {
+        var box = document.getElementById('hh-combo');
+        var menu = document.getElementById('hh-combo-menu');
+        var sv = box.querySelector('.rs__singleValue');
+        var ph = box.querySelector('.rs__ph');
+        box.addEventListener('click', function () {
+          menu.innerHTML = '';
+          ['LinkedIn', 'A friend', 'University career fair', 'Company website']
+            .forEach(function (t) {
+              var o = document.createElement('div');
+              o.setAttribute('role', 'option');
+              o.textContent = t;
+              o.style.padding = '0.35rem 0.6rem';
+              o.style.cursor = 'pointer';
+              o.addEventListener('click', function () {
+                sv.textContent = t; sv.style.display = '';
+                ph.style.display = 'none'; menu.style.display = 'none';
+              });
+              menu.appendChild(o);
+            });
+          menu.style.display = '';
+        });
+      })();
+    </script>
+
     <div id="delayed-section">
       <p class="hint">… more questions loading (this section renders 1.5s
         late, like a real script-driven form) …</p>

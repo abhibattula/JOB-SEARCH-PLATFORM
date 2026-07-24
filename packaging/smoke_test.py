@@ -207,9 +207,14 @@ def main() -> int:
     ext_pairing = os.path.join(data_dir, "extension", "pairing.json")
     print(f"companion stamped -> manifest={os.path.exists(ext_manifest)} "
           f"pairing={os.path.exists(ext_pairing)}")
-    if not (os.path.exists(ext_manifest) and os.path.exists(ext_pairing)):
+    ext_guard = os.path.join(data_dir, "extension", "content", "click_guard.js")
+    if not (os.path.exists(ext_manifest) and os.path.exists(ext_pairing)
+            and os.path.exists(ext_guard)):
         proc.terminate()
-        print("FAIL: companion extension not materialized into the data dir")
+        print("FAIL: companion extension not fully materialized "
+              f"(manifest={os.path.exists(ext_manifest)} "
+              f"pairing={os.path.exists(ext_pairing)} "
+              f"click_guard={os.path.exists(ext_guard)})")
         return 1
     companion_html = urllib.request.urlopen(
         base + "/companion", timeout=30

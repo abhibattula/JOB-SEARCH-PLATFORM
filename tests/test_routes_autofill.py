@@ -512,3 +512,25 @@ class Test010ApplyAssistScreen:
         assert 'id="companion-card"' in resp.text
         assert 'href="/companion"' in resp.text
         assert "assistant window" in resp.text
+
+
+class Test011FillCoverage:
+    def test_status_partial_shows_fill_coverage(self, client, monkeypatch):
+        from engine.autofill import browser_controller as bc
+        monkeypatch.setattr(bc, "_dispatch", lambda *a, **k: None)
+        # seed a fill report with a filled + a needs_manual entry
+        with bc._lock:
+            bc._state.running = True
+            bc._state.job_ids = [1]
+            bc._state.index = 0
+            bc._state.fill_reports = {1: [
+                {"label": "First name", "tag": "first_name",
+                 "value_preview": "Abhinav", "outcome": "filled", "ai_draft": False},
+                {"label": "Work auth", "tag": "work_authorization",
+                 "value_preview": "", "outcome": "needs_manual", "ai_draft": False},
+            ]}
+        resp = client.get("/partials/autofill/status")
+        assert resp.status_code == 200
+        assert "fill-coverage" in resp.text
+        assert "need" in resp.text  # "1 need you"
+        bc.stop_queue()
