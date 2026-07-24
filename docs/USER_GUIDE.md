@@ -133,6 +133,30 @@ Don't want to install it? Everything below still works without the
 companion — Apply Assist just uses a separate assistant window instead. The
 Apply Assist screen always tells you which mode is active.
 
+## The Discovery badge — score any job as you browse (v1.2)
+
+Once the companion is connected, you don't have to wait until you're on an
+application form to get the app's intelligence. **Just browse job postings**
+anywhere — LinkedIn, Indeed, a Greenhouse/Lever/Ashby board, or a company's
+own careers page — and a small **badge** appears in the bottom-right corner:
+
+- **Your match score** for that role against your resume (the same score the
+  feed shows), with a Strong / Good / Fair band.
+- **The company's H-1B sponsorship** — the A–F sponsor grade or a "cap-exempt
+  likely" note, or **"H-1B: unknown"** when there isn't enough evidence (it
+  never invents a grade).
+- A **Save to Job Engine** button — one click drops the posting into your feed
+  and your **Saved** list, with its title, company, and link. Saving the same
+  posting again won't create a duplicate; the badge just shows "Saved ✓".
+
+The badge is **read-only** — it only reads the posting you're already looking
+at and shows its own card. It never clicks, types, or submits anything on the
+page, and the scoring happens **on your computer** (nothing is sent anywhere).
+You can **collapse** it (the ▁ icon) or **dismiss** it (✕) any time; it never
+covers the page's own buttons. It appears only while the app is running and the
+companion is connected — if you haven't added your resume yet, it prompts you
+to do that so it can compute a real match.
+
 ## Apply Assist (auto-fill applications)
 
 1. Save jobs you want to apply to (☆ in the feed), then open **Apply

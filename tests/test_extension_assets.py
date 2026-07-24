@@ -121,3 +121,66 @@ class TestDenylistParity:
         manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))
         js = manifest["content_scripts"][0]["js"]
         assert js.index("content/click_guard.js") < js.index("content/filler.js")
+
+
+class TestDiscoveryBadge012:
+    """012: the discovery content script is bundled, wired, and — critically —
+    READ-ONLY on the page (it only renders its own shadow badge)."""
+
+    DISCOVERY = (EXT / "content" / "discovery.js")
+
+    def test_discovery_script_exists_and_is_registered(self):
+        assert self.DISCOVERY.exists()
+        manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))
+        all_js = [j for cs in manifest["content_scripts"] for j in cs["js"]]
+        assert "content/discovery.js" in all_js
+
+    def test_manifest_version_is_1_2_0(self):
+        manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))
+        assert manifest["version"] == "1.2.0"
+
+    def test_detection_signals_present(self):
+        src = self.DISCOVERY.read_text(encoding="utf-8")
+        assert 'application/ld+json' in src   # JSON-LD primary
+        assert "JobPosting" in src
+        assert "linkedin" in src.lower()
+        assert "indeed" in src.lower()
+
+    def test_uses_shadow_dom(self):
+        src = self.DISCOVERY.read_text(encoding="utf-8")
+        assert "attachShadow" in src
+        assert "je-discovery-badge-host" in src
+
+    def test_is_read_only_on_the_page(self):
+        """The discovery script must never click/type-into/submit a PAGE
+        element. It appends its own host and reads metadata only. Assert no
+        page-mutating primitives are used at all (its own badge is built via
+        innerHTML on a detached shadow root, and appendChild of its OWN host)."""
+        code = "\n".join(
+            line.split("//")[0]
+            for line in self.DISCOVERY.read_text(encoding="utf-8").splitlines()
+        )
+        # no clicking page elements
+        assert ".click(" not in code, "discovery must not click anything"
+        # no submitting
+        assert ".submit(" not in code and "requestSubmit" not in code
+        # no writing values into page inputs / dispatching input/change events
+        assert ".value =" not in code and ".value=" not in code
+        assert "dispatchEvent" not in code
+        # the ONLY DOM insertion is our own host (appendChild of `host`)
+        import re as _re
+        appends = _re.findall(r"\.appendChild\(([^)]*)\)", code)
+        assert appends and all("host" in a for a in appends), (
+            f"discovery appends something other than its own host: {appends}"
+        )
+
+    def test_top_frame_guard(self):
+        src = self.DISCOVERY.read_text(encoding="utf-8")
+        assert "window !== window.top" in src or "window.top" in src
+
+    def test_host_permissions_unchanged_no_new_reach(self):
+        """FR-012/SC-007/FR-015: discovery adds no off-machine reach and no new
+        permission — page metadata goes only to the local bridge."""
+        manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))
+        assert manifest["host_permissions"] == ["http://127.0.0.1/*"]
+        assert set(manifest["permissions"]) == {"storage", "tabs", "alarms"}

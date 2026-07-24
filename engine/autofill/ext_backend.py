@@ -195,6 +195,10 @@ def handle_message(msg) -> None:
         _handle_page_event(msg)
     elif isinstance(msg, ext_protocol.FillHere):
         _handle_fill_here(msg)
+    elif isinstance(msg, ext_protocol.ScoreRequest):
+        _handle_score_request(msg)
+    elif isinstance(msg, ext_protocol.SaveJob):
+        _handle_save_job(msg)
     # Pong: heartbeat only (touch() above)
 
 
@@ -480,6 +484,55 @@ def link_adhoc(tab_id: int) -> dict:
         if session is not None:
             session["linked_job_id"] = match_id
     return {"job_id": match_id, "url": page_url, "title": session["title"]}
+
+
+# --- discovery (012): score + save, independent of the fill session ---------
+
+# Defensive cap on the description text pulled off a browsed page before it is
+# scored/persisted — a page cannot overwhelm the bridge or the DB.
+_DISCOVERY_DESC_MAX = 20_000
+
+
+def _handle_score_request(msg) -> None:
+    """012: score a posting the user is browsing and send the result back to
+    the requesting tab. Reads NOTHING from the fill session (_watch/bc._state)."""
+    from .. import discovery
+
+    result = discovery.score_page(
+        title=msg.title, company=msg.company,
+        description=(msg.description or "")[:_DISCOVERY_DESC_MAX],
+        url=msg.url,
+    )
+    send(_outbound("score_result", tab_id=msg.tab_id, **result))
+
+
+def _handle_save_job(msg) -> None:
+    """012: save the browsed posting to the feed/tracker as a manual, saved
+    job — dedup-safe, never a duplicate. Independent of the fill session."""
+    from .. import db
+
+    status = db.upsert_job({
+        "title": msg.title,
+        "company": msg.company,
+        "url": msg.url,
+        "description": (msg.description or "")[:_DISCOVERY_DESC_MAX],
+        "location": msg.location or None,
+        "source": "manual",
+        "posted_date": None,
+    })
+    # Resolve the row by this exact url. It resolves for inserted/updated (the
+    # row now carries this url); a cross-source "skipped" dup is kept under a
+    # DIFFERENT url, so get_job_by_url returns None — the posting still exists,
+    # so report already=True without a status write. Never error, never dup.
+    row = db.get_job_by_url(msg.url)
+    job_id = None
+    if row is not None:
+        job_id = row["id"]
+        if row.get("status") != "saved":
+            db.set_status(job_id, "saved")
+    already = status != "inserted"
+    send(_outbound("save_result", tab_id=msg.tab_id, status=status,
+                   job_id=job_id, already=already))
 
 
 def reset_for_tests() -> None:
