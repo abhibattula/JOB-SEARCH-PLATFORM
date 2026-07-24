@@ -196,6 +196,42 @@ def confirm_answer(body: ConfirmAnswerRequest):
     return {"saved": True}
 
 
+@router.get("/drafts")
+def list_drafts():
+    """010 FR-012: the AI drafts awaiting review for the current job/session."""
+    from engine.autofill import browser_controller, drafts
+
+    current = browser_controller.current_job()
+    job_id = current["job_id"] if current else None
+    # a job_id sentinel <=0 (practice/ad-hoc) maps to the NULL-job draft list
+    lookup_id = job_id if (job_id and job_id > 0) else None
+    return {"drafts": drafts.list_for_job(lookup_id)}
+
+
+class DraftDecision(BaseModel):
+    action: str  # "confirm" | "discard"
+    text: str | None = None
+
+
+@router.post("/drafts/{draft_id}")
+def decide_draft(draft_id: int, body: DraftDecision):
+    """010 FR-013: confirm (optionally edited) a draft → saved answer +
+    re-fill if the field still holds the draft; or discard it."""
+    from engine.autofill import browser_controller, drafts
+
+    if body.action == "discard":
+        drafts.discard(draft_id)
+        return {"ok": True, "status": "discarded"}
+    if body.action == "confirm":
+        result = drafts.confirm(draft_id, body.text)
+        if result is None:
+            raise HTTPException(status_code=404, detail="draft not found")
+        # unlock the field so the confirmed text refills over the draft
+        browser_controller.resolve_pending(result["answer"])
+        return {"ok": True, "status": "confirmed", **result}
+    raise HTTPException(status_code=400, detail="action must be confirm or discard")
+
+
 class AdhocLinkRequest(BaseModel):
     tab_id: int
     create: bool = False

@@ -462,3 +462,44 @@ class Test009Practice:
     def test_autofill_page_offers_test_button(self, client):
         resp = client.get("/autofill")
         assert "Test Apply Assist" in resp.text
+
+
+class Test010Drafts:
+    """010 US2: the AI-draft review endpoints."""
+
+    def test_list_drafts_empty_without_session(self, client):
+        resp = client.get("/api/autofill/drafts")
+        assert resp.status_code == 200
+        assert resp.json()["drafts"] == []
+
+    def test_confirm_draft_saves_answer(self, client):
+        from engine.autofill import answer_bank, drafts
+
+        did = drafts.record(None, "Why do you want to work here?",
+                            "Draft about my UVM work.", "local")
+        resp = client.post(f"/api/autofill/drafts/{did}",
+                           json={"action": "confirm", "text": "Final edited answer."})
+        assert resp.status_code == 200
+        assert resp.json()["status"] == "confirmed"
+        saved = answer_bank.lookup("Why do you want to work here?")
+        assert saved["answer"] == "Final edited answer."
+        assert saved["source"] == "confirmed"
+
+    def test_discard_draft(self, client):
+        from engine.autofill import drafts
+
+        did = drafts.record(None, "Q?", "x", "local")
+        resp = client.post(f"/api/autofill/drafts/{did}", json={"action": "discard"})
+        assert resp.status_code == 200
+        assert drafts.get(did)["status"] == "discarded"
+
+    def test_confirm_missing_draft_404(self, client):
+        resp = client.post("/api/autofill/drafts/9999", json={"action": "confirm"})
+        assert resp.status_code == 404
+
+    def test_bad_action_400(self, client):
+        from engine.autofill import drafts
+
+        did = drafts.record(None, "Q?", "x", "local")
+        resp = client.post(f"/api/autofill/drafts/{did}", json={"action": "nope"})
+        assert resp.status_code == 400
