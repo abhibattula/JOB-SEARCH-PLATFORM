@@ -17,6 +17,11 @@ Existing `options` now also carries a custom widget's readable option labels
 (where the DOM exposes them); `value` carries the widget's currently
 displayed value so "non-empty is sacred" still applies to custom widgets.
 
+> Naming note: `Descriptor.widget` describes what a field IS
+> (`custom_combobox`), while `FillItem.kind` describes the technique to
+> OPERATE it (`combobox`). They are deliberately distinct — classification
+> vs action — not a duplication.
+
 ### FillItem (one app→backend instruction) — new kinds
 
 | kind | Meaning |
