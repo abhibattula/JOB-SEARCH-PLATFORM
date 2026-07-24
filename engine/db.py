@@ -826,6 +826,14 @@ def save_job_embedding(job_id: int, blob: bytes) -> None:
         conn.execute("UPDATE jobs SET embedding = ? WHERE id = ?", (blob, job_id))
 
 
+def list_all_jobs_minimal() -> list[dict]:
+    """id + url for every job — used by ad-hoc tracker linkage (010) to
+    match a browsed page back to a known posting."""
+    with _conn() as conn:
+        rows = conn.execute("SELECT id, url FROM jobs").fetchall()
+    return [dict(r) for r in rows]
+
+
 def get_bridge_secret() -> str:
     """010: the machine-local token the browser companion must present on
     its first WebSocket frame. Not a password — a session gate so no OTHER

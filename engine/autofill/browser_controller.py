@@ -626,6 +626,8 @@ def queue_snapshot() -> dict:
     for i, job_id in enumerate(job_ids):
         if job_id == PRACTICE_JOB_ID:
             title, company = "Practice application", "Job Engine"
+        elif job_id == -2:  # ext_backend.ADHOC_JOB_ID
+            title, company = "This page", "Fill this page"
         else:
             job = db.get_job(job_id) or {}
             title = job.get("title") or f"#{job_id}"

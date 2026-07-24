@@ -383,9 +383,78 @@ def _handle_page_event(msg) -> None:
             })
 
 
+ADHOC_JOB_ID = -2  # job-less ad-hoc fill session (no DB row until linked)
+
+# tab_id -> {"url", "title", "linked_job_id"} for the current ad-hoc session
+_adhoc: dict = {}
+
+
 def _handle_fill_here(msg) -> None:
-    """Ad-hoc 'Fill this page' — wired fully in T012."""
-    log.info("fill_here received for tab %s (%s)", msg.tab_id, msg.url)
+    """Ad-hoc 'Fill this page' (FR-004a): fill whatever application page the
+    user is already viewing. Refused while a queued job is actively
+    filling — one fill session at a time."""
+    from . import browser_controller as bc
+
+    with bc._lock:
+        queue_active = bc._state.running and bc._state.backend == "extension"
+    if queue_active:
+        send(_outbound("error", code="busy",
+                       message="finish or stop the current queue first"))
+        return
+
+    # Stand up a job-less session on the extension backend keyed to this tab.
+    with bc._lock:
+        bc._state.job_ids = [ADHOC_JOB_ID]
+        bc._state.index = 0
+        bc._state.running = True
+        bc._state.practice = False
+        bc._state.backend = "extension"
+        bc._state.handled = {ADHOC_JOB_ID: {}}
+        bc._state.fill_reports = {ADHOC_JOB_ID: []}
+        bc._state.outcomes = {}
+        bc._state.pending = None
+        bc._state.interrupted = False
+        bc._state.summary = None
+        bc._state.activity = bc._fresh_activity()
+    with _lock:
+        _adhoc.clear()
+        _adhoc[msg.tab_id] = {"url": msg.url, "title": msg.title,
+                              "linked_job_id": None}
+        _watch.update(tab_id=msg.tab_id, job_id=ADHOC_JOB_ID)
+        _inflight.clear()
+        _frame_seen.clear()
+    send(_outbound("watch_start", tab_id=msg.tab_id, job_id=ADHOC_JOB_ID))
+
+
+def link_adhoc(tab_id: int) -> dict:
+    """Offer to track the ad-hoc page as an application: match its URL to an
+    existing job, else the caller may create one. User-confirmed (FR-004a);
+    never automatic."""
+    from urllib.parse import urlparse
+
+    from .. import db
+
+    with _lock:
+        session = _adhoc.get(tab_id)
+    if session is None:
+        return {"job_id": None, "match": None}
+    page_url = session["url"]
+    page_host_path = urlparse(page_url).netloc + urlparse(page_url).path
+    # strip a trailing /apply or /application so the posting URL matches
+    for suffix in ("/apply", "/application"):
+        if page_host_path.endswith(suffix):
+            page_host_path = page_host_path[: -len(suffix)]
+    match_id = None
+    for job in db.list_all_jobs_minimal():
+        jurl = job.get("url") or ""
+        jhp = urlparse(jurl).netloc + urlparse(jurl).path
+        if jhp and (jhp in page_host_path or page_host_path in jhp):
+            match_id = job["id"]
+            break
+    with _lock:
+        if session is not None:
+            session["linked_job_id"] = match_id
+    return {"job_id": match_id, "url": page_url, "title": session["title"]}
 
 
 def reset_for_tests() -> None:

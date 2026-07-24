@@ -238,3 +238,59 @@ class TestPageEvents:
         ext_backend.handle_message(ext_protocol.PageEvent(
             tab_id=40, kind="frame_gone"))
         assert bc._state.interrupted is False
+
+
+class TestAdHocFillHere:
+    """010 FR-004a: 'Fill this page' on whatever the user is browsing."""
+
+    @pytest.fixture
+    def idle(self, tmp_db, monkeypatch, sent):
+        monkeypatch.setattr(bc, "_dispatch", lambda *a, **k: None)
+        from engine import matcher
+
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: False)
+        db.save_profile(first_name="Abhinav", last_name="Battula",
+                        email="abhi@example.com")
+        sent.clear()
+
+    def test_fill_here_starts_adhoc_session_and_watches(self, idle, sent):
+        ext_backend.handle_message(ext_protocol.FillHere(
+            tab_id=55, url="https://jobs.lever.co/acme/123/apply",
+            title="Acme — Engineer"))
+        assert any(m["type"] == "watch_start" and m["tab_id"] == 55
+                   for m in sent)
+        assert bc.queue_snapshot()["backend"] == "extension"
+
+    def test_adhoc_fills_and_reports(self, idle, sent):
+        ext_backend.handle_message(ext_protocol.FillHere(
+            tab_id=55, url="https://jobs.lever.co/acme/123/apply", title="Acme"))
+        ext_backend.handle_message(ext_protocol.Fields(
+            tab_id=55, frame_id=0, url="https://jobs.lever.co/acme/123/apply",
+            doc="adhoc1",
+            descriptors=[ext_protocol.Descriptor(**descriptor())]))
+        fill = next(m for m in sent if m["type"] == "fill")
+        assert fill["items"][0]["value"] == "Abhinav"
+
+    def test_fill_here_refused_while_queue_filling(self, queue, sent):
+        # a queued job is active; an ad-hoc request must be refused
+        open_the_tab(queue, sent)
+        sent.clear()
+        ext_backend.handle_message(ext_protocol.FillHere(
+            tab_id=77, url="https://x.example/other", title="Other"))
+        assert any(m["type"] == "error" for m in sent)
+        assert not any(m["type"] == "watch_start" and m["tab_id"] == 77
+                       for m in sent)
+
+    def test_adhoc_link_to_existing_job_by_url(self, idle, sent):
+        db.upsert_job({
+            "title": "Engineer", "company": "Acme",
+            "url": "https://jobs.lever.co/acme/123",
+            "source": "lever", "location": "SF", "is_remote": False,
+            "description": "d", "posted_date": None})
+        ext_backend.handle_message(ext_protocol.FillHere(
+            tab_id=55, url="https://jobs.lever.co/acme/123/apply", title="Acme"))
+        linked = ext_backend.link_adhoc(tab_id=55)
+        assert linked["job_id"] is not None
+        job = db.get_job(linked["job_id"])
+        assert "jobs.lever.co/acme/123" in job["url"]

@@ -196,6 +196,35 @@ def confirm_answer(body: ConfirmAnswerRequest):
     return {"saved": True}
 
 
+class AdhocLinkRequest(BaseModel):
+    tab_id: int
+    create: bool = False
+
+
+@router.post("/adhoc/link")
+def adhoc_link(body: AdhocLinkRequest):
+    """010 FR-004a: offer to track an ad-hoc 'Fill this page' session as an
+    application. Matches the page URL to a known posting; with create=True
+    and no match, records a new job. Always user-initiated."""
+    from engine import db
+    from engine.autofill import ext_backend
+
+    linked = ext_backend.link_adhoc(body.tab_id)
+    if linked["job_id"] is None and body.create and linked.get("url"):
+        db.upsert_job({
+            "title": linked.get("title") or "Application",
+            "company": "", "url": linked["url"], "source": "manual",
+            "location": None, "is_remote": False, "description": "",
+            "posted_date": None,
+        })
+        job = next((j for j in db.list_all_jobs_minimal()
+                    if j["url"] == linked["url"]), None)
+        linked["job_id"] = job["id"] if job else None
+    if linked["job_id"] is not None:
+        db.set_status(linked["job_id"], "applied")
+    return linked
+
+
 @router.get("/answers")
 def list_answer_bank():
     """006-B: backs the Profile page's Common Questions management UI —
