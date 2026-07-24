@@ -503,3 +503,12 @@ class Test010Drafts:
         did = drafts.record(None, "Q?", "x", "local")
         resp = client.post(f"/api/autofill/drafts/{did}", json={"action": "nope"})
         assert resp.status_code == 400
+
+
+class Test010ApplyAssistScreen:
+    def test_page_has_connection_card_and_companion_link(self, client):
+        resp = client.get("/autofill")
+        assert resp.status_code == 200
+        assert 'id="companion-card"' in resp.text
+        assert 'href="/companion"' in resp.text
+        assert "assistant window" in resp.text
