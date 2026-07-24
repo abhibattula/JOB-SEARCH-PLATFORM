@@ -1078,3 +1078,28 @@ class Test010NextActionsAndSubmission:
         resp = client.post("/api/jobs/99999/follow-up",
                            json={"follow_up_at": "2020-01-01"})
         assert resp.status_code == 404
+
+
+class Test010Dashboard:
+    def test_home_shows_dashboard_lead(self, client):
+        job = seed_job()
+        db.set_match(job["id"], 88.0, '{"match_score": 88}')
+        resp = client.get("/")
+        assert resp.status_code == 200
+        assert 'class="dashboard"' in resp.text
+        assert "Top matches" in resp.text
+        assert "Next actions" in resp.text
+        assert "Your applications" in resp.text
+
+    def test_dashboard_lists_scored_match(self, client):
+        job = seed_job()
+        db.set_match(job["id"], 91.0, '{"match_score": 91}')
+        resp = client.get("/")
+        assert "Software Engineer, New Grad" in resp.text
+        assert "91" in resp.text
+
+    def test_home_still_serves_feed(self, client):
+        # dashboard is additive — the feed contract is unchanged
+        seed_job()
+        resp = client.get("/")
+        assert 'class="toolbar"' in resp.text  # feed toolbar still present

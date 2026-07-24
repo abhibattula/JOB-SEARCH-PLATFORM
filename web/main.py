@@ -272,6 +272,27 @@ def create_app() -> FastAPI:
             ineligible, min_score, seen, strong_sponsors, page, source, limit,
         )
         context["board_view"] = view == "board"
+        # 010 FR-017: the home lead — top matches, application stats.
+        # next-actions load client-side from /api/next-actions.
+        top_matches, _ = db.query_jobs(
+            window=None, statuses=("none", "saved"), entry_level=None,
+            sort="score", limit=5,
+        )
+        analytics = db.application_analytics()
+        _, saved_total = db.query_jobs(window=None, statuses=("saved",),
+                                       entry_level=None)
+        context["dashboard"] = {
+            "top_matches": [
+                {"id": j["id"], "title": j["title"], "company": j["company"],
+                 "match_score": j.get("match_score")}
+                for j in top_matches if j.get("match_score") is not None
+            ],
+            "stats": {
+                "applied": analytics.get("total_applied", 0),
+                "interview": analytics.get("interviews", 0),
+                "saved": saved_total,
+            },
+        }
         # 008 (FR-033): surface an unclean previous shutdown exactly once
         from engine import paths
 
