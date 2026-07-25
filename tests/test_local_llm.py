@@ -4,18 +4,18 @@ from engine import local_llm
 
 
 class TestContextWindow:
-    def test_model_loads_with_8192_context(self, monkeypatch):
+    def test_model_loads_with_8192_context(self):
+        # 014 (CI green on Linux): inject the Llama factory instead of
+        # `import llama_cpp` — llama-cpp-python is pinned to win32/darwin only
+        # (not in the Linux CI's requirements), so importing it hard-failed the
+        # whole CI job. The injection seam needs no real module.
         captured = {}
 
-        class FakeLlama:
-            def __init__(self, model_path=None, n_ctx=None, **kw):
-                captured["n_ctx"] = n_ctx
+        def fake_llama(model_path=None, n_ctx=None, **kw):
+            captured["n_ctx"] = n_ctx
+            return object()
 
-        import llama_cpp
-
-        monkeypatch.setattr(llama_cpp, "Llama", FakeLlama)
-        local_llm._load_model.__wrapped__ if hasattr(local_llm._load_model, "__wrapped__") else None
-        local_llm._load_model("C:/fake/model.gguf")
+        local_llm._load_model("C:/fake/model.gguf", _factory=fake_llama)
         assert captured["n_ctx"] == 8192
 
 

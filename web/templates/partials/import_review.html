@@ -34,7 +34,7 @@
       <tr data-field="{{ f.field }}" data-kind="{{ f.kind }}">
         <td>{{ f.field | replace('_', ' ') }}
           {% if f.kind == 'sections' and f.edited_at %}
-          <span class="badge excluded" title="You hand-edited these sections on {{ f.edited_at[:10] }} — applying replaces your edits.">edited by you</span>
+          <span class="badge excluded" title="You hand-edited these sections on {{ f.edited_at | humandate }} — applying replaces your edits.">edited by you</span>
           {% endif %}
         </td>
         <td class="data">
