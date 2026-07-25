@@ -47,6 +47,35 @@ def _humandate(value) -> str:
 templates.env.filters["humandate"] = _humandate
 
 
+def _pending_update():
+    """014 (CLS fix): the update banner, computed server-side so it renders
+    inline in the initial HTML instead of being injected post-load (which
+    shifted the page — measured CLS 0.27). Cheap + network-free (reads the
+    cached daily-check result). Returns the info dict or None."""
+    from engine import updates
+
+    with updates._lock:
+        info = updates._state.get("last_check")
+    return info if (info and info.get("newer")) else None
+
+
+def _unseen_whats_new():
+    """014 (CLS fix): the once-per-version What's New overlay, computed
+    server-side for inline render (same reason as _pending_update). Returns
+    {entries, version} or None."""
+    from engine import APP_VERSION as _v
+    from engine import settings as settings_mod
+
+    entries = WHATS_NEW.get(_v) or []
+    if not entries or settings_mod.get("WHATS_NEW_SEEN_VERSION") == _v:
+        return None
+    return {"entries": entries, "version": _v}
+
+
+templates.env.globals["pending_update"] = _pending_update
+templates.env.globals["unseen_whats_new"] = _unseen_whats_new
+
+
 def _current_theme() -> str:
     """Explicit user choice ('light'/'dark') or '' when unset — '' lets the
     CSS prefers-color-scheme fallback decide (FR-021)."""

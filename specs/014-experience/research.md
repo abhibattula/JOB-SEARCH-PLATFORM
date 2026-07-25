@@ -9,7 +9,7 @@ App run locally (`python app.py`, 127.0.0.1:8000), populated feed. Desktop.
 | Metric | Baseline | Verdict |
 |--------|----------|---------|
 | **LCP** | **941 ms** (TTFB 562 ms + render delay 380 ms) | OK locally; render delay improvable |
-| **CLS** | **0.27** | **POOR** (good < 0.1) — the headline fix |
+| **CLS** | **0.27 → 0.00** ✅ | FIXED (T012: banners rendered server-side inline, no post-load injection) |
 | Lighthouse **Accessibility** | **100** | already excellent — must be held |
 | Lighthouse Best Practices | 100 | hold |
 | Lighthouse SEO | 90 | minor (3 fails, low priority for a local app) |
