@@ -129,9 +129,9 @@ US2 fast → US3 palette → Verify/ship.
   on every page; fix any a11y regressions from the new interactive pieces.
 - [ ] T020 [P] Docs: USER_MANUAL §18 (visual/interaction changes + command
   palette/shortcuts), README (refreshed screenshots), `WHATS_NEW["1.4.0"]` filled.
-- [ ] T021 Full battery: `pytest -q` ×2 + `-m browser` + `-m slow` green; manual
+- [x] T021 Full battery: `pytest -q` ×2 + `-m browser` + `-m slow` green; manual
   walkthrough of every page in **light + dark** + **keyboard-only**; fix findings.
-- [ ] T022 Frozen build + `packaging/smoke_test.py` PASS (redesigned shell +
+- [x] T022 Frozen build + `packaging/smoke_test.py` PASS (redesigned shell +
   versioned static serve); then ship: merge `014-experience` → `main`, mirror
   `main:001-ai-job-engine`, tag `v1.4.0`; verify BOTH installers (exe `MZ` /
   dmg `78 01`) + SHA-256.
