@@ -226,6 +226,8 @@ def test_diagnostics_page_has_companion_doctor_section(tmp_db):
 def test_browser_mismatch_line_with_fix_action(tmp_db, monkeypatch):
     """015 (FR-019): OS-default vs preference mismatch is shown with the
     one-click OS-settings action; Auto can never mismatch."""
+    import sys
+
     from fastapi.testclient import TestClient
 
     from engine import settings
@@ -237,7 +239,8 @@ def test_browser_mismatch_line_with_fix_action(tmp_db, monkeypatch):
     c = TestClient(create_app())
     page = c.get("/autofill").text  # preference defaults to chrome → mismatch
     assert "Windows default" in page
-    assert "default-apps" in page
+    if sys.platform == "win32":  # FR-019: the one-click fix is Windows-only
+        assert "default-apps" in page
     assert "Windows default" in c.get("/companion").text
 
     settings.set("PREFERRED_BROWSER", "auto")

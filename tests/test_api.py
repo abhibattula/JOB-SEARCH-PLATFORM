@@ -582,26 +582,22 @@ class Test008ShellSupport:
     def test_open_falls_back_to_os_default_and_says_so(self, client, monkeypatch):
         """013 (FR-003) preserved as the fallback: preferred browser missing →
         the OS default handler opens it, and the substitution is REPORTED
-        (opened_with) so the UI can note it (015 FR-017)."""
-        import os
-        import sys
+        (opened_with) so the UI can note it (015 FR-017). Platform pinned to
+        'linux' so the darwin `open -a` branch can't hijack the run on the
+        mac CI runner (the v1.3.0 env-dependent-test lesson)."""
         import webbrowser
 
         from engine.autofill import default_browser
 
+        monkeypatch.setattr(default_browser.sys, "platform", "linux")
         monkeypatch.setattr(default_browser, "_browser_exe", lambda channel: None)
-        via_startfile, via_webbrowser = [], []
+        via_webbrowser: list = []
         monkeypatch.setattr(webbrowser, "open",
                             lambda url: via_webbrowser.append(url) or True)
-        if hasattr(os, "startfile"):
-            monkeypatch.setattr(os, "startfile", lambda url: via_startfile.append(url))
         resp = client.post("/api/open", json={"url": "https://example.com/job"})
         assert resp.status_code == 200
         assert resp.json() == {"opened": True, "opened_with": "os-default"}
-        assert (via_startfile + via_webbrowser) == ["https://example.com/job"]
-        if sys.platform == "win32":
-            assert via_startfile == ["https://example.com/job"]   # default handler
-            assert via_webbrowser == []
+        assert via_webbrowser == ["https://example.com/job"]
 
     def test_open_rejects_non_http_schemes(self, client, monkeypatch):
         import webbrowser
