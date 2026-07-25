@@ -228,6 +228,18 @@ def start_refresh(force: int = 0):
     return JSONResponse(result)
 
 
+@router.post("/theme")
+def set_theme(theme: str = ""):
+    """014: minimal theme setter for the command palette's quick toggle — sets
+    only THEME (unlike POST /settings which owns the whole settings form), so a
+    quick toggle can persist without touching other preferences."""
+    from engine import settings
+
+    value = theme if theme in ("light", "dark") else ""
+    settings.set("THEME", value)
+    return JSONResponse({"theme": value})
+
+
 @router.get("/refresh/status")
 def refresh_status():
     return db.get_run_status()

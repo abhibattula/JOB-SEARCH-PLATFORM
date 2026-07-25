@@ -8,6 +8,7 @@
   <link rel="stylesheet" href="/static/styles.css?v={{ app_version }}">
   <script src="/static/htmx.min.js?v={{ app_version }}" defer></script>
   <script src="/static/app.js?v={{ app_version }}" defer></script>
+  <script src="/static/palette.js?v={{ app_version }}" defer></script>
 </head>
 <body>
   {% set path = request.url.path if request is defined else "/" %}

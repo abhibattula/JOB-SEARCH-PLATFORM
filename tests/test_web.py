@@ -58,6 +58,30 @@ def test_no_iso_date_slicing_in_display_templates():
     assert not offenders, f"raw [:10] date slice (use | humandate): {offenders}"
 
 
+def test_command_palette_present_and_accessible():
+    """014 (US3): the palette ships, is referenced, and is an ARIA dialog with
+    a Ctrl/Cmd-K shortcut + Escape handling."""
+    import pathlib
+
+    js = pathlib.Path("web/static/palette.js").read_text(encoding="utf-8")
+    assert 'role", "dialog"' in js or 'role="dialog"' in js
+    assert "aria-modal" in js and "Escape" in js
+    assert 'metaKey' in js and '"k"' in js  # Ctrl/Cmd-K
+    base = pathlib.Path("web/templates/base.html").read_text(encoding="utf-8")
+    assert "palette.js" in base
+
+
+def test_banners_render_server_side_not_load_injected():
+    """014 (CLS fix regression guard): the top banners must NOT re-introduce the
+    hx-trigger=load injection that caused the measured CLS 0.27."""
+    import pathlib
+
+    base = pathlib.Path("web/templates/base.html").read_text(encoding="utf-8")
+    assert 'hx-get="/partials/update-banner"' not in base
+    assert 'hx-get="/partials/whats-new"' not in base
+    assert "pending_update()" in base and "unseen_whats_new()" in base
+
+
 def test_static_assets_cached_and_versioned(tmp_db):
     """014 (FR-010 perf): static assets carry a long cache lifetime and are
     referenced with a ?v=<version> buster so upgrades still invalidate."""
