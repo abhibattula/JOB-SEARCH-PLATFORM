@@ -104,21 +104,27 @@ def _chat_cloud(messages: list[dict], purpose: str = "prose") -> str:
     return completion.choices[0].message.content or ""
 
 
-def _chat_local(messages: list[dict], purpose: str = "prose") -> str:
-    return local_llm.chat(messages, json_mode=purpose == "json")
+def _chat_local(messages: list[dict], purpose: str = "prose",
+                timeout_s: float | None = None) -> str:
+    return local_llm.chat(messages, json_mode=purpose == "json",
+                          timeout_s=timeout_s)
 
 
-def _chat(messages: list[dict], purpose: str = "prose") -> str:
+def _chat(messages: list[dict], purpose: str = "prose",
+          timeout_s: float | None = None) -> str:
     """Tier dispatcher, driven by scoring_tier() (single source of truth).
     009 (FR-017): a preferred-local failure falls through to the cloud key
     automatically when one exists. purpose="json" routes structured tasks
-    to the schema-reliable model/decoding on each tier."""
+    to the schema-reliable model/decoding on each tier. 015: `timeout_s`
+    lets long-form background work (resume extraction) declare a bigger
+    on-device budget than the interactive default; the cloud tier has its
+    own HTTP timeouts and ignores it."""
     from . import settings
 
     tier = scoring_tier()
     if tier == "local":
         try:
-            return _chat_local(messages, purpose=purpose)
+            return _chat_local(messages, purpose=purpose, timeout_s=timeout_s)
         except Exception:
             if settings.get("LLM_API_KEY"):
                 log.warning("local tier failed — falling through to cloud",

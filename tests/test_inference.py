@@ -212,6 +212,39 @@ class TestWiring:
         monkeypatch.setattr(inference, "run_embed", boom)
         assert semantic.embed("hello") is None  # public contract: None, never raise
 
+    def test_timeout_passes_through_the_whole_tier_chain(self, monkeypatch, tmp_db):
+        """015 (FR-004 refinement): background long-form work (resume
+        extraction: many chunks + a possible cold model load) must be able to
+        declare its own budget — the interactive 180s default starved the
+        offline extraction gate on a busy machine."""
+        from engine import local_llm, matcher
+
+        seen: dict = {}
+        monkeypatch.setattr(
+            inference, "run_chat",
+            lambda m, json_mode=False, timeout_s=None:
+            seen.update(t=timeout_s) or "ok")
+        local_llm.chat([{"role": "user", "content": "q"}], timeout_s=42)
+        assert seen["t"] == 42
+
+        monkeypatch.setattr(matcher, "scoring_tier", lambda: "local")
+        monkeypatch.setattr(
+            matcher.local_llm, "chat",
+            lambda messages, json_mode=False, timeout_s=None:
+            seen.update(m=timeout_s) or "ok")
+        matcher._chat([{"role": "user", "content": "x"}], purpose="json",
+                      timeout_s=600)
+        assert seen["m"] == 600
+
+    def test_resume_extraction_declares_a_long_budget(self):
+        import pathlib
+        import re
+
+        src = pathlib.Path("engine/resume_extract.py").read_text(encoding="utf-8")
+        match = re.search(r"EXTRACTION_CHAT_TIMEOUT_S\s*=\s*(\d+)", src)
+        assert match and int(match.group(1)) >= 600
+        assert "timeout_s=EXTRACTION_CHAT_TIMEOUT_S" in src
+
     def test_raw_model_calls_stay_contained(self):
         """Static guard (FR-001): the raw llama calls exist ONLY inside the
         two executor homes; nothing else in engine/ may invoke them."""

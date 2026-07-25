@@ -206,7 +206,8 @@ class Test008ModelSplit:
         monkeypatch.setattr(local_llm, "available", lambda: True)
         monkeypatch.setattr(
             local_llm, "chat",
-            lambda messages, json_mode=False: calls.append(json_mode) or "{}",
+            lambda messages, json_mode=False, timeout_s=None:
+            calls.append(json_mode) or "{}",
         )
         matcher._chat([{"role": "user", "content": "extract"}], purpose="json")
         assert calls == [True]

@@ -198,7 +198,7 @@ US3 independently shippable.
 - [x] T021 Frozen gate extension (R12): `packaging/smoke_test.py` asserts
   `pairing.json` mtime ≥ app launch, pairing port == `port.txt`,
   `/api/bridge/info` OK, doctor `stamp.ok` true (plus existing checks).
-- [ ] T022 Full battery: `pytest -q` ×2 + `-m browser` (incl. NEW pairing E2E)
+- [x] T022 Full battery: `pytest -q` ×2 + `-m browser` (incl. NEW pairing E2E)
   + `-m slow` green; manual quickstart.md walkthrough (wizard in Chrome AND
   Edge, D2 notice, mismatch line, unclean-exit banner); fix findings.
 - [x] T023 [P] Docs: USER_MANUAL §19 (connect wizard walkthrough +

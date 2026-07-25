@@ -107,7 +107,8 @@ def _chat_impl(payload: dict) -> str:
     return completion["choices"][0]["message"]["content"] or ""
 
 
-def chat(messages: list[dict], json_mode: bool = False) -> str:
+def chat(messages: list[dict], json_mode: bool = False,
+         timeout_s: float | None = None) -> str:
     """Raises RuntimeError if the bundled model is missing, fails to load,
     times out, or the AI queue is saturated — callers (engine/matcher.py's
     tier dispatcher) treat all of these the same as a failed cloud call:
@@ -119,4 +120,5 @@ def chat(messages: list[dict], json_mode: bool = False) -> str:
     (ggml-cpu.dll access violation)."""
     from . import inference
 
-    return inference.run_chat(messages, json_mode=json_mode)
+    return inference.run_chat(messages, json_mode=json_mode,
+                              timeout_s=timeout_s)
