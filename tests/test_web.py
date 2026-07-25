@@ -104,6 +104,38 @@ def test_prose_links_have_non_color_cue():
     assert "p a" in css and "text-decoration: underline" in css
 
 
+def test_unclean_exit_banner_shows_once_and_dismisses(tmp_db):
+    """015 (FR-005): an abnormal previous end surfaces as a one-time
+    dismissible banner linking Diagnostics; dismissing clears the record."""
+    from fastapi.testclient import TestClient
+
+    from engine import settings
+    from web.main import create_app
+
+    c = TestClient(create_app())
+    assert "closed unexpectedly" not in c.get("/").text
+
+    settings.set("UNCLEAN_EXIT_AT", "2026-07-25T00:47:05")
+    home = c.get("/").text
+    assert "closed unexpectedly" in home
+    assert "/diagnostics" in home
+
+    assert c.post("/api/unclean-exit/dismiss").status_code == 200
+    assert settings.get("UNCLEAN_EXIT_AT") in (None, "")
+    assert "closed unexpectedly" not in c.get("/").text
+
+
+def test_pending_panel_has_drafting_state():
+    """015 (FR-003): the pending panel renders a live 'drafting…' state while
+    the background suggestion generates (never a silent empty draft)."""
+    import pathlib
+
+    html = pathlib.Path("web/templates/partials/autofill_status.html").read_text(
+        encoding="utf-8")
+    assert "pending.drafting" in html
+    assert "drafting a suggestion" in html
+
+
 def test_static_assets_cached_and_versioned(tmp_db):
     """014 (FR-010 perf): static assets carry a long cache lifetime and are
     referenced with a ?v=<version> buster so upgrades still invalidate."""

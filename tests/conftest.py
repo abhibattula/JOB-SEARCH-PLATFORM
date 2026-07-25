@@ -33,6 +33,9 @@ def _isolated_browser_controller_state():
 
     browser_controller.stop_queue()
     yield
+    # 015: background suggestion threads must not outlive the test's stubs
+    # (same lesson as profile_import — a leaked thread sees the real model)
+    browser_controller._join_pending_drafts_for_tests(timeout=2)
     browser_controller.stop_queue()
 
 

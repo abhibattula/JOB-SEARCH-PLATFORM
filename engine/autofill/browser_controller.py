@@ -392,16 +392,65 @@ def _value_for_tag(tag: str, raw: dict, profile: dict, job_id: int):
 
     with _lock:
         if _state.pending is None:
-            draft = answer_bank.suggest(question, tag, profile)
+            # 015 (FR-002/FR-003): park the pause IMMEDIATELY — the
+            # suggestion (minutes of on-device inference on CPU) generates in
+            # the background, NEVER while holding _lock. Holding _lock across
+            # the model call is what froze the whole app: the 3s status poll
+            # (queue_snapshot) blocks on this same lock.
+            nonce = next(_pending_nonce)
             _state.pending = {
                 "job_id": job_id,
                 "question_raw": question,
                 "category": tag,
-                "drafted_answer": draft,
+                "drafted_answer": None,
+                "drafting": True,
+                "nonce": nonce,
                 "field_id": raw.get("id"),
                 "field_name": raw.get("name"),
             }
+        else:
+            nonce = None
+    if nonce is not None:
+        _start_pending_draft(nonce, question, tag, profile)
     return None
+
+
+_pending_nonce = __import__("itertools").count(1)
+_suggest_threads: list[threading.Thread] = []
+
+
+def _start_pending_draft(nonce: int, question: str, tag: str | None,
+                         profile: dict) -> None:
+    """Generate the pending question's suggested answer off every lock (015).
+    The draft routes through the serialized inference owner via
+    answer_bank.suggest → matcher._chat, so it is bounded and single-flight;
+    the nonce check means a draft can never land on a pending it wasn't
+    started for (the user may have answered/advanced meanwhile)."""
+    from . import answer_bank
+
+    def _work() -> None:
+        try:
+            draft = answer_bank.suggest(question, tag, profile)
+        except Exception:
+            log.debug("pending suggestion failed", exc_info=True)
+            draft = ""
+        with _lock:
+            pending = _state.pending
+            if pending is not None and pending.get("nonce") == nonce:
+                pending["drafted_answer"] = draft or None
+                pending["drafting"] = False
+
+    thread = threading.Thread(target=_work, name="je-suggest", daemon=True)
+    _suggest_threads.append(thread)
+    thread.start()
+
+
+def _join_pending_drafts_for_tests(timeout: float = 5.0) -> None:
+    """Deterministic waits in tests + conftest teardown hygiene (a suggestion
+    thread must never outlive the test that stubbed its model)."""
+    for thread in list(_suggest_threads):
+        thread.join(timeout=timeout)
+    _suggest_threads[:] = [t for t in _suggest_threads if t.is_alive()]
 
 
 # --- queue state machine (public facade) -------------------------------------
@@ -478,6 +527,9 @@ def current_job() -> dict | None:
                 "question_raw": _state.pending["question_raw"],
                 "category": _state.pending["category"],
                 "drafted_answer": _state.pending["drafted_answer"],
+                # 015 (FR-003): the UI shows "drafting a suggestion…" until
+                # the background draft lands on this parked pause.
+                "drafting": bool(_state.pending.get("drafting")),
             }
         outcome = _state.outcomes.get(job_id)
         return {

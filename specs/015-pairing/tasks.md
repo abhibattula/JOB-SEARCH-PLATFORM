@@ -21,7 +21,7 @@ Verify/docs/ship.
 
 ## Phase 1: Setup
 
-- [ ] T001 Bump version to **1.5.0** (`engine/__init__.py`,
+- [x] T001 Bump version to **1.5.0** (`engine/__init__.py`,
   `packaging/windows.iss`, `extension/manifest.json`); `packaging/check_version.py`
   OK; add `WHATS_NEW["1.5.0"]` stub in `web/main.py`.
 
@@ -29,11 +29,11 @@ Verify/docs/ship.
 
 ## Phase 2: Foundational (blocking prerequisites)
 
-- [ ] T002 [P] `engine/autofill/bridge_const.py` (NEW): `PROTOCOL_V = 1`,
+- [x] T002 [P] `engine/autofill/bridge_const.py` (NEW): `PROTOCOL_V = 1`,
   `APP_ID = "jobengine"`, stdlib-only; `engine/autofill/ext_protocol.py` imports
   the constants from it. Tests: values unchanged (protocol parity), and
   `bridge_const` imports nothing outside the stdlib.
-- [ ] T003 `engine/inference.py` (NEW, R1) — TDD: write
+- [x] T003 `engine/inference.py` (NEW, R1) — TDD: write
   `tests/test_inference.py` FIRST (stub-model factory seam; 8-thread hammer
   asserting max observed concurrency == 1; timeout → RuntimeError; full queue
   (maxsize 32) → immediate RuntimeError; result correctness under load), watch
@@ -48,13 +48,13 @@ model loaded anywhere in the default suite.
 
 ## Phase 3: US1 — The app never crashes or freezes from on-device AI (P1)
 
-- [ ] T004 [US1] Reroute `engine/local_llm.py::chat` and
+- [x] T004 [US1] Reroute `engine/local_llm.py::chat` and
   `engine/semantic.py::embed` through `inference.run_chat/run_embed` (model
   loading moves onto the owner thread); public failure contracts unchanged
   (chat raises RuntimeError; embed returns None). Add a guard test asserting
   no module outside `engine/inference.py` touches a llama object directly
   (AST/grep over `engine/` for `create_chat_completion`/`create_embedding`).
-- [ ] T005 [US1] R3 park-then-draft — TDD: test FIRST that
+- [x] T005 [US1] R3 park-then-draft — TDD: test FIRST that
   `/api/autofill/status` answers < 1 s while a (slow stub) suggestion
   generates, and that the parked pending carries `drafting=True` then gains
   `drafted_answer` (nonce prevents a stale draft landing on a new pending).
@@ -62,7 +62,7 @@ model loaded anywhere in the default suite.
   `_lock`, generate via the inference owner OFF the lock, update the pending
   via nonce-checked callback. Render "drafting a suggestion…" in the pending
   panel (`web/templates/partials/autofill_status.html`).
-- [ ] T006 [P] [US1] `engine/lifecycle.py` (NEW, R9): `mark_running()` /
+- [x] T006 [P] [US1] `engine/lifecycle.py` (NEW, R9): `mark_running()` /
   `clear_running()` / `was_unclean()` + tests; wire into `desktop.py` (mark at
   start, clear on both clean-exit paths); on unclean start set
   `UNCLEAN_EXIT_AT`; one-time dismissible banner in `web/templates/base.html`

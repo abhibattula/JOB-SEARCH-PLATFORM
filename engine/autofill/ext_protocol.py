@@ -13,7 +13,11 @@ from typing import Literal
 
 from pydantic import BaseModel, ConfigDict, ValidationError
 
-PROTOCOL_V = 1
+# 015 (FR-009): the constants live in the dependency-free bridge_const module
+# (the stamp path reads them without touching pydantic); re-exported here so
+# existing consumers keep one authoritative name.
+from .bridge_const import PROTOCOL_V  # noqa: F401  (re-export)
+
 MAX_MESSAGE_BYTES = 1_000_000
 
 # Everything the fill engine may report per field. `ai_draft` is 010's

@@ -35,3 +35,32 @@ class TestStamp:
         """pairing.json must exist only in the stamped data-dir copy —
         committing one to the repo source would ship a machine's secret."""
         assert not (stamp_extension.source_dir() / "pairing.json").exists()
+
+
+class TestBridgeConst:
+    """015 (T002/FR-009): protocol constants live in a dependency-free module
+    so the stamp path can read them without importing pydantic — the exact
+    import chain that silently killed pairing in the shipped 1.4.0 app."""
+
+    def test_values_and_single_source(self):
+        from engine.autofill import bridge_const, ext_protocol
+
+        assert bridge_const.PROTOCOL_V == 1
+        assert bridge_const.APP_ID == "jobengine"
+        # ext_protocol re-exports FROM bridge_const — one source, no drift
+        assert ext_protocol.PROTOCOL_V == bridge_const.PROTOCOL_V
+
+    def test_bridge_const_imports_nothing_heavy(self):
+        import ast
+        import pathlib
+
+        src = pathlib.Path("engine/autofill/bridge_const.py").read_text(
+            encoding="utf-8")
+        tree = ast.parse(src)
+        modules = set()
+        for node in ast.walk(tree):
+            if isinstance(node, ast.Import):
+                modules.update(alias.name for alias in node.names)
+            elif isinstance(node, ast.ImportFrom):
+                modules.add(node.module or "")
+        assert modules <= {"__future__"}, f"unexpected imports: {modules}"

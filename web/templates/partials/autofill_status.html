@@ -181,7 +181,10 @@
     </p>
     <p class="data">{{ current.pending.question_raw }}</p>
     <p class="muted">
-      {% if current.pending.drafted_answer %}
+      {% if current.pending.drafting %}
+      ▸ drafting a suggestion from your resume… type your own answer now, or
+      wait a moment for the draft to appear here:
+      {% elif current.pending.drafted_answer %}
       AI-drafted, <strong>unreviewed</strong> — edit if needed, then confirm:
       {% else %}
       No AI draft available — type an answer to save and use it:

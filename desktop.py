@@ -122,6 +122,14 @@ def main() -> None:
     _acquire_app_mutex()
     _install_crash_hooks()
     db.init_db()
+
+    # 015 (FR-005): detect a previous abnormal end (native crashes leave no
+    # other trace) and mark this session as running. Cleared at the clean
+    # shutdown at the end of main(); an exception path leaves the marker.
+    from engine import lifecycle
+
+    lifecycle.startup_check_and_mark()
+
     maybe_start_scheduler()
     port = pick_port()
     url = f"http://127.0.0.1:{port}"
@@ -193,6 +201,7 @@ def main() -> None:
 
     server.should_exit = True
     server_thread.join(timeout=5)
+    lifecycle.clear_running()  # clean shutdown — next launch shows no banner
 
 
 if __name__ == "__main__":

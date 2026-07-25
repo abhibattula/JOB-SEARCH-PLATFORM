@@ -72,8 +72,19 @@ def _unseen_whats_new():
     return {"entries": entries, "version": _v}
 
 
+def _unclean_exit():
+    """015 (FR-005): non-empty when the previous session ended without a
+    clean shutdown (engine/lifecycle.py marker) and the user hasn't
+    dismissed the notice yet. Rendered server-side inline (014 CLS-safe
+    pattern)."""
+    from engine import settings as settings_mod
+
+    return settings_mod.get("UNCLEAN_EXIT_AT") or None
+
+
 templates.env.globals["pending_update"] = _pending_update
 templates.env.globals["unseen_whats_new"] = _unseen_whats_new
+templates.env.globals["unclean_exit"] = _unclean_exit
 
 
 def _current_theme() -> str:
@@ -90,6 +101,13 @@ templates.env.globals["current_theme"] = _current_theme
 # 008 (FR-032): plain-language changelog behind the What's New overlay —
 # keyed by APP_VERSION, shown once per version.
 WHATS_NEW: dict[str, list[str]] = {
+    "1.5.0": [
+        "Apply Assist pairing rebuilt: a live Connect page that verifies each "
+        "step and says exactly what's wrong when something is.",
+        "The app no longer freezes or crashes from the on-device AI.",
+        "Job links and the assistant window now open in your preferred "
+        "browser (Chrome by default) — changeable in Settings.",
+    ],
     "1.4.0": [
         "A refreshed look: cleaner typography, spacing, and color across every "
         "page, in both the light and dark themes — same fast, private engine.",
@@ -401,6 +419,14 @@ def create_app() -> FastAPI:
         if request.url.path.startswith("/static/"):
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         return response
+
+    @app.post("/api/unclean-exit/dismiss")
+    def dismiss_unclean_exit():
+        """015 (FR-005): one-time banner — dismissing clears the record."""
+        from engine import settings as settings_mod
+
+        settings_mod.set("UNCLEAN_EXIT_AT", "")
+        return {"ok": True}
 
     @app.get("/", response_class=HTMLResponse)
     def index(

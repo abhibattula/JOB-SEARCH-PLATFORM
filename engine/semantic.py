@@ -57,17 +57,26 @@ def _load():
         return _model
 
 
+def _embed_impl(payload: dict) -> list[float]:
+    """Worker-side executor — runs ONLY on the engine/inference.py owner
+    thread (015 FR-001; same serialization rule as the chat model)."""
+    result = _load().create_embedding(payload["text"][:MAX_EMBED_CHARS])
+    vector = result["data"][0]["embedding"]
+    if vector and isinstance(vector[0], list):  # per-token: mean-pool
+        length = len(vector)
+        vector = [sum(col) / length for col in zip(*vector)]
+    return [float(v) for v in vector]
+
+
 def embed(text: str) -> list[float] | None:
-    """Embedding vector for text, or None on any failure (never raises)."""
+    """Embedding vector for text, or None on any failure (never raises).
+    015 (FR-001): execution is serialized through the inference owner."""
     if not text or not available():
         return None
+    from . import inference
+
     try:
-        result = _load().create_embedding(text[:MAX_EMBED_CHARS])
-        vector = result["data"][0]["embedding"]
-        if vector and isinstance(vector[0], list):  # per-token: mean-pool
-            length = len(vector)
-            vector = [sum(col) / length for col in zip(*vector)]
-        return [float(v) for v in vector]
+        return inference.run_embed(text)
     except Exception:
         log.warning("embedding failed", exc_info=True)
         return None
