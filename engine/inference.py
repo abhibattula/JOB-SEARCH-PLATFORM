@@ -225,9 +225,20 @@ def _subprocess_main(conn) -> None:
 
 
 def _ensure_child() -> None:
-    global _child, _parent_conn
+    global _child, _parent_conn, _runtime_restarts
     if _child is not None and _child.is_alive() and _parent_conn is not None:
         return
+    if _child is not None:
+        # the previous child died between requests (macOS reaps a terminated
+        # child before the next send reaches the pipe; Windows tends to hit
+        # the send/recv error path instead) — this IS a supervised restart
+        # and must count as one on every platform.
+        _runtime_restarts += 1
+        try:
+            if _parent_conn is not None:
+                _parent_conn.close()
+        except Exception:
+            pass
     import multiprocessing as mp
 
     ctx = mp.get_context("spawn")
