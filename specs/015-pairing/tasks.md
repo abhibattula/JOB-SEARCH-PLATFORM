@@ -205,7 +205,7 @@ US3 independently shippable.
   troubleshooting table from close-code mappings + preferred browser +
   stability/what-changed), README (Apply Assist pairing + preferred browser),
   `WHATS_NEW["1.5.0"]` filled.
-- [ ] T024 Ship: spike GO/NO-GO finalized in research.md; frozen build +
+- [x] T024 Ship: spike GO/NO-GO finalized in research.md; frozen build +
   `packaging/smoke_test.py` PASS (absolute exe path); merge `015-pairing` →
   `main`, mirror `main:001-ai-job-engine`, tag `v1.5.0`; verify BOTH
   installers (exe `MZ` / dmg `78 01`) + SHA-256 vs release body.
