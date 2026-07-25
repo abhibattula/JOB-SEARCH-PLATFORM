@@ -32,6 +32,23 @@ App run locally (`python app.py`, 127.0.0.1:8000), populated feed. Desktop.
 > same way at the start of implementation (WS-0 task) and re-measured at the end
 > for a before→after table; the feed CLS 0.27 already anchors the perf goal.
 
+### T019 before→after (re-measured with chrome-devtools-mcp, 2026-07-24, end of implementation)
+
+| Page | CLS before→after | LCP | a11y before→after | Notes |
+|---|---|---|---|---|
+| Feed `/` | **0.27 → 0.00** ✅ | 921 ms (≤ 941 ms baseline) ✅ | 100 → 100 ✅ | banners now server-side inline (T012) |
+| Job detail `/jobs/{id}` | n/a | — | 100 → **96 → 100** ✅ | fixed: inline prose link relied on color only (WCAG 1.4.1) → `p a` underline |
+| Apply Assist `/autofill` | n/a | — | 100 → **93 → 100** ✅ | fixed: per-job checkbox unlabeled when queue non-empty → `aria-label` (baseline missed it: empty queue) |
+| Analytics `/analytics` | n/a | — | 100 → 100 ✅ | new inline-SVG dashboard kept a11y (role=img + `<title>` + aria-label + data-table fallback) |
+| Profile `/profile` | n/a | — | 100 → 100 ✅ | refreshed tokens held AA |
+
+**Outcome**: CLS headline fixed at the source (0.27 → 0.00), LCP held under baseline,
+Lighthouse a11y = **100 on all five key pages** after fixing the two regressions the
+new/data-dependent content surfaced. Best Practices 100 across the board; SEO 90
+(unchanged, low priority for a local desktop app). Guard tests added in
+`tests/test_web.py` (`test_autofill_job_checkbox_has_accessible_label`,
+`test_prose_links_have_non_color_cue`).
+
 ## Visual assessment (from a full-page screenshot of the current feed)
 
 The current "datasheet" is functional but flat: dense small type, tight rows,

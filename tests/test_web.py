@@ -82,6 +82,28 @@ def test_banners_render_server_side_not_load_injected():
     assert "pending_update()" in base and "unseen_whats_new()" in base
 
 
+def test_autofill_job_checkbox_has_accessible_label():
+    """014 (T019 a11y regression guard): the per-job Apply Assist checkbox must
+    carry an accessible name (aria-label) — Lighthouse flagged it as an
+    unlabeled form control (a11y 93) when the queue is non-empty."""
+    import pathlib
+
+    html = pathlib.Path("web/templates/autofill.html").read_text(encoding="utf-8")
+    for line in html.splitlines():
+        if "autofill-job-check" in line and "<input" in line:
+            assert "aria-label" in line, "autofill checkbox needs an aria-label"
+
+
+def test_prose_links_have_non_color_cue():
+    """014 (T019 a11y regression guard): inline links inside prose must not rely
+    on color alone (WCAG 1.4.1) — Lighthouse flagged the profile link inside a
+    `.muted` paragraph (a11y 96). A `p a` underline rule restores the cue."""
+    import pathlib
+
+    css = pathlib.Path("web/static/styles.css").read_text(encoding="utf-8")
+    assert "p a" in css and "text-decoration: underline" in css
+
+
 def test_static_assets_cached_and_versioned(tmp_db):
     """014 (FR-010 perf): static assets carry a long cache lifetime and are
     referenced with a ?v=<version> buster so upgrades still invalidate."""

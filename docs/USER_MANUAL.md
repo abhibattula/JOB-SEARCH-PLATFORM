@@ -629,6 +629,49 @@ UNKNOWN badges everywhere = run `python cli.py load-sponsorship`.
   "couldn't read this page" dead end, and the silent identity auto-fill
   are all gone.
 
+## 18. What changed in v1.4.0 (The Experience Release)
+
+A full visual + interaction refresh of the web UI, plus a sweep of accumulated
+tech-debt — shipped together. The stack is unchanged (server-rendered Jinja +
+HTMX + design-token CSS + vanilla JS; **no** JS framework, **no** build step),
+so it's still $0, still offline-first, and the engine still never imports the web
+layer. Apply Assist behaviour is untouched (it never auto-submits).
+
+- **A refreshed look.** The design-token layer (type scale, spacing, elevation/
+  shadow, motion, and a re-tuned palette) was rebuilt while keeping the
+  "engineering instrument" identity — the light **datasheet** and dark
+  **scope-screen** themes. Cards, tables, badges, buttons, inputs and empty
+  states are now consistent across every page, and both themes hold WCAG AA
+  contrast. (Change the theme from **Settings**, or from the command palette.)
+- **It feels quicker.**
+  - **No more layout jump.** The top banners (update / What's New) are now
+    rendered inline with the page instead of being injected after load, so the
+    page no longer shifts as it settles — measured **Cumulative Layout Shift
+    dropped from 0.27 to 0.00** on the feed.
+  - **Optimistic actions.** Save / Applied / Hide flip the row instantly and
+    reconcile with the server; if the server rejects it, the row reverts with a
+    shake and an error toast (the server stays the source of truth).
+  - **Smooth transitions & micro-interactions** on page/partial swaps, hover and
+    press — all disabled automatically when your OS is set to
+    **reduce motion**.
+  - **Cached assets.** Styles and scripts are served with a long cache lifetime
+    and a version stamp, so upgrades still refresh them.
+- **Command palette + keyboard nav.** Press **Ctrl/Cmd-K** anywhere to open a
+  palette: type to filter, then jump to any view or run a global action (refresh
+  now, switch theme, start Apply Assist). In the feed, **j/k** move between jobs,
+  **Enter** opens the focused job, and **/** jumps to the search box. The palette
+  is a proper accessible dialog (focus-trapped, Escape to close).
+- **Analytics is a dashboard.** The Analytics page now draws a dependency-free,
+  theme-aware **inline-SVG funnel** (Applied → Responses → Interviews → Offers)
+  plus inline bars for source, score-band and per-week breakdowns — each with an
+  accessible label and the underlying numbers still shown as text.
+- **Audit fixes.** CI is green on Linux; the deprecated FastAPI startup handler
+  was migrated to the lifespan pattern; noisy test warnings were quieted; the
+  human-readable date format now reaches every screen (tracker, analytics,
+  digests — not just feed + detail); and the accessibility issues the audit
+  surfaced were fixed. **Lighthouse accessibility is 100 on all five key pages**
+  (feed, job detail, Apply Assist, Analytics, Profile).
+
 ## 17. What changed in v1.3.0 (The Refinements Release)
 
 - **Apply Assist fills in the right browser.** Before, the assistant window

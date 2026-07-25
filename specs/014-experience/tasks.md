@@ -66,7 +66,7 @@ US2 fast → US3 palette → Verify/ship.
   empty-state styling so they're consistent across pages; polish the shell + nav
   density in `base.html`; give the match score a clearer visual treatment and make
   sponsor/eligibility badges visually distinct.
-- [ ] T010 [US1] Analytics inline charts (`analytics.html`): dependency-free inline
+- [x] T010 [US1] Analytics inline charts (`analytics.html`): dependency-free inline
   **SVG** for funnel, source breakdown, score-band distribution, callback rate —
   rendered from the existing analytics data, `dataviz`-styled, theme-aware via
   tokens, with `<title>`/aria labels + an accessible data table fallback.
@@ -91,7 +91,7 @@ US2 fast → US3 palette → Verify/ship.
   empty→filled injection and no reserved gap. Use skeletons ONLY for genuinely
   async, content-bearing loads (feed refresh, autofill status). A `.skeleton`
   component in `styles.css`. Re-measure in T015 → **CLS ≤ 0.1**.
-- [ ] T013 [US2] Optimistic status in `web/static/app.js`: Save/Applied/Hide flip
+- [x] T013 [US2] Optimistic status in `web/static/app.js`: Save/Applied/Hide flip
   the row immediately, then reconcile with the server (revert + error toast on
   failure), building on the existing toast/loading pattern. Keep the server as
   source of truth.
@@ -124,7 +124,7 @@ US2 fast → US3 palette → Verify/ship.
 
 ## Phase 6: WS-D — Verify, docs, ship
 
-- [ ] T019 Re-measure ALL five key pages (chrome-devtools before→after table in
+- [x] T019 Re-measure ALL five key pages (chrome-devtools before→after table in
   research.md): CLS ≤ 0.1 (feed), LCP ≤ baseline, **Lighthouse a11y = 100 held**
   on every page; fix any a11y regressions from the new interactive pieces.
 - [ ] T020 [P] Docs: USER_MANUAL §18 (visual/interaction changes + command

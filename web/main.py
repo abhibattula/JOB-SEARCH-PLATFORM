@@ -97,7 +97,8 @@ WHATS_NEW: dict[str, list[str]] = {
         "Hide react instantly, and pages transition smoothly.",
         "Press Ctrl/Cmd-K anywhere to open a command palette — jump to any view "
         "or run actions (refresh, switch theme, start Apply Assist) from the "
-        "keyboard.",
+        "keyboard. In the feed, j/k move between jobs, Enter opens one, and / "
+        "jumps to search.",
         "The Analytics page now has real charts of your funnel, sources, match "
         "scores, and callback rate.",
     ],

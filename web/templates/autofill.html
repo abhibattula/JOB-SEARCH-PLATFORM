@@ -107,7 +107,7 @@
       <tbody>
         {% for job in jobs %}
         <tr>
-          <td><input type="checkbox" class="autofill-job-check" value="{{ job.id }}" checked></td>
+          <td><input type="checkbox" class="autofill-job-check" value="{{ job.id }}" checked aria-label="Include {{ job.title }} at {{ job.company }} in Apply Assist"></td>
           <td>{{ job.title }}</td>
           <td class="data">{{ job.company }}</td>
         </tr>
