@@ -717,3 +717,16 @@ class TestBrowserRouting013:
         monkeypatch.delenv("AUTOFILL_BACKEND", raising=False)
         monkeypatch.setattr(ext_backend, "is_live", lambda max_age_s=10.0: False)
         assert bc._choose_backend() == "playwright"
+
+
+class TestSnapshotBrowser015:
+    def test_queue_snapshot_extension_includes_browser(self, tmp_db):
+        """015 (T014): the snapshot carries the companion's browser so the
+        path banner can say 'your Chrome', not just 'your browser'."""
+        from engine.autofill import ext_backend
+
+        ext_backend.register(lambda m: None, lambda code: None, "1.5.0",
+                             browser="chrome")
+        snapshot = bc.queue_snapshot()
+        assert snapshot["extension"]["browser"] == "chrome"
+        ext_backend.reset_for_tests()

@@ -473,3 +473,41 @@ class TestDiscoveryHandlers012:
             n = conn.execute(
                 "SELECT COUNT(*) c FROM jobs WHERE title='SWE'").fetchone()["c"]
         assert n == 1
+
+
+class TestBrowserAndRejects015:
+    """015 (T009): the companion session carries its browser identity, and
+    rejected connection attempts are counted by kind so 'nothing knocking'
+    is distinguishable from 'knocking but rejected'."""
+
+    def test_register_stores_browser_and_status_reports_it(self):
+        ext_backend.reset_for_tests()
+        ext_backend.register(lambda m: None, lambda code: None, "1.5.0",
+                             browser="chrome")
+        status = ext_backend.status()
+        assert status["connected"] is True
+        assert status["browser"] == "chrome"
+
+    def test_old_register_signature_defaults_browser_empty(self):
+        ext_backend.reset_for_tests()
+        ext_backend.register(lambda m: None, lambda code: None, "1.4.0")
+        assert ext_backend.status()["browser"] == ""
+
+    def test_reject_counters_by_kind(self):
+        ext_backend.reset_for_tests()
+        stats = ext_backend.reject_stats()
+        assert stats == {"auth": 0, "protocol": 0,
+                         "last_kind": None, "last_age_s": None}
+        ext_backend.record_reject("auth")
+        ext_backend.record_reject("auth")
+        ext_backend.record_reject("protocol")
+        stats = ext_backend.reject_stats()
+        assert stats["auth"] == 2
+        assert stats["protocol"] == 1
+        assert stats["last_kind"] == "protocol"
+        assert stats["last_age_s"] is not None and stats["last_age_s"] < 5
+
+    def test_reset_clears_reject_counters(self):
+        ext_backend.record_reject("auth")
+        ext_backend.reset_for_tests()
+        assert ext_backend.reject_stats()["auth"] == 0

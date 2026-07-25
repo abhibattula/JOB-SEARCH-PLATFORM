@@ -8,6 +8,19 @@
     (flagged for your review). You always review and click the actual
     apply/submit button yourself — this never happens automatically.</p>
 
+  {# 015 (FR-008): a failed pairing preparation is never log-only #}
+  {% set _sp = stamp_problem() %}
+  {% if _sp %}
+  <div class="error-banner stamp-problem" role="alert">
+    <strong>Companion pairing needs attention.</strong> The app couldn't
+    prepare the browser companion at launch:
+    <span class="data">{{ _sp.error }}</span>
+    Restart the app to retry; if it keeps happening, check
+    <a href="/diagnostics">Diagnostics</a>. Apply Assist still works in the
+    assistant window meanwhile.
+  </div>
+  {% endif %}
+
   {# 010 FR-018: connection card + active-mode indicator #}
   <div id="companion-card" class="status-card"
        hx-get="/api/autofill/status" hx-trigger="load, every 3s" hx-swap="none">

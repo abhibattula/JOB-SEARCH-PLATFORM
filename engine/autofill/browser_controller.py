@@ -743,6 +743,9 @@ def queue_snapshot() -> dict:
         "extension": {
             "connected": ext_status["connected"],
             "version": ext_status["version"],
+            # 015 (T014): which browser the companion runs in, so the path
+            # banner can say "your Chrome" instead of just "your browser"
+            "browser": ext_status.get("browser", ""),
             "last_seen_age_s": ext_status["last_seen_age_s"],
         },
     }

@@ -67,6 +67,9 @@ class Hello(_Strict):
     secret: str
     version: str
     chrome_version: str = ""
+    # 015 (T009, additive — PROTOCOL_V stays 1): which browser the companion
+    # runs in ("chrome" | "edge" | "" unknown), detected from the UA string.
+    browser: str = ""
 
 
 class TabOpened(_Strict):

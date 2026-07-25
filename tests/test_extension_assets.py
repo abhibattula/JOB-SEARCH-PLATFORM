@@ -135,9 +135,14 @@ class TestDiscoveryBadge012:
         all_js = [j for cs in manifest["content_scripts"] for j in cs["js"]]
         assert "content/discovery.js" in all_js
 
-    def test_manifest_version_is_1_2_0(self):
+    def test_manifest_version_tracks_app_version(self):
+        """015 (R13): the repo manifest tracks the app release (the staged
+        copy is additionally rewritten at stamp time) — a pinned literal here
+        is exactly the stale-assert class the 013 ship lesson warns about."""
+        from engine import APP_VERSION
+
         manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))
-        assert manifest["version"] == "1.2.0"
+        assert manifest["version"] == APP_VERSION
 
     def test_detection_signals_present(self):
         src = self.DISCOVERY.read_text(encoding="utf-8")
@@ -184,3 +189,53 @@ class TestDiscoveryBadge012:
         manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))
         assert manifest["host_permissions"] == ["http://127.0.0.1/*"]
         assert set(manifest["permissions"]) == {"storage", "tabs", "alarms"}
+
+
+class TestPopupDiagnostics015:
+    """015 (T013/FR-011): the popup never presents a dead control — every
+    disconnected state is recorded by the socket layer, survives worker
+    restarts via storage.session, and maps to a plain-language reason with a
+    retry. Static assertions on the shipped source (same style as above)."""
+
+    def _socket(self):
+        return (EXT / "background" / "socket.js").read_text(encoding="utf-8")
+
+    def _sw(self):
+        return (EXT / "background" / "service-worker.js").read_text(encoding="utf-8")
+
+    def _popup(self):
+        return (EXT / "popup" / "popup.js").read_text(encoding="utf-8")
+
+    def test_socket_records_every_attempt_stage(self):
+        src = self._socket()
+        assert "lastAttempt" in src
+        for stage in ("no-pairing", "identity-failed", "ws-error",
+                      "closed", "connected"):
+            assert f'"{stage}"' in src, f"missing recorded stage {stage}"
+        assert "chrome.storage.session" in src  # survives worker restarts
+
+    def test_session_record_never_contains_the_secret(self):
+        """The session-storage record carries stage/port/code/at ONLY —
+        the pairing secret must never be persisted anywhere (010 rule
+        extended to diagnostics)."""
+        src = self._socket()
+        for line in src.splitlines():
+            if "storage.session.set" in line:
+                assert "secret" not in line
+
+    def test_service_worker_reports_last_attempt_and_handles_connect(self):
+        sw = self._sw()
+        assert "lastAttempt" in sw  # status? reply includes it
+        assert "connect!" in sw     # popup-triggered immediate retry
+
+    def test_popup_maps_close_codes_to_plain_language(self):
+        pj = self._popup()
+        assert "4401" in pj and "4426" in pj
+        assert "reload" in pj          # 4426 → reload the extension
+        assert "stale" in pj           # 4401 → stale pairing guidance
+        assert "Connect now" in (EXT / "popup" / "popup.html").read_text(
+            encoding="utf-8")
+
+    def test_popup_fill_button_explains_instead_of_noop(self):
+        pj = self._popup()
+        assert "Can't fill" in pj or "Can&#39;t fill" in pj

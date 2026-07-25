@@ -61,10 +61,14 @@ def start_queue(body: QueueRequest):
         current = browser_controller.start_queue(body.job_ids)
     except Exception as exc:
         log.warning("Apply Assist failed to start", exc_info=True)
-        return {"started": False, "current_job_id": None, "error": str(exc)[:300]}
+        return {"started": False, "current_job_id": None, "backend": None,
+                "error": str(exc)[:300]}
     return {
         "started": current is not None,
         "current_job_id": current["job_id"] if current else None,
+        # 015 (D2/FR-012): name the sticky fill path from the first response
+        # so the UI shows the disclosure immediately, not on the next poll
+        "backend": browser_controller.queue_snapshot()["backend"],
     }
 
 

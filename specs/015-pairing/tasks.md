@@ -86,7 +86,7 @@ banner works — US1 independently shippable.
 
 ## Phase 4: US2 — Pair once, see it verified, never wonder again (P2)
 
-- [ ] T008 [US2] Stamp rework (R4/R13) — TDD in
+- [x] T008 [US2] Stamp rework (R4/R13) — TDD in
   `tests/test_stamp_extension.py` FIRST: always-writes-pairing (even when the
   copy has problems and dest already populated), read-back verification
   (port/secret/protocol), `stamp_status.json` written on success AND failure
@@ -96,22 +96,22 @@ banner works — US1 independently shippable.
   engine.paths/engine.db/engine.autofill.bridge_const` only). Then implement
   in `scripts/stamp_extension.py` (+ `desktop.py` except-path writes the
   failure status too).
-- [ ] T009 [P] [US2] Bridge additions (R5): `ext_protocol.Hello` gains
+- [x] T009 [P] [US2] Bridge additions (R5): `ext_protocol.Hello` gains
   OPTIONAL `browser` field (old hellos stay valid — test);
   `engine/autofill/ext_backend.py` stores `browser` in the session, exposes it
   in `status()`, and adds `record_reject(kind)` counters
   (auth/protocol/last) + tests.
-- [ ] T010 [US2] `web/routes_bridge.py`: call `ext_backend.record_reject` at
+- [x] T010 [US2] `web/routes_bridge.py`: call `ext_backend.record_reject` at
   the 4401/4426 close sites; add `GET /api/companion/doctor` per
   `contracts/http-api-additions.md` (stamp status file, pairing
   present/port/protocol/fresh-vs-process-start, port.txt match, companion
   incl. browser, rejects, browser prefs/mismatch). Tests: response shape,
   freshness/port logic against tmp files, and **secret never present** in the
   serialized response.
-- [ ] T011 [US2] Stamp-failure banner (FR-008): surface `stamp_status.ok ==
+- [x] T011 [US2] Stamp-failure banner (FR-008): surface `stamp_status.ok ==
   false` as a prominent server-side inline banner on the Apply Assist page and
   connect page + web tests (banner iff failure recorded).
-- [ ] T012 [US2] Connect wizard rework (`web/templates/companion.html`, R5):
+- [x] T012 [US2] Connect wizard rework (`web/templates/companion.html`, R5):
   live per-step verification driven by a 3 s doctor poll — app preparation
   (stamp) → companion detected/authenticating (rejects distinguish stale
   pairing vs version mismatch vs nothing-knocking) → connected (browser +
@@ -120,7 +120,7 @@ banner works — US1 independently shippable.
   diagnostics page (FR-014's human-readable "single diagnostics view", not
   just the JSON endpoint). Template/web tests for the state hooks + the
   diagnostics section.
-- [ ] T013 [US2] Extension diagnostics (R8): `extension/background/socket.js`
+- [x] T013 [US2] Extension diagnostics (R8): `extension/background/socket.js`
   records `lastAttempt {stage, port, code, at}` on every transition +
   mirrors to `chrome.storage.session`; `service-worker.js` `status?` reply
   includes it and handles `connect!`; `popup.js`/`popup.html` render
@@ -129,7 +129,7 @@ banner works — US1 independently shippable.
   make "Fill this page" explain instead of no-op when disconnected. Extend
   `tests/test_extension_assets.py` static asserts (storage.session usage,
   connect! handler, 4401/4426 mapping strings, no secret in session storage).
-- [ ] T014 [US2] D2 disclosure (R7): `/api/autofill/queue` response gains
+- [x] T014 [US2] D2 disclosure (R7): `/api/autofill/queue` response gains
   `backend`; `queue_snapshot()["extension"]` gains `browser`;
   `partials/autofill_status.html` renders the persistent path banner —
   companion → "Filling in your <Browser> (companion v<ver>)", assistant →

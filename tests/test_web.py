@@ -136,6 +136,38 @@ def test_pending_panel_has_drafting_state():
     assert "drafting a suggestion" in html
 
 
+def test_stamp_failure_banner_on_autofill_and_companion(tmp_db):
+    """015 (FR-008): a pairing-preparation failure is NEVER log-only — it
+    banners on the Apply Assist and connect pages the same session, and
+    clears once a later stamp succeeds."""
+    import json as json_mod
+
+    from fastapi.testclient import TestClient
+
+    from engine import paths
+    from web.main import create_app
+
+    c = TestClient(create_app())
+    assert "pairing needs attention" not in c.get("/autofill").text
+
+    paths.data_dir().mkdir(parents=True, exist_ok=True)
+    (paths.data_dir() / "stamp_status.json").write_text(json_mod.dumps({
+        "ok": False, "error": "ImportError: pydantic_core missing",
+        "at": "2026-07-25T00:41:00", "port": 8000,
+        "app_version": None, "copy_warning": None,
+    }), encoding="utf-8")
+    page = c.get("/autofill").text
+    assert "pairing needs attention" in page
+    assert "pydantic_core missing" in page
+    assert "pairing needs attention" in c.get("/companion").text
+
+    (paths.data_dir() / "stamp_status.json").write_text(json_mod.dumps({
+        "ok": True, "error": None, "at": "2026-07-25T00:45:00", "port": 8000,
+        "app_version": "1.5.0", "copy_warning": None,
+    }), encoding="utf-8")
+    assert "pairing needs attention" not in c.get("/autofill").text
+
+
 def test_static_assets_cached_and_versioned(tmp_db):
     """014 (FR-010 perf): static assets carry a long cache lifetime and are
     referenced with a ?v=<version> buster so upgrades still invalidate."""
@@ -150,3 +182,42 @@ def test_static_assets_cached_and_versioned(tmp_db):
     assert "max-age" in css.headers.get("cache-control", "").lower()
     home = c.get("/").text
     assert f"styles.css?v={APP_VERSION}" in home
+
+
+def test_fill_path_banner_states_both_paths():
+    """015 (D2/FR-013): the status partial names the active path — the
+    signed-out assistant window carries a warning + connect link; the
+    companion path names the browser and companion version."""
+    import pathlib
+
+    html = pathlib.Path("web/templates/partials/autofill_status.html").read_text(
+        encoding="utf-8")
+    assert "not signed in" in html
+    assert 'href="/companion"' in html
+    assert "companion v" in html
+
+
+def test_companion_wizard_verifies_live_per_step(tmp_db):
+    """015 (FR-010): the connect page is a live wizard driven by the doctor —
+    per-step verification hooks + troubleshooting mapped to observed reject
+    kinds (stale pairing vs old companion) must be present."""
+    import pathlib
+
+    html = pathlib.Path("web/templates/companion.html").read_text(encoding="utf-8")
+    assert "/api/companion/doctor" in html
+    assert html.count("data-step=") >= 3
+    assert "stale pairing" in html
+    assert "reload" in html  # 4426 → reload-the-extension guidance
+
+
+def test_diagnostics_page_has_companion_doctor_section(tmp_db):
+    """015 (FR-014): the human-readable doctor lives on the Diagnostics page
+    — the whole chain in one place, not just a JSON endpoint."""
+    from fastapi.testclient import TestClient
+
+    from web.main import create_app
+
+    page = TestClient(create_app()).get("/diagnostics").text
+    assert "Companion &amp; pairing" in page or "Companion & pairing" in page
+    assert "Pairing prepared" in page
+    assert "OS default browser" in page

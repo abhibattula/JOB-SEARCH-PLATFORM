@@ -152,10 +152,28 @@ def main() -> None:
         from scripts import stamp_extension
 
         stamp_extension.stamp(port)
-    except Exception:
+    except Exception as exc:
         logging.getLogger(__name__).warning(
             "could not stamp companion extension", exc_info=True
         )
+        # 015 (FR-008): stamp() records its own failures, but if the module
+        # itself failed to import (the 1.4.0 pydantic_core class) nothing
+        # did — write the outcome record directly so the UI banner and the
+        # doctor still surface it. Stdlib only, deliberately.
+        try:
+            import json as _json
+            from datetime import datetime as _dt, timezone as _tz
+
+            (paths.data_dir() / "stamp_status.json").write_text(_json.dumps({
+                "ok": False,
+                "error": f"{type(exc).__name__}: {exc}"[:500],
+                "at": _dt.now(_tz.utc).strftime("%Y-%m-%dT%H:%M:%S"),
+                "port": port,
+                "app_version": None,
+                "copy_warning": None,
+            }), encoding="utf-8")
+        except Exception:
+            pass
 
     # Import the app object directly (a "module:attr" string breaks under PyInstaller)
     from web.main import app as web_app

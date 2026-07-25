@@ -534,3 +534,39 @@ class Test011FillCoverage:
         assert "fill-coverage" in resp.text
         assert "need" in resp.text  # "1 need you"
         bc.stop_queue()
+
+
+class TestBackendDisclosure015:
+    """015 (D2/FR-012): the queue-start response names the fill path so the
+    UI can show the loud notice from the very first render."""
+
+    def test_queue_response_names_playwright_backend(self, client, monkeypatch):
+        from engine.autofill import browser_controller
+
+        monkeypatch.setattr(
+            browser_controller, "preflight",
+            lambda: {"ok": True, "channel": "msedge", "error": None},
+        )
+        monkeypatch.setattr(browser_controller, "_dispatch",
+                            lambda name, payload=None, wait=None: None)
+        job_id = seed_job()
+        body = client.post("/api/autofill/queue",
+                           json={"job_ids": [job_id]}).json()
+        assert body["started"] is True
+        assert body["backend"] == "playwright"  # no live companion
+
+    def test_queue_response_names_extension_backend(self, client, monkeypatch):
+        from engine.autofill import browser_controller, ext_backend
+
+        monkeypatch.setattr(
+            browser_controller, "preflight",
+            lambda: {"ok": True, "channel": "msedge", "error": None},
+        )
+        sent = []
+        ext_backend.register(sent.append, lambda code: None, "1.5.0",
+                             browser="chrome")
+        job_id = seed_job()
+        body = client.post("/api/autofill/queue",
+                           json={"job_ids": [job_id]}).json()
+        assert body["started"] is True
+        assert body["backend"] == "extension"

@@ -164,3 +164,31 @@ class TestWidgetKinds011:
                 "fields", tab_id=1, frame_id=0, url="u", doc="d",
                 descriptors=[make_descriptor(widget="wobble")],
             ))
+
+
+class TestHelloBrowser015:
+    """015 (T009): Hello gains an OPTIONAL browser field — additive,
+    PROTOCOL_V stays 1, old companions (no field) remain valid."""
+
+    def test_hello_without_browser_still_valid(self):
+        import json
+
+        from engine.autofill import ext_protocol
+
+        msg = ext_protocol.parse_inbound(json.dumps({
+            "v": 1, "type": "hello", "seq": 1,
+            "secret": "s3", "version": "1.4.0",
+        }))
+        assert isinstance(msg, ext_protocol.Hello)
+        assert msg.browser == ""
+
+    def test_hello_with_browser_parses(self):
+        import json
+
+        from engine.autofill import ext_protocol
+
+        msg = ext_protocol.parse_inbound(json.dumps({
+            "v": 1, "type": "hello", "seq": 1,
+            "secret": "s3", "version": "1.5.0", "browser": "edge",
+        }))
+        assert msg.browser == "edge"

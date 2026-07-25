@@ -82,9 +82,31 @@ def _unclean_exit():
     return settings_mod.get("UNCLEAN_EXIT_AT") or None
 
 
+def _stamp_problem():
+    """015 (FR-008): the last pairing-preparation outcome, when it FAILED —
+    drives the never-log-only banner on the Apply Assist and connect pages.
+    None when there is no record (never stamped) or the last stamp was OK."""
+    import json as json_mod
+
+    from engine import paths as paths_mod
+
+    path = paths_mod.data_dir() / "stamp_status.json"
+    if not path.exists():
+        return None
+    try:
+        data = json_mod.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"error": "stamp_status.json unreadable", "at": None}
+    if data.get("ok"):
+        return None
+    return {"error": data.get("error") or "unknown failure",
+            "at": data.get("at")}
+
+
 templates.env.globals["pending_update"] = _pending_update
 templates.env.globals["unseen_whats_new"] = _unseen_whats_new
 templates.env.globals["unclean_exit"] = _unclean_exit
+templates.env.globals["stamp_problem"] = _stamp_problem
 
 
 def _current_theme() -> str:
@@ -597,12 +619,16 @@ def create_app() -> FastAPI:
             tail = "\n".join(
                 log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-40:]
             )
+        from .routes_bridge import companion_doctor
+
         return templates.TemplateResponse(
             request,
             "diagnostics.html",
             {
                 "log_tail": tail,
                 "legacy_bytes": browser_setup.legacy_size_bytes(),
+                # 015 (FR-014): the pairing chain, human-readable
+                "doctor": companion_doctor(),
             },
         )
 

@@ -48,7 +48,21 @@ export const state = {
   backoff: BACKOFF_MIN_MS,
   onMessage: null, // set by service-worker.js
   recoveryPairing: null, // {port, secret} entered in the popup, optional
+  lastAttempt: null, // {stage, port, code, at} — popup diagnostics (015)
 };
+
+// 015 (FR-011): record every connection-attempt outcome so the popup can say
+// WHY it isn't connected instead of presenting a dead button. Mirrored to
+// storage.session because a woken service worker starts with blank memory.
+// The record carries stage/port/code/at ONLY — never any pairing material.
+export function recordAttempt(stage, port, code) {
+  state.lastAttempt = {
+    stage: stage, port: port || null, code: code || null, at: Date.now(),
+  };
+  try {
+    chrome.storage.session.set({ lastAttempt: state.lastAttempt });
+  } catch (_e) { /* storage.session unavailable — in-memory copy stands */ }
+}
 
 export async function readPairing() {
   // Recovery pairing (user pasted a code because they moved the folder)
@@ -109,10 +123,12 @@ export async function connect() {
 async function _openSocket() {
   const pairing = await readPairing();
   if (!pairing || !pairing.port) {
+    recordAttempt("no-pairing", null, null);
     scheduleReconnect();
     return;
   }
   if (!(await verifyIdentity(pairing.port))) {
+    recordAttempt("identity-failed", pairing.port, null);
     scheduleReconnect();
     return;
   }
@@ -121,6 +137,7 @@ async function _openSocket() {
   try {
     ws = new WebSocket(`ws://127.0.0.1:${pairing.port}/ws/ext`);
   } catch (_e) {
+    recordAttempt("ws-error", pairing.port, null);
     scheduleReconnect();
     return;
   }
@@ -132,6 +149,8 @@ async function _openSocket() {
       secret: pairing.secret,
       version: chrome.runtime.getManifest().version,
       chrome_version: (navigator.userAgent.match(/Chrome\/(\d+)/) || [])[1] || "",
+      // 015: which browser this companion runs in (Edge ships "Edg/" in UA)
+      browser: navigator.userAgent.indexOf("Edg/") !== -1 ? "edge" : "chrome",
     }));
   });
 
@@ -143,15 +162,21 @@ async function _openSocket() {
     if (msg.type === "hello_ok") {
       markConnected(true);
       state.backoff = BACKOFF_MIN_MS;
+      recordAttempt("connected", pairing.port, null);
       return;
     }
     if (msg.type === "ping") { send({ v: 1, type: "pong", seq: 0 }); return; }
     if (state.onMessage) { state.onMessage(msg); }
   });
 
-  ws.addEventListener("close", () => {
+  ws.addEventListener("close", (event) => {
     markConnected(false);
     state.ws = null;
+    // 4409 (superseded) is routine — a newer worker owns the link; keep the
+    // previous record so the popup doesn't flash a scary state.
+    if (!event || event.code !== 4409) {
+      recordAttempt("closed", pairing.port, event ? event.code : null);
+    }
     scheduleReconnect();
   });
   ws.addEventListener("error", () => {
