@@ -12,30 +12,38 @@
   {% else %}
   <section>
     <h2>Funnel</h2>
-    <p class="data funnel-line">
-      applied {{ stats.total_applied }}
-      → responses {{ stats.responses }}
-      → interviews {{ stats.interviews }}
-      {% if stats.by_stage.offer %} → offers {{ stats.by_stage.offer }}{% endif %}
-    </p>
-    <p class="chips">
-      {% for stage in ['applied','oa','interview','offer','rejected'] %}
-      {% if stats.by_stage.get(stage) %}
-      <span class="chip {{ 'have' if stage in ('interview','offer') else ('miss' if stage == 'rejected' else '') }}">{{ stage }}: {{ stats.by_stage[stage] }}</span>
-      {% endif %}
-      {% endfor %}
-    </p>
+    {% set _a = stats.total_applied or 1 %}
+    {% set _rows = [('Applied', stats.total_applied, ''), ('Responses', stats.responses, 'r'), ('Interviews', stats.interviews, 'i'), ('Offers', stats.by_stage.get('offer', 0), 'o')] %}
+    <div class="chart">
+      <svg viewBox="0 0 520 {{ _rows | length * 34 }}" class="chart-svg" role="img"
+           aria-label="Application funnel: applied {{ stats.total_applied }}, responses {{ stats.responses }}, interviews {{ stats.interviews }}, offers {{ stats.by_stage.get('offer', 0) }}">
+        <title>Application funnel</title>
+        {% for label, val, cls in _rows %}
+        {% set y = loop.index0 * 34 %}
+        {% set w = (392 * (val or 0) / _a) %}
+        <rect x="108" y="{{ y }}" width="392" height="24" rx="3" class="fbar-track"></rect>
+        <rect x="108" y="{{ y }}" width="{{ w | round(1) }}" height="24" rx="3" class="fbar {{ cls }}"></rect>
+        <text x="100" y="{{ y + 17 }}" text-anchor="end" class="flabel">{{ label }}</text>
+        <text x="{{ (112 + w) | round(1) }}" y="{{ y + 17 }}" class="fval">{{ val }}</text>
+        {% endfor %}
+      </svg>
+    </div>
   </section>
+
+  {% macro barcell(val, max) %}
+  <td class="barcell"><div class="wrap"><span class="track"><span class="fill{{ ' ok' if val }}" style="width: {{ (100 * (val or 0) / (max or 1)) | round(1) }}%"></span></span><span class="n">{{ val or 0 }}</span></div></td>
+  {% endmacro %}
 
   <section>
     <h2>Where responses come from</h2>
+    {% set _sm = (stats.by_source | map(attribute='applied') | max) if stats.by_source else 1 %}
     <table class="feed">
       <thead><tr><th>Source</th><th>Applied</th><th>Responses</th><th>Interviews</th></tr></thead>
       <tbody>
         {% for row in stats.by_source %}
         <tr>
           <td class="data">{{ row.source }}</td>
-          <td class="data">{{ row.applied }}</td>
+          {{ barcell(row.applied, _sm) }}
           <td class="data">{{ row.responses or 0 }}</td>
           <td class="data">{{ row.interviews or 0 }}</td>
         </tr>
@@ -46,13 +54,14 @@
 
   <section>
     <h2>Does the match score predict callbacks?</h2>
+    {% set _bm = (stats.by_band | map(attribute='applied') | max) if stats.by_band else 1 %}
     <table class="feed">
       <thead><tr><th>Score band</th><th>Applied</th><th>Responses</th><th>Interviews</th></tr></thead>
       <tbody>
         {% for row in stats.by_band %}
         <tr>
           <td class="data">{{ row.band }}</td>
-          <td class="data">{{ row.applied }}</td>
+          {{ barcell(row.applied, _bm) }}
           <td class="data">{{ row.responses or 0 }}</td>
           <td class="data">{{ row.interviews or 0 }}</td>
         </tr>
@@ -63,11 +72,12 @@
 
   <section>
     <h2>Applications per week</h2>
+    {% set _wm = (stats.by_week | map(attribute='applied') | max) if stats.by_week else 1 %}
     <table class="feed narrow">
       <thead><tr><th>Week</th><th>Applied</th></tr></thead>
       <tbody>
         {% for row in stats.by_week %}
-        <tr><td class="data">{{ row.week }}</td><td class="data">{{ row.applied }}</td></tr>
+        <tr><td class="data">{{ row.week }}</td>{{ barcell(row.applied, _wm) }}</tr>
         {% endfor %}
       </tbody>
     </table>

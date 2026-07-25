@@ -174,4 +174,28 @@
       }
     }
   });
+
+  /* ---------- 014: optimistic status actions ----------
+     The Save/Applied/Hide buttons POST via htmx and then refresh the feed.
+     Flip the row's appearance the instant it's clicked so it feels immediate;
+     the feed refresh reconciles with the server. On failure, revert + shake +
+     toast (the htmx layer above already toasts; here we undo the optimism). */
+  function statusButton(t) {
+    return t && t.closest ? t.closest("button[hx-post*='/status?status=']") : null;
+  }
+  document.addEventListener("click", function (evt) {
+    var btn = statusButton(evt.target);
+    if (!btn) { return; }
+    var row = btn.closest("tr");
+    if (row) { row.classList.add("is-optimistic"); }
+  });
+  document.addEventListener("htmx:responseError", function (evt) {
+    var btn = statusButton(evt.detail && evt.detail.elt);
+    var row = btn && btn.closest("tr");
+    if (row) {
+      row.classList.remove("is-optimistic");
+      row.classList.add("optimistic-error");
+      setTimeout(function () { row.classList.remove("optimistic-error"); }, 400);
+    }
+  });
 })();
