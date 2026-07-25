@@ -4,10 +4,11 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>{% block title %}{{ title | default("Job Engine") }}{% endblock %}</title>
-  <link rel="icon" href="/static/favicon.ico" sizes="any">
-  <link rel="stylesheet" href="/static/styles.css">
-  <script src="/static/htmx.min.js" defer></script>
-  <script src="/static/app.js" defer></script>
+  <link rel="icon" href="/static/favicon.ico?v={{ app_version }}" sizes="any">
+  <link rel="stylesheet" href="/static/styles.css?v={{ app_version }}">
+  <script src="/static/htmx.min.js?v={{ app_version }}" defer></script>
+  <script src="/static/app.js?v={{ app_version }}" defer></script>
+  <script src="/static/palette.js?v={{ app_version }}" defer></script>
 </head>
 <body>
   {% set path = request.url.path if request is defined else "/" %}
@@ -39,8 +40,13 @@
       </div>
     </nav>
   </header>
-  <div id="update-banner" hx-get="/partials/update-banner" hx-trigger="load" hx-swap="innerHTML"></div>
-  <div id="whats-new-region" hx-get="/partials/whats-new" hx-trigger="load" hx-swap="innerHTML"></div>
+  {# 014 (CLS fix): render these server-side inline instead of injecting them
+     on load. They're usually empty (no pending update / already-seen), so this
+     removes the layout shift AND leaves no reserved gap. #}
+  {% set _upd = pending_update() %}
+  {% if _upd %}<div id="update-banner">{% with update = _upd %}{% include "partials/update_banner.html" %}{% endwith %}</div>{% endif %}
+  {% set _wn = unseen_whats_new() %}
+  {% if _wn %}<div id="whats-new-region">{% with entries = _wn.entries, version = _wn.version %}{% include "partials/whats_new.html" %}{% endwith %}</div>{% endif %}
   <main>
     {% block content %}
     <p class="empty-state">The engine is running. The feed arrives with US1.</p>

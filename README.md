@@ -121,10 +121,17 @@ entirely on your machine for $0.
   lottery entirely), a wage-weighted lottery-odds hint, and a "Strong
   sponsors only" feed filter — all free, all offline, no lookups leave your
   machine.
-- **An instrument, not a webpage**: a full design-token UI with a light
-  "datasheet" theme and a dark "scope screen" theme, a kanban pipeline
-  board, toast feedback on every action, and a first-run checklist that
-  tracks real setup state.
+- **An instrument, not a webpage (refreshed in v1.4)**: a full design-token UI
+  with a light "datasheet" theme and a dark "scope screen" theme — rebuilt in
+  the **Experience Release** with cleaner type, spacing, elevation and motion,
+  consistent components on every page, and **Lighthouse accessibility 100** on
+  all five key pages. It feels quick: no layout jump on load (measured CLS
+  0.27 → 0.00), **optimistic** Save/Applied/Hide, and smooth transitions that
+  honour "reduce motion". Press **Ctrl/Cmd-K** for a command palette (jump to
+  any view or run an action) and use **j/k** + **/** to fly through the feed.
+  An **inline-chart Analytics dashboard**, a kanban pipeline board, toast
+  feedback on every action, and a first-run checklist that tracks real setup
+  state round it out — still $0, still offline, no build step.
 - **Smarter matching within free limits**: every new job gets an **offline
   semantic ranking** against your resume (a bundled 330MB embeddings model —
   no network, no key), so the limited free AI quota is always spent on the

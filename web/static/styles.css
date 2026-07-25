@@ -54,8 +54,16 @@
   --s6: 2.5rem;
   /* shape */
   --r-sm: 3px;
-  --r-md: 4px;
-  --r-lg: 6px;
+  --r-md: 5px;
+  --r-lg: 8px;
+  /* elevation (014: one shared system — cards/toasts/palette derive from it) */
+  --shadow-1: 0 1px 2px rgba(16, 24, 32, .05), 0 1px 3px rgba(16, 24, 32, .08);
+  --shadow-2: 0 2px 6px rgba(16, 24, 32, .07), 0 8px 20px rgba(16, 24, 32, .10);
+  --shadow-3: 0 16px 40px rgba(16, 24, 32, .18);
+  /* motion (014: gated by prefers-reduced-motion at every use site) */
+  --ease: cubic-bezier(.2, .6, .2, 1);
+  --dur-1: .12s;
+  --dur-2: .2s;
 }
 
 /* Dark "scope screen" — explicit choice wins… */
@@ -79,6 +87,10 @@
   --new-tint: #12211a;
   --draft: #c9a6f0;
   --draft-tint: #1e1630;
+  /* deeper shadows read on the dark scope glass */
+  --shadow-1: 0 1px 2px rgba(0, 0, 0, .3);
+  --shadow-2: 0 3px 10px rgba(0, 0, 0, .35), 0 10px 28px rgba(0, 0, 0, .4);
+  --shadow-3: 0 18px 44px rgba(0, 0, 0, .55);
 }
 
 /* …and the OS preference decides only when no explicit choice is set. */
@@ -111,13 +123,18 @@
 body { margin: 0; background: var(--surface); color: var(--ink); font-family: var(--sans); font-size: var(--fs-md); }
 a { color: var(--accent); text-decoration: none; }
 a:hover, a:focus-visible { text-decoration: underline; }
+/* 014 a11y (WCAG 1.4.1): inline links inside prose need a non-color cue, so
+   they underline persistently. Utility links (nav, action buttons, segmented,
+   back) carry their own affordances and opt out. */
+p a:not(.apply):not(.tailor-btn):not(.back) { text-decoration: underline; }
 :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 .data, code { font-family: var(--mono); font-size: 0.92em; }
 .muted { color: var(--muted); }
 
 /* ---------- top bar / nav ---------- */
-.topbar { display: flex; align-items: baseline; gap: var(--s5); padding: 0.7rem var(--s5); border-bottom: 2px solid var(--line-strong); }
+.topbar { display: flex; align-items: baseline; gap: var(--s5); padding: 0.7rem var(--s5); border-bottom: 1px solid var(--line); background: var(--surface-raised); box-shadow: var(--shadow-1); position: sticky; top: 0; z-index: 50; }
 .brand { font-family: var(--mono); font-weight: 700; color: var(--ink); letter-spacing: 0.02em; }
+.brand::before { content: "▚"; color: var(--accent); margin-right: 0.35rem; }
 .topbar nav { display: flex; flex-wrap: wrap; gap: var(--s4); align-items: baseline; }
 .navgroup { display: flex; gap: 0.7rem; align-items: baseline; }
 .navgroup + .navgroup { border-left: 1px solid var(--line); padding-left: var(--s4); }
@@ -428,3 +445,95 @@ a.tailor-btn:hover, a.tailor-btn:focus-visible { text-decoration: none; filter: 
 .job-detail .back { display: inline-block; margin-bottom: .6rem;
   color: var(--accent, #2757a8); text-decoration: none; font-size: .9rem; }
 .job-detail .back:hover { text-decoration: underline; }
+
+/* ============================================================
+   014 "Experience" layer — evolves the instrument identity:
+   shared elevation, motion, skeletons, and the command palette.
+   Everything below honors prefers-reduced-motion.
+   ============================================================ */
+
+/* shared elevation on card-like containers */
+.card, .dash-card, .mission-panel, .status-card, .board-card {
+  border: 1px solid var(--line); border-radius: var(--r-lg);
+  background: var(--surface-raised); box-shadow: var(--shadow-1);
+}
+
+/* buttons: unify + a subtle press micro-interaction */
+button, .toolbar button { transition: transform var(--dur-1) var(--ease),
+  box-shadow var(--dur-1) var(--ease), background var(--dur-1) var(--ease); }
+button:active { transform: translateY(1px); }
+.feed tr { transition: background var(--dur-1) var(--ease); }
+.feed tbody tr:hover { background: var(--accent-tint); }
+
+/* smooth cross-page motion via the View Transitions API (progressive) */
+@media (prefers-reduced-motion: no-preference) {
+  @view-transition { navigation: auto; }
+  ::view-transition-old(root) { animation: vt-out var(--dur-2) var(--ease) both; }
+  ::view-transition-new(root) { animation: vt-in var(--dur-2) var(--ease) both; }
+  @keyframes vt-out { to { opacity: 0; } }
+  @keyframes vt-in { from { opacity: 0; transform: translateY(4px); } }
+}
+
+/* skeleton placeholder for genuinely async content (no layout jump) */
+.skeleton { position: relative; overflow: hidden; border-radius: var(--r-md);
+  background: var(--surface-sunken); min-height: 1em; }
+.skeleton::after { content: ""; position: absolute; inset: 0;
+  background: linear-gradient(90deg, transparent, var(--line) 40%,
+    var(--line) 60%, transparent); transform: translateX(-100%);
+  animation: sk 1.2s infinite; }
+@media (prefers-reduced-motion: reduce) { .skeleton::after { animation: none; } }
+@keyframes sk { to { transform: translateX(100%); } }
+
+/* optimistic status: a row settling into its new state */
+.feed tr.is-optimistic { opacity: .55; }
+.feed tr.optimistic-error { animation: shake .3s var(--ease); }
+@media (prefers-reduced-motion: reduce) { .feed tr.optimistic-error { animation: none; } }
+@keyframes shake { 25% { transform: translateX(-3px); } 75% { transform: translateX(3px); } }
+
+/* ---------- command palette (Ctrl/Cmd-K) ---------- */
+.cmdk-backdrop { position: fixed; inset: 0; background: rgba(8, 12, 10, .45);
+  display: flex; align-items: flex-start; justify-content: center;
+  padding-top: 12vh; z-index: 1000; }
+.cmdk { width: min(560px, 92vw); background: var(--surface-raised);
+  border: 1px solid var(--line-strong); border-radius: var(--r-lg);
+  box-shadow: var(--shadow-3); overflow: hidden; }
+.cmdk input { width: 100%; border: 0; border-bottom: 1px solid var(--line);
+  padding: 0.85rem 1rem; font: var(--fs-lg)/1.2 var(--sans);
+  background: transparent; color: var(--ink); outline: none; }
+.cmdk ul { list-style: none; margin: 0; padding: 0.3rem; max-height: 48vh;
+  overflow: auto; }
+.cmdk li { display: flex; align-items: center; gap: 0.6rem; padding: 0.5rem 0.7rem;
+  border-radius: var(--r-md); cursor: pointer; color: var(--ink); }
+.cmdk li .k { font-family: var(--mono); font-size: var(--fs-xs); color: var(--muted);
+  margin-left: auto; }
+.cmdk li[aria-selected="true"] { background: var(--accent-tint); }
+.cmdk li .kind { font-family: var(--mono); font-size: var(--fs-xs);
+  color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+.cmdk-empty { padding: 1rem; color: var(--muted); font-size: var(--fs-sm); }
+@media (prefers-reduced-motion: no-preference) {
+  .cmdk { animation: cmdk-in var(--dur-2) var(--ease) both; }
+  @keyframes cmdk-in { from { opacity: 0; transform: translateY(-6px) scale(.98); } }
+}
+
+/* 014: feed row focused by j/k keyboard nav */
+.feed tbody tr.kbd-focus { outline: 2px solid var(--accent); outline-offset: -2px; background: var(--accent-tint); }
+
+/* ---------- 014: analytics charts (dependency-free, theme-aware) ---------- */
+.chart { margin: .3rem 0 1.2rem; }
+.chart-svg { width: 100%; max-width: 520px; height: auto; }
+.chart-svg .fbar { fill: var(--accent); }
+.chart-svg .fbar.r { fill: var(--draft); }
+.chart-svg .fbar.i { fill: var(--ok); }
+.chart-svg .fbar.o { fill: var(--warn); }
+.chart-svg .fbar-track { fill: var(--surface-sunken); }
+.chart-svg .flabel { fill: var(--muted); font: 500 12px var(--sans); }
+.chart-svg .fval { fill: var(--ink); font: 700 12px var(--mono); }
+/* inline bar cells in data tables */
+td.barcell { min-width: 120px; }
+.barcell .wrap { display: flex; align-items: center; gap: .5rem; }
+.barcell .track { flex: 1; height: 8px; background: var(--surface-sunken);
+  border-radius: 999px; overflow: hidden; }
+.barcell .fill { height: 100%; background: var(--accent); border-radius: 999px; }
+.barcell .fill.ok { background: var(--ok); }
+.barcell .n { font-family: var(--mono); font-size: var(--fs-sm); color: var(--ink);
+  min-width: 2ch; text-align: right; }

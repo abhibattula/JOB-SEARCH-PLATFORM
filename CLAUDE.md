@@ -1,14 +1,14 @@
 <!-- SPECKIT START -->
 For additional context about technologies to be used, project structure,
 shell commands, and other important information, read the current plan:
-`specs/013-refinements/plan.md`
+`specs/014-experience/plan.md`
 
 Supporting design artifacts for the active feature:
-- Spec: `specs/013-refinements/spec.md`
-- Research decisions: `specs/013-refinements/research.md`
-- Data model: `specs/013-refinements/data-model.md`
-- Quickstart: `specs/013-refinements/quickstart.md`
-- Approved design doc: `docs/superpowers/specs/2026-07-24-feature-013-design.md`
+- Spec: `specs/014-experience/spec.md`
+- Research decisions: `specs/014-experience/research.md`
+- Data model: `specs/014-experience/data-model.md`
+- Quickstart: `specs/014-experience/quickstart.md`
+- Approved design doc: `docs/superpowers/specs/2026-07-24-feature-014-design.md`
 
 Prior features (001–005, shipped; 006 Profile overhaul shipped as v0.6.0/1;
 007 Moat Release shipped as v0.7.0; 008 Launch Release shipped as v0.8.0;

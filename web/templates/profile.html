@@ -81,7 +81,7 @@
     {% include "partials/resume_builder.html" %}
     {% if profile and profile.resume_filename %}
     <p>Resume on file: <span class="data">{{ profile.resume_filename }}</span>
-      (updated {{ profile.updated_at[:10] if profile.updated_at }})</p>
+      (updated {{ profile.updated_at | humandate }})</p>
     {% else %}
     <p class="muted">No resume yet. Upload one to unlock match scores and gap analysis.</p>
     {% endif %}

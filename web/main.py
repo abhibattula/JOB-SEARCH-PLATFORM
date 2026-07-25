@@ -47,6 +47,35 @@ def _humandate(value) -> str:
 templates.env.filters["humandate"] = _humandate
 
 
+def _pending_update():
+    """014 (CLS fix): the update banner, computed server-side so it renders
+    inline in the initial HTML instead of being injected post-load (which
+    shifted the page — measured CLS 0.27). Cheap + network-free (reads the
+    cached daily-check result). Returns the info dict or None."""
+    from engine import updates
+
+    with updates._lock:
+        info = updates._state.get("last_check")
+    return info if (info and info.get("newer")) else None
+
+
+def _unseen_whats_new():
+    """014 (CLS fix): the once-per-version What's New overlay, computed
+    server-side for inline render (same reason as _pending_update). Returns
+    {entries, version} or None."""
+    from engine import APP_VERSION as _v
+    from engine import settings as settings_mod
+
+    entries = WHATS_NEW.get(_v) or []
+    if not entries or settings_mod.get("WHATS_NEW_SEEN_VERSION") == _v:
+        return None
+    return {"entries": entries, "version": _v}
+
+
+templates.env.globals["pending_update"] = _pending_update
+templates.env.globals["unseen_whats_new"] = _unseen_whats_new
+
+
 def _current_theme() -> str:
     """Explicit user choice ('light'/'dark') or '' when unset — '' lets the
     CSS prefers-color-scheme fallback decide (FR-021)."""
@@ -61,6 +90,18 @@ templates.env.globals["current_theme"] = _current_theme
 # 008 (FR-032): plain-language changelog behind the What's New overlay —
 # keyed by APP_VERSION, shown once per version.
 WHATS_NEW: dict[str, list[str]] = {
+    "1.4.0": [
+        "A refreshed look: cleaner typography, spacing, and color across every "
+        "page, in both the light and dark themes — same fast, private engine.",
+        "It feels quicker: the page no longer jumps as it loads, Save/Applied/"
+        "Hide react instantly, and pages transition smoothly.",
+        "Press Ctrl/Cmd-K anywhere to open a command palette — jump to any view "
+        "or run actions (refresh, switch theme, start Apply Assist) from the "
+        "keyboard. In the feed, j/k move between jobs, Enter opens one, and / "
+        "jumps to search.",
+        "The Analytics page now has real charts of your funnel, sources, match "
+        "scores, and callback rate.",
+    ],
     "1.3.0": [
         "Fixed: Apply Assist now fills in your default browser (and your "
         "connected companion), instead of always opening Microsoft Edge — so "
@@ -301,18 +342,9 @@ def _feed_context(
 
 
 def create_app() -> FastAPI:
-    app = FastAPI(title="Personalized AI Job Engine")
-    app.mount(
-        "/static",
-        StaticFiles(directory=paths.resource_path("web/static")),
-        name="static",
-    )
-    app.include_router(api_router)
-    app.include_router(autofill_router)
-    app.include_router(bridge_router)
+    from contextlib import asynccontextmanager
 
-    @app.on_event("startup")
-    def _startup() -> None:
+    def _run_startup() -> None:
         import threading
 
         db.init_db()
@@ -342,6 +374,33 @@ def create_app() -> FastAPI:
                 pass
 
         threading.Thread(target=_quiet_update_check, daemon=True).start()
+
+    @asynccontextmanager
+    async def _lifespan(app: FastAPI):
+        # 014: replaces the deprecated @app.on_event("startup").
+        _run_startup()
+        yield
+
+    app = FastAPI(title="Personalized AI Job Engine", lifespan=_lifespan)
+    app.mount(
+        "/static",
+        StaticFiles(directory=paths.resource_path("web/static")),
+        name="static",
+    )
+    app.include_router(api_router)
+    app.include_router(autofill_router)
+    app.include_router(bridge_router)
+
+    @app.middleware("http")
+    async def _static_long_cache(request: Request, call_next):
+        # 014 (perf): static assets are referenced with a ?v=<APP_VERSION>
+        # buster in base.html, so a long immutable cache is safe — a new
+        # release changes the URL and invalidates. Speeds up repeat visits
+        # (chrome-devtools "Cache" insight).
+        response = await call_next(request)
+        if request.url.path.startswith("/static/"):
+            response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
+        return response
 
     @app.get("/", response_class=HTMLResponse)
     def index(
