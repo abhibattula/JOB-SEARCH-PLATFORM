@@ -667,9 +667,12 @@ class TestBrowserRouting013:
     Edge-first bug), and the companion is still preferred when connected."""
 
     def test_channel_order_comes_from_default_browser(self, monkeypatch):
+        # 015 (D3): the order now flows through effective_channel_order —
+        # preference first, then the detected default (the injected reader
+        # keeps this deterministic on any machine).
         from engine.autofill import default_browser
-        monkeypatch.setattr(default_browser, "default_channel_order",
-                            lambda: ("chrome", "msedge"))
+        monkeypatch.setattr(default_browser, "effective_channel_order",
+                            lambda read_progid=None: ("chrome", "msedge"))
         assert bc._channel_order() == ("chrome", "msedge")
 
     def test_ensure_context_tries_default_browser_first(self, monkeypatch):

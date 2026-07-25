@@ -231,10 +231,38 @@ def main() -> int:
         return 1
     ext_manifest_data = json.loads(
         open(ext_manifest, encoding="utf-8").read())
-    if ext_manifest_data.get("version") != "1.2.0":
+    # 015 (R13): the STAMPED manifest tracks the app release that stamped it.
+    if ext_manifest_data.get("version") != bridge.get("app_version"):
         proc.terminate()
-        print(f"FAIL: shipped extension manifest version "
-              f"{ext_manifest_data.get('version')} != 1.2.0")
+        print(f"FAIL: stamped extension manifest version "
+              f"{ext_manifest_data.get('version')} != app "
+              f"{bridge.get('app_version')}")
+        return 1
+
+    # 015 (T021/SC-005): pairing preparation must have RUN AND VERIFIED in
+    # THIS very launch — the 1.4.0 stamp death (pydantic_core import) was
+    # invisible to every earlier gate. The doctor is the single truth the
+    # wizard, diagnostics, and this gate all read.
+    doctor = json.loads(
+        urllib.request.urlopen(base + "/api/companion/doctor", timeout=30).read()
+    )
+    print(f"companion/doctor -> stamp={doctor.get('stamp')} "
+          f"pairing={doctor.get('pairing')} port={doctor.get('port')}")
+    if not (doctor.get("stamp") or {}).get("ok"):
+        proc.terminate()
+        print(f"FAIL: pairing preparation (stamp) not ok: {doctor.get('stamp')}")
+        return 1
+    if not (doctor.get("pairing") or {}).get("fresh"):
+        proc.terminate()
+        print("FAIL: pairing.json was not stamped by this launch (stale)")
+        return 1
+    if not (doctor.get("port") or {}).get("match"):
+        proc.terminate()
+        print(f"FAIL: pairing port does not match port.txt: {doctor.get('port')}")
+        return 1
+    if (doctor.get("stamp") or {}).get("app_version") != bridge.get("app_version"):
+        proc.terminate()
+        print("FAIL: stamp app_version does not match the running app")
         return 1
     companion_html = urllib.request.urlopen(
         base + "/companion", timeout=30

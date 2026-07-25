@@ -162,13 +162,16 @@ The installer is large (~1.5GB) because it bundles the offline AI model and
 the semantic-ranking model. From v0.8.0 on, newer versions install from
 inside the app (Settings → Check for updates).
 
-### Connect the browser companion (v1.0, optional but recommended)
+### Connect the browser companion (v1.0, rebuilt in v1.5 — optional but recommended)
 
 The companion (a Chrome/Edge extension) lets Apply Assist fill applications
 in **your own browser**, where you're already logged in to job sites.
 Without it, Apply Assist still works in a separate assistant window — so this
-is optional. It's free, installs from the copy bundled with the app (nothing
-to download), and takes about a minute:
+is optional. Since v1.5 the Companion page is a **live wizard** that verifies
+each step as you go (app prepared ✓ → companion installed ✓ → connected ✓,
+naming the browser it's connected from), and every failure states its fix —
+in the app and in the extension's own popup. It's free, installs from the
+copy bundled with the app (nothing to download), and takes about a minute:
 
 1. In the app, open the **Companion** page (top nav, under *Apply*). It shows
    a folder path with a **Copy** button — this is the extension folder the
@@ -178,9 +181,17 @@ to download), and takes about a minute:
 3. Turn on **Developer mode** (top-right toggle).
 4. Click **Load unpacked** and pick the folder from step 1 (paste the copied
    path into the folder dialog).
-5. Back in the app, the Companion page's status turns **green** within a few
-   seconds — you're connected. You only do this once; app updates keep the
-   extension current automatically.
+5. Back in the app, the wizard's steps turn green within about 30 seconds —
+   "Connected — Google Chrome (companion v1.5.0)". You only do this once; app
+   updates keep the extension current automatically. If anything is off, the
+   wizard and the extension popup both say exactly what and how to fix it,
+   and Diagnostics has a full **Companion & pairing** panel.
+
+Also since v1.5: pick your browser under **Settings → Open job links in**
+(Chrome by default — Windows sometimes resets its own default to Edge, and
+the app now surfaces that mismatch with a one-click fix), and the on-device
+AI can no longer freeze or crash the app (every model call is serialized and
+time-budgeted).
 
 **Using it:** click **Test Apply Assist** on the Apply Assist page to watch
 it fill a bundled practice application with your own data, or just browse to

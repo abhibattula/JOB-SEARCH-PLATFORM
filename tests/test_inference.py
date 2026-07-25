@@ -231,6 +231,58 @@ class TestWiring:
         assert "_chat_impl" in inf_src and "_embed_impl" in inf_src
 
 
+class TestSubprocessSpike:
+    """015 (T007/R2, spike): JOBS_AI_SUBPROCESS=1 hosts the models in a
+    supervised child — a native fault (the ggml crash class) kills the child,
+    never the app. Stub-level: JOBS_AI_TEST_ECHO gives the child cheap
+    deterministic executors so no model is ever loaded."""
+
+    @pytest.fixture(autouse=True)
+    def _subprocess_env(self, monkeypatch):
+        monkeypatch.setenv("JOBS_AI_SUBPROCESS", "1")
+        monkeypatch.setenv("JOBS_AI_TEST_ECHO", "1")
+        inference.reset_for_tests()
+        yield
+        inference.reset_for_tests()
+
+    def test_child_serves_chat_and_embed(self):
+        out = inference.run_chat([{"role": "user", "content": "hi"}],
+                                 timeout_s=30)
+        assert out == "echo:hi"
+        assert inference.run_embed("abcd", timeout_s=30) == [4.0]
+
+    def test_child_death_fails_cleanly_and_recovers(self):
+        import os
+        import signal
+
+        assert inference.run_chat([{"role": "user", "content": "warm"}],
+                                  timeout_s=30) == "echo:warm"
+        pid = inference._child_pid_for_tests()
+        assert pid
+        os.kill(pid, signal.SIGTERM)
+        # the dead child fails at most a request or two, cleanly — and the
+        # supervisor restarts it so a following request succeeds (SC-011)
+        recovered = None
+        for _ in range(3):
+            try:
+                recovered = inference.run_chat(
+                    [{"role": "user", "content": "back"}], timeout_s=30)
+                break
+            except RuntimeError:
+                continue
+        assert recovered == "echo:back"
+        assert inference.runtime_restart_count() >= 1
+
+    def test_hung_child_is_terminated_on_timeout(self):
+        with pytest.raises(RuntimeError):
+            inference.run_chat([{"role": "user", "content": "SLEEP:10"}],
+                               timeout_s=1)
+        # the hang was contained: the child was restarted and serves again
+        assert inference.run_chat([{"role": "user", "content": "ok"}],
+                                  timeout_s=30) == "echo:ok"
+        assert inference.runtime_restart_count() >= 1
+
+
 def test_time_budgets_default_and_env_override(monkeypatch):
     monkeypatch.delenv("JOBS_AI_TIMEOUT_CHAT", raising=False)
     monkeypatch.delenv("JOBS_AI_TIMEOUT_EMBED", raising=False)

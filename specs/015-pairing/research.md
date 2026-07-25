@@ -64,6 +64,20 @@ must not gate the release.
 (accepted as NO-GO floor: with the race gone, single-threaded llama AVs are
 rare — and the unclean-exit banner in R9 at least makes them visible).
 
+**SPIKE OUTCOME (2026-07-25, T007/T024):** the isolation WORKS —
+`tests/test_inference.py::TestSubprocessSpike` proves (stub-level, spawn
+children, ~2.7 s) that with `JOBS_AI_SUBPROCESS=1` the child serves requests,
+a killed child fails at most the in-flight request cleanly and the supervisor
+restarts it, and a HUNG inference is terminated on the caller's budget (a
+capability thread mode cannot have). `freeze_support()` is wired into both
+frozen entrypoints. **Decision: available-but-default-OFF for v1.5.0** — the
+env flips it on; the default flip waits for a release whose full battery and
+frozen gates run WITH the mode on across both OSes (the mac side of the GO
+criteria only gets exercised by the release CI at tag time, which is too late
+to flip a default responsibly in the same release). The serialized owner is
+the supported v1.5.0 state; flipping the default is a candidate for 015's
+follow-up.
+
 ## R3. Pending suggestions must not generate under `bc._lock`
 
 **Decision**: `browser_controller._value_for_tag` parks the pending question

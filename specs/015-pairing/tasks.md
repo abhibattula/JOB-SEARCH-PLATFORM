@@ -68,7 +68,7 @@ model loaded anywhere in the default suite.
   `UNCLEAN_EXIT_AT`; one-time dismissible banner in `web/templates/base.html`
   (server-side inline, 014 CLS-safe pattern) + dismiss route clearing the key
   + web tests (banner iff key set; dismiss clears).
-- [ ] T007 [US1] R2 subprocess spike (time-boxed: ONE working session — if
+- [x] T007 [US1] R2 subprocess spike (time-boxed: ONE working session — if
   the packaged gates aren't green by T024, NO-GO is the automatic outcome):
   `JOBS_AI_SUBPROCESS=1`
   routes the owner's execution to a spawned `multiprocessing` child over a
@@ -135,7 +135,7 @@ banner works — US1 independently shippable.
   companion → "Filling in your <Browser> (companion v<ver>)", assistant →
   warning "Assistant window — <Channel> (not signed in)" + connect link.
   Web/template tests for both states.
-- [ ] T015 [US2] Human-path E2E (R12, browser marker):
+- [x] T015 [US2] Human-path E2E (R12, browser marker):
   `tests/integration/test_pairing_e2e.py` — fresh `JOBS_DATA_DIR` → real
   uvicorn (ephemeral port) → REAL `stamp_extension.stamp(port)` →
   `launch_persistent_context` loading the STAMPED folder, once
@@ -195,13 +195,13 @@ US3 independently shippable.
 
 ## Phase 7: Verify, docs, ship
 
-- [ ] T021 Frozen gate extension (R12): `packaging/smoke_test.py` asserts
+- [x] T021 Frozen gate extension (R12): `packaging/smoke_test.py` asserts
   `pairing.json` mtime ≥ app launch, pairing port == `port.txt`,
   `/api/bridge/info` OK, doctor `stamp.ok` true (plus existing checks).
 - [ ] T022 Full battery: `pytest -q` ×2 + `-m browser` (incl. NEW pairing E2E)
   + `-m slow` green; manual quickstart.md walkthrough (wizard in Chrome AND
   Edge, D2 notice, mismatch line, unclean-exit banner); fix findings.
-- [ ] T023 [P] Docs: USER_MANUAL §19 (connect wizard walkthrough +
+- [x] T023 [P] Docs: USER_MANUAL §19 (connect wizard walkthrough +
   troubleshooting table from close-code mappings + preferred browser +
   stability/what-changed), README (Apply Assist pairing + preferred browser),
   `WHATS_NEW["1.5.0"]` filled.

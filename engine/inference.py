@@ -28,6 +28,7 @@ import logging
 import os
 import queue
 import threading
+import time
 from concurrent.futures import Future
 from concurrent.futures import TimeoutError as _FutureTimeout
 
@@ -52,7 +53,7 @@ _max_seen = 0
 
 
 class _Request:
-    __slots__ = ("kind", "payload", "future", "abandoned")
+    __slots__ = ("kind", "payload", "future", "abandoned", "deadline")
 
     def __init__(self, kind: str, payload: dict) -> None:
         self.kind = kind
@@ -61,6 +62,7 @@ class _Request:
         # set when the submitting caller gave up (timeout) while this request
         # was still queued — the worker skips it instead of wasting minutes
         self.abandoned = False
+        self.deadline: float | None = None  # monotonic; used in child mode
 
 
 def _timeout_for(kind: str) -> float:
@@ -99,8 +101,11 @@ def _worker_loop(q: queue.Queue) -> None:
             _in_flight += 1
             _max_seen = max(_max_seen, _in_flight)
         try:
-            executor = _resolve_executor(req.kind)
-            result = executor(req.payload)
+            if _subprocess_enabled() and _executors_override is None:
+                result = _execute_in_child(req)  # R2: fault-isolated
+            else:
+                executor = _resolve_executor(req.kind)
+                result = executor(req.payload)
         except Exception as exc:
             log.warning("on-device AI %s failed", req.kind, exc_info=True)
             if not req.future.done():
@@ -132,6 +137,7 @@ def _ensure_worker() -> queue.Queue:
 def _submit(kind: str, payload: dict, timeout_s: float | None):
     timeout = timeout_s if timeout_s is not None else _timeout_for(kind)
     request = _Request(kind, payload)
+    request.deadline = time.monotonic() + timeout
     q = _ensure_worker()
     try:
         q.put_nowait(request)
@@ -163,6 +169,130 @@ def run_embed(text: str, timeout_s: float | None = None) -> list[float]:
     return _submit("embed", {"text": text}, timeout_s)
 
 
+# --- R2 (spike): subprocess isolation — JOBS_AI_SUBPROCESS=1 ----------------
+# A native fault in llama/ggml (the recorded 0xc0000005 crash class) can only
+# be survived by process isolation: the models live in a supervised child;
+# child death fails the in-flight request cleanly and the next request gets a
+# fresh child. GO/NO-GO is decided by the packaged-build gates (research R2);
+# the env default stays off until GO.
+
+_child = None          # multiprocessing.Process
+_parent_conn = None
+_runtime_restarts = 0
+
+
+def _subprocess_enabled() -> bool:
+    return os.environ.get("JOBS_AI_SUBPROCESS") == "1"
+
+
+def _subprocess_main(conn) -> None:
+    """Child-process loop hosting the REAL executors (spawn start method —
+    `multiprocessing.freeze_support()` is called by the frozen entrypoints).
+    JOBS_AI_TEST_ECHO=1 swaps in cheap deterministic executors so tests never
+    load a model; a content of 'SLEEP:<s>' simulates a hung inference."""
+    echo = os.environ.get("JOBS_AI_TEST_ECHO") == "1"
+    while True:
+        try:
+            item = conn.recv()
+        except (EOFError, OSError):
+            return
+        if item is None:
+            return
+        kind, payload = item
+        try:
+            if echo:
+                if kind == "chat":
+                    content = payload["messages"][-1]["content"]
+                    if content.startswith("SLEEP:"):
+                        time.sleep(float(content.split(":", 1)[1]))
+                    result: object = "echo:" + content
+                else:
+                    result = [float(len(payload["text"]))]
+            elif kind == "chat":
+                from . import local_llm
+
+                result = local_llm._chat_impl(payload)
+            else:
+                from . import semantic
+
+                result = semantic._embed_impl(payload)
+            conn.send(("ok", result))
+        except Exception as exc:  # noqa: BLE001 — everything crosses as text
+            try:
+                conn.send(("err", f"{type(exc).__name__}: {exc}"))
+            except Exception:
+                return
+
+
+def _ensure_child() -> None:
+    global _child, _parent_conn
+    if _child is not None and _child.is_alive() and _parent_conn is not None:
+        return
+    import multiprocessing as mp
+
+    ctx = mp.get_context("spawn")
+    _parent_conn, child_conn = ctx.Pipe()
+    _child = ctx.Process(target=_subprocess_main, args=(child_conn,),
+                         daemon=True, name="je-ai-child")
+    _child.start()
+    child_conn.close()
+
+
+def _kill_child(count_restart: bool = True) -> None:
+    global _child, _parent_conn, _runtime_restarts
+    if count_restart and _child is not None:
+        _runtime_restarts += 1
+    try:
+        if _child is not None and _child.is_alive():
+            _child.terminate()
+    except Exception:
+        pass
+    try:
+        if _parent_conn is not None:
+            _parent_conn.close()
+    except Exception:
+        pass
+    _child = None
+    _parent_conn = None
+
+
+def _execute_in_child(req: _Request):
+    """Forward one request to the child; contain hangs and deaths. Runs on
+    the owner worker thread only — single-flight is preserved."""
+    _ensure_child()
+    conn = _parent_conn
+    try:
+        conn.send((req.kind, req.payload))
+    except (OSError, ValueError):
+        _kill_child()
+        raise RuntimeError("AI runtime unavailable — restarted; try again")
+    remaining = (max(0.1, req.deadline - time.monotonic())
+                 if req.deadline else _timeout_for(req.kind))
+    if not conn.poll(remaining):
+        # a hung native inference is KILLABLE here — thread mode can't do this
+        _kill_child()
+        raise RuntimeError(
+            f"on-device AI {req.kind} unresponsive — AI runtime restarted")
+    try:
+        status, value = conn.recv()
+    except (EOFError, OSError):
+        _kill_child()
+        raise RuntimeError("AI runtime crashed — restarted; the app is fine")
+    if status == "err":
+        raise RuntimeError(value)
+    return value
+
+
+def _child_pid_for_tests() -> int | None:
+    return _child.pid if _child is not None else None
+
+
+def runtime_restart_count() -> int:
+    """How many times the isolated AI runtime was restarted this session
+    (0 in thread mode) — diagnostics/tests."""
+    return _runtime_restarts
+
+
 def max_observed_concurrency() -> int:
     """Test/diagnostics hook: the highest number of simultaneously executing
     model calls ever observed in this process. MUST be 1 (FR-001)."""
@@ -178,7 +308,9 @@ def set_executors_for_tests(executors: dict | None) -> None:
 def reset_for_tests(queue_max: int | None = None) -> None:
     """Tear down the worker/queue and reset metrics + overrides so each test
     starts from a clean, optionally re-sized owner."""
-    global _queue, _worker, _queue_max, _executors_override, _in_flight, _max_seen
+    global _queue, _worker, _queue_max, _executors_override, _in_flight, \
+        _max_seen, _runtime_restarts
+    _kill_child(count_restart=False)
     with _lifecycle_lock:
         if _queue is not None:
             try:
@@ -198,3 +330,4 @@ def reset_for_tests(queue_max: int | None = None) -> None:
     with _metrics_lock:
         _in_flight = 0
         _max_seen = 0
+    _runtime_restarts = 0
