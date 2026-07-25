@@ -99,3 +99,97 @@ class TestFileToken:
 
     def test_unknown_token_404(self, client):
         assert client.get("/api/bridge/file/deadbeef").status_code == 404
+
+
+class TestDoctor015:
+    """015 (T010/FR-014): one snapshot of the whole pairing chain — and the
+    secret NEVER appears on any diagnostic surface."""
+
+    def _write_chain(self, port=8123):
+        from engine import paths
+
+        data = paths.data_dir()
+        data.mkdir(parents=True, exist_ok=True)
+        (data / "port.txt").write_text(str(port), encoding="utf-8")
+        (data / "stamp_status.json").write_text(json.dumps({
+            "ok": True, "error": None, "at": "2026-07-25T12:00:00",
+            "port": port, "app_version": "1.5.0", "copy_warning": None,
+        }), encoding="utf-8")
+        ext = data / "extension"
+        ext.mkdir(parents=True, exist_ok=True)
+        (ext / "pairing.json").write_text(json.dumps({
+            "port": port, "secret": "s3cr3t-value-abc123",
+            "app_id": "jobengine", "protocol_v": 1,
+        }), encoding="utf-8")
+
+    def test_doctor_reports_full_chain_and_never_the_secret(self, client, monkeypatch):
+        from web import routes_bridge
+
+        self._write_chain(8123)
+        monkeypatch.setattr(routes_bridge, "_PROCESS_START_WALL", 0.0)
+        resp = client.get("/api/companion/doctor")
+        assert resp.status_code == 200
+        doc = resp.json()
+        assert doc["stamp"]["ok"] is True
+        assert doc["pairing"] == {"present": True, "port": 8123,
+                                  "protocol_v": 1, "fresh": True}
+        assert doc["port"] == {"current": 8123, "match": True}
+        assert doc["companion"]["connected"] is False
+        assert doc["rejects"]["auth"] == 0
+        assert doc["browser"]["preference"] in ("chrome", "msedge", "auto")
+        assert "os_default_channel" in doc["browser"]
+        assert "s3cr3t-value-abc123" not in resp.text  # FR-014 hard rule
+
+    def test_doctor_flags_stale_pairing_and_port_mismatch(self, client, monkeypatch):
+        import time
+
+        from engine import paths
+        from web import routes_bridge
+
+        self._write_chain(8123)
+        (paths.data_dir() / "port.txt").write_text("9999", encoding="utf-8")
+        # the process "started" after pairing was written → pairing is stale
+        monkeypatch.setattr(routes_bridge, "_PROCESS_START_WALL",
+                            time.time() + 3600)
+        doc = client.get("/api/companion/doctor").json()
+        assert doc["pairing"]["fresh"] is False
+        assert doc["port"] == {"current": 9999, "match": False}
+
+    def test_doctor_degrades_when_files_missing(self, client):
+        doc = client.get("/api/companion/doctor").json()
+        assert doc["stamp"] is None
+        assert doc["pairing"]["present"] is False
+        assert doc["port"]["current"] is None
+        assert doc["port"]["match"] is False
+
+    def test_companion_browser_reported_from_hello(self, client):
+        with client.websocket_connect("/ws/ext") as ws:
+            ws.send_text(json.dumps({
+                "v": 1, "type": "hello", "seq": 1,
+                "secret": db.get_bridge_secret(),
+                "version": "1.5.0", "browser": "edge",
+            }))
+            assert json.loads(ws.receive_text())["type"] == "hello_ok"
+            doc = client.get("/api/companion/doctor").json()
+            assert doc["companion"]["connected"] is True
+            assert doc["companion"]["browser"] == "edge"
+
+
+class TestRejectRecording015:
+    """015 (T010): 4401/4426 closes are counted by kind so the doctor can
+    distinguish 'knocking but rejected' from silence."""
+
+    def test_auth_reject_counted(self, client):
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect("/ws/ext") as ws:
+                ws.send_text(hello_frame(secret="f" * 64))
+                ws.receive_text()
+        assert ext_backend.reject_stats()["auth"] == 1
+        assert ext_backend.reject_stats()["last_kind"] == "auth"
+
+    def test_protocol_reject_counted(self, client):
+        with pytest.raises(WebSocketDisconnect):
+            with client.websocket_connect("/ws/ext") as ws:
+                ws.send_text(hello_frame(v=99))
+                ws.receive_text()
+        assert ext_backend.reject_stats()["protocol"] == 1

@@ -20,14 +20,43 @@ _session: dict = {
     "send": None,      # callable(dict) -> None, thread-safe, injected by web
     "close": None,     # callable(code:int) -> None, closes the socket
     "version": None,
+    "browser": None,   # 015: "chrome" | "edge" | "" from Hello.browser
     "last_seen": None,  # time.monotonic() of the last inbound frame
 }
+
+# 015 (T009/FR-014): rejected connection attempts by kind, for this process's
+# lifetime — lets the doctor distinguish "nothing is knocking" (wrong folder /
+# not installed) from "knocking but rejected" (stale pairing vs old protocol).
+_rejects: dict = {"auth": 0, "protocol": 0, "last_kind": None, "last_at": None}
+
+
+def record_reject(kind: str) -> None:
+    """Called by the web layer when it closes a companion socket with 4401
+    ("auth") or 4426 ("protocol")."""
+    if kind not in ("auth", "protocol"):
+        return
+    with _lock:
+        _rejects[kind] += 1
+        _rejects["last_kind"] = kind
+        _rejects["last_at"] = time.monotonic()
+
+
+def reject_stats() -> dict:
+    with _lock:
+        age = (time.monotonic() - _rejects["last_at"]
+               if _rejects["last_at"] is not None else None)
+        return {
+            "auth": _rejects["auth"],
+            "protocol": _rejects["protocol"],
+            "last_kind": _rejects["last_kind"],
+            "last_age_s": round(age, 1) if age is not None else None,
+        }
 
 FILE_TOKEN_TTL = 60.0
 _file_tokens: dict[str, tuple[str, float]] = {}  # token -> (path, issued_at)
 
 
-def register(send, close, version: str):
+def register(send, close, version: str, browser: str = ""):
     """Install a new companion session. Returns the PREVIOUS session's
     close callable when one existed (caller closes it with 4409).
 
@@ -39,7 +68,7 @@ def register(send, close, version: str):
     with _lock:
         old_close = _session["close"]
         _session.update(send=send, close=close, version=version,
-                        last_seen=time.monotonic())
+                        browser=browser or "", last_seen=time.monotonic())
         tab_id = _watch["tab_id"]
         job_id = _watch["job_id"]
     if tab_id is not None:
@@ -53,7 +82,7 @@ def unregister(send) -> None:
     with _lock:
         if _session["send"] is send:
             _session.update(send=None, close=None, version=None,
-                            last_seen=None)
+                            browser=None, last_seen=None)
 
 
 def touch() -> None:
@@ -70,6 +99,7 @@ def status() -> dict:
         return {
             "connected": connected,
             "version": _session["version"],
+            "browser": _session["browser"] or "" if connected else "",
             "last_seen_age_s": round(age, 1) if age is not None else None,
         }
 
@@ -537,7 +567,9 @@ def _handle_save_job(msg) -> None:
 
 def reset_for_tests() -> None:
     with _lock:
-        _session.update(send=None, close=None, version=None, last_seen=None)
+        _session.update(send=None, close=None, version=None, browser=None,
+                        last_seen=None)
+        _rejects.update(auth=0, protocol=0, last_kind=None, last_at=None)
         _file_tokens.clear()
         _watch.update(tab_id=None, job_id=None)
         _watch["pending_open"].clear()

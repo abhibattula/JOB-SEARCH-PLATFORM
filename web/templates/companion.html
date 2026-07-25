@@ -3,6 +3,18 @@
 {% block content %}
 <article class="companion-page">
   <h1>Connect Job Engine to your browser</h1>
+
+  {# 015 (FR-008): a failed pairing preparation is never log-only #}
+  {% set _sp = stamp_problem() %}
+  {% if _sp %}
+  <div class="error-banner stamp-problem" role="alert">
+    <strong>Companion pairing needs attention.</strong> The app couldn't
+    prepare the companion folder at launch:
+    <span class="data">{{ _sp.error }}</span>
+    Restart the app to retry; if it keeps happening, check
+    <a href="/diagnostics">Diagnostics</a>.
+  </div>
+  {% endif %}
   <p class="lead">Apply Assist can fill applications right in <strong>your own
     Chrome or Edge</strong> — where you're already signed in to job sites —
     instead of a separate window. This is a one-time, $0 setup.</p>
@@ -15,35 +27,94 @@
     card — it never clicks or types anything, and scoring happens on your
     machine.</p>
 
-  <div id="companion-status" class="status-card"
-       hx-get="/api/autofill/status" hx-trigger="load, every 3s"
-       hx-swap="none">
-    <span class="dot" data-dot></span>
-    <span data-label>Checking connection…</span>
-  </div>
+  {# 015 (FR-019): OS default vs preference — say it, offer the fix #}
+  {% if browser_intent and browser_intent.mismatch %}
+  <p class="notice browser-mismatch" role="status">
+    <strong>Windows default:</strong>
+    {{ 'Microsoft Edge' if browser_intent.os_default == 'msedge' else 'Google Chrome' }}
+    · <strong>Your preference:</strong>
+    {{ 'Google Chrome' if browser_intent.preference == 'chrome' else 'Microsoft Edge' }}.
+    Install the companion in the browser you actually use.
+    {% if browser_intent.is_windows %}
+    <button type="button" class="ghost" hx-post="/api/os/default-apps"
+            hx-swap="none" data-toast="Opening Windows Settings">
+      Fix Windows default
+    </button>
+    {% endif %}
+  </p>
+  {% endif %}
+
+  {# 015 (FR-010): live per-step verification driven by the doctor — each
+     layer of the chain proves itself, and every failure names its fix. #}
+  <ol class="steps wizard" id="companion-wizard" aria-live="polite">
+    <li data-step="stamp">
+      <span class="glyph data" data-mark>·</span>
+      <strong>App preparation</strong> —
+      <span class="data" data-detail>checking…</span>
+    </li>
+    <li data-step="knock">
+      <span class="glyph data" data-mark>·</span>
+      <strong>Companion installed</strong> —
+      <span class="data" data-detail>checking…</span>
+    </li>
+    <li data-step="connected">
+      <span class="glyph data" data-mark>·</span>
+      <strong>Connected</strong> —
+      <span class="data" data-detail>checking…</span>
+    </li>
+  </ol>
   <script>
-    // Reflect the live connection state (the app already knows via the
-    // bridge heartbeat) without a full-page reload.
-    document.body.addEventListener('htmx:afterRequest', function (e) {
-      if (!e.detail.pathInfo || !e.detail.pathInfo.requestPath) { return; }
-      if (e.detail.pathInfo.requestPath.indexOf('/api/autofill/status') === -1) { return; }
-      let data;
-      try { data = JSON.parse(e.detail.xhr.responseText); } catch (_e) { return; }
-      const ext = data.extension || {};
-      const card = document.getElementById('companion-status');
-      const dot = card.querySelector('[data-dot]');
-      const label = card.querySelector('[data-label]');
-      if (ext.connected) {
-        card.classList.add('connected');
-        dot.classList.add('on');
-        label.textContent = 'Connected — filling happens in your browser';
-      } else {
-        card.classList.remove('connected');
-        dot.classList.remove('on');
-        label.textContent = 'Not connected yet — if you already installed it, '
-          + 'give it up to 30 seconds';
+    (function () {
+      const wizard = document.getElementById('companion-wizard');
+      if (!wizard) { return; }
+      const browserName = (b) => b === 'edge' ? 'Microsoft Edge'
+        : b === 'chrome' ? 'Google Chrome' : 'your browser';
+      const set = (step, mark, text, state) => {
+        const li = wizard.querySelector('[data-step="' + step + '"]');
+        if (!li) { return; }
+        li.querySelector('[data-mark]').textContent = mark;
+        li.querySelector('[data-detail]').textContent = text;
+        li.className = state || '';
+      };
+      async function tick() {
+        let doc;
+        try {
+          doc = await (await fetch('/api/companion/doctor')).json();
+        } catch (_e) { return; }
+        if (doc.stamp && doc.stamp.ok) {
+          set('stamp', '✓', 'prepared for port ' + doc.stamp.port
+            + (doc.stamp.copy_warning ? ' (kept previous files)' : ''), 'ok');
+        } else if (doc.stamp) {
+          set('stamp', '✕', 'failed: ' + (doc.stamp.error || 'unknown')
+            + ' — restart the app to retry', 'bad');
+        } else {
+          set('stamp', '·', 'no record yet — restart the app', '');
+        }
+        const c = doc.companion || {};
+        const r = doc.rejects || {};
+        if (c.connected) {
+          set('knock', '✓', 'detected', 'ok');
+          set('connected', '✓', 'Connected — ' + browserName(c.browser)
+            + ' (companion v' + (c.version || '?') + ')', 'ok');
+        } else {
+          if (r.auth > 0) {
+            set('knock', '✕', 'knocking but rejected: stale pairing — '
+              + 'restart the app, then click ↻ reload on the extension card. '
+              + 'Still failing? You may have loaded the wrong folder — '
+              + 'remove it and load the exact path below.', 'bad');
+          } else if (r.protocol > 0) {
+            set('knock', '✕', 'the companion is older than the app — open '
+              + 'the extensions page and click ↻ reload on its card.', 'bad');
+          } else {
+            set('knock', '·', 'not detected yet — load the folder below '
+              + '(Developer mode → Load unpacked)', '');
+          }
+          set('connected', '·', 'waiting for the companion…', '');
+        }
       }
-    });
+      tick();
+      setInterval(tick, 3000);
+    })();
   </script>
 
   <ol class="steps">

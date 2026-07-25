@@ -210,6 +210,13 @@ def _merge(parts: list[ResumeSections]) -> ResumeSections | None:
     return merged
 
 
+# 015 (FR-004): extraction is background, multi-chunk, progress-reported work
+# — a chunk may also pay the one-time model load. It declares its own
+# generous per-chunk budget instead of inheriting the interactive 180s
+# default (which starved this path on a busy machine).
+EXTRACTION_CHAT_TIMEOUT_S = 600
+
+
 def _extract_single(resume_text: str, part_note: str = "") -> ResumeSections | None:
     from . import matcher
 
@@ -220,7 +227,8 @@ def _extract_single(resume_text: str, part_note: str = "") -> ResumeSections | N
     ]
     for attempt in (1, 2):
         try:
-            raw = matcher._chat(messages, purpose="json")
+            raw = matcher._chat(messages, purpose="json",
+                                timeout_s=EXTRACTION_CHAT_TIMEOUT_S)
             payload = json.loads(matcher._extract_json(raw))
             return ResumeSections.model_validate(payload)
         except Exception as exc:  # malformed JSON, schema mismatch, LLM error

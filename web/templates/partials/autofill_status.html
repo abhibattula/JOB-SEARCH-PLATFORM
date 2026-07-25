@@ -51,15 +51,29 @@
     {% endif %}
   </div>
 
-  {# 013 (FR-004): where the fill is actually happening, so a companion-in-
-     Chrome / assistant-in-Edge mismatch is visible, never silent. #}
+  {# 013 (FR-004) → 015 (D2/FR-012/FR-013): the active fill path is ALWAYS
+     stated — the signed-out assistant window is a loud warning with a
+     connect link, never a silent surprise. #}
   {% if snapshot and snapshot.backend %}
+  {% if snapshot.backend == 'extension' %}
   <p class="data fill-where" role="status">
-    Filling in:
-    {%- if snapshot.backend == 'extension' %} <strong>your browser</strong> (companion)
-    {%- else %} <strong>the assistant window</strong>{% if snapshot.browser_channel %} · {{ 'Microsoft Edge' if snapshot.browser_channel == 'msedge' else 'Google Chrome' }}{% endif %}
-    {%- endif -%}
+    Filling in <strong>your
+    {%- if snapshot.extension and snapshot.extension.browser == 'edge' %} Microsoft Edge
+    {%- elif snapshot.extension and snapshot.extension.browser == 'chrome' %} Google Chrome
+    {%- else %} browser{% endif %}</strong>
+    {% if snapshot.extension and snapshot.extension.version %}(companion v{{ snapshot.extension.version }}){% else %}(companion){% endif %}
+    — where you're already signed in.
   </p>
+  {% else %}
+  <div class="notice fill-where-warning" role="status">
+    <strong>Assistant window —
+    {%- if snapshot.browser_channel == 'msedge' %} Microsoft Edge
+    {%- elif snapshot.browser_channel == 'chrome' %} Google Chrome
+    {%- else %} Edge/Chrome{% endif %} (not signed in).</strong>
+    Fills happen in a separate window without your logins. To fill in your
+    own browser instead, <a href="/companion">connect your browser</a>.
+  </div>
+  {% endif %}
   {% endif %}
 
   {# 009 (FR-007): the live watch feed — the engine's heartbeat, visible #}
@@ -181,7 +195,10 @@
     </p>
     <p class="data">{{ current.pending.question_raw }}</p>
     <p class="muted">
-      {% if current.pending.drafted_answer %}
+      {% if current.pending.drafting %}
+      ▸ drafting a suggestion from your resume… type your own answer now, or
+      wait a moment for the draft to appear here:
+      {% elif current.pending.drafted_answer %}
       AI-drafted, <strong>unreviewed</strong> — edit if needed, then confirm:
       {% else %}
       No AI draft available — type an answer to save and use it:

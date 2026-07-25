@@ -40,9 +40,26 @@ state.onMessage = (msg) => {
 
 // Content scripts → app (fields, fill_result, page_event, fill_here).
 chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
-  // Popup status query
+  // Popup status query — includes the last connection-attempt record (015)
+  // so the popup can explain WHY it isn't connected. A freshly-woken worker
+  // has blank memory; fall back to the storage.session mirror.
   if (msg && msg.type === "status?") {
-    sendResponse({ connected: state.connected });
+    if (state.lastAttempt) {
+      sendResponse({ connected: state.connected,
+                     lastAttempt: state.lastAttempt });
+    } else {
+      chrome.storage.session.get("lastAttempt")
+        .then((o) => sendResponse({ connected: state.connected,
+                                    lastAttempt: o.lastAttempt || null }))
+        .catch(() => sendResponse({ connected: state.connected,
+                                    lastAttempt: null }));
+    }
+    return true;
+  }
+  // Popup asked for an immediate reconnect attempt (015: "Connect now")
+  if (msg && msg.type === "connect!") {
+    connect();
+    sendResponse({ ok: true });
     return true;
   }
   if (msg && msg.type === "fill_here!") {

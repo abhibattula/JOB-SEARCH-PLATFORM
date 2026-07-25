@@ -10,6 +10,7 @@ inside a platform branch so this module imports cleanly on macOS/Linux/CI
 from __future__ import annotations
 
 import logging
+import subprocess
 import sys
 
 log = logging.getLogger(__name__)
@@ -73,3 +74,97 @@ def default_channel_order(read_progid=None) -> tuple[str, ...]:
         if ch not in order:
             order.append(ch)
     return tuple(order)
+
+
+# --- 015 (D3): the user's explicit browser preference ------------------------
+
+_EXE_NAMES = {"chrome": "chrome.exe", "msedge": "msedge.exe"}
+_MAC_APP_NAMES = {"chrome": "Google Chrome", "msedge": "Microsoft Edge"}
+
+
+def _preference() -> str:
+    from .. import settings
+
+    value = settings.get("PREFERRED_BROWSER") or "chrome"
+    return value if value in ("chrome", "msedge", "auto") else "chrome"
+
+
+def effective_channel_order(read_progid=None) -> tuple[str, ...]:
+    """The 013 detected order with the 015 preference applied first (D3):
+    an explicit preference leads; `auto` means follow the OS default. The
+    result still contains every automatable channel as fallback."""
+    detected = default_channel_order(read_progid=read_progid)
+    pref = _preference()
+    if pref == "auto":
+        return detected
+    return tuple([pref] + [ch for ch in detected if ch != pref])
+
+
+def _browser_exe(channel: str) -> str | None:
+    """Resolve a browser's executable via the Windows App Paths registry —
+    the canonical, install-location-independent lookup. None off-Windows or
+    when not installed."""
+    if sys.platform != "win32":
+        return None
+    try:
+        import winreg  # noqa: PLC0415 — Windows-only, intentionally lazy
+    except Exception:
+        return None
+    exe = _EXE_NAMES.get(channel)
+    if not exe:
+        return None
+    key_path = (r"SOFTWARE\Microsoft\Windows\CurrentVersion"
+                rf"\App Paths\{exe}")
+    for root in (winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER):
+        try:
+            with winreg.OpenKey(root, key_path) as key:
+                value, _ = winreg.QueryValueEx(key, "")
+                if value:
+                    return value
+        except OSError:
+            continue
+    return None
+
+
+def _open_with_os_default(url: str) -> None:
+    import os
+
+    if sys.platform == "win32" and hasattr(os, "startfile"):
+        try:
+            os.startfile(url)  # noqa: S606 — caller validated http/https
+            return
+        except OSError:
+            log.debug("os.startfile failed for %s", url, exc_info=True)
+    if sys.platform == "darwin":
+        try:
+            subprocess.Popen(["open", url])
+            return
+        except Exception:
+            log.debug("mac open failed", exc_info=True)
+    import webbrowser
+
+    webbrowser.open(url)
+
+
+def open_url(url: str) -> str:
+    """Open a (pre-validated http/https) url honoring PREFERRED_BROWSER
+    (FR-017). Returns what actually opened it — "chrome" | "msedge" |
+    "os-default" — so the UI can note a substitution, never silently."""
+    pref = _preference()
+    if pref != "auto":
+        exe = _browser_exe(pref)
+        if exe:
+            try:
+                subprocess.Popen([exe, url])
+                return pref
+            except Exception:
+                log.warning("preferred browser launch failed — falling back",
+                            exc_info=True)
+        elif sys.platform == "darwin":
+            try:
+                subprocess.Popen(["open", "-a", _MAC_APP_NAMES[pref], url])
+                return pref
+            except Exception:
+                log.debug("mac open -a failed — falling back", exc_info=True)
+    _open_with_os_default(url)
+    return "os-default"

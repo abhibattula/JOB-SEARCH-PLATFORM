@@ -39,6 +39,50 @@
     </script>
   </section>
 
+  {# 015 (FR-014): the whole pairing chain, human-readable, in one place #}
+  <section class="settings-section">
+    <h2>Companion &amp; pairing</h2>
+    <table class="feed-table">
+      <tbody>
+        <tr><td>Pairing prepared</td><td class="data">
+          {%- if doctor.stamp and doctor.stamp.ok -%}
+          ✓ {{ doctor.stamp.at }} · port {{ doctor.stamp.port }}
+          {%- elif doctor.stamp -%}
+          ✕ {{ doctor.stamp.error }}
+          {%- else -%}— no record yet{%- endif -%}
+        </td></tr>
+        <tr><td>Pairing file</td><td class="data">
+          {%- if doctor.pairing.present -%}
+          port {{ doctor.pairing.port }} · protocol {{ doctor.pairing.protocol_v }} ·
+          {{ 'fresh this launch' if doctor.pairing.fresh else 'STALE — older than this launch' }}
+          {%- else -%}✕ missing{%- endif -%}
+        </td></tr>
+        <tr><td>Port match</td><td class="data">
+          {{ '✓' if doctor.port.match else '✕' }}
+          app {{ doctor.port.current if doctor.port.current is not none else '—' }}
+          vs pairing {{ doctor.pairing.port if doctor.pairing.port is not none else '—' }}
+        </td></tr>
+        <tr><td>Companion</td><td class="data">
+          {%- if doctor.companion.connected -%}
+          ✓ connected — {{ doctor.companion.browser or 'browser?' }}
+          v{{ doctor.companion.version }} · seen {{ doctor.companion.last_seen_age_s }}s ago
+          {%- else -%}✕ not connected{%- endif -%}
+        </td></tr>
+        <tr><td>Rejected attempts</td><td class="data">
+          stale-pairing {{ doctor.rejects.auth }} · old-version {{ doctor.rejects.protocol }}
+          {%- if doctor.rejects.last_kind %} · last: {{ doctor.rejects.last_kind }}{% endif -%}
+        </td></tr>
+        <tr><td>OS default browser</td><td class="data">
+          {{ 'Microsoft Edge' if doctor.browser.os_default_channel == 'msedge' else 'Google Chrome' }}
+          · preference: {{ doctor.browser.preference }}
+          {%- if doctor.browser.mismatch %} · ⚠ mismatch{% endif -%}
+        </td></tr>
+      </tbody>
+    </table>
+    <p class="muted"><a href="/companion">Open the connect page</a> for the
+      guided setup with live verification.</p>
+  </section>
+
   <section class="settings-section">
     <h2>Logs</h2>
     <p class="settings-actions">

@@ -47,6 +47,16 @@
   {% if _upd %}<div id="update-banner">{% with update = _upd %}{% include "partials/update_banner.html" %}{% endwith %}</div>{% endif %}
   {% set _wn = unseen_whats_new() %}
   {% if _wn %}<div id="whats-new-region">{% with entries = _wn.entries, version = _wn.version %}{% include "partials/whats_new.html" %}{% endwith %}</div>{% endif %}
+  {# 015 (FR-005): a native crash leaves no other trace — say so, once. #}
+  {% set _ux = unclean_exit() %}
+  {% if _ux %}<div class="notice unclean-banner" role="status">
+    <strong>The app closed unexpectedly last time.</strong>
+    If it keeps happening, <a href="/diagnostics">open Diagnostics</a>.
+    <button type="button" class="ghost" hx-post="/api/unclean-exit/dismiss"
+            hx-swap="none" onclick="this.closest('.unclean-banner').remove()">
+      Dismiss
+    </button>
+  </div>{% endif %}
   <main>
     {% block content %}
     <p class="empty-state">The engine is running. The feed arrives with US1.</p>

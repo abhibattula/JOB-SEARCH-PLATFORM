@@ -29,6 +29,10 @@ DEFAULTS = {
     # default (user decision — private, $0); the cloud key is the
     # automatic fallback when the local tier fails.
     "PREFER_LOCAL_LLM": "1",
+    # 015 (D3/FR-016): job links + the assistant window open in this browser.
+    # chrome | msedge | auto (= follow the OS default). A live companion
+    # always wins regardless.
+    "PREFERRED_BROWSER": "chrome",
 }
 
 

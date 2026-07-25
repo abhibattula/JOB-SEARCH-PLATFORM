@@ -8,6 +8,36 @@
     (flagged for your review). You always review and click the actual
     apply/submit button yourself — this never happens automatically.</p>
 
+  {# 015 (FR-008): a failed pairing preparation is never log-only #}
+  {% set _sp = stamp_problem() %}
+  {% if _sp %}
+  <div class="error-banner stamp-problem" role="alert">
+    <strong>Companion pairing needs attention.</strong> The app couldn't
+    prepare the browser companion at launch:
+    <span class="data">{{ _sp.error }}</span>
+    Restart the app to retry; if it keeps happening, check
+    <a href="/diagnostics">Diagnostics</a>. Apply Assist still works in the
+    assistant window meanwhile.
+  </div>
+  {% endif %}
+
+  {# 015 (FR-019): OS default vs preference — say it, offer the fix #}
+  {% if browser_intent and browser_intent.mismatch %}
+  <p class="notice browser-mismatch" role="status">
+    <strong>Windows default:</strong>
+    {{ 'Microsoft Edge' if browser_intent.os_default == 'msedge' else 'Google Chrome' }}
+    · <strong>Your preference:</strong>
+    {{ 'Google Chrome' if browser_intent.preference == 'chrome' else 'Microsoft Edge' }}.
+    Job links and the assistant window follow your preference.
+    {% if browser_intent.is_windows %}
+    <button type="button" class="ghost" hx-post="/api/os/default-apps"
+            hx-swap="none" data-toast="Opening Windows Settings">
+      Fix Windows default
+    </button>
+    {% endif %}
+  </p>
+  {% endif %}
+
   {# 010 FR-018: connection card + active-mode indicator #}
   <div id="companion-card" class="status-card"
        hx-get="/api/autofill/status" hx-trigger="load, every 3s" hx-swap="none">

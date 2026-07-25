@@ -12,14 +12,21 @@ manual download (documented).
 from __future__ import annotations
 
 import hashlib
+import json
 import logging
 import re
 import sys
 import threading
+import time
 
 from . import APP_VERSION
 
 log = logging.getLogger(__name__)
+
+# 015 (FR-021): real installers are ~1.5 GB — anything under this is an
+# incomplete/failed download and must be rejected BEFORE hashing (an empty
+# file's hash produced the baffling 'got e3b0c442…' failure in the field).
+MIN_INSTALLER_BYTES = 10 * 1024 * 1024
 
 RELEASES_API = (
     "https://api.github.com/repos/abhibattula/JOB-SEARCH-PLATFORM/releases/latest"
@@ -148,6 +155,89 @@ def _stream_to(url: str, dest, on_progress) -> None:
                     on_progress(written * 100 // total)
 
 
+# --- 015 (FR-021/FR-022): failure-proof cleanup + installer pruning ---------
+
+
+def _cleanup_file():
+    return _updates_dir() / "cleanup.json"
+
+
+def _defer_cleanup(path) -> None:
+    """Remember a file whose deletion failed (locked by AV/another handle);
+    a later launch's run_deferred_cleanup() drains the list."""
+    entries: list = []
+    record = _cleanup_file()
+    try:
+        if record.exists():
+            entries = json.loads(record.read_text(encoding="utf-8"))
+    except Exception:
+        entries = []
+    if str(path) not in entries:
+        entries.append(str(path))
+    try:
+        record.write_text(json.dumps(entries), encoding="utf-8")
+    except Exception:
+        log.debug("could not record deferred cleanup", exc_info=True)
+
+
+def _safe_unlink(path) -> None:
+    """Deleting a locked file crashed the download thread in the field
+    (WinError 32) — retry briefly, then defer; NEVER raise."""
+    for attempt in range(3):
+        try:
+            path.unlink(missing_ok=True)
+            return
+        except OSError:
+            if attempt < 2:
+                time.sleep(0.5)
+    _defer_cleanup(path)
+
+
+def _prune_old_installers(keep: int = 2) -> None:
+    """The evidence machine hoarded 4 × 1.5 GB setups. Keep the newest
+    `keep` (current + newest previous); defer anything locked."""
+    try:
+        installers = sorted(
+            _updates_dir().glob("JobEngine-Setup-*.exe"),
+            key=lambda p: p.stat().st_mtime, reverse=True,
+        )
+    except OSError:
+        return
+    for old in installers[keep:]:
+        try:
+            old.unlink()
+        except OSError:
+            _defer_cleanup(old)
+
+
+def run_deferred_cleanup() -> None:
+    """Drain deferred deletions + prune old installers. Called at startup
+    (before the daily check gate) — cheap, local-disk only, never raises."""
+    record = _cleanup_file()
+    entries: list = []
+    try:
+        if record.exists():
+            entries = json.loads(record.read_text(encoding="utf-8"))
+    except Exception:
+        entries = []
+    remaining: list = []
+    from pathlib import Path
+
+    for item in entries:
+        try:
+            Path(item).unlink(missing_ok=True)
+        except OSError:
+            remaining.append(item)
+    try:
+        if remaining:
+            record.write_text(json.dumps(remaining), encoding="utf-8")
+        elif record.exists():
+            record.unlink(missing_ok=True)
+    except Exception:
+        log.debug("cleanup record update failed", exc_info=True)
+    _prune_old_installers()
+
+
 def _sha256_file(path) -> str:
     digest = hashlib.sha256()
     with open(path, "rb") as f:
@@ -173,10 +263,19 @@ def _run_download() -> None:
         _stream_to(info["asset_url"], part, on_progress)
         with _lock:
             _state.update(state="verifying", pct=100)
-        expected = info.get("sha256")
-        if info.get("size") and part.stat().st_size != info["size"]:
+        # 015 (FR-021): reject empty/truncated downloads BEFORE hashing —
+        # hashing an empty file yields 'got e3b0c442…', a message that
+        # explains nothing (field evidence).
+        got_bytes = part.stat().st_size
+        if got_bytes < MIN_INSTALLER_BYTES:
             raise ValueError(
-                f"size mismatch: got {part.stat().st_size}, expected {info['size']}"
+                f"download incomplete ({got_bytes} bytes) — check your "
+                "connection and try again"
+            )
+        expected = info.get("sha256")
+        if info.get("size") and got_bytes != info["size"]:
+            raise ValueError(
+                f"size mismatch: got {got_bytes}, expected {info['size']}"
             )
         if not expected:
             raise ValueError("release publishes no SHA-256 for this asset — refusing to verify")
@@ -186,9 +285,12 @@ def _run_download() -> None:
         part.replace(dest)  # only a fully-verified file ever gets the real name
         with _lock:
             _state.update(state="ready", path=str(dest), version=info["latest"], error=None)
+        _prune_old_installers()  # FR-022: current + newest previous, no hoard
     except Exception as exc:
-        part.unlink(missing_ok=True)
-        dest.unlink(missing_ok=True)
+        # 015 (FR-021): cleanup must NEVER crash this thread (a locked .part
+        # raised WinError 32 in the field, killing the thread mid-failure)
+        _safe_unlink(part)
+        _safe_unlink(dest)
         log.warning("update download failed", exc_info=True)
         with _lock:
             _state.update(state="failed", error=str(exc)[:300])
@@ -229,10 +331,17 @@ def install() -> None:
 
 
 def startup_check() -> dict | None:
-    """Once-daily silent check (FR-030) — feeds the update banner."""
+    """Once-daily silent check (FR-030) — feeds the update banner.
+    015: drains deferred deletions + prunes hoarded installers first
+    (local-disk only, runs even when today's check already happened)."""
     from datetime import datetime, timezone
 
     from . import settings
+
+    try:
+        run_deferred_cleanup()
+    except Exception:
+        log.debug("deferred cleanup failed", exc_info=True)
 
     today = datetime.now(timezone.utc).strftime("%Y-%m-%d")
     if (settings.get("UPDATE_LAST_CHECK") or "") == today:

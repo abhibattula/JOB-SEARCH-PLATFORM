@@ -629,6 +629,71 @@ UNKNOWN badges everywhere = run `python cli.py load-sponsorship`.
   "couldn't read this page" dead end, and the silent identity auto-fill
   are all gone.
 
+## 19. What changed in v1.5.0 (The Pairing Release)
+
+Apply Assist's companion pairing was rebuilt end-to-end, and the on-device AI
+runtime was hardened — driven by a machine-verified root-cause investigation
+(the app could crash from a native AI fault, freeze while drafting an answer,
+and fail pairing silently at every step). Same stack, still $0 and offline;
+Apply Assist still never clicks submit.
+
+**The app doesn't freeze or crash from AI anymore.**
+- Every on-device AI call (scoring, drafting, suggestions, tailoring, resume
+  import, embeddings) now runs strictly one-at-a-time through a single owner
+  with a time budget — the concurrent native calls that crashed the app are
+  structurally impossible now.
+- While an answer suggestion is being drafted, the Apply Assist panel keeps
+  updating and shows *"drafting a suggestion…"* — you can type your own
+  answer instead of waiting. (Previously the whole app could hang for
+  minutes here.)
+- If a session ever ends abnormally, the next launch says so ("the app
+  closed unexpectedly last time") instead of pretending nothing happened.
+- Power users: `JOBS_AI_SUBPROCESS=1` runs the AI models in a supervised
+  child process, so even a native fault can never close the app.
+
+**Pairing you can see (Companion page → live wizard).**
+- The Connect page now verifies each step live: *App preparation ✓* →
+  *Companion installed ✓* → *Connected — Google Chrome (companion v1.5.0)*.
+  Every failure names its fix right there.
+- The app now verifies its own pairing preparation at every launch and shows
+  a banner if it failed — a silent pairing failure can no longer happen.
+- The companion's toolbar popup explains exactly why it isn't connected
+  (app not running / pairing file missing / stale pairing / companion older
+  than the app) and has a **Connect now** retry. "Fill this page" tells you
+  why it can't act instead of doing nothing.
+- Diagnostics gains a **Companion & pairing** section showing the whole
+  chain at a glance.
+- Starting Apply Assist always states where filling happens: *"your Google
+  Chrome (companion)"* or a clear warning — *"Assistant window — Edge (not
+  signed in)"* — with a connect link. It proceeds either way, never blocks.
+
+**Popup messages and what they mean:**
+
+| Popup says | Meaning | Fix |
+|---|---|---|
+| App not running | The app is closed (or just starting) | Open Job Engine, press **Connect now** |
+| Pairing file missing | The wrong folder is loaded | Remove the extension, Load unpacked again from the exact folder on the Companion page |
+| Stale pairing (rejected) | The app restarted since the companion last connected | Press **Connect now**; if it persists, click ↻ reload on the extension card |
+| Companion older than the app | The app updated; the browser cached old extension code | Click ↻ reload on the extension card |
+
+**Your browser, your choice.**
+- New Setting: **Open job links in** — Google Chrome (default), Microsoft
+  Edge, or Auto (follow the system default). Job links and the Apply Assist
+  assistant window follow it. A connected companion always wins.
+- When Windows' own default disagrees with your preference, the app says so
+  ("Windows default: Edge · Your preference: Chrome") with a **Fix Windows
+  default** button that opens the right Settings page. (Windows quietly
+  resets the default browser to Edge after some updates — this makes it
+  visible instead of mysterious.)
+
+**Rough edges fixed.**
+- Confirming an answer during the practice application (or "Fill this
+  page") no longer errors — the answer saves for reuse.
+- A failed update download now says "download incomplete" instead of a
+  cryptic verification error; cleanup can't crash in the background; and old
+  downloaded installers are pruned automatically (previously they could
+  accumulate gigabytes).
+
 ## 18. What changed in v1.4.0 (The Experience Release)
 
 A full visual + interaction refresh of the web UI, plus a sweep of accumulated

@@ -69,4 +69,9 @@ def main() -> int:
 
 
 if __name__ == "__main__":
+    # 015 (R2): multiprocessing spawn under PyInstaller needs this before
+    # any work — the frozen exe re-executes itself for the isolated AI child.
+    import multiprocessing
+
+    multiprocessing.freeze_support()
     raise SystemExit(main())

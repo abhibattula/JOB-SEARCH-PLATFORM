@@ -61,10 +61,14 @@ def start_queue(body: QueueRequest):
         current = browser_controller.start_queue(body.job_ids)
     except Exception as exc:
         log.warning("Apply Assist failed to start", exc_info=True)
-        return {"started": False, "current_job_id": None, "error": str(exc)[:300]}
+        return {"started": False, "current_job_id": None, "backend": None,
+                "error": str(exc)[:300]}
     return {
         "started": current is not None,
         "current_job_id": current["job_id"] if current else None,
+        # 015 (D2/FR-012): name the sticky fill path from the first response
+        # so the UI shows the disclosure immediately, not on the next poll
+        "backend": browser_controller.queue_snapshot()["backend"],
     }
 
 
@@ -188,7 +192,11 @@ def confirm_answer(body: ConfirmAnswerRequest):
 
     bank_id = answer_bank.save(body.question_raw, body.answer, category=body.category)
     current = browser_controller.current_job()
-    if current is not None:
+    # 015 (FR-020): sentinel sessions (practice -1, ad-hoc -2) have no jobs
+    # row — recording a snapshot violated the FK and 500'd the confirm. The
+    # reusable answer above always saves; the per-application snapshot is
+    # only meaningful for a tracked job. (Same guard as the drafts route.)
+    if current is not None and current["job_id"] and current["job_id"] > 0:
         answer_bank.record_application_answer(
             current["job_id"], body.question_raw, bank_id, body.answer
         )

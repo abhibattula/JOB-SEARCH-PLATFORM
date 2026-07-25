@@ -91,19 +91,34 @@ def _get_model():
         return _model
 
 
-def chat(messages: list[dict], json_mode: bool = False) -> str:
-    """Raises RuntimeError if the bundled model is missing or fails to load —
-    callers (engine/matcher.py's tier dispatcher) treat this the same as a
-    failed cloud call: fall through to the next tier.
-
-    008 (FR-028): json_mode enables llama.cpp's grammar-constrained JSON
-    decoding — the biggest reliability lever for small models: output is
-    structurally valid JSON every time instead of best-effort prose."""
+def _chat_impl(payload: dict) -> str:
+    """Worker-side executor — runs ONLY on the engine/inference.py owner
+    thread (015 FR-001: llama objects are not thread-safe; loading happens
+    here too, so load and generate can never overlap)."""
     model = _get_model()
     if model is None:
         raise RuntimeError("local model unavailable")
-    kwargs = {"messages": messages, "temperature": 0.2}
-    if json_mode:
+    kwargs = {"messages": payload["messages"], "temperature": 0.2}
+    if payload.get("json_mode"):
+        # 008 (FR-028): grammar-constrained JSON decoding — structurally
+        # valid JSON every time instead of best-effort prose.
         kwargs["response_format"] = {"type": "json_object"}
     completion = model.create_chat_completion(**kwargs)
     return completion["choices"][0]["message"]["content"] or ""
+
+
+def chat(messages: list[dict], json_mode: bool = False,
+         timeout_s: float | None = None) -> str:
+    """Raises RuntimeError if the bundled model is missing, fails to load,
+    times out, or the AI queue is saturated — callers (engine/matcher.py's
+    tier dispatcher) treat all of these the same as a failed cloud call:
+    fall through to the next tier.
+
+    015 (FR-001): routes through the single-owner inference worker, so every
+    caller in the app is serialized onto one thread — the unserialized
+    concurrent calls this replaces are what crashed the app natively
+    (ggml-cpu.dll access violation)."""
+    from . import inference
+
+    return inference.run_chat(messages, json_mode=json_mode,
+                              timeout_s=timeout_s)

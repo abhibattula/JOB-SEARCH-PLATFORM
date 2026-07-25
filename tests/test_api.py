@@ -563,14 +563,33 @@ class Test008ShellSupport:
     endpoints — the pywebview shell's guaranteed paths for external links
     and copying (FR-002/FR-004)."""
 
-    def test_open_launches_system_browser(self, client, monkeypatch):
-        """013 (FR-003): postings open via the OS DEFAULT handler — on Windows
-        os.startfile (respects the user's default browser, not Edge), else
-        webbrowser.open. Either way the URL is opened exactly once."""
+    def test_open_uses_preferred_browser(self, client, monkeypatch):
+        """015 (D3/FR-017): links open in the PREFERRED browser (default
+        Chrome) even when the OS default is Edge."""
+        from engine.autofill import default_browser
+
+        launched = []
+        monkeypatch.setattr(
+            default_browser, "_browser_exe",
+            lambda channel: r"C:\Apps\chrome.exe" if channel == "chrome" else None)
+        monkeypatch.setattr(default_browser.subprocess, "Popen",
+                            lambda args, **kw: launched.append(list(args)))
+        resp = client.post("/api/open", json={"url": "https://example.com/job"})
+        assert resp.status_code == 200
+        assert resp.json() == {"opened": True, "opened_with": "chrome"}
+        assert launched == [[r"C:\Apps\chrome.exe", "https://example.com/job"]]
+
+    def test_open_falls_back_to_os_default_and_says_so(self, client, monkeypatch):
+        """013 (FR-003) preserved as the fallback: preferred browser missing →
+        the OS default handler opens it, and the substitution is REPORTED
+        (opened_with) so the UI can note it (015 FR-017)."""
         import os
         import sys
         import webbrowser
 
+        from engine.autofill import default_browser
+
+        monkeypatch.setattr(default_browser, "_browser_exe", lambda channel: None)
         via_startfile, via_webbrowser = [], []
         monkeypatch.setattr(webbrowser, "open",
                             lambda url: via_webbrowser.append(url) or True)
@@ -578,7 +597,7 @@ class Test008ShellSupport:
             monkeypatch.setattr(os, "startfile", lambda url: via_startfile.append(url))
         resp = client.post("/api/open", json={"url": "https://example.com/job"})
         assert resp.status_code == 200
-        assert resp.json() == {"opened": True}
+        assert resp.json() == {"opened": True, "opened_with": "os-default"}
         assert (via_startfile + via_webbrowser) == ["https://example.com/job"]
         if sys.platform == "win32":
             assert via_startfile == ["https://example.com/job"]   # default handler

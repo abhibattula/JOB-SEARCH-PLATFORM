@@ -72,8 +72,41 @@ def _unseen_whats_new():
     return {"entries": entries, "version": _v}
 
 
+def _unclean_exit():
+    """015 (FR-005): non-empty when the previous session ended without a
+    clean shutdown (engine/lifecycle.py marker) and the user hasn't
+    dismissed the notice yet. Rendered server-side inline (014 CLS-safe
+    pattern)."""
+    from engine import settings as settings_mod
+
+    return settings_mod.get("UNCLEAN_EXIT_AT") or None
+
+
+def _stamp_problem():
+    """015 (FR-008): the last pairing-preparation outcome, when it FAILED —
+    drives the never-log-only banner on the Apply Assist and connect pages.
+    None when there is no record (never stamped) or the last stamp was OK."""
+    import json as json_mod
+
+    from engine import paths as paths_mod
+
+    path = paths_mod.data_dir() / "stamp_status.json"
+    if not path.exists():
+        return None
+    try:
+        data = json_mod.loads(path.read_text(encoding="utf-8"))
+    except Exception:
+        return {"error": "stamp_status.json unreadable", "at": None}
+    if data.get("ok"):
+        return None
+    return {"error": data.get("error") or "unknown failure",
+            "at": data.get("at")}
+
+
 templates.env.globals["pending_update"] = _pending_update
 templates.env.globals["unseen_whats_new"] = _unseen_whats_new
+templates.env.globals["unclean_exit"] = _unclean_exit
+templates.env.globals["stamp_problem"] = _stamp_problem
 
 
 def _current_theme() -> str:
@@ -90,6 +123,13 @@ templates.env.globals["current_theme"] = _current_theme
 # 008 (FR-032): plain-language changelog behind the What's New overlay —
 # keyed by APP_VERSION, shown once per version.
 WHATS_NEW: dict[str, list[str]] = {
+    "1.5.0": [
+        "Apply Assist pairing rebuilt: a live Connect page that verifies each "
+        "step and says exactly what's wrong when something is.",
+        "The app no longer freezes or crashes from the on-device AI.",
+        "Job links and the assistant window now open in your preferred "
+        "browser (Chrome by default) — changeable in Settings.",
+    ],
     "1.4.0": [
         "A refreshed look: cleaner typography, spacing, and color across every "
         "page, in both the light and dark themes — same fast, private engine.",
@@ -402,6 +442,25 @@ def create_app() -> FastAPI:
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         return response
 
+    @app.post("/api/os/default-apps")
+    def open_os_default_apps():
+        """015 (FR-019): one-click jump to the OS default-browser setting —
+        Windows only (the mismatch line renders without the button elsewhere)."""
+        from fastapi import HTTPException
+
+        if sys.platform != "win32":
+            raise HTTPException(status_code=409, detail="Windows only")
+        os.startfile("ms-settings:defaultapps")  # noqa: S606 — fixed URI
+        return {"opened": True}
+
+    @app.post("/api/unclean-exit/dismiss")
+    def dismiss_unclean_exit():
+        """015 (FR-005): one-time banner — dismissing clears the record."""
+        from engine import settings as settings_mod
+
+        settings_mod.set("UNCLEAN_EXIT_AT", "")
+        return {"ok": True}
+
     @app.get("/", response_class=HTMLResponse)
     def index(
         request: Request,
@@ -571,12 +630,16 @@ def create_app() -> FastAPI:
             tail = "\n".join(
                 log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-40:]
             )
+        from .routes_bridge import companion_doctor
+
         return templates.TemplateResponse(
             request,
             "diagnostics.html",
             {
                 "log_tail": tail,
                 "legacy_bytes": browser_setup.legacy_size_bytes(),
+                # 015 (FR-014): the pairing chain, human-readable
+                "doctor": companion_doctor(),
             },
         )
 
@@ -630,6 +693,21 @@ def create_app() -> FastAPI:
     def practice_frame(request: Request):
         return templates.TemplateResponse(request, "practice_frame.html", {})
 
+    def _browser_intent() -> dict:
+        """015 (FR-019): OS default vs preference, for the mismatch line.
+        Auto IS the OS default, so no mismatch is possible there."""
+        from engine import settings as settings_mod
+        from engine.autofill import default_browser
+
+        pref = settings_mod.get("PREFERRED_BROWSER") or "chrome"
+        os_default = default_browser.default_channel_order()[0]
+        return {
+            "preference": pref,
+            "os_default": os_default,
+            "mismatch": pref != "auto" and os_default != pref,
+            "is_windows": sys.platform == "win32",
+        }
+
     @app.get("/companion", response_class=HTMLResponse)
     def companion_page(request: Request):
         """010 (FR-001/FR-022): the guided one-time install for the browser
@@ -639,7 +717,8 @@ def create_app() -> FastAPI:
 
         ext_path = str(stamp_extension.dest_dir())
         return templates.TemplateResponse(
-            request, "companion.html", {"ext_path": ext_path}
+            request, "companion.html",
+            {"ext_path": ext_path, "browser_intent": _browser_intent()},
         )
 
     @app.get("/autofill", response_class=HTMLResponse)
@@ -647,7 +726,10 @@ def create_app() -> FastAPI:
         jobs, _ = db.query_jobs(
             window=None, statuses=("saved",), entry_level=True
         )
-        return templates.TemplateResponse(request, "autofill.html", {"jobs": jobs})
+        return templates.TemplateResponse(
+            request, "autofill.html",
+            {"jobs": jobs, "browser_intent": _browser_intent()},
+        )
 
     @app.get("/partials/autofill/status", response_class=HTMLResponse)
     def autofill_status_partial(request: Request):

@@ -164,7 +164,11 @@ class TestPendingConfirmation:
         assert value is None  # never auto-filled from an unreviewed draft
         assert bc._state.pending is not None
         assert bc._state.pending["question_raw"] == "How did you hear about us?"
+        # 015 (FR-003): the suggestion is generated in the background; once
+        # it completes it lands on the parked pending.
+        bc._join_pending_drafts_for_tests()
         assert bc._state.pending["drafted_answer"] == "Drafted answer"
+        assert bc._state.pending["drafting"] is False
 
     def test_only_one_pending_confirmation_tracked_at_a_time(self, tmp_db, monkeypatch):
         from engine import matcher
@@ -193,6 +197,85 @@ class TestPendingConfirmation:
         value = bc._value_for_tag("how_heard", raw, {}, job_id=1)
 
         assert value == "Known answer"
+        assert bc._state.pending is None
+
+
+class TestParkThenDraft:
+    """015 (FR-002/FR-003, SC-002): a pending question parks IMMEDIATELY and
+    the suggestion generates off every lock — the status paths the UI polls
+    every ~3s must answer fast while the (minutes-long on CPU) suggestion is
+    still running. This is the regression guard for the chronic freeze."""
+
+    def _raw(self):
+        return {"tag": "input", "type": "text", "name": "q", "id": "q",
+                "label_text": "Why us?", "placeholder": "", "aria_label": "",
+                "autocomplete": ""}
+
+    def test_park_is_immediate_and_status_stays_responsive(self, tmp_db, monkeypatch):
+        import threading
+        import time
+
+        from engine.autofill import answer_bank
+
+        release = threading.Event()
+
+        def slow_suggest(question, category, profile):
+            release.wait(timeout=10)
+            return "Drafted later"
+
+        monkeypatch.setattr(answer_bank, "suggest", slow_suggest)
+        bc._state.running = True
+        bc._state.job_ids = [1]
+        bc._state.index = 0
+        bc._state.pending = None
+
+        start = time.monotonic()
+        value = bc._value_for_tag("how_heard", self._raw(), {}, job_id=1)
+        assert value is None
+        assert time.monotonic() - start < 1.0  # parked, not generated inline
+
+        with bc._lock:
+            parked = dict(bc._state.pending)
+        assert parked["drafting"] is True
+        assert parked["drafted_answer"] is None
+
+        # the panels the UI polls keep answering while the draft generates
+        start = time.monotonic()
+        snapshot = bc.queue_snapshot()
+        current = bc.current_job()
+        assert time.monotonic() - start < 1.0
+        assert snapshot["queue"]
+        assert current["pending"]["drafting"] is True
+
+        release.set()
+        bc._join_pending_drafts_for_tests()
+        with bc._lock:
+            assert bc._state.pending["drafted_answer"] == "Drafted later"
+            assert bc._state.pending["drafting"] is False
+
+    def test_stale_draft_never_lands_after_resolve(self, tmp_db, monkeypatch):
+        import threading
+
+        from engine.autofill import answer_bank
+
+        release = threading.Event()
+        monkeypatch.setattr(
+            answer_bank, "suggest",
+            lambda *a, **k: (release.wait(timeout=10), "Too late")[1])
+        monkeypatch.setattr(bc, "_dispatch",
+                            lambda name, payload=None, wait=None: None)
+        bc._state.running = True
+        bc._state.job_ids = [1]
+        bc._state.index = 0
+        bc._state.pending = None
+
+        bc._value_for_tag("how_heard", self._raw(), {}, job_id=1)
+        bc.resolve_pending("my own answer")  # user answered before the AI did
+        assert bc._state.pending is None
+
+        release.set()
+        bc._join_pending_drafts_for_tests()
+        # the late draft must not resurrect or mutate the cleared pending
         assert bc._state.pending is None
 
 
@@ -584,9 +667,12 @@ class TestBrowserRouting013:
     Edge-first bug), and the companion is still preferred when connected."""
 
     def test_channel_order_comes_from_default_browser(self, monkeypatch):
+        # 015 (D3): the order now flows through effective_channel_order —
+        # preference first, then the detected default (the injected reader
+        # keeps this deterministic on any machine).
         from engine.autofill import default_browser
-        monkeypatch.setattr(default_browser, "default_channel_order",
-                            lambda: ("chrome", "msedge"))
+        monkeypatch.setattr(default_browser, "effective_channel_order",
+                            lambda read_progid=None: ("chrome", "msedge"))
         assert bc._channel_order() == ("chrome", "msedge")
 
     def test_ensure_context_tries_default_browser_first(self, monkeypatch):
@@ -634,3 +720,16 @@ class TestBrowserRouting013:
         monkeypatch.delenv("AUTOFILL_BACKEND", raising=False)
         monkeypatch.setattr(ext_backend, "is_live", lambda max_age_s=10.0: False)
         assert bc._choose_backend() == "playwright"
+
+
+class TestSnapshotBrowser015:
+    def test_queue_snapshot_extension_includes_browser(self, tmp_db):
+        """015 (T014): the snapshot carries the companion's browser so the
+        path banner can say 'your Chrome', not just 'your browser'."""
+        from engine.autofill import ext_backend
+
+        ext_backend.register(lambda m: None, lambda code: None, "1.5.0",
+                             browser="chrome")
+        snapshot = bc.queue_snapshot()
+        assert snapshot["extension"]["browser"] == "chrome"
+        ext_backend.reset_for_tests()

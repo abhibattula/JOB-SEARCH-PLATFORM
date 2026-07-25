@@ -98,6 +98,14 @@
           <option value="dark" {{ 'selected' if settings.theme == 'dark' }}>Dark — scope screen</option>
         </select>
       </label>
+      <label>Open job links in
+        <select name="preferred_browser"
+                title="Job links and the Apply Assist assistant window use this browser. A connected companion always wins.">
+          <option value="chrome" {{ 'selected' if settings.preferred_browser == 'chrome' }}>Google Chrome</option>
+          <option value="msedge" {{ 'selected' if settings.preferred_browser == 'msedge' }}>Microsoft Edge</option>
+          <option value="auto" {{ 'selected' if settings.preferred_browser == 'auto' }}>Auto — follow the system default</option>
+        </select>
+      </label>
       <div class="settings-actions">
         <button type="submit">Save settings</button>
         <button type="button" class="ghost" hx-post="/api/settings/test" hx-target="#key-test-result" hx-swap="innerHTML">

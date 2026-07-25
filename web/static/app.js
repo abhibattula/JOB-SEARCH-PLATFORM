@@ -84,6 +84,13 @@
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url: anchor.href }),
+    }).then(async function (resp) {
+      if (!resp || !resp.ok) { return; }
+      /* 015 (FR-017): a preferred-browser substitution is never silent */
+      var body = await resp.json().catch(function () { return null; });
+      if (body && body.opened_with === "os-default" && window.toast) {
+        toast("Opened in your system default browser");
+      }
     }).catch(function () {
       /* server unreachable — fall back to the browser's own handling */
       window.open(anchor.href, "_blank", "noopener");
