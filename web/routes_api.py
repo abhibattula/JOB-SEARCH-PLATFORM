@@ -38,23 +38,13 @@ def open_external(body: OpenRequest):
     parsed = urlparse(body.url)
     if parsed.scheme not in ("http", "https") or not parsed.netloc:
         raise HTTPException(status_code=400, detail="only http/https links can be opened")
-    # 013 (FR-003): open via the OS DEFAULT handler so the posting lands in the
-    # user's default browser (not whatever webbrowser resolves to — Edge in a
-    # frozen Windows app). os.startfile uses the shell default; fall back to
-    # webbrowser elsewhere / on failure.
-    import os
-    import sys
+    # 013 (FR-003) → 015 (D3/FR-017): open honoring the PREFERRED_BROWSER
+    # setting (default chrome), falling back to the OS default handler with
+    # the substitution reported so the UI can note it — never silent.
+    from engine.autofill import default_browser
 
-    if sys.platform == "win32" and hasattr(os, "startfile"):
-        try:
-            os.startfile(body.url)  # noqa: S606 — validated http/https above
-            return {"opened": True}
-        except OSError:
-            pass
-    import webbrowser
-
-    webbrowser.open(body.url)
-    return {"opened": True}
+    used = default_browser.open_url(body.url)
+    return {"opened": True, "opened_with": used}
 
 
 class ClipboardRequest(BaseModel):
@@ -407,6 +397,8 @@ def get_settings():
         "max_score_per_run": int(settings.get("MAX_SCORE_PER_RUN") or "150"),
         "theme": settings.get("THEME") or "",
         "autofill_use_tailored_pdf": settings.get("AUTOFILL_USE_TAILORED_PDF") != "0",
+        # 015 (D3/FR-016)
+        "preferred_browser": settings.get("PREFERRED_BROWSER") or "chrome",
     }
 
 
@@ -424,6 +416,7 @@ async def save_settings(
     theme: str | None = Form(None),
     autofill_use_tailored_pdf: str | None = Form(None),
     onboarding_dismissed: str | None = Form(None),
+    preferred_browser: str | None = Form(None),
 ):
     if llm_api_key:  # blank never clears an existing key
         settings.set("LLM_API_KEY", llm_api_key.strip())
@@ -450,6 +443,8 @@ async def save_settings(
         )
     if onboarding_dismissed == "1":
         settings.set("ONBOARDING_DISMISSED", "1")
+    if preferred_browser in ("chrome", "msedge", "auto"):  # unknown ignored
+        settings.set("PREFERRED_BROWSER", preferred_browser)
     if "text/html" in (request.headers.get("accept") or ""):
         return RedirectResponse("/settings", status_code=303)
     return get_settings()

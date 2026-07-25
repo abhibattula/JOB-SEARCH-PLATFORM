@@ -442,6 +442,17 @@ def create_app() -> FastAPI:
             response.headers["Cache-Control"] = "public, max-age=31536000, immutable"
         return response
 
+    @app.post("/api/os/default-apps")
+    def open_os_default_apps():
+        """015 (FR-019): one-click jump to the OS default-browser setting —
+        Windows only (the mismatch line renders without the button elsewhere)."""
+        from fastapi import HTTPException
+
+        if sys.platform != "win32":
+            raise HTTPException(status_code=409, detail="Windows only")
+        os.startfile("ms-settings:defaultapps")  # noqa: S606 — fixed URI
+        return {"opened": True}
+
     @app.post("/api/unclean-exit/dismiss")
     def dismiss_unclean_exit():
         """015 (FR-005): one-time banner — dismissing clears the record."""
@@ -682,6 +693,21 @@ def create_app() -> FastAPI:
     def practice_frame(request: Request):
         return templates.TemplateResponse(request, "practice_frame.html", {})
 
+    def _browser_intent() -> dict:
+        """015 (FR-019): OS default vs preference, for the mismatch line.
+        Auto IS the OS default, so no mismatch is possible there."""
+        from engine import settings as settings_mod
+        from engine.autofill import default_browser
+
+        pref = settings_mod.get("PREFERRED_BROWSER") or "chrome"
+        os_default = default_browser.default_channel_order()[0]
+        return {
+            "preference": pref,
+            "os_default": os_default,
+            "mismatch": pref != "auto" and os_default != pref,
+            "is_windows": sys.platform == "win32",
+        }
+
     @app.get("/companion", response_class=HTMLResponse)
     def companion_page(request: Request):
         """010 (FR-001/FR-022): the guided one-time install for the browser
@@ -691,7 +717,8 @@ def create_app() -> FastAPI:
 
         ext_path = str(stamp_extension.dest_dir())
         return templates.TemplateResponse(
-            request, "companion.html", {"ext_path": ext_path}
+            request, "companion.html",
+            {"ext_path": ext_path, "browser_intent": _browser_intent()},
         )
 
     @app.get("/autofill", response_class=HTMLResponse)
@@ -699,7 +726,10 @@ def create_app() -> FastAPI:
         jobs, _ = db.query_jobs(
             window=None, statuses=("saved",), entry_level=True
         )
-        return templates.TemplateResponse(request, "autofill.html", {"jobs": jobs})
+        return templates.TemplateResponse(
+            request, "autofill.html",
+            {"jobs": jobs, "browser_intent": _browser_intent()},
+        )
 
     @app.get("/partials/autofill/status", response_class=HTMLResponse)
     def autofill_status_partial(request: Request):

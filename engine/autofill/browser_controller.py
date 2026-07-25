@@ -38,13 +38,14 @@ FIELD_QUERY_SELECTOR = fields_mod.FIELD_QUERY_SELECTOR
 
 # 008 (FR-007): Apply Assist drives the user's INSTALLED branded browser via
 # Playwright channels — nothing is downloaded.
-# 013 (FR-002): try the user's OS DEFAULT browser FIRST (fixes the Edge-first
-# bug where fills opened in a browser the user wasn't signed in to), then the
-# remaining automatable channels as a fallback.
+# 013 (FR-002): try the user's OS DEFAULT browser first — extended in
+# 015 (D3/FR-016): an explicit PREFERRED_BROWSER setting (default chrome)
+# leads the order; `auto` follows the OS default; the remaining automatable
+# channels stay as fallback.
 def _channel_order() -> tuple[str, ...]:
     from . import default_browser
 
-    return default_browser.default_channel_order()
+    return default_browser.effective_channel_order()
 
 # Reason classes that mean "complete this one manually". 009: `unrecognized`
 # is gone — an unreadable-looking page just keeps being watched.

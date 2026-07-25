@@ -570,3 +570,62 @@ class TestBackendDisclosure015:
                            json={"job_ids": [job_id]}).json()
         assert body["started"] is True
         assert body["backend"] == "extension"
+
+
+class TestConfirmAnswerSentinel015:
+    """015 (FR-020): confirming during practice (-1) / ad-hoc (-2) sessions
+    must succeed — the reusable answer saves, NO per-application snapshot row
+    is written (sentinel ids have no jobs row; this 500'd with a FOREIGN KEY
+    error on the evidence machine)."""
+
+    def _confirm(self, client):
+        return client.post("/api/autofill/answers/confirm", json={
+            "question_raw": "Why do you want to work here?",
+            "answer": "Because the mission fits my skills.",
+            "category": "free_text_unknown",
+        })
+
+    def _snapshot_count(self):
+        with db._conn() as conn:
+            return conn.execute(
+                "SELECT COUNT(*) FROM application_answers").fetchone()[0]
+
+    def test_practice_session_confirm_succeeds_without_snapshot(
+            self, client, monkeypatch):
+        from engine.autofill import answer_bank, browser_controller
+
+        monkeypatch.setattr(browser_controller, "current_job",
+                            lambda: {"job_id": -1, "remaining": 0,
+                                     "fell_back": False, "pending": None})
+        resolved = []
+        monkeypatch.setattr(browser_controller, "resolve_pending",
+                            lambda answer: resolved.append(answer))
+        resp = self._confirm(client)
+        assert resp.status_code == 200
+        assert resp.json() == {"saved": True}
+        assert resolved == ["Because the mission fits my skills."]
+        assert len(answer_bank.list_all()) == 1  # reusable answer saved
+        assert self._snapshot_count() == 0       # no snapshot for sentinels
+
+    def test_adhoc_session_confirm_succeeds(self, client, monkeypatch):
+        from engine.autofill import browser_controller
+
+        monkeypatch.setattr(browser_controller, "current_job",
+                            lambda: {"job_id": -2, "remaining": 0,
+                                     "fell_back": False, "pending": None})
+        monkeypatch.setattr(browser_controller, "resolve_pending",
+                            lambda answer: None)
+        assert self._confirm(client).status_code == 200
+        assert self._snapshot_count() == 0
+
+    def test_real_job_still_snapshots(self, client, monkeypatch):
+        from engine.autofill import browser_controller
+
+        job_id = seed_job()
+        monkeypatch.setattr(browser_controller, "current_job",
+                            lambda: {"job_id": job_id, "remaining": 0,
+                                     "fell_back": False, "pending": None})
+        monkeypatch.setattr(browser_controller, "resolve_pending",
+                            lambda answer: None)
+        assert self._confirm(client).status_code == 200
+        assert self._snapshot_count() == 1

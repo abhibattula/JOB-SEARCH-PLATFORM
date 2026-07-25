@@ -221,3 +221,69 @@ def test_diagnostics_page_has_companion_doctor_section(tmp_db):
     assert "Companion &amp; pairing" in page or "Companion & pairing" in page
     assert "Pairing prepared" in page
     assert "OS default browser" in page
+
+
+def test_browser_mismatch_line_with_fix_action(tmp_db, monkeypatch):
+    """015 (FR-019): OS-default vs preference mismatch is shown with the
+    one-click OS-settings action; Auto can never mismatch."""
+    from fastapi.testclient import TestClient
+
+    from engine import settings
+    from engine.autofill import default_browser
+    from web.main import create_app
+
+    monkeypatch.setattr(default_browser, "default_channel_order",
+                        lambda read_progid=None: ("msedge", "chrome"))
+    c = TestClient(create_app())
+    page = c.get("/autofill").text  # preference defaults to chrome → mismatch
+    assert "Windows default" in page
+    assert "default-apps" in page
+    assert "Windows default" in c.get("/companion").text
+
+    settings.set("PREFERRED_BROWSER", "auto")
+    assert "Windows default" not in c.get("/autofill").text
+
+
+def test_os_default_apps_route(tmp_db, monkeypatch):
+    """015 (FR-019): the fix action opens ms-settings on Windows, 409 elsewhere."""
+    import sys as sys_mod
+
+    from fastapi.testclient import TestClient
+
+    from web.main import create_app
+
+    c = TestClient(create_app())
+    if sys_mod.platform == "win32":
+        import os as os_mod
+
+        opened = []
+        monkeypatch.setattr(os_mod, "startfile", lambda uri: opened.append(uri))
+        assert c.post("/api/os/default-apps").status_code == 200
+        assert opened == ["ms-settings:defaultapps"]
+    else:
+        assert c.post("/api/os/default-apps").status_code == 409
+
+
+def test_preferred_browser_setting_roundtrip(tmp_db):
+    """015 (FR-016): the setting shows in /api/settings, saves via the
+    settings form, and rejects unknown values."""
+    from fastapi.testclient import TestClient
+
+    from engine import settings
+    from web.main import create_app
+
+    c = TestClient(create_app())
+    assert c.get("/api/settings").json()["preferred_browser"] == "chrome"
+    c.post("/api/settings", data={"preferred_browser": "msedge"})
+    assert settings.get("PREFERRED_BROWSER") == "msedge"
+    c.post("/api/settings", data={"preferred_browser": "lynx"})
+    assert settings.get("PREFERRED_BROWSER") == "msedge"  # unknown ignored
+
+
+def test_app_js_notes_open_substitution():
+    """015 (FR-017): the opened_with substitution is surfaced via the toast
+    pattern — never a silent different-browser open."""
+    import pathlib
+
+    js = pathlib.Path("web/static/app.js").read_text(encoding="utf-8")
+    assert "opened_with" in js

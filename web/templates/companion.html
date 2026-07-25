@@ -27,6 +27,23 @@
     card — it never clicks or types anything, and scoring happens on your
     machine.</p>
 
+  {# 015 (FR-019): OS default vs preference — say it, offer the fix #}
+  {% if browser_intent and browser_intent.mismatch %}
+  <p class="notice browser-mismatch" role="status">
+    <strong>Windows default:</strong>
+    {{ 'Microsoft Edge' if browser_intent.os_default == 'msedge' else 'Google Chrome' }}
+    · <strong>Your preference:</strong>
+    {{ 'Google Chrome' if browser_intent.preference == 'chrome' else 'Microsoft Edge' }}.
+    Install the companion in the browser you actually use.
+    {% if browser_intent.is_windows %}
+    <button type="button" class="ghost" hx-post="/api/os/default-apps"
+            hx-swap="none" data-toast="Opening Windows Settings">
+      Fix Windows default
+    </button>
+    {% endif %}
+  </p>
+  {% endif %}
+
   {# 015 (FR-010): live per-step verification driven by the doctor — each
      layer of the chain proves itself, and every failure names its fix. #}
   <ol class="steps wizard" id="companion-wizard" aria-live="polite">

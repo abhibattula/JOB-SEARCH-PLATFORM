@@ -107,6 +107,9 @@ class TestDownloadStateMachine:
 
     def test_verified_download_reaches_ready(self, monkeypatch):
         payload = b"fake-installer-bytes"
+        # 015: the incomplete-download floor is covered by its own test;
+        # waive it here so the tiny fixture payload can reach verification
+        monkeypatch.setattr(updates, "MIN_INSTALLER_BYTES", 1)
         release = self._release_with_real_hash(payload)
         monkeypatch.setattr(updates, "_fetch_latest", lambda: release)
         monkeypatch.setattr(
@@ -121,6 +124,7 @@ class TestDownloadStateMachine:
 
     def test_sha_mismatch_fails_and_deletes_file(self, monkeypatch):
         tampered = b"tampered-bytes"
+        monkeypatch.setattr(updates, "MIN_INSTALLER_BYTES", 1)  # see above
         release = self._release_with_real_hash(b"the-real-bytes", actual=tampered)
         monkeypatch.setattr(updates, "_fetch_latest", lambda: release)
         monkeypatch.setattr(
@@ -151,3 +155,85 @@ class TestDownloadStateMachine:
         updates.startup_check()
         updates.startup_check()
         assert len(calls) == 1  # second same-day call skipped
+
+
+class TestDownloadHardening015:
+    """015 (FR-021/FR-022): the two evidenced updater failures — an empty
+    download hashed into a baffling message, and a locked-file cleanup that
+    crashed the thread — plus the ~6GB installer hoard."""
+
+    def _seed_check(self, size=None, sha="a" * 64,
+                    name="JobEngine-Setup-9.9.9.exe"):
+        updates.reset_state()
+        with updates._lock:
+            updates._state["last_check"] = {
+                "latest": "9.9.9", "newer": True, "asset_name": name,
+                "asset_url": "https://example.com/dl.exe",
+                "size": size, "sha256": sha,
+            }
+
+    def test_empty_download_rejected_before_hashing(self, tmp_db, monkeypatch):
+        from pathlib import Path
+
+        self._seed_check(size=None)
+        monkeypatch.setattr(updates, "_stream_to",
+                            lambda url, dest, cb: Path(dest).write_bytes(b""))
+        hashed = []
+        monkeypatch.setattr(updates, "_sha256_file",
+                            lambda p: hashed.append(p) or "a" * 64)
+        updates.start_download(background=False)
+        prog = updates.progress()
+        assert prog["state"] == "failed"
+        assert "incomplete" in (prog["error"] or "")
+        assert hashed == []  # never hash an empty file into 'e3b0c442…'
+
+    def test_locked_cleanup_defers_instead_of_crashing(self, tmp_db, monkeypatch):
+        import json as json_mod
+
+        monkeypatch.setattr(updates.time, "sleep", lambda s: None)
+
+        class Locked:
+            attempts = 0
+
+            def unlink(self, missing_ok=False):
+                Locked.attempts += 1
+                raise OSError(32, "used by another process")
+
+            def __str__(self):
+                return r"C:\fake\JobEngine-Setup-1.0.0.exe.part"
+
+        updates._safe_unlink(Locked())
+        assert Locked.attempts == 3  # bounded retries, then deferred
+        cleanup = json_mod.loads(
+            (updates._updates_dir() / "cleanup.json").read_text(encoding="utf-8"))
+        assert r"C:\fake\JobEngine-Setup-1.0.0.exe.part" in cleanup
+
+    def test_deferred_cleanup_drains_on_next_launch(self, tmp_db):
+        leftover = updates._updates_dir() / "stale.part"
+        leftover.write_bytes(b"x")
+        updates._defer_cleanup(leftover)
+        updates.run_deferred_cleanup()
+        assert not leftover.exists()
+        assert not (updates._updates_dir() / "cleanup.json").exists()
+
+    def test_prune_keeps_current_plus_newest_previous(self, tmp_db):
+        import os
+
+        d = updates._updates_dir()
+        names = ["JobEngine-Setup-0.9.0.exe", "JobEngine-Setup-1.0.0.exe",
+                 "JobEngine-Setup-1.0.1.exe", "JobEngine-Setup-1.4.0.exe"]
+        for i, name in enumerate(names):
+            path = d / name
+            path.write_bytes(b"x")
+            os.utime(path, (1000 + i, 1000 + i))
+        updates._prune_old_installers(keep=2)
+        left = sorted(x.name for x in d.glob("JobEngine-Setup-*.exe"))
+        assert left == ["JobEngine-Setup-1.0.1.exe", "JobEngine-Setup-1.4.0.exe"]
+
+    def test_startup_check_drains_cleanup_first(self, tmp_db, monkeypatch):
+        ran = []
+        monkeypatch.setattr(updates, "run_deferred_cleanup",
+                            lambda: ran.append(1))
+        monkeypatch.setattr(updates, "check", lambda: None)
+        updates.startup_check()
+        assert ran == [1]

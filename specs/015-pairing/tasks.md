@@ -150,10 +150,10 @@ failure mode named where the user is looking — US2 independently shippable.
 
 ## Phase 5: US3 — Links open in the browser I chose (P3)
 
-- [ ] T016 [US3] `PREFERRED_BROWSER` setting (default `chrome`, values
+- [x] T016 [US3] `PREFERRED_BROWSER` setting (default `chrome`, values
   chrome/msedge/auto) + Settings page control (`web/templates/settings.html`)
   + tests (default value; persisted change).
-- [ ] T017 [US3] `engine/autofill/default_browser.py`:
+- [x] T017 [US3] `engine/autofill/default_browser.py`:
   `effective_channel_order()` (preference-first; auto → OS-default-first) and
   `open_url(url)` (App Paths exe launch for explicit preference,
   `os.startfile`/`open` fallback, returns what it used);
@@ -164,7 +164,7 @@ failure mode named where the user is looking — US2 independently shippable.
   auto passthrough, missing-preferred fallback, AND an explicit FR-018
   regression: with a live companion, `_choose_backend` picks the extension
   regardless of `PREFERRED_BROWSER`.
-- [ ] T018 [P] [US3] Web: `/api/open` uses `open_url` + returns `opened_with`;
+- [x] T018 [P] [US3] Web: `/api/open` uses `open_url` + returns `opened_with`;
   callers surface a substitution note via the existing toast pattern when
   `opened_with` differs from the preference (FR-017 "substitution noted" —
   never silent); NEW `POST /api/os/default-apps` (Windows-only 200, else 409);
@@ -179,12 +179,12 @@ US3 independently shippable.
 
 ## Phase 6: US4 — Rough edges (P4)
 
-- [ ] T019 [P] [US4] `confirm_answer` sentinel guard (R10) — TDD: regression
+- [x] T019 [P] [US4] `confirm_answer` sentinel guard (R10) — TDD: regression
   test FIRST (practice/ad-hoc current job → POST confirm → 200, answer-bank
   row created, NO `application_answers` row), then guard
   `web/routes_autofill.py::confirm_answer` (snapshot only when
   `job_id > 0`).
-- [ ] T020 [P] [US4] Updater hardening (R11) — TDD in `tests/test_updates.py`:
+- [x] T020 [P] [US4] Updater hardening (R11) — TDD in `tests/test_updates.py`:
   empty/short download (< 10 MB) rejected BEFORE hashing with "download
   incomplete (N bytes)"; locked-file cleanup defers to
   `updates/cleanup.json` (thread never crashes) and drains on next
