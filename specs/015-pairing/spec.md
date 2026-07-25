@@ -205,7 +205,12 @@ and verify clean messages, no crash, and that old installers are pruned.
 
 - **FR-001**: All on-device AI work MUST execute strictly one-at-a-time
   (serialized), regardless of how many features request it concurrently, and
-  every caller MUST receive its result or a clean failure.
+  every caller MUST receive its result or a clean failure. "All" means every
+  caller path without exception: match scoring, answer drafting, answer
+  suggestions, resume tailoring, profile import/extraction, and embeddings.
+- **FR-001a**: When more simultaneous AI requests arrive than the system will
+  hold, the excess requests MUST fail immediately and cleanly (the same
+  failure class callers already tolerate) — never unbounded waiting.
 - **FR-002**: No status/read view may wait behind AI generation: the Apply
   Assist status view MUST keep responding (within 1 second per refresh) while
   any AI draft/suggestion is generating.
@@ -257,7 +262,9 @@ and verify clean messages, no crash, and that old installers are pruned.
   preparation outcome, pairing record freshness and port match, companion
   connection state (browser, version, heartbeat age), counts/recency of
   rejected connection attempts by kind, OS default browser, and the browser
-  preference.
+  preference. The pairing secret MUST NEVER appear on any diagnostic surface
+  (doctor, wizard, popup, banners, logs) — diagnostics report facts about the
+  secret (set/accepted/rejected), never the value.
 - **FR-015**: The companion MUST report a version that tracks the app release
   that prepared it, so "connected — companion vX" is meaningful.
 
@@ -270,9 +277,12 @@ and verify clean messages, no crash, and that old installers are pruned.
   MUST be used and the substitution noted.
 - **FR-018**: A connected companion MUST always take precedence over the
   preference and the OS default for fill sessions.
-- **FR-019**: When the OS default browser differs from the preference, the
-  mismatch MUST be shown (both values) on the Apply Assist and connect pages,
-  with a one-click control (Windows) that opens the OS default-apps settings.
+- **FR-019**: When the OS default browser differs from an explicit preference
+  (Chrome or Edge), the mismatch MUST be shown (both values) on the Apply
+  Assist and connect pages. With the preference set to Auto no mismatch is
+  possible by definition (Auto IS the OS default) and none is shown. The
+  one-click control that opens the OS default-apps settings is Windows-only;
+  on other platforms the mismatch line appears without it.
 
 **Rough edges (US4)**
 
