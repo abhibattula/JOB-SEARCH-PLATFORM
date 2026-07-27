@@ -24,7 +24,7 @@ Verify/docs/ship.
 
 ## Phase 1: Setup
 
-- [ ] T001 Bump version to **1.6.0** (`engine/__init__.py`,
+- [x] T001 Bump version to **1.6.0** (`engine/__init__.py`,
   `packaging/windows.iss`, `extension/manifest.json`);
   `packaging/check_version.py` OK; add `WHATS_NEW["1.6.0"]` stub in
   `web/main.py`.
