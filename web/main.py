@@ -703,6 +703,27 @@ def create_app() -> FastAPI:
     def practice_frame(request: Request):
         return templates.TemplateResponse(request, "practice_frame.html", {})
 
+    @app.get("/practice/posting", response_class=HTMLResponse)
+    def practice_posting(request: Request, newtab: int = 0):
+        """016 (T014): a Greenhouse-shaped posting fixture — the form is
+        hidden until the Apply control is clicked (the D1 apply-opener
+        case); ?newtab=1 opens the form in a child tab (watch transfer)."""
+        return templates.TemplateResponse(
+            request, "practice_posting.html", {"newtab": bool(newtab)})
+
+    # 016 (T014): server-side submit-click log — the E2E's proof that NO
+    # automated click ever hits a submit control (SC-004).
+    app.state.practice_submit_clicks = 0
+
+    @app.post("/practice/submit-log")
+    def practice_submit_log(request: Request):
+        request.app.state.practice_submit_clicks += 1
+        return {"clicks": request.app.state.practice_submit_clicks}
+
+    @app.get("/practice/submit-log")
+    def practice_submit_log_read(request: Request):
+        return {"clicks": request.app.state.practice_submit_clicks}
+
     def _browser_intent() -> dict:
         """015 (FR-019): OS default vs preference, for the mismatch line.
         Auto IS the OS default, so no mismatch is possible there."""

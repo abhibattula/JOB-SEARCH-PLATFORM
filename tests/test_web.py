@@ -290,3 +290,38 @@ def test_app_js_notes_open_substitution():
 
     js = pathlib.Path("web/static/app.js").read_text(encoding="utf-8")
     assert "opened_with" in js
+
+
+def test_practice_form_covers_choice_controls(tmp_db):
+    """016 (T014): the practice fixture exercises everything US2 ships —
+    radio group with a legend question, maxlength field, EEO question, and
+    a submit-click log so the E2E can assert ZERO automated submit clicks."""
+    from fastapi.testclient import TestClient
+
+    from web.main import create_app
+
+    page = TestClient(create_app()).get("/practice/apply").text
+    assert "Will you now or in the future require sponsorship?" in page
+    assert 'type="radio"' in page and "<legend" in page
+    assert 'maxlength="10"' in page
+    assert "eeo_gender" in page
+    assert "/practice/submit-log" in page
+
+
+def test_practice_posting_fixture_with_apply_opener(tmp_db):
+    """016 (T014): a Greenhouse-shaped posting whose form is hidden until
+    the Apply control is clicked; ?newtab=1 opens the form in a child tab
+    (the watch-transfer E2E case)."""
+    from fastapi.testclient import TestClient
+
+    from web.main import create_app
+
+    client = TestClient(create_app())
+    page = client.get("/practice/posting").text
+    assert 'id="apply_button"' in page
+    assert 'id="application"' in page and "hidden" in page
+    newtab = client.get("/practice/posting?newtab=1").text
+    assert 'target="_blank"' in newtab
+
+    assert client.post("/practice/submit-log").status_code == 200
+    assert client.get("/practice/submit-log").json()["clicks"] == 1

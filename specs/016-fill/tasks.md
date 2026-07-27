@@ -143,7 +143,7 @@ visible.
   `ext_backend.py`: new kinds only when hello version == APP_VERSION,
   else `needs_you` flag. Tests: `tests/test_extension_assets.py` source
   assertions + gate unit + E2E DOM assertions (T022).
-- [ ] T014 [P] [US2] Fixture upgrades (R14) —
+- [x] T014 [P] [US2] Fixture upgrades (R14) —
   `web/templates/practice_apply.html` + E2E fixture pages: radio yes/no
   group, custom combobox, maxlength field, EEO-style question, an
   apply-opener variant page, a new-tab opener variant, and a server-side
