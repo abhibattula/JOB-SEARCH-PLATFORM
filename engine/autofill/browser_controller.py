@@ -786,6 +786,14 @@ def _tick_if_active(force: bool = False) -> None:
             and 0 <= _state.index < len(_state.job_ids)
         )
         job_id = _state.job_ids[_state.index] if active else None
+        backend = _state.backend
+    if active and backend == "extension":
+        # 016 (T008): the worker's 2 s tick doubles as the companion's
+        # open-acknowledgment timer (retry once, then launch_failed).
+        from . import ext_backend
+
+        ext_backend.check_pending_open()
+        return
     page = _page
     if not active or page is None:
         return

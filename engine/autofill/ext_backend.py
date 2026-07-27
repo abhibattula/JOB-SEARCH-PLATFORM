@@ -150,8 +150,19 @@ def consume_file_token(token: str) -> str | None:
 
 # --- watch session (extension analogue of the worker's current page) --------
 
-# tab/job the companion is watching; pending open_tab correlations
+# tab/job the companion is watching; pending open_tab correlations —
+# 016 (T008): req_id -> {job_id, url, deadline, retried}; expired entries
+# get ONE retry, then a visible launch_failed (never a silent hang).
 _watch: dict = {"tab_id": None, "job_id": None, "pending_open": {}}
+OPEN_TAB_ACK_S = 5.0
+
+# 016 (T008/T010): doctor tripwires — silently-dropped traffic is counted.
+_counters: dict = {"dropped_fields": 0, "scan_errors": 0}
+
+
+def counters() -> dict:
+    with _lock:
+        return dict(_counters)
 # (tab_id, frame_id, je_idx) -> (descriptor_raw, tag, preview, ai_draft,
 # sent_at) for fills whose result has not come back — prevents double-fill
 # on overlapping scans. 016 (T007): entries EXPIRE — a lost fill_result
@@ -171,12 +182,19 @@ def _outbound(type_: str, **payload) -> dict:
     return ext_protocol.outbound(type_, **payload)
 
 
-def open_job(job_id: int, url: str) -> None:
-    """OPEN_JOB translated for the companion: open a tab, then watch it."""
+def _queue_open(job_id: int, url: str, retried: bool = False) -> None:
     req_id = _secrets.token_hex(8)
     with _lock:
-        _watch["pending_open"][req_id] = job_id
+        _watch["pending_open"][req_id] = {
+            "job_id": job_id, "url": url, "retried": retried,
+            "deadline": time.monotonic() + OPEN_TAB_ACK_S,
+        }
     send(_outbound("open_tab", req_id=req_id, job_id=job_id, url=url))
+
+
+def open_job(job_id: int, url: str) -> None:
+    """OPEN_JOB translated for the companion: open a tab, then watch it."""
+    _queue_open(job_id, url)
 
 
 def open_practice(url: str) -> None:
@@ -184,10 +202,36 @@ def open_practice(url: str) -> None:
     watched as a job-less session (PRACTICE_JOB_ID)."""
     from . import browser_controller as bc
 
-    req_id = _secrets.token_hex(8)
+    _queue_open(bc.PRACTICE_JOB_ID, url)
+
+
+def check_pending_open() -> None:
+    """016 (T008): called from the worker's ~2 s tick while the extension
+    backend is active — expire unacknowledged open_tab requests: one
+    retry, then a visible launch_failed so the queue never hangs."""
+    now = time.monotonic()
+    to_retry: list[dict] = []
+    failed: list[dict] = []
     with _lock:
-        _watch["pending_open"][req_id] = bc.PRACTICE_JOB_ID
-    send(_outbound("open_tab", req_id=req_id, job_id=bc.PRACTICE_JOB_ID, url=url))
+        for req_id, entry in list(_watch["pending_open"].items()):
+            if now < entry["deadline"]:
+                continue
+            del _watch["pending_open"][req_id]
+            (failed if entry["retried"] else to_retry).append(entry)
+    for entry in to_retry:
+        _queue_open(entry["job_id"], entry["url"], retried=True)
+    if failed:
+        from . import browser_controller as bc
+
+        for entry in failed:
+            bc._mark_fallback(entry["job_id"], "launch_failed",
+                              "the companion never opened the tab "
+                              "(retried once)")
+        bc._set_activity(
+            phase="error",
+            message="couldn't open the application tab — check the "
+                    "companion, then Resume or press Next",
+        )
 
 
 def close_current() -> None:
@@ -232,15 +276,43 @@ def handle_message(msg) -> None:
         _handle_score_request(msg)
     elif isinstance(msg, ext_protocol.SaveJob):
         _handle_save_job(msg)
+    elif isinstance(msg, ext_protocol.ChildTab):
+        _handle_child_tab(msg)
+    elif isinstance(msg, ext_protocol.ScanError):
+        _handle_scan_error(msg)
     # Pong: heartbeat only (touch() above)
+
+
+def _handle_scan_error(msg) -> None:
+    """016 (T010): a content-script scan exception, counted for the doctor
+    (it used to be swallowed, leaving the tab permanently silent)."""
+    with _lock:
+        _counters["scan_errors"] += 1
+    log.warning("companion scan error on tab %s: %s", msg.tab_id,
+                (msg.message or "")[:200])
 
 
 def _handle_tab_opened(msg) -> None:
     with _lock:
-        job_id = _watch["pending_open"].pop(msg.req_id, None)
-        if job_id is None:
+        entry = _watch["pending_open"].pop(msg.req_id, None)
+        if entry is None:
             return
+        job_id = entry["job_id"]
         _watch.update(tab_id=msg.tab_id, job_id=job_id)
+        _inflight.clear()
+        _frame_seen.clear()
+    send(_outbound("watch_start", tab_id=msg.tab_id, job_id=job_id))
+
+
+def _handle_child_tab(msg) -> None:
+    """016 (T008, R4): the watch TRANSFERS to a tab opened from the watched
+    tab (embedded boards open the real form in a child tab). Singular
+    target — the old tab's fields intentionally stop."""
+    with _lock:
+        if _watch["tab_id"] is None or msg.opener_tab_id != _watch["tab_id"]:
+            return
+        job_id = _watch["job_id"]
+        _watch["tab_id"] = msg.tab_id
         _inflight.clear()
         _frame_seen.clear()
     send(_outbound("watch_start", tab_id=msg.tab_id, job_id=job_id))
@@ -257,6 +329,7 @@ def _handle_fields(msg) -> None:
 
     with _lock:
         if msg.tab_id != _watch["tab_id"]:
+            _counters["dropped_fields"] += 1  # doctor tripwire (T008)
             return
         job_id = _watch["job_id"]
     if job_id is None:
@@ -582,3 +655,4 @@ def reset_for_tests() -> None:
         _inflight.clear()
         _frame_seen.clear()
         _pending_submissions.clear()
+        _counters.update(dropped_fields=0, scan_errors=0)

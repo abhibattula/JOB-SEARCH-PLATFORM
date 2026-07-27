@@ -90,7 +90,7 @@ yet.
   `_inflight` TTL 20 s + extension-path job outcomes
   (`launch_failed`/`scan_failed`) in `ext_backend.py`. Tests:
   `tests/test_field_core.py`, `tests/test_ext_backend.py`.
-- [ ] T008 [P] [US1] Tab following (R4) — extension:
+- [x] T008 [P] [US1] Tab following (R4) — extension:
   `extension/background/tabs.js` + `service-worker.js` — `tabs.onCreated`
   + `openerTabId` → `child_tab` message; watched set persisted to
   `chrome.storage.session`; app: `ext_backend.py` watch transfer,

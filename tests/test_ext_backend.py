@@ -666,3 +666,56 @@ class TestInflightTTL016:
         entry = bc._state.handled[queue][("docA", "6")]
         assert isinstance(entry, tuple) and entry[0] == "no_match"
         assert entry[1] == drafter.cache_version()
+
+
+class TestTabFollowing016:
+    """016 (T008, R4): watch-transfer — a tab opened FROM the watched tab
+    becomes the fill target; open_tab gets ack timeout + one retry then a
+    visible launch_failed; wrong-tab fields are counted for the doctor."""
+
+    def test_child_tab_transfers_watch(self, queue, sent):
+        open_the_tab(queue, sent)  # tab 40
+        sent.clear()
+        ext_backend.handle_message(ext_protocol.ChildTab(
+            tab_id=99, opener_tab_id=40))
+        assert ext_backend._watch["tab_id"] == 99
+        assert any(m["type"] == "watch_start" and m["tab_id"] == 99
+                   for m in sent)
+        # filling continues in the child tab
+        ext_backend.handle_message(fields_msg(
+            tab_id=99, doc="docB", descriptors=[descriptor(doc="docB")]))
+        assert any(m["type"] == "fill" for m in sent)
+
+    def test_child_of_unwatched_opener_ignored(self, queue, sent):
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(ext_protocol.ChildTab(
+            tab_id=99, opener_tab_id=777))
+        assert ext_backend._watch["tab_id"] == 40
+
+    def test_wrong_tab_fields_increment_doctor_counter(self, queue, sent):
+        open_the_tab(queue, sent)
+        before = ext_backend.counters()["dropped_fields"]
+        ext_backend.handle_message(fields_msg(
+            tab_id=555, descriptors=[descriptor()]))
+        assert ext_backend.counters()["dropped_fields"] == before + 1
+
+    def test_open_ack_timeout_retries_once_then_launch_failed(self, tmp_db,
+                                                              sent):
+        # No running queue here: the live worker thread must not race the
+        # explicit check_pending_open() calls (it legitimately runs the
+        # same check every ~2 s while an extension queue is active).
+        ext_backend.open_job(7, "https://x.example/apply")
+        assert len([m for m in sent if m["type"] == "open_tab"]) == 1
+
+        def age_all():
+            with ext_backend._lock:
+                for entry in ext_backend._watch["pending_open"].values():
+                    entry["deadline"] = 0.0
+
+        age_all()
+        ext_backend.check_pending_open()
+        assert len([m for m in sent if m["type"] == "open_tab"]) == 2  # retry
+        age_all()
+        ext_backend.check_pending_open()
+        assert bc._state.outcomes[7]["reason"] == "launch_failed"
+        assert not ext_backend._watch["pending_open"]  # never hangs silently

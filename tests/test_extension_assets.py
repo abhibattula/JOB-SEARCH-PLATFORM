@@ -239,3 +239,20 @@ class TestPopupDiagnostics015:
     def test_popup_fill_button_explains_instead_of_noop(self):
         pj = self._popup()
         assert "Can't fill" in pj or "Can&#39;t fill" in pj
+
+
+class TestTabFollowingAssets016:
+    """016 (T008): the service worker follows child tabs and persists the
+    watched set across MV3 restarts."""
+
+    def test_tabs_listen_for_child_tabs_and_report_them(self):
+        js = (EXT / "background" / "tabs.js").read_text(encoding="utf-8")
+        assert "tabs.onCreated" in js
+        assert "openerTabId" in js
+        assert '"child_tab"' in js
+
+    def test_watched_set_persisted_to_session_storage(self):
+        tabs_js = (EXT / "background" / "tabs.js").read_text(encoding="utf-8")
+        assert "storage.session" in tabs_js and "watchedTabs" in tabs_js
+        sw = (EXT / "background" / "service-worker.js").read_text(encoding="utf-8")
+        assert "restoreWatched" in sw

@@ -237,10 +237,12 @@ completes and persists in the packaged build.
 - **FR-005**: A tab opened from the fill target MUST become the new fill
   target; the watched-tab set MUST survive extension service-worker
   restarts.
-- **FR-006**: A job open that fails or never acknowledges MUST advance the
-  queue with a visible failure outcome within a bounded time; field-level
-  failure states MUST become retryable when a new answer arrives for that
-  field.
+- **FR-006**: A job open that fails or never acknowledges MUST surface a
+  visible failure outcome within a bounded time — the job is marked
+  complete-manually and the Next action is immediately available (the
+  queue itself only ever advances on user action, per the standing
+  invariant); field-level failure states MUST become retryable when a new
+  answer arrives for that field.
 - **FR-007**: Discovery/badge traffic MUST be requested at most once per
   page state and MUST never delay fill processing.
 - **FR-008**: Companion-path errors (busy, scan failure, wrong-tab drops)

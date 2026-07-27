@@ -6,10 +6,14 @@ import {
 } from "./socket.js";
 import {
   openTab, closeTab, watchStart, watchStop, toContent, relayFromContent,
-  watched,
+  restoreWatched, watched,
 } from "./tabs.js";
 
 setConnected(false);
+
+// 016 (T008): rebuild the watched set on EVERY worker start — content
+// scripts probing an awake-but-amnesiac worker must not go dormant.
+restoreWatched();
 
 // Registered at TOP LEVEL so Chrome knows to spin this worker back up when
 // the alarm fires — this is what makes the companion survive the ~30s idle
