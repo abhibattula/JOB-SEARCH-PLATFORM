@@ -209,6 +209,10 @@ completes and persists in the packaged build.
   diagnostics; requests fail cleanly each time.
 - Scanner error on a page: reported and visible (doctor/panel), not a
   permanently silent tab.
+- Queue advancement under fill-first: the queue holds the current job
+  until the user advances or stops (or the open fails); completing the
+  fill never auto-advances the queue and never implies submission — the
+  human always submits and moves on themselves.
 
 ## Requirements *(mandatory)*
 
