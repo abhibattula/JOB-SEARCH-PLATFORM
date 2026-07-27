@@ -341,9 +341,9 @@ completes and persists in the packaged build.
   always sees either a result or a clean error.
 - **SC-006**: Every AI-drafted or needs-attention field is visibly flagged
   on the page; sensitive questions are auto-answered zero times.
-- **SC-007**: A user can complete the practice application start-to-finish
-  on the page alone — corrections included — without opening the app
-  window, and submits it themselves.
+- **SC-007**: After queueing a job, a user can complete the practice
+  application entirely on the page — corrections included — with no
+  further app-window interaction required, and submits it themselves.
 
 ## Assumptions
 

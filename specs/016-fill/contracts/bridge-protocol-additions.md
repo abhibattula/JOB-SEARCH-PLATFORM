@@ -34,6 +34,15 @@ Replaces today's swallowed content-script scan exception. App increments
 the doctor `scan_errors` counter (message truncated to 200 chars; never
 logged with page content).
 
+### `fill_again`
+```json
+{ "type": "fill_again", "tab_id": 123 }
+```
+Sent by the on-page panel's Fill again button (watched tab only). App
+response: clear the doc's non-`skipped_existing` ledger entries, reset
+drafter backoff for that page's questions, then send `rescan`
+{reason: "fill_again"}. Ignored if the tab is not the watch target.
+
 ## Extended message fields (additive)
 
 ### `Descriptor` (inside `fields`)
@@ -48,8 +57,10 @@ logged with page content).
 
 **Version gate (app-side)**: items with `kind:"radio"` (or any
 016-introduced kind) are sent only when the companion hello `version` ==
-app `APP_VERSION`. Otherwise the field is skipped and flagged `needs_you`
-via a text-safe annotation fill (no new kind on the wire).
+app `APP_VERSION`. Otherwise the field is simply skipped (old companions
+render no highlights, so no flag is sent either); the app's activity log
+still lists it as needs-you, and the doctor's existing version-mismatch
+line tells the user to reload the companion.
 
 ## Unchanged
 

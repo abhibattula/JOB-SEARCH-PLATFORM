@@ -161,8 +161,10 @@ radios/comboboxes correct, EEO blank + flagged, honest outcomes.
   (Greenhouse/Lever/Ashby selectors), structural guards (never
   `type=submit`, not inside a form with filled inputs), one-shot per
   `(doc, href)`, queue-driven watched tabs only; wired from
-  `extension/content/main.js`; `engine/autofill/adapters.py` carries the
-  selector registry (single source, asset-parity-tested).
+  `extension/content/main.js`; registered in `extension/manifest.json`
+  `content_scripts` (load order: before main.js);
+  `engine/autofill/adapters.py` carries the selector registry (single
+  source, asset-parity-tested).
   `extension/content/click_guard.js` UNTOUCHED. Tests: asset parity +
   guard-untouched assertions; E2E opener case in T022.
 - [ ] T016 [US3] On-page panel (R10) — `extension/content/overlay.js`:
