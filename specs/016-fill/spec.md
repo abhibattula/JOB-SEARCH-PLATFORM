@@ -12,6 +12,25 @@ no-ops; "Tailor for this job" hard-crashes the app). Locked decisions
 human-only, constitution v1.1.4); D2 fill-first with on-page highlights, no
 blocking approval gate; D3 injected on-page status panel.
 
+## Clarifications
+
+### Session 2026-07-27
+
+- Q: Should AI-drafted answers that auto-save to the answer bank be
+  reusable across different jobs? → A: Job-agnostic factual answers (work
+  authorization, notice period, relocation and similar) reuse across jobs;
+  job-specific prose (cover letters, "why this company" free text) is saved
+  scoped to its job and never auto-reused on another job. Human-confirmed
+  answers keep today's reuse behavior. (Auto-resolved, recommended default.)
+- Q: Do the on-page panel and highlights apply to the assistant-window
+  fallback path? → A: Companion-only in 016; the assistant window keeps its
+  existing flagged-in-report behavior and the activity log discloses drafts
+  the same way. (Auto-resolved, recommended default.)
+- Q: Does "Fill again" retry questions whose drafts are in failure backoff?
+  → A: Yes — an explicit user action resets the backoff for that page's
+  questions, allowing one immediate retry each. (Auto-resolved, recommended
+  default.)
+
 ## User Scenarios & Testing *(mandatory)*
 
 ### User Story 1 - The form I'm looking at gets filled, promptly (Priority: P1)
@@ -176,7 +195,8 @@ completes and persists in the packaged build.
 - The same question appears twice on one form: both fields receive the one
   cached draft; the drafter still runs once.
 - Draft fails or times out: the field stays empty and flagged; retries back
-  off exponentially; it never spins every scan.
+  off exponentially; it never spins every scan. An explicit "Fill again"
+  resets the backoff for that page's questions (one immediate retry each).
 - User edits a field, then a rescan or Fill-again runs: user-typed values
   are never overwritten.
 - Multi-select checkbox groups: not auto-answered (pick-one does not apply);
@@ -207,6 +227,9 @@ completes and persists in the packaged build.
   session, with exponential backoff after failures.
 - **FR-004**: A completed draft MUST reach the page without user action,
   and MUST be auto-saved to the answer bank marked as AI-drafted.
+  Auto-saved job-specific prose (cover letters, "why this company" style
+  questions) MUST be scoped to its job and never auto-reused on another
+  job; job-agnostic factual answers reuse normally.
 - **FR-005**: A tab opened from the fill target MUST become the new fill
   target; the watched-tab set MUST survive extension service-worker
   restarts.
@@ -328,7 +351,9 @@ completes and persists in the packaged build.
   already surfaced by the doctor.
 - The assistant-window fallback (015 D2: proceed with loud notice when no
   companion) remains, and inherits the choice-aware improvements through
-  the shared decision core.
+  the shared decision core; the on-page panel and highlights are
+  companion-only in this release (the fallback keeps flagged-in-report
+  disclosure).
 - One application form is filled at a time (a single fill target).
 - The constitution v1.1.4 clarification (form-opening Apply clicks) is
   amended as part of this feature, before implementation.
