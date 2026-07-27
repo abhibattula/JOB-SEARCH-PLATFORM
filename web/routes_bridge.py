@@ -113,6 +113,9 @@ def companion_doctor() -> dict:
         "port": {"current": current_port, "match": port_match},
         "companion": ext_backend.status(),
         "rejects": ext_backend.reject_stats(),
+        # 016 (T010): silent-drop tripwires — wrong-tab fields + content-
+        # script scan failures are counted, never invisible.
+        "counters": ext_backend.counters(),
         "browser": {
             "os_default_channel": os_default,
             "preference": preference,

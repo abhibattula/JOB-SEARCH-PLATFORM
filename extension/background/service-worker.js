@@ -38,6 +38,14 @@ state.onMessage = (msg) => {
       break;
     case "save_result": toContent(msg.tab_id, { ...msg, type: "save_result" }, 0);
       break;
+    // 016 (T010): app-side refusals (e.g. busy) are STORED so the popup can
+    // show them — this used to hit `default:` and vanish (RC4).
+    case "error":
+      chrome.storage.session.set({
+        lastError: { code: msg.code || "", message: msg.message || "",
+                     at: Date.now() },
+      }).catch(() => {});
+      break;
     default: break;
   }
 };
@@ -48,16 +56,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // so the popup can explain WHY it isn't connected. A freshly-woken worker
   // has blank memory; fall back to the storage.session mirror.
   if (msg && msg.type === "status?") {
-    if (state.lastAttempt) {
-      sendResponse({ connected: state.connected,
-                     lastAttempt: state.lastAttempt });
-    } else {
-      chrome.storage.session.get("lastAttempt")
-        .then((o) => sendResponse({ connected: state.connected,
-                                    lastAttempt: o.lastAttempt || null }))
-        .catch(() => sendResponse({ connected: state.connected,
-                                    lastAttempt: null }));
-    }
+    chrome.storage.session.get(["lastAttempt", "lastError"])
+      .then((stored) => sendResponse({
+        connected: state.connected,
+        lastAttempt: state.lastAttempt || stored.lastAttempt || null,
+        lastError: stored.lastError || null,
+      }))
+      .catch(() => sendResponse({ connected: state.connected,
+                                  lastAttempt: state.lastAttempt || null,
+                                  lastError: null }));
     return true;
   }
   // Popup asked for an immediate reconnect attempt (015: "Connect now")

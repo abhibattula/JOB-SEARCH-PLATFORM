@@ -59,6 +59,14 @@ function render(resp) {
   const d = describe(resp);
   dot.classList.toggle("on", d.ok);
   text.textContent = d.ok ? "Connected to Job Engine" : "Not connected";
+  // 016 (T010): a recent app-side refusal (e.g. busy) outranks the happy
+  // text — it used to be silently discarded (RC4).
+  const err = resp && resp.lastError;
+  if (err && Date.now() - (err.at || 0) < 60000) {
+    reason.textContent = "Can't fill: " + (err.message || err.code ||
+                                           "the app refused the request.");
+    return;
+  }
   reason.textContent = d.ok
     ? "Fills happen in this browser — you still click every submit."
     : d.text;
@@ -76,7 +84,11 @@ document.getElementById("fill-here").addEventListener("click", async () => {
     return; // stay open so the reason is readable — never a silent no-op
   }
   await chrome.runtime.sendMessage({ type: "fill_here!" });
-  window.close();
+  // 016 (T010): stay open — a busy/refused outcome arrives moments later
+  // and must be readable (instant close is how it vanished before).
+  document.getElementById("reason").textContent =
+    "Fill requested — watch the page.";
+  setTimeout(refresh, 1200);
 });
 
 document.getElementById("connect-now").addEventListener("click", async () => {

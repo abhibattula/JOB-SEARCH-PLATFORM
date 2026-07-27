@@ -24,10 +24,22 @@
     }
   }
 
+  // 016 (T010): a scanner exception is REPORTED (once per document), not
+  // swallowed — a silently-quiet tab was undiagnosable (RC4).
+  let scanErrorSent = false;
+
   function scan() {
     if (!watching) { return; }
     let descriptors;
-    try { descriptors = window.jeScanner.serialize(); } catch (_e) { return; }
+    try {
+      descriptors = window.jeScanner.serialize();
+    } catch (err) {
+      if (!scanErrorSent) {
+        scanErrorSent = true;
+        toApp({ type: "scan_error", message: String(err).slice(0, 200) });
+      }
+      return;
+    }
     toApp({
       type: "fields",
       url: location.href,

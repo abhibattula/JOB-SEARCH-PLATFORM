@@ -98,12 +98,12 @@ yet.
   + queue advance; wrong-tab drops counted. Tests: transfer/expiry units
   in `tests/test_ext_backend.py`; SW source assertions in
   `tests/test_extension_assets.py`.
-- [ ] T009 [P] [US1] Discovery decongestion (R5) —
+- [x] T009 [P] [US1] Discovery decongestion (R5) —
   `extension/content/discovery.js` per-href score cache (re-arm on URL
   change); `ext_backend` score handler reads the memoized employer table
   (T004). Tests: asset assertion (no unconditional interval request) +
   handler unit.
-- [ ] T010 [P] [US1] Error surfacing (R1/R4) —
+- [x] T010 [P] [US1] Error surfacing (R1/R4) —
   `extension/background/service-worker.js` handles `error` (popup shows
   "busy — stop the queue first" via `extension/popup/popup.js`);
   `extension/content/main.js` reports `scan_error` instead of swallowing;

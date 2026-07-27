@@ -256,3 +256,31 @@ class TestTabFollowingAssets016:
         assert "storage.session" in tabs_js and "watchedTabs" in tabs_js
         sw = (EXT / "background" / "service-worker.js").read_text(encoding="utf-8")
         assert "restoreWatched" in sw
+
+
+class TestDecongestionAndErrors016:
+    """016 (T009/T010): discovery scores once per page state; companion
+    errors and scan failures are surfaced, never silently dropped."""
+
+    def test_discovery_scores_once_per_page_state(self):
+        js = (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
+        assert "scoredFor" in js, (
+            "no per-href score cache — the 1.5 s score flood head-of-line "
+            "blocks the fill path (RC1 evidence)")
+
+    def test_service_worker_surfaces_error_messages(self):
+        sw = (EXT / "background" / "service-worker.js").read_text(
+            encoding="utf-8")
+        assert 'case "error"' in sw
+        assert "lastError" in sw
+
+    def test_popup_renders_last_error_and_never_blind_closes(self):
+        js = (EXT / "popup" / "popup.js").read_text(encoding="utf-8")
+        assert "lastError" in js
+        assert "window.close" not in js, (
+            "the popup must stay open to show the fill outcome — closing "
+            "instantly is how the busy error vanished (RC4)")
+
+    def test_content_script_reports_scan_errors(self):
+        js = (EXT / "content" / "main.js").read_text(encoding="utf-8")
+        assert '"scan_error"' in js

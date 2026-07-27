@@ -142,11 +142,18 @@
     catch (_e) { /* extension reloaded — orphaned frame */ }
   }
 
+  // 016 (T009, R5): score ONCE per page state. The unconditional 1.5 s
+  // request flood head-of-line blocked the fill path on the app's
+  // serialized bridge loop (RC1 evidence).
+  let scoredFor = null;
+
   function requestScore() {
     const p = detect();
-    if (!p) { removeBadge(); current = null; return; }   // no badge on non-postings
+    if (!p) { removeBadge(); current = null; scoredFor = null; return; }
     current = { ...p, url: location.href };
     if (dismissedFor === location.href) { return; }
+    if (scoredFor === location.href) { return; }  // cached — no re-request
+    scoredFor = location.href;
     toApp({
       type: "score_request", url: current.url, title: p.title,
       company: p.company, description: (p.description || "").slice(0, DESC_MAX),
@@ -318,6 +325,7 @@
     if (location.href !== lastHref) {   // SPA nav → new posting, reset dismiss
       lastHref = location.href;
       dismissedFor = null;
+      scoredFor = null;                 // 016: new page state → one new score
       removeBadge();
     }
     requestScore();
