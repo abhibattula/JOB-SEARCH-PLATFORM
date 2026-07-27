@@ -67,11 +67,13 @@ def _key(job_id: int, question: str) -> tuple[int, str]:
 
 
 def _default_generator(question: str, descriptor_ctx: dict, profile: dict):
-    """Production generation — descriptor-aware prompting lands in T012;
-    until then route to the existing suggester."""
+    """Production generation — the descriptor-aware suggester (T012):
+    options → pick-one, combobox → short literal label, prose → maxlength-
+    bounded. Post-validation happens in _validate regardless."""
     from . import answer_bank
 
-    return answer_bank.suggest(question, descriptor_ctx.get("tag"), profile)
+    return answer_bank.suggest(question, descriptor_ctx.get("tag"), profile,
+                               descriptor_ctx=descriptor_ctx)
 
 
 def _default_bank_save(*, question: str, answer: str, tag: str,
@@ -98,6 +100,11 @@ def _validate(answer: str | None, descriptor_ctx: dict):
             if _normalize_for_match(option) == wanted:
                 return True, option, None  # canonical option text wins
         return False, None, "no_valid_option"
+    if (descriptor_ctx.get("widget") or "") == "custom_combobox":
+        # options unknown until fill time — the answer must LOOK like an
+        # option label (the harvest fuzzy-matches it on the page)
+        if len(answer.split()) > 4:
+            return False, None, "not_an_option_label"
     maxlength = descriptor_ctx.get("maxlength")
     if maxlength and len(answer) > int(maxlength):
         answer = answer[:int(maxlength)].rstrip()

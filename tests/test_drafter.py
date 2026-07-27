@@ -212,3 +212,40 @@ class TestCompletionSideEffects:
         assert by_tag["cover_letter"]["job_id"] == 11      # job-scoped prose
         assert by_tag["notice_period"]["job_id"] is None   # reusable fact
         assert all(s["origin"] == "ai" for s in saves)
+
+
+class TestConstrainedDrafting016:
+    """016 (T012): the drafter's default generator forwards the descriptor
+    context, and combobox answers must be short option labels."""
+
+    def test_default_generator_passes_ctx_to_suggest(self, monkeypatch):
+        from engine.autofill import answer_bank
+
+        seen = {}
+
+        def fake_suggest(question, category, profile, descriptor_ctx=None):
+            seen["ctx"] = descriptor_ctx
+            return "Yes"
+
+        monkeypatch.setattr(answer_bank, "suggest", fake_suggest)
+        drafter.set_bank_save_for_tests(lambda **kw: None)
+        drafter.ensure(3, "Are you authorized?",
+                       ctx(type="select", options=["Yes", "No"],
+                           tag="work_authorization"), PROFILE)
+        assert wait_until(lambda: drafter.answer_for(3, "Are you authorized?"))
+        assert seen["ctx"]["options"] == ["Yes", "No"]
+
+    def test_combobox_long_answer_fails_not_filled(self):
+        drafter.set_generator_for_tests(
+            lambda q, c, p: "a rambling answer of far too many words to be "
+                            "an option label")
+        drafter.ensure(3, "Source?", ctx(widget="custom_combobox"), PROFILE)
+        assert wait_until(
+            lambda: (drafter.get(3, "Source?") or {}).get("state") == "failed")
+        assert drafter.get(3, "Source?")["reason"] == "not_an_option_label"
+
+    def test_combobox_short_label_passes(self):
+        drafter.set_generator_for_tests(lambda q, c, p: "LinkedIn")
+        drafter.ensure(3, "Source?", ctx(widget="custom_combobox"), PROFILE)
+        assert wait_until(lambda: drafter.answer_for(3, "Source?"))
+        assert drafter.answer_for(3, "Source?") == "LinkedIn"

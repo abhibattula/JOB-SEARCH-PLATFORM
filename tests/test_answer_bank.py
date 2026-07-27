@@ -235,3 +235,60 @@ class TestAutoSave016:
             n = conn.execute(
                 "SELECT COUNT(1) AS n FROM application_answers").fetchone()["n"]
         assert n == 0
+
+
+class TestConstrainedSuggest016:
+    """016 (T012, R7): the suggester is descriptor-aware — option fields
+    demand exactly one of the real options, comboboxes demand a short
+    literal label, prose obeys the field's length limit."""
+
+    def _capture(self, monkeypatch, reply):
+        from engine import matcher
+
+        captured = {}
+
+        def fake_chat(messages, **kw):
+            captured["messages"] = messages
+            return reply
+
+        monkeypatch.setattr(matcher, "_chat", fake_chat)
+        monkeypatch.setattr(matcher, "llm_available", lambda: True)
+        return captured
+
+    def test_option_field_prompt_lists_options_and_demands_one(
+            self, tmp_db, monkeypatch):
+        captured = self._capture(monkeypatch, "Yes")
+        out = answer_bank.suggest(
+            "Are you authorized?", "work_authorization",
+            {"resume_text": "resume"},
+            descriptor_ctx={"options": ["Yes", "No"], "widget": "",
+                            "maxlength": None, "type": "select",
+                            "tag": "work_authorization"})
+        text = " ".join(m["content"] for m in captured["messages"])
+        assert "Yes" in text and "No" in text
+        assert "exactly one" in text.lower()
+        assert out == "Yes"
+
+    def test_combobox_prompt_demands_short_label(self, tmp_db, monkeypatch):
+        captured = self._capture(monkeypatch, "LinkedIn")
+        answer_bank.suggest(
+            "How did you hear about us?", "how_heard", {"resume_text": "r"},
+            descriptor_ctx={"options": [], "widget": "custom_combobox",
+                            "maxlength": None, "type": "",
+                            "tag": "how_heard"})
+        text = " ".join(m["content"] for m in captured["messages"])
+        assert "4 words" in text
+
+    def test_prose_prompt_carries_maxlength(self, tmp_db, monkeypatch):
+        captured = self._capture(monkeypatch, "Short answer.")
+        answer_bank.suggest(
+            "Why us?", "free_text_unknown", {"resume_text": "r"},
+            descriptor_ctx={"options": [], "widget": "", "maxlength": 120,
+                            "type": "text", "tag": "free_text_unknown"})
+        text = " ".join(m["content"] for m in captured["messages"])
+        assert "120" in text
+
+    def test_legacy_call_without_ctx_still_works(self, tmp_db, monkeypatch):
+        self._capture(monkeypatch, "An answer.")
+        assert answer_bank.suggest("Q?", None, {"resume_text": "r"}) \
+            == "An answer."

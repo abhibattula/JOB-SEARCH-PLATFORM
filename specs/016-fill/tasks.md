@@ -127,7 +127,7 @@ visible.
   = legend/group label; options = member labels; `je_idx` = first member;
   `members[]`), `required` capture, checkbox-group legend context (NOT
   merged).
-- [ ] T012 [US2] Constrained drafting (R7) — TDD: `engine/qa.py::draft`
+- [x] T012 [US2] Constrained drafting (R7) — TDD: `engine/qa.py::draft`
   and `engine/autofill/answer_bank.py::suggest` receive descriptor ctx
   (type/options/maxlength) via the drafter; pick-one JSON prompt for
   option fields; combobox ≤4-word label; profile-fact yes/no short-circuit

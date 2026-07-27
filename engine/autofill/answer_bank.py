@@ -149,31 +149,62 @@ def delete(bank_id: int) -> None:
         conn.execute("DELETE FROM answer_bank WHERE id = ?", (bank_id,))
 
 
-def suggest(question_raw: str, category: str | None, profile: dict) -> str:
+_PLACEHOLDER_OPTION = re.compile(r"^(please\s+)?(select|choose)\b|^--", re.I)
+
+
+def suggest(question_raw: str, category: str | None, profile: dict,
+            descriptor_ctx: dict | None = None) -> str:
     """Draft a suggested answer via the matcher._chat tier dispatcher
-    (cloud -> local). Never writes to the answer bank — the caller must run
-    the drafted text through the confirm-before-use gate (FR-011) before
-    calling save(). Returns "" (never fabricates) if no tier is available."""
+    (cloud -> local). 016 (T012, R7): descriptor-aware — option fields get
+    a pick-exactly-one prompt over the field's REAL options, custom
+    comboboxes get a short-literal-label prompt, prose obeys the field's
+    length limit. Never writes to the bank itself (the drafter validates
+    and persists). Returns "" (never fabricates) if no tier is available."""
     from .. import matcher
 
     if not matcher.llm_available():
         return ""
     resume_text = (profile or {}).get("resume_text") or ""
+    ctx = descriptor_ctx or {}
+    options = [option for option in (ctx.get("options") or [])
+               if option and option.strip()
+               and not _PLACEHOLDER_OPTION.search(option.strip())]
+    grounding = f"RESUME/PROFILE:\n{resume_text[:4000]}"
+    if options:
+        system = (
+            "You are answering a multiple-choice job-application question "
+            "for an applicant, using ONLY the applicant facts below. Pick "
+            "exactly one of the OPTIONS. Respond with ONLY that option's "
+            "text, exactly as written — nothing else."
+        )
+        user = (f"QUESTION ({category or 'general'}): {question_raw}\n\n"
+                "OPTIONS:\n" + "\n".join(f"- {o}" for o in options)
+                + f"\n\n{grounding}")
+    elif (ctx.get("widget") or "") == "custom_combobox":
+        system = (
+            "You are answering a dropdown job-application question whose "
+            "options are hidden until clicked. Respond with ONLY the "
+            "literal option label the form most likely offers — at most "
+            "4 words, no punctuation, never a sentence."
+        )
+        user = (f"QUESTION ({category or 'general'}): {question_raw}\n\n"
+                f"{grounding}")
+    else:
+        length_rule = ""
+        if ctx.get("maxlength"):
+            length_rule = (" Keep the answer under "
+                           f"{int(ctx['maxlength'])} characters.")
+        system = (
+            "You are helping a job applicant draft a short, honest answer to an "
+            "application question, using ONLY the facts in their resume/profile "
+            "below. Never invent experience, credentials, or facts not present. "
+            "Respond with ONLY the answer text, no preamble." + length_rule
+        )
+        user = (f"QUESTION ({category or 'general'}): {question_raw}\n\n"
+                f"{grounding}")
     messages = [
-        {
-            "role": "system",
-            "content": (
-                "You are helping a job applicant draft a short, honest answer to an "
-                "application question, using ONLY the facts in their resume/profile "
-                "below. Never invent experience, credentials, or facts not present. "
-                "Respond with ONLY the answer text, no preamble."
-            ),
-        },
-        {
-            "role": "user",
-            "content": f"QUESTION ({category or 'general'}): {question_raw}\n\n"
-            f"RESUME/PROFILE:\n{resume_text[:4000]}",
-        },
+        {"role": "system", "content": system},
+        {"role": "user", "content": user},
     ]
     try:
         return matcher._chat(messages).strip()
