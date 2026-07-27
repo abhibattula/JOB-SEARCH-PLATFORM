@@ -97,17 +97,99 @@ window.jeScanner = (function () {
       value: jeValue(el, widget),
       options: el.tagName === "SELECT"
         ? Array.from(el.options).map((o) => o.text) : [],
+      members: [],
       widget: widget,
       automation_id: el.getAttribute("data-automation-id") || "",
       maxlength: el.maxLength && el.maxLength > 0 ? el.maxLength : null,
+      required: !!(el.required ||
+                   el.getAttribute("aria-required") === "true"),
       focused: el === document.activeElement,
       visible: !!(el.offsetParent || type === "file"),
     };
   }
 
+  // 016 (T011, R6): the question of a grouped control lives on its
+  // fieldset legend / radiogroup label — never on the individual option.
+  function groupQuestion(el) {
+    const fieldset = el.closest("fieldset");
+    if (fieldset) {
+      const legend = fieldset.querySelector("legend");
+      if (legend && legend.innerText.trim()) { return legend.innerText.trim(); }
+    }
+    const rg = el.closest("[role=radiogroup]");
+    if (rg) {
+      const aria = rg.getAttribute("aria-label");
+      if (aria) { return aria; }
+      const ids = rg.getAttribute("aria-labelledby");
+      if (ids) {
+        const texts = ids.split(/\s+/).map((id) => {
+          const node = document.getElementById(id);
+          return node ? node.innerText.trim() : "";
+        }).filter(Boolean);
+        if (texts.length) { return texts.join(" "); }
+      }
+    }
+    return "";
+  }
+
+  // 016 (T011, R6): merge same-name radio sets into ONE logical field
+  // (je_idx = FIRST member's — the stable ledger key). A lone radio keeps
+  // today's shape. Checkbox sets are NEVER merged (multi-select is not
+  // pick-one) — members just gain the group question as context.
+  function groupControls(pairs) {
+    const radios = new Map();
+    const checks = new Map();
+    pairs.forEach(function (pair, i) {
+      const type = pair.el.type || "";
+      if (type === "radio" && pair.el.name) {
+        (radios.get(pair.el.name) || radios.set(pair.el.name, []).get(pair.el.name)).push(i);
+      } else if (type === "checkbox" && pair.el.name) {
+        (checks.get(pair.el.name) || checks.set(pair.el.name, []).get(pair.el.name)).push(i);
+      }
+    });
+    const drop = new Set();
+    for (const idxs of radios.values()) {
+      if (idxs.length < 2) { continue; }
+      const members = idxs.map(function (i) {
+        return { je_idx: pairs[i].desc.je_idx,
+                 label: pairs[i].desc.label_text || pairs[i].el.value || "" };
+      });
+      const first = pairs[idxs[0]];
+      const checkedIdx = idxs.find(function (i) { return pairs[i].el.checked; });
+      first.desc = Object.assign({}, first.desc, {
+        type: "radio_group",
+        label_text: groupQuestion(first.el),
+        options: members.map(function (m) { return m.label; }),
+        members: members,
+        value: checkedIdx === undefined ? ""
+          : (pairs[checkedIdx].desc.label_text || pairs[checkedIdx].el.value || ""),
+        focused: idxs.some(function (i) { return pairs[i].desc.focused; }),
+        visible: idxs.some(function (i) { return pairs[i].desc.visible; }),
+        required: idxs.some(function (i) { return pairs[i].desc.required; }),
+      });
+      idxs.slice(1).forEach(function (i) { drop.add(i); });
+    }
+    for (const idxs of checks.values()) {
+      if (idxs.length < 2) { continue; }
+      const question = groupQuestion(pairs[idxs[0]].el);
+      if (question) {
+        idxs.forEach(function (i) {
+          const own = pairs[i].desc.label_text;
+          pairs[i].desc.label_text = own ? question + " — " + own : question;
+        });
+      }
+    }
+    return pairs
+      .filter(function (_pair, i) { return !drop.has(i); })
+      .map(function (pair) { return pair.desc; });
+  }
+
   function serialize() {
     const els = document.querySelectorAll(FIELD_SELECTOR);
-    return Array.from(els).map(describe);
+    const pairs = Array.from(els).map(function (el) {
+      return { el: el, desc: describe(el) };
+    });
+    return groupControls(pairs);
   }
 
   function elementByIdx(jeIdx) {

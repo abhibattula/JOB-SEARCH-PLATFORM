@@ -172,3 +172,87 @@ def test_human_pairing_path_connects_and_fills(app_server, tmp_path,
             ctx.close()
         finally:
             p.stop()
+
+
+FIXTURE_FORM_HTML = """
+<!doctype html><html><body>
+  <form>
+    <label for="fn">First name</label><input id="fn" name="first_name" required>
+    <label for="notice">Notice period</label>
+    <input id="notice" name="notice" maxlength="10">
+    <label for="auth">Work authorization</label>
+    <select id="auth" name="work_auth">
+      <option>Please select</option><option>Yes</option><option>No</option>
+    </select>
+    <fieldset>
+      <legend>Will you require sponsorship?</legend>
+      <label><input type="radio" name="sponsor" value="yes">Yes</label>
+      <label><input type="radio" name="sponsor" value="no">No</label>
+    </fieldset>
+    <fieldset>
+      <legend>Which days can you work?</legend>
+      <label><input type="checkbox" name="days" value="mon">Monday</label>
+      <label><input type="checkbox" name="days" value="tue">Tuesday</label>
+    </fieldset>
+    <div role="combobox" aria-haspopup="listbox" id="source"
+         aria-label="How did you hear about us?">Choose...</div>
+  </form>
+</body></html>
+"""
+
+
+def _project(descriptors):
+    """Logical projection both serializers must agree on (R6 parity)."""
+    projected = []
+    for d in descriptors:
+        projected.append((
+            d["type"], (d["label_text"] or "").strip(),
+            tuple(d.get("options") or []),
+            tuple(m["label"].strip() for m in (d.get("members") or [])),
+            bool(d.get("required")), d.get("widget") or "",
+            d.get("maxlength"),
+        ))
+    return sorted(projected)
+
+
+def test_serializer_parity_same_logical_fields():
+    """016 (T011): the same fixture through content/scanner.js and the
+    watcher's SERIALIZE_JS yields the SAME logical fields — radio groups
+    merged identically, checkbox groups contextualized, required and
+    maxlength captured on both paths."""
+    from pathlib import Path
+
+    from playwright.sync_api import sync_playwright
+
+    from engine.autofill import fields as fields_mod, watcher
+
+    scanner_js = (Path(__file__).resolve().parents[2] / "extension" /
+                  "content" / "scanner.js").read_text(encoding="utf-8")
+
+    with sync_playwright() as pw:
+        browser = pw.chromium.launch(channel="chromium", headless=True)
+        page = browser.new_page()
+        page.set_content(FIXTURE_FORM_HTML)
+        page.add_script_tag(content=scanner_js)
+        via_scanner = page.evaluate("() => window.jeScanner.serialize()")
+
+        page2 = browser.new_page()
+        page2.set_content(FIXTURE_FORM_HTML)
+        via_watcher = page2.evaluate(watcher.SERIALIZE_JS,
+                                     fields_mod.FIELD_QUERY_SELECTOR)
+        browser.close()
+
+    assert _project(via_scanner) == _project(via_watcher)
+    merged = [d for d in via_scanner if d["type"] == "radio_group"]
+    assert len(merged) == 1
+    group = merged[0]
+    assert group["label_text"] == "Will you require sponsorship?"
+    assert group["options"] == ["Yes", "No"]
+    assert len(group["members"]) == 2
+    checkboxes = [d for d in via_scanner if d["type"] == "checkbox"]
+    assert len(checkboxes) == 2  # never merged
+    assert all("Which days can you work?" in d["label_text"]
+               for d in checkboxes)
+    named = {d["name"]: d for d in via_scanner}
+    assert named["first_name"]["required"] is True
+    assert named["notice"]["maxlength"] == 10

@@ -284,3 +284,21 @@ class TestDecongestionAndErrors016:
     def test_content_script_reports_scan_errors(self):
         js = (EXT / "content" / "main.js").read_text(encoding="utf-8")
         assert '"scan_error"' in js
+
+
+class TestGroupingAssets016:
+    """016 (T011): both serializers carry the radio-grouping pass and the
+    required flag — changed in lockstep (the E2E parity test proves the
+    behavior; these fail fast on a missing half)."""
+
+    def test_scanner_js_groups_radios(self):
+        js = (EXT / "content" / "scanner.js").read_text(encoding="utf-8")
+        for token in ("radio_group", "members", "required", "legend"):
+            assert token in js, f"scanner.js missing {token!r}"
+
+    def test_watcher_serializer_groups_radios(self):
+        from engine.autofill import watcher
+
+        for token in ("radio_group", "members", "required", "legend"):
+            assert token in watcher.SERIALIZE_JS, \
+                f"watcher SERIALIZE_JS missing {token!r}"

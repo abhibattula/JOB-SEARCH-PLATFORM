@@ -401,6 +401,19 @@ def _handle_fields(msg) -> None:
         elif decision.kind == "typeahead":
             # 011: type then pick the matching suggestion
             item.update(kind="typeahead", value=str(decision.value))
+        elif decision.kind == "radio":
+            # 016 (T013): version gate — an old companion has no radio
+            # branch and would text-set the element (silent mis-fill). The
+            # doctor already surfaces the version mismatch; the field stays
+            # open and fills the moment the companion is reloaded.
+            from .. import APP_VERSION
+
+            with _lock:
+                companion_version = _session["version"]
+            if companion_version != APP_VERSION:
+                continue
+            item.update(kind="radio", value=str(decision.value),
+                        option_label=decision.option_label)
         elif decision.kind == "checkbox":
             item.update(kind="checkbox", value="on")
         else:

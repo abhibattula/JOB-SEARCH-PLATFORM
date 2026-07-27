@@ -254,3 +254,37 @@ class TestLedgerRepair016:
         decision = field_core.decide(None, self._descriptor(), handled,
                                      lambda tag, raw: "Yes")
         assert decision.action == "skip"
+
+
+class TestRadioGroupDecision016:
+    """016 (T011/T013, R6): a grouped radio field decides to kind="radio"
+    with the matched member label; an unmatched value settles no_match."""
+
+    def _group(self, value=""):
+        return {"je_idx": "7", "doc": "docA", "tag": "input",
+                "type": "radio_group", "name": "authorized",
+                "id": "auth_yes",
+                "label_text": "Are you legally authorized to work in the US?",
+                "placeholder": "", "aria_label": "", "autocomplete": "",
+                "value": value, "options": ["Yes", "No"],
+                "members": [{"je_idx": "7", "label": "Yes"},
+                            {"je_idx": "8", "label": "No"}],
+                "maxlength": None, "focused": False, "visible": True,
+                "widget": "", "required": True}
+
+    def test_matched_value_fills_as_radio_kind(self):
+        decision = field_core.decide(None, self._group(), {},
+                                     lambda tag, raw: "Yes")
+        assert decision.action == "fill" and decision.kind == "radio"
+        assert decision.option_label == "Yes" and decision.value == "Yes"
+
+    def test_unmatched_value_settles_no_match(self):
+        decision = field_core.decide(None, self._group(), {},
+                                     lambda tag, raw: "A long paragraph")
+        assert decision.action == "settle" and decision.outcome == "no_match"
+
+    def test_already_checked_group_is_sacred(self):
+        decision = field_core.decide(None, self._group(value="No"), {},
+                                     lambda tag, raw: "Yes")
+        assert decision.action == "settle"
+        assert decision.outcome == "skipped_existing"

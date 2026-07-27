@@ -110,6 +110,18 @@ def decide(ats: str | None, descriptor: dict, handled: dict, get_value) -> Decis
         name = str(value).replace("\\", "/").rsplit("/", 1)[-1]
         return Decision("fill", tag=tag, kind="file", value=value, preview=name)
 
+    # 016 (T011/T013, R6): a grouped radio set is ONE logical field — the
+    # answer must be one of the member labels; the filler checks that
+    # member. Anything unmatched settles no_match (epoch-retryable).
+    if (descriptor.get("type") or "") == "radio_group":
+        options = descriptor.get("options") or []
+        matched = fields_mod.match_option(str(value), options) if options else None
+        if matched is None:
+            return Decision("settle", tag=tag, outcome="no_match")
+        return Decision("fill", tag=tag, kind="radio", value=matched,
+                        option_label=matched, preview=matched,
+                        ai_draft=isinstance(value, Draft))
+
     # 011: widget-aware option handling. A typeahead types then picks a
     # suggestion; a custom combobox is opened and an option clicked; a native
     # <select> keeps its exact prior path. Non-combobox descriptors that

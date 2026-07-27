@@ -119,7 +119,7 @@ visible.
 
 ## Phase 4: US2 — Choice questions answered from the real options (P2)
 
-- [ ] T011 [US2] Scanner grouping (R6) — parity test FIRST
+- [x] T011 [US2] Scanner grouping (R6) — parity test FIRST
   (`tests/integration/test_pairing_e2e.py::test_serializer_parity`,
   browser marker: same fixture HTML through `extension/content/scanner.js`
   and `engine/autofill/watcher.py`'s serializer → same logical fields).
