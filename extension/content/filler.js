@@ -78,8 +78,12 @@ window.jeFiller = (function () {
     return null;
   }
 
+  // 016 (T013): harvest widened beyond [role=option] — react-select uses
+  // it, but plenty of menus render plain <li> under a listbox or
+  // *select__option* classes without the role.
   function visibleOptions() {
-    return Array.from(document.querySelectorAll('[role=option]'))
+    return Array.from(document.querySelectorAll(
+      '[role=option], [role=listbox] li, [class*="select__option"]'))
       .filter((o) => o.offsetParent !== null);
   }
 
@@ -124,16 +128,55 @@ window.jeFiller = (function () {
     fireInput(el);
   }
 
+  // 016 (T013): NORMALIZED matching — strict `o.text === label` broke on
+  // whitespace/case differences between the canonical answer and the DOM.
   function selectByLabel(el, label) {
-    const opt = Array.from(el.options).find((o) => o.text === label);
+    const target = normText(label);
+    const options = Array.from(el.options);
+    const opt = options.find((o) => normText(o.text) === target)
+      || (target && options.find(
+        (o) => normText(o.text).indexOf(target) !== -1));
     if (!opt) { throw new Error("no matching option"); }
     el.value = opt.value;
     fireInput(el);
   }
 
+  // 016 (T013): grouped radios — the item's element is the group's FIRST
+  // member; the member whose label matches the answer gets checked.
+  function radioGroupMembers(el) {
+    if (!el.name) { return [el]; }
+    const scope = el.form || document;
+    return Array.from(scope.querySelectorAll("input[type=radio]"))
+      .filter((member) => member.name === el.name);
+  }
+
+  function radioLabel(member) {
+    return (member.labels && member.labels[0]
+      ? member.labels[0].innerText : "") || member.value || "";
+  }
+
+  function findRadioMember(el, label) {
+    const target = normText(label);
+    return radioGroupMembers(el)
+      .find((member) => normText(radioLabel(member)) === target) || null;
+  }
+
   async function applyOne(item) {
     const el = window.jeScanner.elementByIdx(item.je_idx);
     if (!el) { return { je_idx: item.je_idx, outcome: "not_found" }; }
+    if (item.kind === "radio") {
+      // Honest outcomes only: an unset radio is NEVER reported filled
+      // (the old fallthrough text-set the element and lied — RC2).
+      if (radioGroupMembers(el).some((member) => member.checked)) {
+        return { je_idx: item.je_idx, outcome: "skipped_existing" };
+      }
+      const member = findRadioMember(el, item.value);
+      if (!member) { return { je_idx: item.je_idx, outcome: "needs_manual" }; }
+      member.checked = true;
+      fireInput(member);
+      return { je_idx: item.je_idx,
+               outcome: member.checked ? "filled" : "needs_manual" };
+    }
     if (item.kind !== "file" && !fillable(el)) {
       return { je_idx: item.je_idx,
                outcome: el === document.activeElement ? "focused"

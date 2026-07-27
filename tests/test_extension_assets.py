@@ -302,3 +302,26 @@ class TestGroupingAssets016:
         for token in ("radio_group", "members", "required", "legend"):
             assert token in watcher.SERIALIZE_JS, \
                 f"watcher SERIALIZE_JS missing {token!r}"
+
+
+class TestFillerUpgrades016:
+    """016 (T013, R8): real radio branch, normalized select matching,
+    widened combobox harvest — behavior is DOM-verified in the E2E; these
+    fail fast if a half is missing."""
+
+    def test_filler_has_a_real_radio_branch(self):
+        js = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
+        assert 'kind === "radio"' in js
+        assert "radioGroupMembers" in js
+        assert "checked = true" in js
+
+    def test_select_matching_is_normalized_not_strict(self):
+        js = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
+        assert "normText(o.text)" in js, (
+            "selectByLabel must match normalized option text — strict "
+            "equality broke canonicalized answers (RC2)")
+
+    def test_combobox_harvest_widened_beyond_role_option(self):
+        js = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
+        assert "[role=listbox] li" in js
+        assert "select__option" in js

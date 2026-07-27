@@ -719,3 +719,41 @@ class TestTabFollowing016:
         ext_backend.check_pending_open()
         assert bc._state.outcomes[7]["reason"] == "launch_failed"
         assert not ext_backend._watch["pending_open"]  # never hangs silently
+
+
+class TestVersionGate016:
+    """016 (T013, FR-015): new fill kinds are withheld from an old
+    companion — it would text-set the radio and lie (silent mis-fill)."""
+
+    GROUP = dict(je_idx="7", tag="input", type="radio_group",
+                 name="authorized", id="auth",
+                 label_text="Are you legally authorized to work in the US?",
+                 options=["Yes", "No"],
+                 members=[{"je_idx": "7", "label": "Yes"},
+                          {"je_idx": "8", "label": "No"}])
+
+    def _prep(self, queue, sent):
+        db.save_profile(authorized_without_sponsorship="yes")
+        open_the_tab(queue, sent)
+        sent.clear()
+
+    def test_old_companion_never_receives_radio_kind(self, queue, sent):
+        self._prep(queue, sent)  # fixture registered version "1.0.0"
+        ext_backend.handle_message(fields_msg(
+            descriptors=[descriptor(**self.GROUP)]))
+        for m in sent:
+            if m["type"] == "fill":
+                assert not any(i.get("kind") == "radio" for i in m["items"])
+
+    def test_current_companion_receives_radio_fill(self, queue, sent,
+                                                   monkeypatch):
+        from engine import APP_VERSION
+
+        self._prep(queue, sent)
+        ext_backend.register(sent.append, lambda code: None, APP_VERSION)
+        sent.clear()
+        ext_backend.handle_message(fields_msg(
+            descriptors=[descriptor(**self.GROUP)]))
+        fill = next(m for m in sent if m["type"] == "fill")
+        item = fill["items"][0]
+        assert item["kind"] == "radio" and item["value"] == "Yes"

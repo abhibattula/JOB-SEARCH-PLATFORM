@@ -134,7 +134,7 @@ visible.
   (no model call — assert via poisoned stub); prose obeys maxlength.
   Tests: `tests/test_qa.py`, `tests/test_answer_bank.py`,
   `tests/test_drafter.py`.
-- [ ] T013 [US2] Filler upgrades + version gate (R8) —
+- [x] T013 [US2] Filler upgrades + version gate (R8) —
   `extension/content/filler.js`: real radio branch (check matched member
   + events), normalized select match (option text from app-side
   `match_option`), combobox harvest widened (listbox `li`, open-listbox
