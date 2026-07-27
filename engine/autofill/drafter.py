@@ -154,6 +154,15 @@ def _run_completion_effects(job_id: int, question: str, answer: str,
                   job_id=scoped_job)
     except Exception:  # noqa: BLE001 — bank trouble must not lose the draft
         log.warning("auto-save to answer bank failed", exc_info=True)
+    try:
+        # 016 (R2): push — the active backend re-scans so the cached answer
+        # reaches the page without user action. Lazy import; no-op when no
+        # queue is running.
+        from . import browser_controller
+
+        browser_controller.on_draft_complete(job_id)
+    except Exception:  # noqa: BLE001
+        log.warning("draft-completion push failed", exc_info=True)
     for callback in list(_on_complete):
         try:
             callback(job_id, question, answer)
@@ -185,7 +194,8 @@ def ensure(job_id: int, question: str, descriptor_ctx: dict,
             if rec is None:
                 _records[key] = {"question": question, "state": "failed",
                                  "reason": "sensitive", "answer": None,
-                                 "attempts": 0, "next_retry_at": float("inf")}
+                                 "attempts": 0, "next_retry_at": float("inf"),
+                                 "at": time.monotonic()}
             return
         if rec is not None:
             if rec["state"] in ("drafting", "done"):
@@ -196,9 +206,55 @@ def ensure(job_id: int, question: str, descriptor_ctx: dict,
         else:
             _records[key] = {"question": question, "state": "drafting",
                              "reason": None, "answer": None, "attempts": 0,
-                             "next_retry_at": 0.0}
+                             "next_retry_at": 0.0, "at": time.monotonic()}
         tasks = _ensure_workers()
     tasks.put((key, question, dict(descriptor_ctx or {}), dict(profile or {})))
+
+
+def mark_needs_you(job_id: int, question: str, reason: str) -> None:
+    """Record a question the HUMAN must answer (missing profile fact,
+    sensitive class) without ever generating — it shows in the activity
+    log and drives the on-page needs-you flag."""
+    key = _key(job_id, question)
+    with _lock:
+        if key not in _records:
+            _records[key] = {"question": question, "state": "failed",
+                             "reason": reason, "answer": None, "attempts": 0,
+                             "next_retry_at": float("inf"),
+                             "at": time.monotonic()}
+
+
+def clear(job_id: int, question: str) -> None:
+    """Drop a record (e.g. a needs-you fact the profile now answers)."""
+    with _lock:
+        _records.pop(_key(job_id, question), None)
+
+
+_NEEDS_YOU_REASONS = ("sensitive", "no_valid_option", "profile_fact_missing")
+
+
+def list_for_job(job_id: int, limit: int = 50) -> list[dict]:
+    """Activity-log entries for one job, newest first (data-model §9)."""
+    with _lock:
+        records = [dict(rec) for key, rec in _records.items()
+                   if key[0] == int(job_id)]
+    records.sort(key=lambda rec: rec.get("at", 0.0), reverse=True)
+    entries = []
+    for rec in records[:limit]:
+        if rec["state"] == "done":
+            state = "drafted"
+        elif rec["state"] == "failed" and rec["reason"] in _NEEDS_YOU_REASONS:
+            state = "needs_you"
+        else:
+            state = "drafting"  # in flight, or failed-and-will-retry
+        answer = rec.get("answer") or ""
+        entries.append({
+            "question": rec["question"],
+            "state": state,
+            "answer_preview": answer[:120],
+            "reason": rec.get("reason"),
+        })
+    return entries
 
 
 def get(job_id: int, question: str) -> dict | None:

@@ -281,9 +281,11 @@ class TestWidgetFills011:
         assert item["kind"] == "typeahead" and item["value"] == "Austin, TX"
 
     def test_c1_sensitive_combobox_no_answer_sends_no_fill(self, queue, sent):
-        # a work-auth CUSTOM COMBOBOX with no saved answer must raise the
-        # pending confirmation and send NO fill item — never an AI draft,
-        # exactly like the native-select sensitive path.
+        # 016: a work-auth CUSTOM COMBOBOX with no profile fact must send NO
+        # fill item and never reach a model — it is recorded needs-you for
+        # the human (the fill-first replacement for the 015 pending gate).
+        from engine.autofill import drafter
+
         open_the_tab(queue, sent)
         sent.clear()
         ext_backend.handle_message(fields_msg(descriptors=[
@@ -296,9 +298,118 @@ class TestWidgetFills011:
         for m in sent:
             if m["type"] == "fill":
                 assert not any(i["je_idx"] == "6" for i in m["items"])
-        # and it is surfaced for confirmation
-        assert bc._state.pending is not None
-        assert bc._state.pending["category"] == "work_authorization"
+        # and it is surfaced for the human, not drafted
+        record = drafter.get(
+            queue, "Are you legally authorized to work in the US?")
+        assert record is not None and record["state"] == "failed"
+        assert record["reason"] == "profile_fact_missing"
+
+
+class TestDecideFast016:
+    """016 (T005, R1): the fields handler is decide-fast — no model call is
+    reachable from handle_message; known fills dispatch incrementally while
+    unknown questions draft in the background; a completed draft pushes a
+    rescan nudge and the next scan fills it from the cache."""
+
+    UNKNOWN = dict(je_idx="5", tag="textarea", type="", name="essay",
+                   id="essay", label_text="Tell us why you want to join")
+
+    @pytest.fixture(autouse=True)
+    def _drafter(self):
+        from engine.autofill import drafter
+
+        drafter.reset_for_tests(backoff_base_s=0.1, backoff_cap_s=0.5)
+        yield drafter
+        drafter.reset_for_tests()
+
+    @staticmethod
+    def _wait(predicate, timeout=5.0):
+        import time
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if predicate():
+                return True
+            time.sleep(0.01)
+        return False
+
+    def test_no_model_call_reachable_from_handler(self, queue, sent,
+                                                  monkeypatch):
+        from engine import matcher, qa
+        from engine.autofill import answer_bank, drafter
+
+        def boom(*a, **k):
+            raise AssertionError("model call reached from the bridge handler")
+
+        monkeypatch.setattr(matcher, "_chat", boom)
+        monkeypatch.setattr(qa, "draft", boom)
+        monkeypatch.setattr(answer_bank, "suggest", boom)
+        drafter.set_generator_for_tests(lambda q, c, p: None)
+        open_the_tab(queue, sent)
+        sent.clear()
+        ext_backend.handle_message(fields_msg(descriptors=[
+            descriptor(), descriptor(**self.UNKNOWN)]))
+        fill = next(m for m in sent if m["type"] == "fill")
+        assert any(i["value"] == "Abhinav" for i in fill["items"])
+        self._wait(lambda: (drafter.get(queue, self.UNKNOWN["label_text"])
+                            or {}).get("state") == "failed")
+
+    def test_known_fills_dispatch_while_draft_still_running(self, queue, sent):
+        import threading
+        import time
+
+        from engine.autofill import drafter
+
+        release = threading.Event()
+        drafter.set_generator_for_tests(
+            lambda q, c, p: (release.wait(timeout=10), "late")[1])
+        open_the_tab(queue, sent)
+        sent.clear()
+        start = time.monotonic()
+        ext_backend.handle_message(fields_msg(descriptors=[
+            descriptor(), descriptor(**self.UNKNOWN)]))
+        assert time.monotonic() - start < 1.0  # the handler never waited
+        fill = next(m for m in sent if m["type"] == "fill")
+        assert any(i["value"] == "Abhinav" for i in fill["items"])
+        # heartbeat stays fresh while the draft is still running
+        ext_backend.handle_message(ext_protocol.Pong())
+        assert ext_backend.status()["last_seen_age_s"] < 1.0
+        release.set()
+
+    def test_draft_completion_pushes_rescan_then_next_scan_fills(
+            self, queue, sent):
+        from engine.autofill import drafter
+
+        drafter.set_generator_for_tests(
+            lambda q, c, p: "Because I love hardware.")
+        open_the_tab(queue, sent)
+        sent.clear()
+        message = fields_msg(descriptors=[descriptor(**self.UNKNOWN)])
+        ext_backend.handle_message(message)
+        assert self._wait(
+            lambda: any(m["type"] == "rescan" for m in sent)), \
+            "completed draft never pushed a rescan nudge"
+        ext_backend.handle_message(message)  # the nudged rescan arrives
+        fill = [m for m in sent if m["type"] == "fill"][-1]
+        item = next(i for i in fill["items"] if i["je_idx"] == "5")
+        assert item["value"] == "Because I love hardware."
+        assert item["flag"] == "ai_draft"
+
+    def test_unique_question_drafts_once_across_rescans(self, queue, sent):
+        from engine.autofill import drafter
+
+        calls = []
+        drafter.set_generator_for_tests(
+            lambda q, c, p: calls.append(1) and None)
+        open_the_tab(queue, sent)
+        message = fields_msg(descriptors=[descriptor(**self.UNKNOWN)])
+        for _ in range(5):
+            ext_backend.handle_message(message)
+        self._wait(lambda: len(calls) >= 1)
+        import time
+
+        time.sleep(0.05)  # give an (incorrect) second draft a chance
+        assert len(calls) == 1
 
 
 class TestAdHocFillHere:

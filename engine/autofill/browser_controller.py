@@ -84,10 +84,6 @@ class _State:
         self.handled: dict[int, dict] = {}
         # consecutive all-frames-unreadable ticks for the current job
         self.scan_failures: int = 0
-        # At most one pending confirmation at a time (005 FR-011): an
-        # unrecognized/no-saved-answer question pauses for review rather
-        # than being auto-filled from an unreviewed AI draft.
-        self.pending: dict | None = None
         # per-job fill reports (passwords pre-masked at record time — the
         # secret never enters this structure)
         self.fill_reports: dict[int, list[dict]] = {}
@@ -357,101 +353,67 @@ def _value_for_tag(tag: str, raw: dict, profile: dict, job_id: int):
         return profile.get("linkedin_url")
     if tag in ("portfolio_url",):
         return profile.get("portfolio_url")
-    # Everything else (work_authorization, sponsorship_requirement,
-    # eeo_disclosure, years_experience, salary_expectation, how_heard,
-    # cover_letter, free_text_unknown) goes through the answer bank —
-    # unrecognized/unconfirmed questions are surfaced for review, never
-    # auto-filled from an unreviewed draft (005 FR-011/FR-012).
+    # Everything else goes: answer bank → profile facts → drafter cache.
+    # 016 (fill-first, FR-003/FR-012/FR-019): decide NEVER generates and
+    # NEVER parks — unknown questions are scheduled on the background
+    # drafter (one draft per question per session, validated, bounded) and
+    # this pass simply skips the field; the completed draft pushes itself
+    # back to the page via on_draft_complete.
     question = raw.get("label_text") or raw.get("placeholder") or raw.get("aria_label") or ""
     if not question:
         return None
     existing = answer_bank.lookup(question)
     if existing:
+        if existing.get("source") == "ai":
+            # 016 (D2): an auto-saved AI answer keeps its ai_draft flag so
+            # the page highlight survives until the user edits/curates it.
+            from . import field_core
+
+            return field_core.Draft(existing["answer"])
         return existing["answer"]
 
-    # 010: open-ended, AI-eligible questions get a grounded draft filled and
-    # flagged for review (draft → fill → flag). Sensitive/unrecognized
-    # questions stay on the confirm-before-use pause (005 FR-011), never
-    # AI-answered.
     from .. import qa
+    from . import drafter
 
-    if qa.is_ai_eligible(tag):
-        from .. import db
-        from . import drafts, field_core
-
-        job = db.get_job(job_id) if job_id and job_id > 0 else None
-        maxlength = raw.get("maxlength")
-        draft_text = qa.draft(question, tag, profile, job, maxlength=maxlength)
-        if draft_text:
-            from .. import matcher
-
-            drafts.record(job_id if job_id and job_id > 0 else None,
-                          question, draft_text, matcher.scoring_tier())
-            return field_core.Draft(draft_text)
-        # drafting refused (thin grounding / no model) — leave for manual
+    if tag in qa.PROFILE_FACT_TAGS:
+        fact = qa.profile_fact_answer(tag, profile)
+        if fact is not None:
+            drafter.clear(job_id, question)
+            return fact
+        # not derivable — the human answers this one, visibly
+        drafter.mark_needs_you(job_id, question, "profile_fact_missing")
         return None
 
-    with _lock:
-        if _state.pending is None:
-            # 015 (FR-002/FR-003): park the pause IMMEDIATELY — the
-            # suggestion (minutes of on-device inference on CPU) generates in
-            # the background, NEVER while holding _lock. Holding _lock across
-            # the model call is what froze the whole app: the 3s status poll
-            # (queue_snapshot) blocks on this same lock.
-            nonce = next(_pending_nonce)
-            _state.pending = {
-                "job_id": job_id,
-                "question_raw": question,
-                "category": tag,
-                "drafted_answer": None,
-                "drafting": True,
-                "nonce": nonce,
-                "field_id": raw.get("id"),
-                "field_name": raw.get("name"),
-            }
-        else:
-            nonce = None
-    if nonce is not None:
-        _start_pending_draft(nonce, question, tag, profile)
+    cached = drafter.answer_for(job_id, question)
+    if cached is not None:
+        from . import field_core
+
+        return field_core.Draft(cached)
+    drafter.ensure(job_id, question, {
+        "tag": tag,
+        "options": raw.get("options") or [],
+        "maxlength": raw.get("maxlength"),
+        "type": raw.get("type") or "",
+        "widget": raw.get("widget") or "",
+    }, profile)
     return None
 
 
-_pending_nonce = __import__("itertools").count(1)
-_suggest_threads: list[threading.Thread] = []
+def on_draft_complete(job_id: int) -> None:
+    """Drafter completion push (016 R2): nudge the active backend so the
+    new answer reaches the page without any user action."""
+    with _lock:
+        if not _state.running or not (0 <= _state.index < len(_state.job_ids)):
+            return
+        if _state.job_ids[_state.index] != job_id:
+            return
+        backend = _state.backend
+    if backend == "extension":
+        from . import ext_backend
 
-
-def _start_pending_draft(nonce: int, question: str, tag: str | None,
-                         profile: dict) -> None:
-    """Generate the pending question's suggested answer off every lock (015).
-    The draft routes through the serialized inference owner via
-    answer_bank.suggest → matcher._chat, so it is bounded and single-flight;
-    the nonce check means a draft can never land on a pending it wasn't
-    started for (the user may have answered/advanced meanwhile)."""
-    from . import answer_bank
-
-    def _work() -> None:
-        try:
-            draft = answer_bank.suggest(question, tag, profile)
-        except Exception:
-            log.debug("pending suggestion failed", exc_info=True)
-            draft = ""
-        with _lock:
-            pending = _state.pending
-            if pending is not None and pending.get("nonce") == nonce:
-                pending["drafted_answer"] = draft or None
-                pending["drafting"] = False
-
-    thread = threading.Thread(target=_work, name="je-suggest", daemon=True)
-    _suggest_threads.append(thread)
-    thread.start()
-
-
-def _join_pending_drafts_for_tests(timeout: float = 5.0) -> None:
-    """Deterministic waits in tests + conftest teardown hygiene (a suggestion
-    thread must never outlive the test that stubbed its model)."""
-    for thread in list(_suggest_threads):
-        thread.join(timeout=timeout)
-    _suggest_threads[:] = [t for t in _suggest_threads if t.is_alive()]
+        ext_backend.send(ext_backend._outbound("rescan", reason="draft_ready"))
+    else:
+        _dispatch("FORCE_TICK")
 
 
 # --- queue state machine (public facade) -------------------------------------
@@ -467,7 +429,6 @@ def start_queue(job_ids: list[int]) -> dict | None:
         _state.outcomes = {}
         _state.handled = {}
         _state.scan_failures = 0
-        _state.pending = None
         _state.fill_reports = {}
         _state.interrupted = False
         _state.summary = None
@@ -496,7 +457,6 @@ def start_practice(url: str) -> dict | None:
         _state.outcomes = {}
         _state.handled = {}
         _state.scan_failures = 0
-        _state.pending = None
         _state.fill_reports = {}
         _state.interrupted = False
         _state.summary = None
@@ -522,46 +482,17 @@ def current_job() -> dict | None:
             return None
         job_id = _state.job_ids[_state.index]
         remaining = len(_state.job_ids) - _state.index - 1
-        pending = None
-        if _state.pending is not None:
-            pending = {
-                "question_raw": _state.pending["question_raw"],
-                "category": _state.pending["category"],
-                "drafted_answer": _state.pending["drafted_answer"],
-                # 015 (FR-003): the UI shows "drafting a suggestion…" until
-                # the background draft lands on this parked pause.
-                "drafting": bool(_state.pending.get("drafting")),
-            }
         outcome = _state.outcomes.get(job_id)
-        return {
-            "job_id": job_id,
-            "remaining": remaining,
-            "fell_back": bool(outcome and outcome["reason"] in FALLBACK_REASONS),
-            "pending": pending,
-        }
+    from . import drafter
 
-
-def resolve_pending(answer: str) -> None:
-    """Called after the user confirms/edits a drafted answer (the route has
-    already saved it to the answer bank). 009: no element bookkeeping —
-    clear the pending slot, unlock any no_match verdicts (the confirmed
-    answer may now match), and force a fill pass; the watcher fills it via
-    the normal answer-bank lookup on the worker thread."""
-    with _lock:
-        pending = _state.pending
-        _state.pending = None
-        if pending is None:
-            return
-        active = _state.running and 0 <= _state.index < len(_state.job_ids)
-        if active:
-            job_id = _state.job_ids[_state.index]
-            ledger = _state.handled.get(job_id)
-            if ledger:
-                for key in [k for k, v in ledger.items() if v == "no_match"]:
-                    del ledger[key]
-        backend = _state.backend
-    if active and backend != "extension":
-        _dispatch("FORCE_TICK", wait=0.5)
+    return {
+        "job_id": job_id,
+        "remaining": remaining,
+        "fell_back": bool(outcome and outcome["reason"] in FALLBACK_REASONS),
+        # 016 (FR-019): the passive activity log replaces the blocking
+        # pending gate — drafting/drafted/needs-you per question.
+        "activity": drafter.list_for_job(job_id),
+    }
 
 
 def _job_outcome(job_id: int) -> str:
@@ -582,7 +513,6 @@ def advance() -> dict | None:
         if not _state.running:
             return None
         _state.index += 1
-        _state.pending = None  # a pending confirmation belongs to the job just left
         _state.scan_failures = 0
         if _state.index >= len(_state.job_ids):
             _state.running = False
@@ -613,17 +543,21 @@ def advance() -> dict | None:
 
 
 def rescan() -> dict | None:
-    """009: 'Re-scan' = force an immediate fill pass (the watcher already
-    re-scans every ~2s). None when no active session."""
+    """'Re-scan' = force an immediate fill pass. 016 (FR-008): in companion
+    mode this now sends the rescan nudge (it was a silent no-op through
+    v1.5.0). None when no active session."""
     with _lock:
         if not _state.running or not (0 <= _state.index < len(_state.job_ids)):
             return None
         backend = _state.backend
-    # The companion scans continuously on its own (MutationObserver + poll),
-    # so there is no tick to force; the Playwright watcher needs the nudge.
-    if backend != "extension":
-        _dispatch("FORCE_TICK")
-    return {"forced": True}
+    if backend == "extension":
+        from . import ext_backend
+
+        nudged = ext_backend.send(
+            ext_backend._outbound("rescan", reason="user_rescan"))
+        return {"forced": True, "nudged": bool(nudged)}
+    _dispatch("FORCE_TICK")
+    return {"forced": True, "nudged": True}
 
 
 def resume_queue() -> dict | None:
@@ -668,7 +602,6 @@ def stop_queue() -> None:
         _state.outcomes = {}
         _state.handled = {}
         _state.scan_failures = 0
-        _state.pending = None
         _state.fill_reports = {}
         _state.interrupted = False
         _state.summary = None
@@ -841,10 +774,6 @@ def _worker_shutdown_context() -> None:
         _playwright = None
 
 
-def _worker_resolve_pending(payload: dict) -> None:
-    _tick_if_active(force=True)
-
-
 def _tick_if_active(force: bool = False) -> None:
     """One watch tick when a job is current. Called by the worker on its
     ~2s idle timeout and on FORCE_TICK."""
@@ -866,11 +795,7 @@ def _tick_if_active(force: bool = False) -> None:
     profile = db.get_profile() or {}
 
     def get_value(tag, descriptor):
-        before = _state.pending
-        value = _value_for_tag(tag, descriptor, profile, job_id)
-        if value is None and _state.pending is not None and _state.pending is not before:
-            _record(job_id, descriptor, tag, "", "paused")
-        return value
+        return _value_for_tag(tag, descriptor, profile, job_id)
 
     def record(descriptor, tag, preview, outcome, ai_draft=False):
         _record(job_id, descriptor, tag, preview, outcome, ai_draft)

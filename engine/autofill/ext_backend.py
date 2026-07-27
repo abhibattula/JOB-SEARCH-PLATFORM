@@ -284,7 +284,6 @@ def _handle_fields(msg) -> None:
         return bc._value_for_tag(tag, raw, profile, job_id)
 
     ats = adapters.ats_from_url(msg.url)
-    items: list[dict] = []
     seen = 0
     for desc in msg.descriptors:
         raw = desc.as_watcher_dict()
@@ -331,15 +330,15 @@ def _handle_fields(msg) -> None:
         with _lock:
             _inflight[fkey] = (raw, decision.tag, decision.preview,
                                decision.ai_draft)
-        items.append(item)
+        # 016 (T005/R1): incremental dispatch — a decided fill goes out
+        # IMMEDIATELY. Batching until the whole form was decided is what
+        # withheld name/email fills behind slow decisions (RC1).
+        send(_outbound("fill", tab_id=msg.tab_id, frame_id=msg.frame_id,
+                       items=[item]))
 
     with _lock:
         _frame_seen[msg.frame_id] = seen
         total_seen = sum(_frame_seen.values())
-
-    if items:
-        send(_outbound("fill", tab_id=msg.tab_id, frame_id=msg.frame_id,
-                       items=items))
 
     with bc._lock:
         filled_total = bc._state.activity.get("fields_filled", 0)
@@ -471,7 +470,6 @@ def _handle_fill_here(msg) -> None:
         bc._state.handled = {ADHOC_JOB_ID: {}}
         bc._state.fill_reports = {ADHOC_JOB_ID: []}
         bc._state.outcomes = {}
-        bc._state.pending = None
         bc._state.interrupted = False
         bc._state.summary = None
         bc._state.activity = bc._fresh_activity()

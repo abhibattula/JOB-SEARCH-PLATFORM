@@ -46,8 +46,10 @@ class TestCommandProcessing:
         assert seen == [("open", 1), ("close",), ("open", 2)]
 
     def test_dispatch_with_wait_acks_within_deadline(self, monkeypatch):
-        monkeypatch.setattr(bc, "_worker_resolve_pending", lambda payload: None)
-        acked = worker.dispatch("RESOLVE_PENDING", {"answer": "x"}, wait=0.5)
+        # 016: RESOLVE_PENDING is gone with the approval gate — the generic
+        # ack path is exercised via any waitable command.
+        monkeypatch.setattr(bc, "_tick_if_active", lambda force=False: None)
+        acked = worker.dispatch("FORCE_TICK", wait=0.5)
         assert acked is True
 
     def test_handler_exception_does_not_kill_the_thread(self, monkeypatch):

@@ -67,7 +67,9 @@ def save(question_raw: str, answer: str, category: str | None = None) -> int:
             " category, source, confirmed_at, updated_at) VALUES (?,?,?,?,?,?,?)"
             " ON CONFLICT(question_normalized) DO UPDATE SET"
             " answer=excluded.answer, category=excluded.category,"
-            " updated_at=excluded.updated_at",
+            # 016: explicit user curation adopts an AI row — the source flip
+            # is what clears the on-page ai_draft highlight semantics
+            " source='user', updated_at=excluded.updated_at",
             (normalized, question_raw, answer, category, "user", now, now),
         )
         row = conn.execute(

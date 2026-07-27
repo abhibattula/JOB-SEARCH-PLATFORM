@@ -10,7 +10,7 @@ timeout IS the watch-tick scheduler (commands preempt instantly; an idle
 timeout runs one watch tick when a job is current).
 
 Routes/facade callers NEVER block on browser work — dispatch() returns
-immediately unless a short ack wait is requested (RESOLVE_PENDING only).
+immediately unless a short ack wait is requested.
 """
 from __future__ import annotations
 
@@ -54,7 +54,7 @@ def ensure_thread() -> None:
 def dispatch(name: str, payload: dict | None = None, wait: float | None = None) -> bool:
     """Enqueue a command for the worker. Returns immediately; with `wait`,
     blocks up to that many seconds for the handler to finish (used only by
-    RESOLVE_PENDING's short ack). True = acked (or fire-and-forget)."""
+    a short ack). True = acked (or fire-and-forget)."""
     ensure_thread()
     done = threading.Event() if wait else None
     _commands.put(Command(name, payload or {}, done))
@@ -87,7 +87,6 @@ def _handle(cmd: Command) -> None:
         "OPEN_PRACTICE": lambda: bc._worker_open_practice(cmd.payload["url"]),
         "FORCE_TICK": lambda: bc._tick_if_active(force=True),
         "CLOSE_PAGE": lambda: bc._worker_close_page(),
-        "RESOLVE_PENDING": lambda: bc._worker_resolve_pending(cmd.payload),
         "SHUTDOWN_CONTEXT": lambda: bc._worker_shutdown_context(),
     }
     handler = handlers.get(cmd.name)

@@ -597,13 +597,9 @@ class TestConfirmAnswerSentinel015:
         monkeypatch.setattr(browser_controller, "current_job",
                             lambda: {"job_id": -1, "remaining": 0,
                                      "fell_back": False, "pending": None})
-        resolved = []
-        monkeypatch.setattr(browser_controller, "resolve_pending",
-                            lambda answer: resolved.append(answer))
         resp = self._confirm(client)
         assert resp.status_code == 200
         assert resp.json() == {"saved": True}
-        assert resolved == ["Because the mission fits my skills."]
         assert len(answer_bank.list_all()) == 1  # reusable answer saved
         assert self._snapshot_count() == 0       # no snapshot for sentinels
 
@@ -612,9 +608,7 @@ class TestConfirmAnswerSentinel015:
 
         monkeypatch.setattr(browser_controller, "current_job",
                             lambda: {"job_id": -2, "remaining": 0,
-                                     "fell_back": False, "pending": None})
-        monkeypatch.setattr(browser_controller, "resolve_pending",
-                            lambda answer: None)
+                                     "fell_back": False, "activity": []})
         assert self._confirm(client).status_code == 200
         assert self._snapshot_count() == 0
 
@@ -624,8 +618,51 @@ class TestConfirmAnswerSentinel015:
         job_id = seed_job()
         monkeypatch.setattr(browser_controller, "current_job",
                             lambda: {"job_id": job_id, "remaining": 0,
-                                     "fell_back": False, "pending": None})
-        monkeypatch.setattr(browser_controller, "resolve_pending",
-                            lambda answer: None)
+                                     "fell_back": False, "activity": []})
         assert self._confirm(client).status_code == 200
         assert self._snapshot_count() == 1
+
+
+class TestFillFirstRoutes016:
+    """016 (T006, FR-009/FR-019): a live companion skips the Playwright
+    preflight at queue start, and the confirm endpoints are bank-curation
+    only — no resolve/fill side effects exist anymore."""
+
+    def test_queue_skips_preflight_with_live_companion(self, client, monkeypatch):
+        from engine.autofill import browser_controller, ext_backend
+
+        job_id = seed_job()
+        monkeypatch.setattr(ext_backend, "is_live", lambda *a, **k: True)
+
+        def boom():
+            raise AssertionError("preflight must not run with a live companion")
+
+        monkeypatch.setattr(browser_controller, "preflight", boom)
+        monkeypatch.setattr(browser_controller, "start_queue",
+                            lambda ids: {"job_id": ids[0], "remaining": 0,
+                                         "fell_back": False, "activity": []})
+        response = client.post("/api/autofill/queue", json={"job_ids": [job_id]})
+        assert response.status_code == 200
+        assert response.json()["started"] is True
+
+    def test_queue_still_preflights_without_companion(self, client, monkeypatch):
+        from engine.autofill import browser_controller, ext_backend
+
+        job_id = seed_job("https://x.example/2")
+        monkeypatch.setattr(ext_backend, "is_live", lambda *a, **k: False)
+        monkeypatch.setattr(browser_controller, "preflight",
+                            lambda: {"ok": False, "channel": None,
+                                     "error": "no browser"})
+        response = client.post("/api/autofill/queue", json={"job_ids": [job_id]})
+        assert response.status_code == 409
+
+    def test_confirm_answer_saves_bank_only(self, client):
+        from engine.autofill import answer_bank, browser_controller
+
+        assert not hasattr(browser_controller, "resolve_pending")
+        response = client.post("/api/autofill/answers/confirm", json={
+            "question_raw": "What is your notice period?",
+            "answer": "Two weeks", "category": "notice_period"})
+        assert response.status_code == 200
+        saved = answer_bank.lookup("What is your notice period?")
+        assert saved is not None and saved["answer"] == "Two weeks"
