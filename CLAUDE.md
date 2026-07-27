@@ -19,5 +19,5 @@ shipped as v1.2.0; 013 Refinements shipped as v1.3.0; 014 Experience Release
 shipped as v1.4.0) keep their plan/spec/artifacts under `specs/0NN-*/` for
 reference.
 
-Project principles are governed by `.specify/memory/constitution.md` (v1.1.3).
+Project principles are governed by `.specify/memory/constitution.md` (v1.1.4).
 <!-- SPECKIT END -->
