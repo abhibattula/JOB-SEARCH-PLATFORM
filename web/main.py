@@ -123,6 +123,16 @@ templates.env.globals["current_theme"] = _current_theme
 # 008 (FR-032): plain-language changelog behind the What's New overlay —
 # keyed by APP_VERSION, shown once per version.
 WHATS_NEW: dict[str, list[str]] = {
+    "1.6.0": [
+        "Apply Assist now fills the page for real: known answers land in "
+        "seconds, drafts arrive by themselves, and dropdown/yes-no questions "
+        "are answered from the field's actual options.",
+        "Everything happens on the page: the form opens itself on supported "
+        "job boards, a small panel shows progress, and anything needing your "
+        "eye is highlighted — you correct it right there and submit yourself.",
+        "Tailoring can no longer crash the app: the on-device AI runs "
+        "isolated and restarts by itself if anything goes wrong.",
+    ],
     "1.5.0": [
         "Apply Assist pairing rebuilt: a live Connect page that verifies each "
         "step and says exactly what's wrong when something is.",

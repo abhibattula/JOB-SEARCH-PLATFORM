@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Job Engine Companion",
-  "version": "1.5.0",
+  "version": "1.6.0",
   "description": "Fills job applications in your own browser, driven by your local Job Engine app. Never clicks, never submits — you always do that.",
   "minimum_chrome_version": "116",
   "permissions": ["storage", "tabs", "alarms"],
