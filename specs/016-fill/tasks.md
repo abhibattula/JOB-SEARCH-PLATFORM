@@ -63,7 +63,7 @@ yet.
 
 ## Phase 3: US1 — The form I'm looking at gets filled, promptly (P1)
 
-- [ ] T005 [US1] Decide-fast loop + incremental fills (R1) — TDD FIRST in
+- [x] T005 [US1] Decide-fast loop + incremental fills (R1) — TDD FIRST in
   `tests/test_ext_backend.py`: (a) poisoned-executor guard — any model
   call reached from `handle_message` fails the test; (b) a `fields` batch
   containing knowns + one unknown dispatches the known fills even though
@@ -73,7 +73,7 @@ yet.
   profile/bank/`drafter.answer_for` only; unknowns → `drafter.ensure`;
   dispatch fills incrementally; drafter completion → ledger clear +
   `rescan` push.
-- [ ] T006 [US1] Gate removal + activity log (R11) —
+- [x] T006 [US1] Gate removal + activity log (R11) —
   `engine/autofill/browser_controller.py`: single-pending park →
   drafting/activity list (`current_job().activity` per data-model §9);
   retire `resolve_pending`; `rescan()` sends the nudge in extension mode;
@@ -84,7 +84,7 @@ yet.
   `tests/test_routes_autofill.py`, `tests/test_web.py`; replace
   `conftest.py`'s `_join_pending_drafts_for_tests` teardown with
   `drafter.reset_for_tests()`.
-- [ ] T007 [P] [US1] Ledger repair (R3) — TDD: `cache_version` stamps in
+- [x] T007 [P] [US1] Ledger repair (R3) — TDD: `cache_version` stamps in
   `engine/autofill/field_core.py` decisions (terminal `no_match`/
   `needs_manual` retryable when the drafter has a newer answer);
   `_inflight` TTL 20 s + extension-path job outcomes

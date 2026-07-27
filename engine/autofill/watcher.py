@@ -223,7 +223,7 @@ def _process_field(frame, ats, descriptor, get_value, record, handled, result) -
         return
     if decision.action == "settle":
         record(descriptor, decision.tag, "", decision.outcome)
-        handled[key] = decision.outcome
+        handled[key] = field_core.settle_entry(decision.outcome)
         return
 
     try:
@@ -238,7 +238,7 @@ def _process_field(frame, ats, descriptor, get_value, record, handled, result) -
                 # custom widgets rejecting programmatic attachment are
                 # reported, never fatal (007 edge case, preserved)
                 record(descriptor, decision.tag, "", "needs_manual")
-                handled[key] = "needs_manual"
+                handled[key] = field_core.settle_entry("needs_manual")
                 return
             record(descriptor, decision.tag, decision.preview, "filled")
             handled[key] = "filled"
@@ -253,7 +253,7 @@ def _process_field(frame, ats, descriptor, get_value, record, handled, result) -
                 _fill_widget(frame, locator, decision)
             except _DenylistedClick:
                 record(descriptor, decision.tag, "", "needs_manual")
-                handled[key] = "needs_manual"
+                handled[key] = field_core.settle_entry("needs_manual")
                 return
             except Exception as exc:
                 if _is_closed_error(exc):
@@ -263,7 +263,7 @@ def _process_field(frame, ats, descriptor, get_value, record, handled, result) -
                 except Exception:
                     pass
                 record(descriptor, decision.tag, "", "needs_manual")
-                handled[key] = "needs_manual"
+                handled[key] = field_core.settle_entry("needs_manual")
                 return
             record(descriptor, decision.tag, decision.preview, "filled")
             handled[key] = "filled"

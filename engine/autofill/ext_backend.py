@@ -152,9 +152,12 @@ def consume_file_token(token: str) -> str | None:
 
 # tab/job the companion is watching; pending open_tab correlations
 _watch: dict = {"tab_id": None, "job_id": None, "pending_open": {}}
-# (tab_id, frame_id, je_idx) -> (descriptor_raw, tag, preview) for fills
-# whose result has not come back — prevents double-fill on overlapping scans
+# (tab_id, frame_id, je_idx) -> (descriptor_raw, tag, preview, ai_draft,
+# sent_at) for fills whose result has not come back — prevents double-fill
+# on overlapping scans. 016 (T007): entries EXPIRE — a lost fill_result
+# must not block its field for the life of the document.
 _inflight: dict[tuple, tuple] = {}
+INFLIGHT_TTL_S = 20.0
 # per-frame seen counts for the watched tab (overlay + activity aggregation)
 _frame_seen: dict[int, int] = {}
 # detected submissions awaiting user confirmation (FR-020; consumed by the
@@ -288,9 +291,13 @@ def _handle_fields(msg) -> None:
     for desc in msg.descriptors:
         raw = desc.as_watcher_dict()
         fkey = (msg.tab_id, msg.frame_id, raw["je_idx"])
-        if fkey in _inflight:
-            seen += 1
-            continue
+        with _lock:
+            info = _inflight.get(fkey)
+            if info is not None:
+                if time.monotonic() - info[-1] <= INFLIGHT_TTL_S:
+                    seen += 1
+                    continue
+                del _inflight[fkey]  # lost fill_result — re-decide (T007)
         decision = field_core.decide(ats, raw, ledger, get_value)
         if decision.action == "ignore":
             continue
@@ -301,7 +308,7 @@ def _handle_fields(msg) -> None:
         if decision.action == "settle":
             bc._record(job_id, raw, decision.tag, "", decision.outcome)
             with bc._lock:
-                ledger[lkey] = decision.outcome
+                ledger[lkey] = field_core.settle_entry(decision.outcome)
             continue
         # action == "fill"
         item: dict = {"je_idx": raw["je_idx"], "flag": None}
@@ -329,7 +336,7 @@ def _handle_fields(msg) -> None:
             item["flag"] = "ai_draft"
         with _lock:
             _inflight[fkey] = (raw, decision.tag, decision.preview,
-                               decision.ai_draft)
+                               decision.ai_draft, time.monotonic())
         # 016 (T005/R1): incremental dispatch — a decided fill goes out
         # IMMEDIATELY. Batching until the whole form was decided is what
         # withheld name/email fills behind slow decisions (RC1).
@@ -382,7 +389,7 @@ def _handle_fill_result(msg) -> None:
             info = _inflight.pop(fkey, None)
         if info is None:
             continue
-        raw, tag, preview, ai_draft = info
+        raw, tag, preview, ai_draft, _sent_at = info
         lkey = field_core.key(raw)
         if item.outcome == "filled":
             bc._record(job_id, raw, tag, preview, "filled", ai_draft)
@@ -392,7 +399,8 @@ def _handle_fill_result(msg) -> None:
         elif item.outcome == "needs_manual":
             bc._record(job_id, raw, tag, "", "needs_manual")
             with bc._lock:
-                bc._state.handled.setdefault(job_id, {})[lkey] = "needs_manual"
+                bc._state.handled.setdefault(job_id, {})[lkey] = \
+                    field_core.settle_entry("needs_manual")
         # focused / not_found: retryable — no record, next scan re-decides
     if filled_now:
         with bc._lock:

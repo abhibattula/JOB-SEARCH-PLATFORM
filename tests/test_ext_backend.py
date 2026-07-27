@@ -622,3 +622,47 @@ class TestBrowserAndRejects015:
         ext_backend.record_reject("auth")
         ext_backend.reset_for_tests()
         assert ext_backend.reject_stats()["auth"] == 0
+
+
+class TestInflightTTL016:
+    """016 (T007): a fill whose result never comes back must not block its
+    field forever — in-flight entries expire (~20 s) and the next scan
+    re-decides."""
+
+    def test_expired_inflight_entry_is_retried(self, queue, sent):
+        import time as time_mod
+
+        open_the_tab(queue, sent)
+        message = fields_msg(descriptors=[descriptor()])
+        ext_backend.handle_message(message)
+        assert len([m for m in sent if m["type"] == "fill"]) == 1
+        # the fill_result never arrives; age the entry past the TTL
+        with ext_backend._lock:
+            for fkey, info in list(ext_backend._inflight.items()):
+                ext_backend._inflight[fkey] = info[:-1] + (
+                    time_mod.monotonic() - ext_backend.INFLIGHT_TTL_S - 1,)
+        ext_backend.handle_message(message)
+        assert len([m for m in sent if m["type"] == "fill"]) == 2
+
+    def test_fresh_inflight_entry_still_blocks_double_fill(self, queue, sent):
+        open_the_tab(queue, sent)
+        message = fields_msg(descriptors=[descriptor()])
+        ext_backend.handle_message(message)
+        ext_backend.handle_message(message)
+        assert len([m for m in sent if m["type"] == "fill"]) == 1
+
+    def test_settled_no_match_records_epoch_tuple(self, queue, sent, monkeypatch):
+        from engine.autofill import answer_bank, drafter
+
+        monkeypatch.setattr(answer_bank, "lookup",
+                            lambda q: {"answer": "A paragraph that matches "
+                                       "no option at all", "source": "user"})
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(descriptors=[
+            descriptor(je_idx="6", tag="select", type="", name="auth",
+                       id="auth", label_text="Authorized?",
+                       options=["Yes", "No"]),
+        ]))
+        entry = bc._state.handled[queue][("docA", "6")]
+        assert isinstance(entry, tuple) and entry[0] == "no_match"
+        assert entry[1] == drafter.cache_version()

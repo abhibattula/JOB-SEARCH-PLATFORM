@@ -32,6 +32,18 @@ def key(descriptor: dict) -> tuple:
     return (descriptor.get("doc"), descriptor.get("je_idx"))
 
 
+def settle_entry(outcome: str):
+    """016 (T007, R3): the ledger value for a settle. `no_match`/
+    `needs_manual` carry the drafter cache epoch — a NEWER answer arriving
+    later re-opens the field (the confirm-then-deadlock class); `filled`/
+    `skipped_existing` stay plain strings and never retry."""
+    if outcome in ("no_match", "needs_manual"):
+        from . import drafter
+
+        return (outcome, drafter.cache_version())
+    return outcome
+
+
 class Draft(str):
     """A value that is an AI draft, not a settled fact. get_value may return
     one; decide() then flags the fill as ai_draft (filled + flagged for
@@ -66,8 +78,19 @@ def decide(ats: str | None, descriptor: dict, handled: dict, get_value) -> Decis
     if not descriptor.get("visible") and (descriptor.get("type") or "") != "file":
         return Decision("ignore")
 
-    if handled.get(key(descriptor)) in TERMINAL_OUTCOMES:
-        return Decision("skip")
+    entry = handled.get(key(descriptor))
+    if entry is not None:
+        name = entry[0] if isinstance(entry, tuple) else entry
+        if name in TERMINAL_OUTCOMES:
+            if isinstance(entry, tuple):
+                from . import drafter
+
+                if drafter.cache_version() > entry[1]:
+                    pass  # a newer answer exists — re-decide this field
+                else:
+                    return Decision("skip")
+            else:
+                return Decision("skip")
 
     tag = adapters.classify(ats, descriptor) or fields_mod.classify(descriptor)
 

@@ -190,3 +190,67 @@ class TestWidgetAware011:
             tag="how_heard", type="", name="source", widget="custom_combobox",
             options=["LinkedIn"]), value=field_core.Draft("LinkedIn"))
         assert d.kind == "combobox" and d.ai_draft is False
+
+
+class TestLedgerRepair016:
+    """016 (T007, R3): no_match/needs_manual settle WITH the drafter cache
+    epoch — a NEWER answer re-opens the field; filled/skipped_existing stay
+    permanently settled; legacy plain-string entries keep their old
+    (never-retry) meaning."""
+
+    def _descriptor(self, **over):
+        d = {"je_idx": "3", "doc": "docA", "tag": "select", "type": "",
+             "name": "auth", "id": "auth", "label_text": "Authorized?",
+             "placeholder": "", "aria_label": "", "autocomplete": "",
+             "value": "", "options": ["Yes", "No"], "maxlength": None,
+             "focused": False, "visible": True, "widget": ""}
+        d.update(over)
+        return d
+
+    def test_settle_entry_carries_epoch_for_retryable_outcomes(self):
+        from engine.autofill import drafter
+
+        drafter.reset_for_tests()
+        entry = field_core.settle_entry("no_match")
+        assert entry == ("no_match", drafter.cache_version())
+        assert field_core.settle_entry("filled") == "filled"
+        assert field_core.settle_entry("skipped_existing") == "skipped_existing"
+
+    def test_no_match_retries_when_a_newer_answer_exists(self, monkeypatch):
+        from engine.autofill import drafter
+
+        drafter.reset_for_tests()
+        handled = {("docA", "3"): ("no_match", 0)}
+        monkeypatch.setattr(drafter, "cache_version", lambda: 1)  # newer
+        decision = field_core.decide(None, self._descriptor(), handled,
+                                     lambda tag, raw: "Yes")
+        assert decision.action == "fill" and decision.option_label == "Yes"
+
+    def test_no_match_skips_at_same_epoch(self):
+        from engine.autofill import drafter
+
+        drafter.reset_for_tests()
+        handled = {("docA", "3"): ("no_match", drafter.cache_version())}
+        decision = field_core.decide(None, self._descriptor(), handled,
+                                     lambda tag, raw: "Yes")
+        assert decision.action == "skip"
+
+    def test_legacy_string_terminal_never_retries(self, monkeypatch):
+        from engine.autofill import drafter
+
+        drafter.reset_for_tests()
+        monkeypatch.setattr(drafter, "cache_version", lambda: 99)
+        handled = {("docA", "3"): "no_match"}
+        decision = field_core.decide(None, self._descriptor(), handled,
+                                     lambda tag, raw: "Yes")
+        assert decision.action == "skip"
+
+    def test_filled_stays_settled_regardless_of_epoch(self, monkeypatch):
+        from engine.autofill import drafter
+
+        drafter.reset_for_tests()
+        monkeypatch.setattr(drafter, "cache_version", lambda: 99)
+        handled = {("docA", "3"): "filled"}
+        decision = field_core.decide(None, self._descriptor(), handled,
+                                     lambda tag, raw: "Yes")
+        assert decision.action == "skip"
