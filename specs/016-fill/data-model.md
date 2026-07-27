@@ -72,20 +72,23 @@ current answer for that question is treated as retryable on the next scan.
 Rendered as outline + badge from the overlay's shadow DOM; recomputed
 per fill batch; survives rescans (reapplied while the flag holds).
 
-## 6. Answer bank (SQLite, additive columns)
+## 6. Answer bank (SQLite — NO new columns; revised at implementation)
 
-`answer_bank` gains:
+The planned `origin`/`job_id` columns were dropped during T004:
+`answer_bank.question_normalized` is UNIQUE, so per-job scoped rows for
+the same question would collide. Instead:
 
-| Column | Type | Notes |
-|---|---|---|
-| `origin` | TEXT DEFAULT 'human' | `'ai'` for auto-saved drafts |
-| `job_id` | INTEGER NULL | non-NULL = job-scoped (job-specific prose) |
+- **Reusable facts** upsert via `save_auto()` with the existing `source`
+  column set to `'ai'`; the upsert's `WHERE source='ai'` guard means an
+  AI save can NEVER overwrite a human-confirmed entry.
+- **Job-specific prose** (`cover_letter`, `free_text_unknown`) is
+  recorded ONLY in the existing per-job `application_answers` table —
+  it never enters the reusable bank, so cross-job leakage is impossible
+  by construction.
+- **Sentinel job ids** (practice/ad-hoc, ≤ 0) persist nothing.
 
-Reuse rules: lookup for job B ignores rows where `job_id IS NOT NULL AND
-job_id != B`. Job-specific prose tags (`cover_letter`, why-us style
-`free_text_unknown` drafts) auto-save with `job_id` set; job-agnostic
-factual tags save unscoped. Human-confirmed saves keep today's behavior
-(unscoped, `origin='human'`).
+Same behavior as specified (FR-004 + clarification), zero schema
+migration.
 
 ## 7. AI runtime status (existing, defaults change)
 

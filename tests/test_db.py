@@ -688,3 +688,42 @@ class Test010Migrations:
         assert db.get_bridge_secret() == secret  # stable across calls
         db.init_db()
         assert db.get_bridge_secret() == secret  # stable across re-init
+
+
+class TestEmployerCache016:
+    """016 (T004, R5): load_h1b_employers is memoized in-process — the
+    discovery score path must never re-read the full table per request —
+    and the cache invalidates on writes and follows the active db path."""
+
+    RECORD = {"display_name": "Acme", "approvals": 12, "denials": 1,
+              "wage_level_median": "II", "wage_offered_median": 120000.0,
+              "lca_titles": ["engineer"]}
+
+    def test_memoized_until_store_invalidates(self, tmp_db, monkeypatch):
+        db.store_h1b_employers({"acme": dict(self.RECORD)})
+        first = db.load_h1b_employers()
+        assert "acme" in first
+
+        original_conn = db._conn
+
+        def _boom():
+            raise AssertionError("cached load must not hit the database")
+
+        monkeypatch.setattr(db, "_conn", _boom)
+        assert db.load_h1b_employers() == first  # served from cache
+        monkeypatch.setattr(db, "_conn", original_conn)
+
+        db.store_h1b_employers({"globex": dict(self.RECORD,
+                                               display_name="Globex")})
+        fresh = db.load_h1b_employers()
+        assert "globex" in fresh and "acme" in fresh
+
+    def test_cache_is_per_database_path(self, tmp_path, monkeypatch):
+        monkeypatch.setenv("JOBS_DB_PATH", str(tmp_path / "one.db"))
+        db.init_db()
+        db.store_h1b_employers({"acme": dict(self.RECORD)})
+        assert "acme" in db.load_h1b_employers()
+
+        monkeypatch.setenv("JOBS_DB_PATH", str(tmp_path / "two.db"))
+        db.init_db()
+        assert db.load_h1b_employers() == {}  # no stale carry-over

@@ -1,10 +1,13 @@
 """Reusable "answered once, reused everywhere" question/answer store, plus
 the per-application audit record (feature 005, spec FR-010/FR-011/FR-021).
 
-Hard rule enforced here, not just in the UI: `save()` is the only path that
-ever writes a confirmed answer, and it is only ever called after the user
-has explicitly confirmed or typed an answer — nothing in this module
-persists an AI-drafted suggestion on its own (FR-011).
+Hard rules enforced here, not just in the UI: `save()` writes confirmed
+answers and is only ever called after the user has explicitly confirmed or
+typed one. 016 (fill-first, FR-004) adds `save_auto()` — the drafter's
+ONLY persistence path: reusable facts land as source='ai' and NEVER
+overwrite a human-confirmed entry; job-specific prose (cover letter /
+why-us) is recorded per-application only and never enters the reusable
+bank; practice/ad-hoc sentinel job ids persist nothing.
 """
 from __future__ import annotations
 
@@ -96,6 +99,35 @@ def save_with_provenance(question_raw: str, answer: str, provenance: str,
             "SELECT id FROM answer_bank WHERE question_normalized = ?", (normalized,)
         ).fetchone()
     return row["id"]
+
+
+def save_auto(*, question: str, answer: str, tag: str | None,
+              origin: str = "ai", job_id: int | None = None) -> int | None:
+    """016 (T004): auto-save a completed draft (see module docstring for
+    the scoping rules). Returns the bank row id for reusable-fact saves,
+    None when the save was job-scoped, skipped (sentinel id), or refused
+    (a human-confirmed entry holds the question)."""
+    if job_id is not None:
+        if job_id > 0:  # sentinel practice/ad-hoc ids never touch the db
+            record_application_answer(job_id, question, None, answer)
+        return None
+    normalized = _normalize(question)
+    now = _utcnow()
+    with db._conn() as conn:
+        conn.execute(
+            "INSERT INTO answer_bank (question_normalized, question_raw, answer,"
+            " category, source, confirmed_at, updated_at) VALUES (?,?,?,?,?,?,?)"
+            " ON CONFLICT(question_normalized) DO UPDATE SET"
+            " answer=excluded.answer, category=excluded.category,"
+            " updated_at=excluded.updated_at"
+            " WHERE answer_bank.source = 'ai'",
+            (normalized, question, answer, tag, origin, now, now),
+        )
+        row = conn.execute(
+            "SELECT id, source FROM answer_bank WHERE question_normalized = ?",
+            (normalized,),
+        ).fetchone()
+    return row["id"] if row is not None and row["source"] == "ai" else None
 
 
 def list_all() -> list[dict]:

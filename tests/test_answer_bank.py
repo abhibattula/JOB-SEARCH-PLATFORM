@@ -164,3 +164,74 @@ class TestRecordApplicationAnswer:
                 "SELECT * FROM application_answers WHERE job_id = ?", (job_id,)
             ).fetchone()
         assert row["answer_used"] == "Original answer"
+
+
+class TestAutoSave016:
+    """016 (T004): the drafter's auto-save path — reusable facts land in
+    the bank as source='ai' (never clobbering a human entry); job-specific
+    prose is recorded per-application only and never enters the reusable
+    bank; practice/ad-hoc sentinel job ids never touch the database."""
+
+    @staticmethod
+    def _make_job():
+        from engine import db
+
+        db.upsert_job(
+            {"title": "SWE", "company": "ScopeCo", "url": "https://x.example/9",
+             "source": "greenhouse", "description": "desc"}
+        )
+        jobs, _ = db.query_jobs(window=None, statuses=None, entry_level=None)
+        return jobs[0]["id"]
+
+    def test_fact_saves_to_bank_as_ai(self, tmp_db):
+        bank_id = answer_bank.save_auto(
+            question="What is your notice period?", answer="Two weeks",
+            tag="notice_period", origin="ai", job_id=None)
+        row = answer_bank.lookup("What is your notice period?")
+        assert row is not None and row["answer"] == "Two weeks"
+        assert row["source"] == "ai"
+        assert bank_id == row["id"]
+
+    def test_ai_save_never_overwrites_user_entry(self, tmp_db):
+        answer_bank.save("What is your notice period?", "One month",
+                         category="notice_period")
+        answer_bank.save_auto(
+            question="What is your notice period?", answer="Two weeks",
+            tag="notice_period", origin="ai", job_id=None)
+        row = answer_bank.lookup("What is your notice period?")
+        assert row["answer"] == "One month"
+        assert row["source"] == "user"
+
+    def test_ai_save_updates_prior_ai_entry(self, tmp_db):
+        answer_bank.save_auto(question="Notice period?", answer="Two weeks",
+                              tag="notice_period", origin="ai", job_id=None)
+        answer_bank.save_auto(question="Notice period?", answer="Immediately",
+                              tag="notice_period", origin="ai", job_id=None)
+        assert answer_bank.lookup("Notice period?")["answer"] == "Immediately"
+
+    def test_job_scoped_prose_never_enters_the_reusable_bank(self, tmp_db):
+        from engine import db
+
+        job_id = self._make_job()
+        answer_bank.save_auto(
+            question="Why do you want to work at ScopeCo?",
+            answer="Because of the mission.", tag="cover_letter",
+            origin="ai", job_id=job_id)
+        assert answer_bank.lookup("Why do you want to work at ScopeCo?") is None
+        with db._conn() as conn:
+            rows = conn.execute(
+                "SELECT * FROM application_answers WHERE job_id = ?",
+                (job_id,)).fetchall()
+        assert len(rows) == 1
+        assert rows[0]["answer_used"] == "Because of the mission."
+
+    def test_sentinel_job_id_skips_persist_without_error(self, tmp_db):
+        from engine import db
+
+        answer_bank.save_auto(question="Why us?", answer="Because",
+                              tag="cover_letter", origin="ai", job_id=0)
+        assert answer_bank.lookup("Why us?") is None
+        with db._conn() as conn:
+            n = conn.execute(
+                "SELECT COUNT(1) AS n FROM application_answers").fetchone()["n"]
+        assert n == 0

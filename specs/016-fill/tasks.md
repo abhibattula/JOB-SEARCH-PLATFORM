@@ -33,13 +33,13 @@ Verify/docs/ship.
 
 ## Phase 2: Foundational (blocking prerequisites)
 
-- [ ] T002 [P] Protocol additions (additive, PROTOCOL_V stays 1) in
+- [x] T002 [P] Protocol additions (additive, PROTOCOL_V stays 1) in
   `engine/autofill/ext_protocol.py`: `Descriptor.members`/`required`,
   `type "radio_group"`, `FillItem.kind "radio"`, flag `"needs_you"`,
   messages `rescan` (out) / `scan_error`, `child_tab` (in). Tests
   (`tests/test_ext_protocol.py`): new fields parse, OLD payloads without
   them still parse (`extra="ignore"` + defaults), PROTOCOL_V unchanged.
-- [ ] T003 `engine/autofill/drafter.py` (NEW, R2/R7) — TDD: write
+- [x] T003 `engine/autofill/drafter.py` (NEW, R2/R7) — TDD: write
   `tests/test_drafter.py` FIRST (one-draft-per-key under a 16-thread
   `ensure` hammer; bounded pool ≤2; backoff 30 s→×2→cap 600 s;
   `reset_backoff_for` re-arms once; sensitive tags → immediate
@@ -47,7 +47,7 @@ Verify/docs/ship.
   (answer ∉ options → `failed:no_valid_option`); maxlength enforcement;
   `cache_version` bumps per completion; completion side-effect order per
   contracts/drafter-api.md §6), watch it fail, then implement.
-- [ ] T004 [P] Storage foundations — TDD: `answer_bank` additive columns
+- [x] T004 [P] Storage foundations — TDD: `answer_bank` additive columns
   `origin`/`job_id` (guarded ALTER in `engine/db.py` init), scoped
   save/lookup rules in `engine/autofill/answer_bank.py` (job-specific
   prose scoped; lookup for job B ignores other jobs' scoped rows;
