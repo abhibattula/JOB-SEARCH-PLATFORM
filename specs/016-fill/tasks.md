@@ -237,7 +237,7 @@ the app; tailor bounded and honest.
   isolation default), `README.md` companion section, `WHATS_NEW["1.6.0"]`
   final copy; auto-memory updates (job-engine status, apply-assist
   rebuild lessons).
-- [ ] T025 Ship v1.6.0 — merge `016-fill`→`main`, mirror
+- [x] T025 Ship v1.6.0 — merge `016-fill`→`main`, mirror
   `main:001-ai-job-engine`, keep the feature branch, tag `v1.6.0`
   (triggers "Release installers"), watch BOTH jobs, verify BOTH
   installers (magic bytes 4d5a/7801 + SHA-256 release-body vs stored
