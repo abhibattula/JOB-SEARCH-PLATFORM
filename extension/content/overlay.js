@@ -33,23 +33,54 @@ window.jeOverlay = (function () {
         .reminder{margin-top:8px;padding:6px 8px;background:#1f2937;
           border-radius:6px;color:#f0b429;font-size:12px}
         .drafts{margin-top:6px;color:#a371f7;font-size:12px}
+        .attn{margin-top:6px;color:#f0b429;font-size:12px}
+        .attn li{margin-left:14px;list-style:disc}
+        .note{margin-top:6px;color:#8b949e;font-size:12px}
+        .again{margin-top:8px;width:100%;padding:6px 8px;font:12px system-ui;
+          background:#21262d;color:#e6edf3;border:1px solid #30363d;
+          border-radius:6px;cursor:pointer}
+        .again:hover{background:#30363d}
       </style>
       <div class="panel">
         <div class="hd"><span class="dot"></span><span>Job Engine — filling</span></div>
         <div class="bd">
           <div class="row"><span class="muted">Fields seen</span><span id="seen">0</span></div>
           <div class="row"><span class="muted">Filled</span><span id="filled">0</span></div>
+          <div class="row"><span class="muted">Need you</span><span id="needs">0</span></div>
           <div class="drafts" id="drafts" style="display:none"></div>
+          <div class="attn" id="attn" style="display:none"></div>
+          <div class="note" id="note" style="display:none"></div>
+          <button class="again" id="again" type="button">Fill again</button>
           <div class="reminder" id="msg">You click apply / submit — never us.</div>
         </div>
       </div>`;
     els = {
       seen: root.getElementById("seen"),
       filled: root.getElementById("filled"),
+      needs: root.getElementById("needs"),
       drafts: root.getElementById("drafts"),
+      attn: root.getElementById("attn"),
+      note: root.getElementById("note"),
       msg: root.getElementById("msg"),
     };
+    // 016 (T016): "Fill again" asks the APP to re-fill (never touches the
+    // page itself) — main.js relays it over the bridge.
+    root.getElementById("again").addEventListener("click", function () {
+      if (fillAgainHandler) { fillAgainHandler(); }
+    });
     (document.body || document.documentElement).appendChild(host);
+  }
+
+  let fillAgainHandler = null;
+  function onFillAgain(fn) { fillAgainHandler = fn; }
+
+  // One-line status note (e.g. "opened the application form").
+  function note(text) {
+    build();
+    if (els.note) {
+      els.note.style.display = "block";
+      els.note.textContent = text;
+    }
   }
 
   function show() { build(); if (host) { host.style.display = "block"; } }
@@ -68,7 +99,19 @@ window.jeOverlay = (function () {
       els.drafts.style.display = "none";
     }
     if (summary.message) { els.msg.textContent = summary.message; }
+    els.needs.textContent = summary.needs_you ?? 0;
+    const attention = summary.attention || [];
+    if (attention.length) {
+      els.attn.style.display = "block";
+      els.attn.innerHTML = "Needs you:<ul>" + attention.map(function (label) {
+        const li = document.createElement("li");
+        li.textContent = label;
+        return li.outerHTML;
+      }).join("") + "</ul>";
+    } else {
+      els.attn.style.display = "none";
+    }
   }
 
-  return { show, hide, update };
+  return { show, hide, update, note, onFillAgain };
 })();

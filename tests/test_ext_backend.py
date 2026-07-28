@@ -757,3 +757,57 @@ class TestVersionGate016:
         fill = next(m for m in sent if m["type"] == "fill")
         item = fill["items"][0]
         assert item["kind"] == "radio" and item["value"] == "Yes"
+
+
+class TestFillAgain016:
+    """016 (T016, R10): the panel's Fill again clears retryable ledger
+    entries, re-arms failed drafts, and nudges a rescan — user-typed
+    values stay sacred via the write-time guards."""
+
+    def test_fill_again_clears_ledger_resets_backoff_and_nudges(
+            self, queue, sent):
+        from engine.autofill import drafter, field_core
+
+        drafter.reset_for_tests(backoff_base_s=60.0)
+        drafter.set_generator_for_tests(lambda q, c, p: None)  # always fails
+        open_the_tab(queue, sent)
+        with bc._lock:
+            bc._state.handled[queue] = {
+                ("docA", "1"): "filled",
+                ("docA", "2"): "skipped_existing",
+                ("docA", "3"): field_core.settle_entry("no_match"),
+            }
+        drafter.ensure(queue, "Hard question?", {"tag": "free_text_unknown",
+                                                 "options": [],
+                                                 "maxlength": None,
+                                                 "widget": ""}, {})
+        deadline_ok = False
+        import time as time_mod
+        for _ in range(200):
+            record = drafter.get(queue, "Hard question?")
+            if record and record["state"] == "failed":
+                deadline_ok = True
+                break
+            time_mod.sleep(0.01)
+        assert deadline_ok
+        sent.clear()
+
+        ext_backend.handle_message(ext_protocol.FillAgain(tab_id=40))
+
+        ledger = bc._state.handled[queue]
+        assert ("docA", "2") in ledger          # skipped_existing kept
+        assert ("docA", "1") not in ledger      # re-decides (sacred rule guards)
+        assert ("docA", "3") not in ledger
+        record = drafter.get(queue, "Hard question?")
+        assert record["next_retry_at"] == 0.0   # backoff re-armed
+        assert any(m["type"] == "rescan" for m in sent)
+        drafter.reset_for_tests()
+
+    def test_fill_again_from_unwatched_tab_ignored(self, queue, sent):
+        open_the_tab(queue, sent)
+        with bc._lock:
+            bc._state.handled[queue] = {("docA", "3"): "no_match"}
+        sent.clear()
+        ext_backend.handle_message(ext_protocol.FillAgain(tab_id=999))
+        assert bc._state.handled[queue] == {("docA", "3"): "no_match"}
+        assert not any(m["type"] == "rescan" for m in sent)

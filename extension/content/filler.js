@@ -205,10 +205,45 @@ window.jeFiller = (function () {
   async function apply(items) {
     const results = [];
     for (const item of items) {
-      results.push(await applyOne(item));
+      const result = await applyOne(item);
+      // 016 (T017): a drafted answer stays visibly highlighted until the
+      // USER edits the field — their edit clears it (D2).
+      if (result.outcome === "filled" && item.flag) {
+        const el = window.jeScanner.elementByIdx(item.je_idx);
+        if (el) { annotate(el, item.flag); }
+      }
+      results.push(result);
     }
     return results;
   }
 
-  return { apply };
+  function annotate(el, flag) {
+    try {
+      if (el.dataset.jeFlag === flag) { return; }
+      el.dataset.jeFlag = flag;
+      el.style.outline = flag === "ai_draft"
+        ? "2px solid #a371f7" : "2px solid #f0b429";
+      el.style.outlineOffset = "2px";
+      const clear = function () {
+        delete el.dataset.jeFlag;
+        el.style.outline = "";
+        el.style.outlineOffset = "";
+        el.removeEventListener("input", clear);
+        el.removeEventListener("change", clear);
+      };
+      el.addEventListener("input", clear);
+      el.addEventListener("change", clear);
+    } catch (_e) { /* highlighting is best-effort, never fatal */ }
+  }
+
+  // 016 (T017): fields the human must answer (sensitive/no-match/missing
+  // fact) — flagged even though nothing was filled.
+  function annotateNeedsYou(jeIdxList) {
+    for (const jeIdx of jeIdxList || []) {
+      const el = window.jeScanner.elementByIdx(jeIdx);
+      if (el) { annotate(el, "needs_you"); }
+    }
+  }
+
+  return { apply, annotateNeedsYou };
 })();

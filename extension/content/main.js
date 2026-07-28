@@ -80,7 +80,16 @@
     // Safety poll covers observer blind spots (value mutations that change
     // no observed attribute).
     safetyTimer = setInterval(scan, 2000);
-    if (isTop && window.jeOverlay) { window.jeOverlay.show(); }
+    if (isTop && window.jeOverlay) {
+      window.jeOverlay.show();
+      // 016 (T016): the panel's Fill again → app clears retryable state
+      // and nudges a rescan (the page itself is never touched from here)
+      if (window.jeOverlay.onFillAgain) {
+        window.jeOverlay.onFillAgain(function () {
+          toApp({ type: "fill_again" });
+        });
+      }
+    }
     // Detect the user's own submission — never our doing (we never click).
     document.addEventListener("submit", onSubmit, true);
     scan();
@@ -127,6 +136,11 @@
         break;
       case "overlay_state":
         if (isTop && window.jeOverlay) { window.jeOverlay.update(message.summary); }
+        // 016 (T017): highlight the fields the human must answer
+        if (message.summary && message.summary.needs_you_idx
+            && window.jeFiller.annotateNeedsYou) {
+          window.jeFiller.annotateNeedsYou(message.summary.needs_you_idx);
+        }
         break;
       default: break;
     }

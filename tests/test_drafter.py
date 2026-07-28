@@ -249,3 +249,18 @@ class TestConstrainedDrafting016:
         drafter.ensure(3, "Source?", ctx(widget="custom_combobox"), PROFILE)
         assert wait_until(lambda: drafter.answer_for(3, "Source?"))
         assert drafter.answer_for(3, "Source?") == "LinkedIn"
+
+
+class TestFillAgainReset016:
+    def test_reset_backoff_for_job_rearms_all_failed_non_sensitive(self):
+        drafter.set_generator_for_tests(lambda q, c, p: None)
+        drafter.ensure(9, "Hard A?", ctx(), PROFILE)
+        drafter.ensure(9, "Hard B?", ctx(), PROFILE)
+        drafter.mark_needs_you(9, "Ethnicity?", "sensitive")
+        assert wait_until(
+            lambda: all((drafter.get(9, q) or {}).get("state") == "failed"
+                        for q in ("Hard A?", "Hard B?")))
+        drafter.reset_backoff_for_job(9)
+        assert drafter.get(9, "Hard A?")["next_retry_at"] == 0.0
+        assert drafter.get(9, "Hard B?")["next_retry_at"] == 0.0
+        assert drafter.get(9, "Ethnicity?")["next_retry_at"] == float("inf")

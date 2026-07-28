@@ -278,14 +278,27 @@ def answer_for(job_id: int, question: str) -> str | None:
         return None
 
 
+_NEVER_RETRY_REASONS = ("sensitive", "profile_fact_missing")
+
+
 def reset_backoff_for(job_id: int, questions: list[str]) -> None:
     """Fill-again support: failed keys become immediately retryable
-    (sensitive stays permanently non-generating)."""
+    (sensitive/fact questions stay with the human)."""
     with _lock:
         for question in questions:
             rec = _records.get(_key(job_id, question))
             if rec is not None and rec["state"] == "failed" \
-                    and rec["reason"] != "sensitive":
+                    and rec["reason"] not in _NEVER_RETRY_REASONS:
+                rec["next_retry_at"] = 0.0
+
+
+def reset_backoff_for_job(job_id: int) -> None:
+    """Fill-again (T016): one explicit user action re-arms every failed
+    draft of the job (sensitive/fact questions stay with the human)."""
+    with _lock:
+        for key, rec in _records.items():
+            if key[0] == int(job_id) and rec["state"] == "failed" \
+                    and rec["reason"] not in _NEVER_RETRY_REASONS:
                 rec["next_retry_at"] = 0.0
 
 

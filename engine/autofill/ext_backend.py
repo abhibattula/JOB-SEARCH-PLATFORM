@@ -280,7 +280,32 @@ def handle_message(msg) -> None:
         _handle_child_tab(msg)
     elif isinstance(msg, ext_protocol.ScanError):
         _handle_scan_error(msg)
+    elif isinstance(msg, ext_protocol.FillAgain):
+        _handle_fill_again(msg)
     # Pong: heartbeat only (touch() above)
+
+
+def _handle_fill_again(msg) -> None:
+    """016 (T016, R10): the panel's Fill again — clear retryable ledger
+    entries (user-typed values stay sacred via the write-time guards),
+    re-arm failed drafts once, then nudge a rescan."""
+    from . import browser_controller as bc, drafter
+
+    with _lock:
+        if msg.tab_id != _watch["tab_id"]:
+            return
+        job_id = _watch["job_id"]
+        _inflight.clear()
+    if job_id is None:
+        return
+    with bc._lock:
+        ledger = bc._state.handled.get(job_id) or {}
+        for lkey in [k for k, v in list(ledger.items())
+                     if (v[0] if isinstance(v, tuple) else v)
+                     != "skipped_existing"]:
+            del ledger[lkey]
+    drafter.reset_backoff_for_job(job_id)
+    send(_outbound("rescan", reason="fill_again"))
 
 
 def _handle_scan_error(msg) -> None:
@@ -361,6 +386,12 @@ def _handle_fields(msg) -> None:
 
     ats = adapters.ats_from_url(msg.url)
     seen = 0
+    # 016 (T017): fields the HUMAN must answer (sensitive / missing fact /
+    # no valid option) — highlighted on the page + listed in the panel.
+    from . import drafter
+
+    needs_you_idx: list[str] = []
+    needs_you_labels: list[str] = []
     for desc in msg.descriptors:
         raw = desc.as_watcher_dict()
         fkey = (msg.tab_id, msg.frame_id, raw["je_idx"])
@@ -377,6 +408,14 @@ def _handle_fields(msg) -> None:
         seen += 1
         lkey = field_core.key(raw)
         if decision.action == "skip":
+            question = (raw.get("label_text") or raw.get("placeholder")
+                        or raw.get("aria_label") or "")
+            if question:
+                record = drafter.get(job_id, question)
+                if record and record["state"] == "failed" and \
+                        record["reason"] in drafter._NEEDS_YOU_REASONS:
+                    needs_you_idx.append(raw["je_idx"])
+                    needs_you_labels.append(question)
             continue
         if decision.action == "settle":
             bc._record(job_id, raw, decision.tag, "", decision.outcome)
@@ -455,6 +494,9 @@ def _handle_fields(msg) -> None:
         )
     send(_outbound("overlay_state", tab_id=msg.tab_id, summary={
         "seen": total_seen, "filled": filled_total, "drafts": draft_count,
+        "needs_you": len(needs_you_idx),
+        "needs_you_idx": needs_you_idx,
+        "attention": needs_you_labels[:5],
         "message": "you click the actual apply/submit",
     }))
 

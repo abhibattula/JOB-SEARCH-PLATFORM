@@ -167,14 +167,14 @@ radios/comboboxes correct, EEO blank + flagged, honest outcomes.
   source, asset-parity-tested).
   `extension/content/click_guard.js` UNTOUCHED. Tests: asset parity +
   guard-untouched assertions; E2E opener case in T022.
-- [ ] T016 [US3] On-page panel (R10) — `extension/content/overlay.js`:
+- [x] T016 [US3] On-page panel (R10) — `extension/content/overlay.js`:
   shadow-DOM panel (status, filled/needs-you counters, per-field list
   with jump-to, Fill again, review-and-submit note);
   `extension/content/main.js` handles `rescan`; Fill again → bridge
   message → app clears non-`skipped_existing` ledger entries +
   `drafter.reset_backoff_for(page questions)` + rescan nudge. Tests:
   asset assertions + `ext_backend` fill-again unit.
-- [ ] T017 [P] [US3] Highlights (R10) — `extension/content/filler.js`
+- [x] T017 [P] [US3] Highlights (R10) — `extension/content/filler.js`
   renders `ai_draft`/`needs_you` flags as outline + badge keyed by
   `je_idx`; input listener clears; reapplied across rescans while the
   flag holds. Tests: asset assertions + E2E visibility check (T022).

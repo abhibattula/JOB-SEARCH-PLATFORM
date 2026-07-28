@@ -361,3 +361,28 @@ class TestApplyOpener016:
         main = (EXT / "content" / "main.js").read_text(encoding="utf-8")
         assert "jeOpener" in main
         assert "adhoc" in main  # popup fill-here never auto-opens
+
+
+class TestPanelAndHighlights016:
+    """016 (T016/T017, D2/D3): the on-page panel gains needs-attention
+    reporting and Fill again; drafted/needs-you fields carry a visible
+    highlight cleared by the user's own edit."""
+
+    def test_overlay_panel_has_fill_again_and_attention(self):
+        js = (EXT / "content" / "overlay.js").read_text(encoding="utf-8")
+        assert "Fill again" in js
+        assert "attention" in js
+        assert "onFillAgain" in js
+        assert "note" in js
+
+    def test_filler_annotates_flags_and_clears_on_edit(self):
+        js = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
+        assert "jeFlag" in js
+        assert "outline" in js
+        assert "annotateNeedsYou" in js
+        assert "removeEventListener" in js  # cleared by the user's edit
+
+    def test_main_wires_fill_again_and_needs_you(self):
+        js = (EXT / "content" / "main.js").read_text(encoding="utf-8")
+        assert '"fill_again"' in js
+        assert "needs_you_idx" in js
