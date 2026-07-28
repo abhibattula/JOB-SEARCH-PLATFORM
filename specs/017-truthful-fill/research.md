@@ -8,23 +8,54 @@ state of `main` at commit `e64245d` (v1.6.0).
 
 ---
 
-## R1 — Break the draft regeneration loop
+## R1 — The 170 drafts are historical rows, not a regeneration loop
 
-**Decision**: `browser_controller.on_draft_complete` / `ext_backend`'s push
-path MUST NOT call `drafter.reset_backoff_for_job`. Backoff resets happen only
-on an explicit user action ("Fill again", `fill_again` inbound).
+**CORRECTED 2026-07-28, after reading the code.** An earlier reading of this
+defect claimed a self-feeding loop in which each completed draft reset every
+other question's backoff. **That is wrong** and no fix should be written for
+it:
 
-**Rationale**: `ext_backend.py:307` resets the backoff of *every* failed draft
-for the job each time *any* draft completes, then sends `rescan`. The rescan
-re-decides those fields, `ensure` sees `next_retry_at = 0`, regenerates, and
-each success resets again. This is a self-feeding loop and is the direct cause
-of 170 drafts for ~30 questions, of the app becoming unresponsive, and very
-likely of the "closed unexpectedly" crash banner.
+- `drafter.reset_backoff_for_job` is called from exactly one place,
+  `ext_backend._handle_fill_again` (`ext_backend.py:307`) — the *explicit user
+  action*. The adjacent `rescan` send on line 308 belongs to the same handler.
+- `browser_controller.on_draft_complete` (`:402-416`) sends only a `rescan`
+  nudge; it touches no drafter state.
+- `drafter._key` already normalises the question (`drafter.py:65`), so
+  whitespace or marker variations cannot fragment one question into many keys.
+- The live run's own evidence settles it: the **Question activity** list shows
+  each question **exactly once** ("Graduation Month*", "What is your GPA?",
+  "Have you ever applied…"), which is the in-memory drafter state. Only the
+  separate **"AI drafts to review (170)"** block duplicates.
 
-**Alternatives considered**: raising the backoff floor (treats the symptom, the
-loop still runs); resetting only the completed question's siblings in the same
-document (still amplifies); leaving it and capping attempts alone (the cap
-would be reached quickly but the rescan storm remains).
+**Actual cause**: that block renders `drafts.list_for_job(job_id)` — the
+SQLite `ai_drafts` table (`autofill_status.html:141-148`). `ai_drafts` has
+exactly one writer, `drafts.record`, and **no production caller since 016**
+(`grep` across `engine/` and `web/` finds only tests). Its rows are therefore
+historical: accumulated by earlier app versions across repeated attempts at
+the same saved job, never pruned in practice, and re-rendered in full on every
+3-second poll. Several of the 170 answers are visibly from older prompts.
+
+**Decision**:
+
+1. Make the review surface reflect the **current run** — the live drafter
+   state — rather than a legacy table (this is R23's reconciliation, now
+   answered).
+2. Bound and de-duplicate `ai_drafts` at the schema level
+   (`UNIQUE(job_id, question)`) and give it a real writer, so it can serve as
+   the restart-durability store (R3) instead of an orphaned log.
+3. Prune on session start so historical rows cannot resurface.
+
+**What this does NOT change**: R2's attempt cap and per-job draft budget are
+retained as *bounds*, not as a fix for an observed storm — the drafter is
+already correctly idempotent within a run, and the caps exist so a
+pathological form cannot become one. The honest justification is prevention,
+not repair.
+
+**Alternatives considered**: deleting the legacy table and its UI outright
+(loses the only place a user can edit and confirm an answer, and 016 already
+replaced the blocking gate with a passive log — the edit affordance is still
+wanted); leaving the table and only capping the rendered rows (the block would
+still show answers from months-old runs as if they were current).
 
 ## R2 — Bounded generation
 

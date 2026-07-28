@@ -16,6 +16,7 @@ decision and record the eventual outcome.
 """
 from __future__ import annotations
 
+import re
 from dataclasses import dataclass
 
 from . import adapters
@@ -25,6 +26,118 @@ from . import fields as fields_mod
 # is retried on later scans (e.g. a value may appear after the user
 # confirms a drafted answer).
 TERMINAL_OUTCOMES = {"filled", "skipped_existing", "no_match", "needs_manual"}
+
+# ---------------------------------------------------------------------------
+# 017 (R7, FR-012): an answer may only be written to a field whose SHAPE
+# accepts it.
+#
+# Two defects from the 2026-07-28 live run share this one missing rule. A
+# yes/no profile fact was written into four FREE-TEXT work-authorization
+# questions that ask for a date, a status, extension options and a
+# description; and a paragraph was typed into a custom dropdown because the
+# only length guard was keyed on the `custom_combobox` widget flag, which the
+# offending element (a search input nested inside the widget) never carried.
+#
+# Consulted by decide() before emitting a fill AND by drafter._validate
+# before accepting a generation, so neither path can write a mis-shaped
+# value.
+# ---------------------------------------------------------------------------
+
+# Widgets whose answer must be an option, not prose.
+_CHOICE_WIDGETS = {"native_select", "custom_combobox", "typeahead"}
+_CHOICE_TYPES = {"radio_group", "checkbox_group", "select-one", "select-multiple"}
+
+# When the options are unknown until the widget opens, the answer has to LOOK
+# like an option label — the filler fuzzy-matches it against what it harvests.
+_MAX_OPTION_WORDS = 4
+_MAX_OPTION_CHARS = 60
+_SENTENCE_PUNCT = re.compile(r"[.!?;]|,\s")
+
+# A label that asks for a date, a status, a list or an explanation cannot be
+# answered with a bare yes/no token, however yes/no-ish its topic is.
+_DESCRIPTIVE_LABEL = re.compile(
+    r"when\s+does|expir|what\s+is\s+your|please\s+list|list\s+any|"
+    r"provide\s+(additional\s+)?detail|additional\s+detail|please\s+describe|"
+    r"describe|explain|please\s+specify|specify|elaborate|"
+    r"immigration\s+status|basis\s+of\s+your|which\s+company|how\s+many|"
+    r"write\s+out|phonetic",
+    re.IGNORECASE,
+)
+
+_YES_NO_TOKENS = {"yes", "no", "y", "n", "true", "false"}
+
+_PATH_LIKE = re.compile(r"[\\/]|\.(pdf|docx?|txt|rtf|odt)$", re.IGNORECASE)
+
+
+def _label_of(descriptor: dict) -> str:
+    return " ".join(str(descriptor.get(part) or "") for part in
+                    ("label_text", "placeholder", "aria_label", "name", "id"))
+
+
+def is_choice_control(descriptor: dict) -> bool:
+    """True when the field expects one of a fixed set of answers — including
+    an input that only reveals its nature through its ancestry (an inner
+    search box inside a React-select control)."""
+    if descriptor.get("nested_in_choice"):
+        return True
+    if (descriptor.get("widget") or "") in _CHOICE_WIDGETS:
+        return True
+    if (descriptor.get("type") or "") in _CHOICE_TYPES:
+        return True
+    if (descriptor.get("tag") or "").lower() == "select":
+        return True
+    return bool(descriptor.get("options"))
+
+
+def _looks_like_an_option_label(text: str) -> bool:
+    stripped = text.strip()
+    if len(stripped) > _MAX_OPTION_CHARS:
+        return False
+    if _SENTENCE_PUNCT.search(stripped):
+        return False
+    return len(stripped.split()) <= _MAX_OPTION_WORDS
+
+
+def value_fits(descriptor: dict, value) -> tuple[bool, str]:
+    """Whether `value` may be written to `descriptor`.
+
+    Returns (True, "") or (False, reason) where reason is one of
+    "empty", "wrong_shape", "not_an_option_label", "no_valid_option".
+    A refusal leaves the field untouched and flagged — never approximated.
+    """
+    text = "" if value is None else str(value).strip()
+    if not text:
+        return False, "empty"
+
+    field_type = (descriptor.get("type") or "").lower()
+
+    # A file input takes a path. Drafted prose reaching set_input_files was a
+    # real defect on cover-letter uploads.
+    if field_type == "file":
+        return (True, "") if _PATH_LIKE.search(text) else (False, "wrong_shape")
+
+    if is_choice_control(descriptor):
+        options = [o for o in (descriptor.get("options") or []) if o]
+        if options:
+            # The options are known: matching decides, not shape. Reject only
+            # what cannot possibly be one of them.
+            longest = max(len(str(o)) for o in options)
+            if len(text) > max(longest * 2, _MAX_OPTION_CHARS):
+                return False, "no_valid_option"
+            return True, ""
+        # Options unknown until the widget opens — the answer must look like
+        # a label the filler can match on the page.
+        if not _looks_like_an_option_label(text):
+            return False, "not_an_option_label"
+        return True, ""
+
+    # Free text. A bare yes/no cannot answer a question that asks for a date,
+    # a status, a list or an explanation.
+    if text.casefold().strip(".") in _YES_NO_TOKENS and \
+            _DESCRIPTIVE_LABEL.search(_label_of(descriptor)):
+        return False, "wrong_shape"
+
+    return True, ""
 
 
 def key(descriptor: dict) -> tuple:

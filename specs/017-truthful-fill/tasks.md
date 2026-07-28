@@ -54,8 +54,8 @@ per story.
 **Goal**: nothing false, nothing runaway, always stoppable.
 **Independent test**: run against T001's fixture with an empty library — ungrounded questions stay empty and flagged, each question generates at most twice, and Stop stays reachable.
 
-- [ ] T011 [US1] RED: in `tests/test_ext_backend.py`, assert that completing one draft does NOT reset any other question's backoff — count generator invocations across a simulated multi-question scan loop
-- [ ] T012 [US1] GREEN: remove the `drafter.reset_backoff_for_job(job_id)` call from the draft-completion push path in `engine/autofill/ext_backend.py:307`; keep it only on the explicit `fill_again` path
+- [ ] T011 [US1] RED: in `tests/test_drafter.py` and `tests/test_ext_backend.py`, pin the property that was **assumed broken and is in fact correct** — a completed draft resets no other question's backoff, and a repeated scan loop generates each question exactly once. This is a characterisation test guarding behaviour the fix must not break, not a bug reproduction (R1, corrected)
+- [ ] T012 [US1] GREEN: make the draft-review surface reflect the **current run** instead of the legacy `ai_drafts` table — the 170 rows were historical, accumulated across earlier runs and versions of the same saved job (`autofill_status.html:141-148`, `drafts.py:18`). Give `ai_drafts` a real writer on the live path, prune historical rows for the job on session start, and bound what is rendered
 - [ ] T013 [US1] [P] RED: in `tests/test_drafter.py`, assert `MAX_ATTEMPTS_PER_QUESTION` and `MAX_DRAFTS_PER_JOB` are enforced and that exhaustion yields the non-retryable reasons `attempts_exhausted` / `job_budget_exhausted`
 - [ ] T014 [US1] GREEN: implement the caps and the new reason vocabulary in `engine/autofill/drafter.py`; add both reasons to `_NEEDS_YOU_REASONS` and `_NEVER_RETRY_REASONS`
 - [ ] T015 [US1] [P] RED: in `tests/test_answer_bank.py` and `tests/test_drafter.py`, assert the refusal contract — a `CANNOT_ANSWER` response becomes `(False, None, "cannot_answer")` and is never retried, and an empty response is a refusal rather than an endless retry

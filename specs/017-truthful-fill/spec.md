@@ -25,9 +25,14 @@ Observed in that single run:
   please list **their** name".
 - Multi-sentence paragraphs typed into dropdowns, including a binding
   acknowledgement dropdown whose only valid answers are Yes and No.
-- The same question drafted 10–15 times with different answers.
-- The application page in the app grew unbounded, so **Stop** could not be
-  reached.
+- A pronoun checkbox group treated as five separate essay questions.
+- A draft-review list showing 170 entries — 10–15 differently-worded answers
+  per question — which grew the page beyond the point where **Stop** could be
+  reached. These are *historical* rows accumulated by earlier runs and earlier
+  app versions against the same saved job, re-rendered in full every three
+  seconds; the current run's own activity list correctly shows each question
+  once. The defect is that the review surface does not reflect the current
+  run and is unbounded, not that answers are regenerated.
 
 ## Clarifications
 
