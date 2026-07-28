@@ -192,19 +192,19 @@ live, highlights clear on edit, user values sacred, zero submit clicks.
 
 ## Phase 6: US4 — AI can fail without taking the app down (P4)
 
-- [ ] T019 [US4] Isolation default ON (R12) — `engine/inference.py`:
+- [x] T019 [US4] Isolation default ON (R12) — `engine/inference.py`:
   `_subprocess_enabled()` true unless `JOBS_AI_SUBPROCESS == "0"`.
   Tests (`tests/test_inference.py`): default-ON semantics, `"0"` opt-out,
   `set_executors_for_tests` still bypasses the child; fault containment
   on the DEFAULT path (echo seam: kill child mid-call → clean
   RuntimeError, restart counted, next call works).
-- [ ] T020 [P] [US4] Generation bounds + load hygiene (R13) —
+- [x] T020 [P] [US4] Generation bounds + load hygiene (R13) —
   `engine/local_llm.py`: `max_tokens` per purpose in the chat payload
   (json≈1536, draft≈512, prose≈768); `engine/semantic.py`:
   `_load_attempted` guard + embedder `n_batch=256`. Tests:
   `tests/test_matcher.py` stub signature, payload assertions, one-shot
   load attempt.
-- [ ] T021 [US4] Tailor hardening (R13) — `engine/tailor.py`: combined
+- [x] T021 [US4] Tailor hardening (R13) — `engine/tailor.py`: combined
   prompt ≤6k chars, `timeout_s=300`, 1 local attempt (cloud fallthrough
   unchanged); `web/routes_api.py`: 502 carries a human-readable reason;
   `web/templates/job_detail.html`: in-progress state ("can take a few

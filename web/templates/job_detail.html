@@ -132,9 +132,12 @@
           </a>
         </div>
         <button class="tailor-btn ghost" hx-post="/api/jobs/{{ job.id }}/tailor" hx-swap="none"
-                hx-on::after-request="if(event.detail.successful) window.location.reload()">
+                hx-indicator="#tailor-rewait"
+                hx-on::after-request="if(event.detail.successful) window.location.reload(); else this.nextElementSibling.nextElementSibling.innerText = JSON.parse(event.detail.xhr.responseText).detail">
           Regenerate
         </button>
+        <span id="tailor-rewait" class="htmx-indicator data">generating — this runs on-device and can take a few minutes…</span>
+        <p class="muted" role="alert"></p>
         {% else %}
         <p><a class="data" href="/api/jobs/{{ job.id }}/resume-pdf"
               title="Renders from your Resume builder sections — tailoring adds job-specific highlights once generated">
@@ -146,7 +149,7 @@
                 hx-on::after-request="if(event.detail.successful) window.location.reload(); else this.nextElementSibling.nextElementSibling.innerText = JSON.parse(event.detail.xhr.responseText).detail">
           Tailor for this job
         </button>
-        <span id="tailor-wait" class="htmx-indicator data">generating…</span>
+        <span id="tailor-wait" class="htmx-indicator data">generating — this runs on-device and can take a few minutes…</span>
         <p class="muted" role="alert"></p>
         {% endif %}
       </section>

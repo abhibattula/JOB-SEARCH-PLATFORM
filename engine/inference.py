@@ -155,12 +155,17 @@ def _submit(kind: str, payload: dict, timeout_s: float | None):
 
 
 def run_chat(messages: list[dict], json_mode: bool = False,
-             timeout_s: float | None = None) -> str:
+             timeout_s: float | None = None,
+             max_tokens: int | None = None) -> str:
     """Serialized chat completion. Raises RuntimeError on unavailability,
     failure, timeout, or saturation — the exact failure class every caller
-    already tolerates (matcher tier fall-through / qa.draft → None)."""
-    return _submit("chat", {"messages": messages, "json_mode": bool(json_mode)},
-                   timeout_s)
+    already tolerates (matcher tier fall-through / qa.draft → None).
+    016 (R13): `max_tokens` rides the payload so every generation carries
+    an explicit output cap."""
+    payload = {"messages": messages, "json_mode": bool(json_mode)}
+    if max_tokens is not None:
+        payload["max_tokens"] = int(max_tokens)
+    return _submit("chat", payload, timeout_s)
 
 
 def run_embed(text: str, timeout_s: float | None = None) -> list[float]:
@@ -182,7 +187,11 @@ _runtime_restarts = 0
 
 
 def _subprocess_enabled() -> bool:
-    return os.environ.get("JOBS_AI_SUBPROCESS") == "1"
+    # 016 (T019, R12): fault isolation is the DEFAULT — the 015 spike
+    # proved the mode (tests + frozen smoke, both installers); RC5 showed a
+    # single native fault in thread mode closes the whole app (the tailor
+    # crash class). JOBS_AI_SUBPROCESS=0 restores thread mode.
+    return os.environ.get("JOBS_AI_SUBPROCESS", "1") != "0"
 
 
 def _subprocess_main(conn) -> None:

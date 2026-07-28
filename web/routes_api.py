@@ -630,7 +630,10 @@ def tailor_job(job_id: int, request: Request):
     )
     if result is None:
         raise HTTPException(
-            status_code=502, detail="The AI response was invalid — try again."
+            status_code=502,
+            detail="Tailoring didn't complete — the on-device AI timed out "
+            "or returned an invalid result. The app is fine; try again "
+            "(Diagnostics shows the AI runtime state).",
         )
     db.set_tailor(job_id, result.model_dump_json())
     return result.model_dump()

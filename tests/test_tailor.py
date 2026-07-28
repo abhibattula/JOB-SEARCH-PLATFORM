@@ -118,3 +118,37 @@ class TestTailorApi:
         db.save_profile(resume_text="resume")
         settings.set("LLM_API_KEY", "k")
         assert client.post("/api/jobs/99999/tailor").status_code == 404
+
+
+class TestTailorHardening016:
+    """016 (T021, R13): bounded prompt (documented safe local band),
+    explicit time budget, single LLM attempt — the app's riskiest
+    generation is no longer unbounded (RC5)."""
+
+    def _capture(self, monkeypatch, reply="not json at all"):
+        captured = {"calls": 0}
+
+        def fake_chat(messages, purpose="prose", timeout_s=None):
+            captured["calls"] += 1
+            captured["messages"] = messages
+            captured["timeout_s"] = timeout_s
+            return reply
+
+        monkeypatch.setattr(tailor.matcher, "_chat", fake_chat)
+        monkeypatch.setattr(tailor.matcher, "llm_available", lambda: True)
+        return captured
+
+    def test_prompt_stays_inside_the_local_band(self, monkeypatch):
+        captured = self._capture(monkeypatch)
+        tailor.tailor_for_job("R" * 50_000, "SWE", "Acme", "D" * 50_000)
+        user = captured["messages"][-1]["content"]
+        assert len(user) <= 6200, (
+            "tailor prompt exceeds the documented safe local band "
+            "(resume_extract.py: >6k chars overflowed and failed silently)")
+
+    def test_single_llm_attempt_and_time_budget(self, monkeypatch):
+        captured = self._capture(monkeypatch, reply="garbage")
+        result = tailor.tailor_for_job("resume", "SWE", "Acme", "desc")
+        assert result is None
+        assert captured["calls"] == 1
+        assert captured["timeout_s"] == 300

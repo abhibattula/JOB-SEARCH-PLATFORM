@@ -329,3 +329,14 @@ def test_practice_posting_fixture_with_apply_opener(tmp_db):
 
     assert client.post("/practice/submit-log").status_code == 200
     assert client.get("/practice/submit-log").json()["clicks"] == 1
+
+
+def test_tailor_button_sets_honest_expectations():
+    """016 (T021/FR-022): the tailor buttons show a can-take-minutes
+    in-progress state and render the failure reason (never a dead app)."""
+    import pathlib
+
+    html = pathlib.Path("web/templates/job_detail.html").read_text(
+        encoding="utf-8")
+    assert html.count("can take a few minutes") >= 2  # first-run + regenerate
+    assert 'role="alert"' in html
