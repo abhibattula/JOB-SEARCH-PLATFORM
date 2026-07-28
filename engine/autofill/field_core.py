@@ -282,6 +282,22 @@ def decide(ats: str | None, descriptor: dict, handled: dict, get_value) -> Decis
                         option_label=matched, preview=matched,
                         ai_draft=isinstance(value, Draft))
 
+    # 017 (C8): a merged checkbox set. The answer must be one of the member
+    # labels; the executor ticks THAT member. Checked before the generic
+    # options branch, which would otherwise treat the group as a <select>.
+    # No new wire kind is introduced — an ordinary kind:"checkbox" item
+    # addressed to the member's je_idx — so an older companion cannot
+    # mis-fill it and no version gate is needed.
+    if (descriptor.get("type") or "") == "checkbox_group":
+        options = descriptor.get("options") or []
+        matched = fields_mod.match_option(str(value), options) if options \
+            else None
+        if matched is None:
+            return Decision("settle", tag=tag, outcome="no_match")
+        return Decision("fill", tag=tag, kind="checkbox", value=True,
+                        option_label=matched, preview=matched,
+                        ai_draft=isinstance(value, Draft))
+
     # 011: widget-aware option handling. A typeahead types then picks a
     # suggestion; a custom combobox is opened and an option clicked; a native
     # <select> keeps its exact prior path. Non-combobox descriptors that

@@ -308,6 +308,17 @@ def _handle_fill_again(msg) -> None:
     send(_outbound("rescan", reason="fill_again"))
 
 
+def _member_je_idx(raw: dict, label: str | None) -> str | None:
+    """017: the je_idx of the group member carrying `label`, or None."""
+    from . import drafter
+
+    wanted = drafter.normalize_question(label or "")
+    for member in raw.get("members") or []:
+        if drafter.normalize_question(member.get("label") or "") == wanted:
+            return member.get("je_idx")
+    return None
+
+
 def _handle_scan_error(msg) -> None:
     """016 (T010): a content-script scan exception, counted for the doctor
     (it used to be swallowed, leaving the tab permanently silent)."""
@@ -462,6 +473,15 @@ def _handle_fields(msg) -> None:
                         option_label=decision.option_label)
         elif decision.kind == "checkbox":
             item.update(kind="checkbox", value="on")
+            # 017 (C8): a merged checkbox group is one logical field but the
+            # tick lands on a MEMBER. Re-address the item to that member's
+            # je_idx; the kind stays the ordinary "checkbox" an older
+            # companion already understands, so no version gate is needed.
+            if (raw.get("type") or "") == "checkbox_group":
+                member_idx = _member_je_idx(raw, decision.option_label)
+                if member_idx is None:
+                    continue
+                item["je_idx"] = member_idx
         else:
             item.update(kind="text", value=str(decision.value))
         if decision.ai_draft:

@@ -80,10 +80,10 @@ per story.
 **Goal**: answers match the shape of the control.
 **Independent test**: the T001 fixture receives a correctly shaped value or nothing in every field.
 
-- [ ] T027 [US2] [P] RED: in `tests/test_extension_assets.py` and the parity test, assert an input nested inside a choice widget is not emitted as its own field and that a surviving nested input inherits `widget: "custom_combobox"`
-- [ ] T028 [US2] GREEN: implement the ancestry de-duplication and widget inheritance in `extension/content/scanner.js` and the mirrored `SERIALIZE_JS` in `engine/autofill/watcher.py`, in lockstep
-- [ ] T029 [US2] [P] RED: assert a checkbox set sharing a legend becomes ONE descriptor (`type: "checkbox_group"`, options from member labels, `je_idx` from the first member) and that selecting two members emits two existing `kind:"checkbox"` fill items
-- [ ] T030 [US2] GREEN: implement checkbox grouping in both serializers and per-member emission in `engine/autofill/ext_backend.py`; no new `FillItem.kind`
+- [x] T027 [US2] [P] RED: in `tests/test_extension_assets.py` and the parity test, assert an input nested inside a choice widget is not emitted as its own field and that a surviving nested input inherits `widget: "custom_combobox"`
+- [x] T028 [US2] GREEN: implement the ancestry de-duplication and widget inheritance in `extension/content/scanner.js` and the mirrored `SERIALIZE_JS` in `engine/autofill/watcher.py`, in lockstep
+- [x] T029 [US2] [P] RED: assert a checkbox set sharing a legend becomes ONE descriptor (`type: "checkbox_group"`, options from member labels, `je_idx` from the first member) and that selecting two members emits two existing `kind:"checkbox"` fill items
+- [x] T030 [US2] GREEN: implement checkbox grouping in both serializers and per-member emission in `engine/autofill/ext_backend.py`; no new `FillItem.kind`
 - [x] T031 [US2] [P] RED: in `tests/test_field_core.py` and `tests/test_drafter.py`, assert prose is refused for a choice control with unknown options and a bare `Yes` is refused for a descriptive free-text work-auth question
 - [x] T032 [US2] GREEN: wire `value_fits` into `field_core.decide` and `drafter._validate`
 - [x] T033 [US2] [P] RED: in `tests/test_fields.py`, assert "how your name is pronounced phonetically" is not a phone field, "please list their name" is not a name field, "Preferred Name" is `preferred_name`, and Lever's bare `name=` attribute still classifies as `full_name`

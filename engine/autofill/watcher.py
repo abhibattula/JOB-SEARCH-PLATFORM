@@ -145,6 +145,20 @@ SERIALIZE_JS = r"""
     }
     return '';
   }
+  function jeIsChoiceWidget(el) {
+    const role = (el.getAttribute('role') || '').toLowerCase();
+    return role === 'combobox' || role === 'listbox' ||
+      el.getAttribute('aria-haspopup') === 'listbox' ||
+      /select__control/.test(el.className || '');
+  }
+  function jeChoiceAncestor(el) {
+    let node = el.parentElement;
+    while (node) {
+      if (jeIsChoiceWidget(node)) { return node; }
+      node = node.parentElement;
+    }
+    return null;
+  }
   const els = document.querySelectorAll(selector);
   const pairs = Array.from(els).map(el => {
     if (!el.dataset.jeIdx) { el.dataset.jeIdx = String(window.__jeNext++); }
@@ -209,18 +223,48 @@ SERIALIZE_JS = r"""
     });
     idxs.slice(1).forEach(function (i) { drop.add(i); });
   }
+  // 017 (C8): merge a checkbox set sharing one group question into ONE
+  // logical field — mirrors content/scanner.js groupControls.
   for (const idxs of checks.values()) {
     if (idxs.length < 2) { continue; }
     const question = groupQuestion(pairs[idxs[0]].el);
-    if (question) {
-      idxs.forEach(function (i) {
-        var own = pairs[i].desc.label_text;
-        pairs[i].desc.label_text = own ? question + ' — ' + own : question;
+    if (!question) { continue; }
+    const members = idxs.map(function (i) {
+      return { je_idx: pairs[i].desc.je_idx,
+               label: pairs[i].desc.label_text || pairs[i].el.value || '' };
+    });
+    const first = pairs[idxs[0]];
+    const checkedLabels = idxs
+      .filter(function (i) { return pairs[i].el.checked; })
+      .map(function (i) {
+        return pairs[i].desc.label_text || pairs[i].el.value || '';
       });
-    }
+    first.desc = Object.assign({}, first.desc, {
+      type: 'checkbox_group',
+      label_text: question,
+      options: members.map(function (m) { return m.label; }),
+      members: members,
+      value: checkedLabels.join(', '),
+      focused: idxs.some(function (i) { return pairs[i].desc.focused; }),
+      visible: idxs.some(function (i) { return pairs[i].desc.visible; }),
+      required: idxs.some(function (i) { return pairs[i].desc.required; }),
+    });
+    idxs.slice(1).forEach(function (i) { drop.add(i); });
   }
-  return pairs
-    .filter(function (_pair, i) { return !drop.has(i); })
+  // 017 (C6): a nested search input inside a captured choice widget is part
+  // of that widget, not a second question — mirrors scanner.js
+  // dropNestedChoiceControls.
+  const kept = pairs.filter(function (_pair, i) { return !drop.has(i); });
+  const capturedEls = new Set(kept.map(function (p) { return p.el; }));
+  return kept
+    .filter(function (pair) {
+      const ancestor = jeChoiceAncestor(pair.el);
+      if (!ancestor) { return true; }
+      if (capturedEls.has(ancestor)) { return false; }
+      pair.desc.nested_in_choice = true;
+      if (!pair.desc.widget) { pair.desc.widget = 'custom_combobox'; }
+      return true;
+    })
     .map(function (pair) { return pair.desc; });
 }
 """
@@ -352,7 +396,11 @@ def _process_field(frame, ats, descriptor, get_value, record, handled, result) -
 
         # 016 (T013): grouped radios — check the MATCHED member's own
         # element (the group's je_idx is only its first member).
-        if decision.kind == "radio":
+        # 017 (C8): a merged checkbox group ticks a MEMBER, exactly like a
+        # radio group — same member lookup, same honest outcome.
+        if decision.kind == "radio" or (
+                decision.kind == "checkbox"
+                and (descriptor.get("type") or "") == "checkbox_group"):
             member = next((m for m in descriptor.get("members") or []
                            if m.get("label") == decision.option_label), None)
             if member is None:

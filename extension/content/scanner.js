@@ -136,6 +136,45 @@ window.jeScanner = (function () {
   // (je_idx = FIRST member's — the stable ledger key). A lone radio keeps
   // today's shape. Checkbox sets are NEVER merged (multi-select is not
   // pick-one) — members just gain the group question as context.
+  // 017 (C6): a React-select style dropdown is captured TWICE — the
+  // div.select__control wrapper AND the search <input> nested inside it. The
+  // inner input carries no role and no aria-autocomplete, so jeWidget scored
+  // it "" and it became a plain text field with options: [] — while still
+  // owning the <label for=...>, so it inherited the question. That is how a
+  // 450-character acknowledgement got a multi-sentence answer typed into a
+  // yes/no dropdown. The wrapper is the field; its search box is part of the
+  // widget, and fillCombobox already drives it through the wrapper.
+  function isChoiceWidget(el) {
+    const role = (el.getAttribute("role") || "").toLowerCase();
+    return role === "combobox" || role === "listbox" ||
+      el.getAttribute("aria-haspopup") === "listbox" ||
+      /select__control/.test(el.className || "");
+  }
+
+  function choiceAncestor(el) {
+    let node = el.parentElement;
+    while (node) {
+      if (isChoiceWidget(node)) { return node; }
+      node = node.parentElement;
+    }
+    return null;
+  }
+
+  function dropNestedChoiceControls(pairs) {
+    const captured = new Set(pairs.map(function (p) { return p.el; }));
+    return pairs.filter(function (pair) {
+      const ancestor = choiceAncestor(pair.el);
+      if (!ancestor) { return true; }
+      // The wrapper is captured too: it is the field, drop this one.
+      if (captured.has(ancestor)) { return false; }
+      // Nested in a widget we did not capture — keep it, but judge it as the
+      // choice control it really is.
+      pair.desc.nested_in_choice = true;
+      if (!pair.desc.widget) { pair.desc.widget = "custom_combobox"; }
+      return true;
+    });
+  }
+
   function groupControls(pairs) {
     const radios = new Map();
     const checks = new Map();
@@ -169,15 +208,37 @@ window.jeScanner = (function () {
       });
       idxs.slice(1).forEach(function (i) { drop.add(i); });
     }
+    // 017 (C8): merge a checkbox set that shares one group question into ONE
+    // logical field. 016 deliberately left them separate, so the Akuna
+    // pronoun group became five independent essay questions and each got its
+    // own paragraph. Multi-select is preserved: `options` lists every member
+    // and the app emits one ordinary kind:"checkbox" fill per member it
+    // wants ticked, so no new wire kind and no version gate.
     for (const idxs of checks.values()) {
       if (idxs.length < 2) { continue; }
       const question = groupQuestion(pairs[idxs[0]].el);
-      if (question) {
-        idxs.forEach(function (i) {
-          const own = pairs[i].desc.label_text;
-          pairs[i].desc.label_text = own ? question + " — " + own : question;
+      if (!question) { continue; }  // no shared question: leave them alone
+      const members = idxs.map(function (i) {
+        return { je_idx: pairs[i].desc.je_idx,
+                 label: pairs[i].desc.label_text || pairs[i].el.value || "" };
+      });
+      const first = pairs[idxs[0]];
+      const checkedLabels = idxs
+        .filter(function (i) { return pairs[i].el.checked; })
+        .map(function (i) {
+          return pairs[i].desc.label_text || pairs[i].el.value || "";
         });
-      }
+      first.desc = Object.assign({}, first.desc, {
+        type: "checkbox_group",
+        label_text: question,
+        options: members.map(function (m) { return m.label; }),
+        members: members,
+        value: checkedLabels.join(", "),
+        focused: idxs.some(function (i) { return pairs[i].desc.focused; }),
+        visible: idxs.some(function (i) { return pairs[i].desc.visible; }),
+        required: idxs.some(function (i) { return pairs[i].desc.required; }),
+      });
+      idxs.slice(1).forEach(function (i) { drop.add(i); });
     }
     return pairs
       .filter(function (_pair, i) { return !drop.has(i); })
@@ -189,7 +250,7 @@ window.jeScanner = (function () {
     const pairs = Array.from(els).map(function (el) {
       return { el: el, desc: describe(el) };
     });
-    return groupControls(pairs);
+    return groupControls(dropNestedChoiceControls(pairs));
   }
 
   function elementByIdx(jeIdx) {

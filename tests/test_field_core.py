@@ -402,3 +402,41 @@ class TestNameLayout017:
         assert d.action == "fill"
         assert d.tag == "first_name"
         assert d.value == "Abhinav"
+
+
+class TestCheckboxGroup017:
+    """017-T029 (C8, FR-014): a checkbox set sharing one question is ONE
+    field. 016 left them separate, so the Akuna pronoun group became five
+    independent essay questions and each received its own paragraph."""
+
+    def group(self, value):
+        return decide(
+            make_descriptor(type="checkbox_group", name="", id="",
+                            label_text="Add your personal pronouns below.",
+                            options=["She/her/hers", "He/him/his",
+                                     "They/them/theirs",
+                                     "I do not wish to answer."],
+                            members=[{"je_idx": "10", "label": "She/her/hers"},
+                                     {"je_idx": "11", "label": "He/him/his"},
+                                     {"je_idx": "12",
+                                      "label": "They/them/theirs"},
+                                     {"je_idx": "13",
+                                      "label": "I do not wish to answer."}]),
+            value=value)
+
+    def test_a_member_label_ticks_that_member(self):
+        d = self.group("He/him/his")
+        assert d.action == "fill"
+        assert d.kind == "checkbox"
+        assert d.option_label == "He/him/his"
+
+    def test_prose_never_reaches_it(self):
+        d = self.group("As a recent M.S. Computer Engineering graduate with "
+                       "hands-on experience in embedded systems...")
+        assert d.action == "settle"
+        assert d.outcome == "no_match"
+
+    def test_an_unmatched_answer_is_left_for_the_human(self):
+        d = self.group("Ze/zir")
+        assert d.action == "settle"
+        assert d.outcome == "no_match"
