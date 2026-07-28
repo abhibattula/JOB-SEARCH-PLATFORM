@@ -142,18 +142,23 @@
     catch (_e) { /* extension reloaded — orphaned frame */ }
   }
 
-  // 016 (T009, R5): score ONCE per page state. The unconditional 1.5 s
-  // request flood head-of-line blocked the fill path on the app's
-  // serialized bridge loop (RC1 evidence).
-  let scoredFor = null;
+  // 016 (T009, R5): score ONCE per page state — but cache only when a
+  // RESULT arrives (a request that races a cold socket would otherwise
+  // leave the page permanently badgeless; caught by the Windows CI
+  // runner). Until a result lands, retry slowly (7.5 s), never the old
+  // 1.5 s flood that head-of-line blocked the fill path (RC1 evidence).
+  let scoredFor = null;      // href whose score RESULT arrived
+  let lastRequestAt = 0;     // pending-request backoff
+  const RETRY_MS = 7500;
 
   function requestScore() {
     const p = detect();
     if (!p) { removeBadge(); current = null; scoredFor = null; return; }
     current = { ...p, url: location.href };
     if (dismissedFor === location.href) { return; }
-    if (scoredFor === location.href) { return; }  // cached — no re-request
-    scoredFor = location.href;
+    if (scoredFor === location.href) { return; }  // result cached — done
+    if (Date.now() - lastRequestAt < RETRY_MS) { return; }  // one in flight
+    lastRequestAt = Date.now();
     toApp({
       type: "score_request", url: current.url, title: p.title,
       company: p.company, description: (p.description || "").slice(0, DESC_MAX),
@@ -314,7 +319,10 @@
 
   chrome.runtime.onMessage.addListener((m) => {
     if (!m || !m.type) { return; }
-    if (m.type === "score_result") { renderScore(m); }
+    if (m.type === "score_result") {
+      scoredFor = location.href;  // 016 (T009): NOW the page is scored
+      renderScore(m);
+    }
     else if (m.type === "save_result") { setSaved(true); }
   });
 
@@ -325,7 +333,8 @@
     if (location.href !== lastHref) {   // SPA nav → new posting, reset dismiss
       lastHref = location.href;
       dismissedFor = null;
-      scoredFor = null;                 // 016: new page state → one new score
+      scoredFor = null;                 // 016: new page state → new score
+      lastRequestAt = 0;
       removeBadge();
     }
     requestScore();
