@@ -400,13 +400,6 @@ and the browser tab begins filling.
   Assist session for that job.
 - **FR-041**: The in-app draft review surface MUST reflect the same answers the
   page shows.
-- **FR-045**: For every question the system declines to answer, the panel MUST
-  offer the applicant an input; the value they enter MUST fill that field
-  immediately and MUST be saved to their answer library so the same question is
-  answered without asking on future applications.
-- **FR-046**: An answer captured this way MUST be recorded as the applicant's
-  own, not as generated, so a later purge of AI-origin answers does not remove
-  it.
 
 ### Functional Requirements — cross-cutting invariants
 
@@ -416,6 +409,26 @@ and the browser tab begins filling.
   or advance a multi-step wizard; the human performs every such action.
 - **FR-044**: The system MUST NOT agree to any binding commitment on the user's
   behalf.
+
+### Functional Requirements — answer capture and coverage
+
+- **FR-045**: For every question the system declines to answer, the panel MUST
+  offer the applicant an input; the value they enter MUST fill that field
+  immediately and MUST be saved to their answer library so the same question is
+  answered without asking on future applications.
+- **FR-046**: An answer captured this way MUST be recorded as the applicant's
+  own, not as generated, so a later purge of AI-origin answers does not remove
+  it.
+- **FR-047**: When a fill runs without the companion (the assistant-window
+  fallback, which has no on-page panel), the application view MUST surface the
+  same answers, refusals and capture inputs, so the applicant is never left
+  without access to them.
+- **FR-048**: The same question appearing in more than one document of one
+  application (a page and an embedded frame) MUST be answered once and MUST NOT
+  cause more than one generation.
+- **FR-049**: If the set of answers sent to the page must be shortened for
+  transport, the applicant MUST be told that not all answers are shown on the
+  page, and the application view MUST remain complete.
 
 ### Key Entities
 
