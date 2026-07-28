@@ -27,18 +27,38 @@ import re
 import threading
 import time
 
+from . import fields as _fields_mod
+
 log = logging.getLogger(__name__)
 
 POOL_SIZE = 2
 _DEFAULT_BACKOFF_BASE_S = 30.0
 _DEFAULT_BACKOFF_CAP_S = 600.0
 
-# Question classes that must NEVER be AI-answered (FR-013). Left unfilled
-# and flagged for the human on the page.
-SENSITIVE_TAGS = {
+# 017 (R2, FR-002/FR-003): generation is bounded. The drafter is already
+# idempotent per question — `ensure` schedules at most one draft per key and
+# the 2026-07-28 live run's activity log confirms one entry per question — so
+# these are GUARDS, not repairs. A question that keeps failing ends up with
+# the human instead of retrying forever, and no single application can spend
+# unbounded model time.
+MAX_ATTEMPTS_PER_QUESTION = 2
+MAX_DRAFTS_PER_JOB = 40
+
+# Question classes the model must NEVER answer. Left unfilled and flagged
+# for the human, or answered from the applicant's own stored values.
+#
+# 017 renamed this from SENSITIVE_TAGS: "sensitive" stopped describing the
+# set once the applicant's own history joined it. An "offer deadlines"
+# question is not private — it is simply unknowable from a resume. The old
+# name is kept as an alias so 016's vocabulary and tests keep working.
+NEVER_GENERATED_TAGS = {
+    # legally sensitive / voluntary self-identification
     "eeo_disclosure", "demographics", "disability", "veteran_status",
-    "criminal_history", "references",
-}
+    "selfid_gender", "selfid_race", "selfid_veteran", "selfid_disability",
+    "selfid_orientation", "pronouns",
+} | set(_fields_mod.FACTUAL_HISTORY_TAGS)
+
+SENSITIVE_TAGS = NEVER_GENERATED_TAGS  # 016 name, retained
 
 # Auto-saved answers for these tags are scoped to their job — a "why this
 # company" essay must never auto-fill another company's form (spec
@@ -52,6 +72,10 @@ _workers: list[threading.Thread] = []
 _cache_version = 0
 _backoff_base_s = _DEFAULT_BACKOFF_BASE_S
 _backoff_cap_s = _DEFAULT_BACKOFF_CAP_S
+_max_attempts = MAX_ATTEMPTS_PER_QUESTION
+_max_drafts_per_job = MAX_DRAFTS_PER_JOB
+# job_id -> generations scheduled this session (successful or not)
+_job_generations: dict[int, int] = {}
 
 _generator_override = None
 _bank_save_override = None
@@ -93,6 +117,13 @@ def _validate(answer: str | None, descriptor_ctx: dict):
     if not answer or not str(answer).strip():
         return False, None, "empty"
     answer = str(answer).strip()
+    # 017 (R4, FR-006): the model declined because the applicant's own
+    # material does not answer the question. Terminal — retrying cannot
+    # conjure a fact, and the question belongs to the human.
+    from . import answer_bank as _bank
+
+    if _bank.is_refusal(answer):
+        return False, None, "cannot_answer"
     options = descriptor_ctx.get("options") or []
     if options:
         wanted = _normalize_for_match(answer)
@@ -145,10 +176,22 @@ def _worker_loop(tasks: queue.Queue) -> None:
                 if rec is None:
                     continue
                 rec["attempts"] += 1
-                delay = min(_backoff_cap_s,
-                            _backoff_base_s * (2 ** (rec["attempts"] - 1)))
-                rec.update(state="failed", reason=reason,
-                           next_retry_at=time.monotonic() + delay)
+                if reason in _NEVER_RETRY_REASONS:
+                    # 017: a refusal (or any terminal reason) ends the
+                    # question — retrying cannot conjure a fact.
+                    rec.update(state="failed", reason=reason,
+                               next_retry_at=float("inf"))
+                elif rec["attempts"] >= _max_attempts:
+                    # 017 (FR-002): out of attempts — hand it to the human
+                    # rather than retrying on every scan for the rest of the
+                    # session. Terminal: even Fill again will not re-arm it.
+                    rec.update(state="failed", reason="attempts_exhausted",
+                               next_retry_at=float("inf"))
+                else:
+                    delay = min(_backoff_cap_s,
+                                _backoff_base_s * (2 ** (rec["attempts"] - 1)))
+                    rec.update(state="failed", reason=reason,
+                               next_retry_at=time.monotonic() + delay)
 
 
 def _run_completion_effects(job_id: int, question: str, answer: str,
@@ -209,6 +252,18 @@ def ensure(job_id: int, question: str, descriptor_ctx: dict,
                 return
             if time.monotonic() < rec["next_retry_at"]:
                 return
+        # 017 (FR-003): one application cannot spend unbounded model time.
+        # Counted at schedule time, so concurrent scans cannot race past it.
+        spent = _job_generations.get(int(job_id), 0)
+        if spent >= _max_drafts_per_job:
+            _records[key] = {"question": question, "state": "failed",
+                             "reason": "job_budget_exhausted", "answer": None,
+                             "attempts": (rec or {}).get("attempts", 0),
+                             "next_retry_at": float("inf"),
+                             "at": time.monotonic()}
+            return
+        _job_generations[int(job_id)] = spent + 1
+        if rec is not None:
             rec.update(state="drafting")
         else:
             _records[key] = {"question": question, "state": "drafting",
@@ -237,7 +292,12 @@ def clear(job_id: int, question: str) -> None:
         _records.pop(_key(job_id, question), None)
 
 
-_NEEDS_YOU_REASONS = ("sensitive", "no_valid_option", "profile_fact_missing")
+# 017: exhausting the attempt cap or the job budget hands the question to the
+# human, exactly like a sensitive or missing-fact question — it must be
+# highlighted on the page, not silently skipped.
+_NEEDS_YOU_REASONS = ("sensitive", "no_valid_option", "profile_fact_missing",
+                      "attempts_exhausted", "job_budget_exhausted",
+                      "cannot_answer", "never_generated", "wrong_shape")
 
 
 def list_for_job(job_id: int, limit: int = 50) -> list[dict]:
@@ -278,7 +338,11 @@ def answer_for(job_id: int, question: str) -> str | None:
         return None
 
 
-_NEVER_RETRY_REASONS = ("sensitive", "profile_fact_missing")
+# 017: Fill again re-arms retryable failures only. Re-arming an exhausted
+# question would just burn the same budget on the same failure.
+_NEVER_RETRY_REASONS = ("sensitive", "profile_fact_missing",
+                        "attempts_exhausted", "job_budget_exhausted",
+                        "cannot_answer", "never_generated")
 
 
 def reset_backoff_for(job_id: int, questions: list[str]) -> None:
@@ -331,9 +395,12 @@ def set_bank_save_for_tests(fn) -> None:
 
 
 def reset_for_tests(backoff_base_s: float | None = None,
-                    backoff_cap_s: float | None = None) -> None:
+                    backoff_cap_s: float | None = None,
+                    max_attempts: int | None = None,
+                    max_drafts_per_job: int | None = None) -> None:
     global _tasks, _records, _cache_version, _generator_override, \
-        _bank_save_override, _backoff_base_s, _backoff_cap_s
+        _bank_save_override, _backoff_base_s, _backoff_cap_s, \
+        _max_attempts, _max_drafts_per_job, _job_generations
     with _lock:
         tasks = _tasks
         worker_count = len(_workers)
@@ -352,3 +419,6 @@ def reset_for_tests(backoff_base_s: float | None = None,
         _on_complete.clear()
         _backoff_base_s = backoff_base_s or _DEFAULT_BACKOFF_BASE_S
         _backoff_cap_s = backoff_cap_s or _DEFAULT_BACKOFF_CAP_S
+        _max_attempts = max_attempts or MAX_ATTEMPTS_PER_QUESTION
+        _max_drafts_per_job = max_drafts_per_job or MAX_DRAFTS_PER_JOB
+        _job_generations = {}

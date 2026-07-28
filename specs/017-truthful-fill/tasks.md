@@ -37,12 +37,12 @@ implementable, testable and shippable.
 changes yet — these modules are written and tested standalone, then wired in
 per story.
 
-- [ ] T004 [P] RED: canonical vocabulary tests in `tests/test_vocab.py` — table-driven over every family in data-model.md §8 (`Male→Man`, `Straight→Heterosexual`, `Y→Yes`, `Prefer not to say→Decline to self-identify`, `B.S.→Bachelor's`), plus the negative cases that must NOT match (`Male` must never resolve to `Woman`)
-- [ ] T005 GREEN: implement `engine/autofill/vocab.py` — canonical values, synonym sets, `canonical(family, text)`, `family_for_tag(tag)`. Pure module, no imports beyond stdlib
-- [ ] T006 [P] RED: shape-predicate tests in `tests/test_field_shape.py` covering every row of contracts/answer-resolution.md §2, including the four Akuna work-auth free-text questions rejecting a bare `Yes`, and a paragraph rejected for a choice control with unknown options
-- [ ] T007 GREEN: implement `field_core.value_fits(descriptor, value) -> (bool, reason)` in `engine/autofill/field_core.py`, including the ancestry rule (an input nested in a choice widget is judged as a choice control)
-- [ ] T008 [P] RED: resolver tests in `tests/test_profile_answers.py` — one case per tag in data-model.md §7, plus blank-stays-`None` and the three self-ID states
-- [ ] T009 GREEN: implement `engine/autofill/profile_answers.py` (`PROFILE_ANSWER_TAGS`, `answer_for`). Operates on a plain profile dict so it is testable before the columns exist
+- [x] T004 [P] RED: canonical vocabulary tests in `tests/test_vocab.py` — table-driven over every family in data-model.md §8 (`Male→Man`, `Straight→Heterosexual`, `Y→Yes`, `Prefer not to say→Decline to self-identify`, `B.S.→Bachelor's`), plus the negative cases that must NOT match (`Male` must never resolve to `Woman`)
+- [x] T005 GREEN: implement `engine/autofill/vocab.py` — canonical values, synonym sets, `canonical(family, text)`, `family_for_tag(tag)`. Pure module, no imports beyond stdlib
+- [x] T006 [P] RED: shape-predicate tests in `tests/test_field_shape.py` covering every row of contracts/answer-resolution.md §2, including the four Akuna work-auth free-text questions rejecting a bare `Yes`, and a paragraph rejected for a choice control with unknown options
+- [x] T007 GREEN: implement `field_core.value_fits(descriptor, value) -> (bool, reason)` in `engine/autofill/field_core.py`, including the ancestry rule (an input nested in a choice widget is judged as a choice control)
+- [x] T008 [P] RED: resolver tests in `tests/test_profile_answers.py` — one case per tag in data-model.md §7, plus blank-stays-`None` and the three self-ID states
+- [x] T009 GREEN: implement `engine/autofill/profile_answers.py` (`PROFILE_ANSWER_TAGS`, `answer_for`). Operates on a plain profile dict so it is testable before the columns exist
 - [ ] T010 Extend the serializer parity test in `tests/test_watcher.py` to assert `scanner.js` and `watcher.SERIALIZE_JS` produce identical logical fields for the T001 fixture, and fix the known selector drift (`fields.py:27-34` omits `[type=hidden]`; `scanner.js:13-21` omits `[type=reset]`)
 
 **Checkpoint**: three new modules green in isolation; parity guard extended.
@@ -54,16 +54,16 @@ per story.
 **Goal**: nothing false, nothing runaway, always stoppable.
 **Independent test**: run against T001's fixture with an empty library — ungrounded questions stay empty and flagged, each question generates at most twice, and Stop stays reachable.
 
-- [ ] T011 [US1] RED: in `tests/test_drafter.py` and `tests/test_ext_backend.py`, pin the property that was **assumed broken and is in fact correct** — a completed draft resets no other question's backoff, and a repeated scan loop generates each question exactly once. This is a characterisation test guarding behaviour the fix must not break, not a bug reproduction (R1, corrected)
+- [x] T011 [US1] RED: in `tests/test_drafter.py` and `tests/test_ext_backend.py`, pin the property that was **assumed broken and is in fact correct** — a completed draft resets no other question's backoff, and a repeated scan loop generates each question exactly once. This is a characterisation test guarding behaviour the fix must not break, not a bug reproduction (R1, corrected)
 - [ ] T012 [US1] GREEN: make the draft-review surface reflect the **current run** instead of the legacy `ai_drafts` table — the 170 rows were historical, accumulated across earlier runs and versions of the same saved job (`autofill_status.html:141-148`, `drafts.py:18`). Give `ai_drafts` a real writer on the live path, prune historical rows for the job on session start, and bound what is rendered
-- [ ] T013 [US1] [P] RED: in `tests/test_drafter.py`, assert `MAX_ATTEMPTS_PER_QUESTION` and `MAX_DRAFTS_PER_JOB` are enforced and that exhaustion yields the non-retryable reasons `attempts_exhausted` / `job_budget_exhausted`
-- [ ] T014 [US1] GREEN: implement the caps and the new reason vocabulary in `engine/autofill/drafter.py`; add both reasons to `_NEEDS_YOU_REASONS` and `_NEVER_RETRY_REASONS`
-- [ ] T015 [US1] [P] RED: in `tests/test_answer_bank.py` and `tests/test_drafter.py`, assert the refusal contract — a `CANNOT_ANSWER` response becomes `(False, None, "cannot_answer")` and is never retried, and an empty response is a refusal rather than an endless retry
-- [ ] T016 [US1] GREEN: add the refusal instruction and token to `answer_bank.suggest` in `engine/autofill/answer_bank.py`, and map it in `drafter._validate`
-- [ ] T017 [US1] [P] RED: in `tests/test_answer_bank.py`, assert the factual prompt contains no company name, role title or job description, and that only the cover-letter prompt receives them
-- [ ] T018 [US1] GREEN: split the prompt construction in `engine/autofill/answer_bank.py` per contracts/answer-resolution.md §3
-- [ ] T019 [US1] [P] RED: in `tests/test_drafter.py`, assert no tag in the never-generated set ever reaches the generator, using the exact Akuna questions ("have you ever applied…", "do you have prior experience working at an options market making firm", "did you complete our online Options 101 Course", "do you have any offer deadlines", "do you live in New York or California")
-- [ ] T020 [US1] GREEN: add the factual-history tags to `engine/autofill/fields.py` and the never-generated set in `engine/autofill/drafter.py`
+- [x] T013 [US1] [P] RED: in `tests/test_drafter.py`, assert `MAX_ATTEMPTS_PER_QUESTION` and `MAX_DRAFTS_PER_JOB` are enforced and that exhaustion yields the non-retryable reasons `attempts_exhausted` / `job_budget_exhausted`
+- [x] T014 [US1] GREEN: implement the caps and the new reason vocabulary in `engine/autofill/drafter.py`; add both reasons to `_NEEDS_YOU_REASONS` and `_NEVER_RETRY_REASONS`
+- [x] T015 [US1] [P] RED: in `tests/test_answer_bank.py` and `tests/test_drafter.py`, assert the refusal contract — a `CANNOT_ANSWER` response becomes `(False, None, "cannot_answer")` and is never retried, and an empty response is a refusal rather than an endless retry
+- [x] T016 [US1] GREEN: add the refusal instruction and token to `answer_bank.suggest` in `engine/autofill/answer_bank.py`, and map it in `drafter._validate`
+- [x] T017 [US1] [P] RED: in `tests/test_answer_bank.py`, assert the factual prompt contains no company name, role title or job description, and that only the cover-letter prompt receives them
+- [x] T018 [US1] GREEN: split the prompt construction in `engine/autofill/answer_bank.py` per contracts/answer-resolution.md §3
+- [x] T019 [US1] [P] RED: in `tests/test_drafter.py`, assert no tag in the never-generated set ever reaches the generator, using the exact Akuna questions ("have you ever applied…", "do you have prior experience working at an options market making firm", "did you complete our online Options 101 Course", "do you have any offer deadlines", "do you live in New York or California")
+- [x] T020 [US1] GREEN: add the factual-history tags to `engine/autofill/fields.py` and the never-generated set in `engine/autofill/drafter.py`
 - [ ] T021 [US1] [P] RED: in `tests/test_drafts.py` and `tests/test_db.py`, assert one `ai_drafts` row per `(job_id, question)` and that drafter records rehydrate for the active job after a restart
 - [ ] T022 [US1] GREEN: add the unique index plus `attempts`/`reason`/`updated_at` columns in `engine/db.py`, convert `drafts.record` to an upsert in `engine/autofill/drafts.py`, and rehydrate `_records` on session start
 - [ ] T023 [US1] [P] RED: in `tests/test_api.py`, assert the purge removes only `source IN ('ai','auto_saved')` rows and unconfirmed drafts, and never touches `user`/`confirmed` rows
@@ -86,8 +86,8 @@ per story.
 - [ ] T030 [US2] GREEN: implement checkbox grouping in both serializers and per-member emission in `engine/autofill/ext_backend.py`; no new `FillItem.kind`
 - [ ] T031 [US2] [P] RED: in `tests/test_field_core.py` and `tests/test_drafter.py`, assert prose is refused for a choice control with unknown options and a bare `Yes` is refused for a descriptive free-text work-auth question
 - [ ] T032 [US2] GREEN: wire `value_fits` into `field_core.decide` and `drafter._validate`
-- [ ] T033 [US2] [P] RED: in `tests/test_fields.py`, assert "how your name is pronounced phonetically" is not a phone field, "please list their name" is not a name field, "Preferred Name" is `preferred_name`, and Lever's bare `name=` attribute still classifies as `full_name`
-- [ ] T034 [US2] GREEN: word-bound `_PHONE_RE`, add the third-party disqualifier to the name patterns, and add `preferred_name` / `middle_name` tags ahead of `_FULL_NAME_RE` in `engine/autofill/fields.py`
+- [x] T033 [US2] [P] RED: in `tests/test_fields.py`, assert "how your name is pronounced phonetically" is not a phone field, "please list their name" is not a name field, "Preferred Name" is `preferred_name`, and Lever's bare `name=` attribute still classifies as `full_name`
+- [x] T034 [US2] GREEN: word-bound `_PHONE_RE`, add the third-party disqualifier to the name patterns, and add `preferred_name` / `middle_name` tags ahead of `_FULL_NAME_RE` in `engine/autofill/fields.py`
 - [ ] T035 [US2] [P] RED: in `tests/test_field_core.py`, assert `name_layout` across four shapes — First+Last, lone `Name`, `Name` + `Last name`, and `Name` + `Preferred Name`
 - [ ] T036 [US2] GREEN: implement `field_core.name_layout(descriptors)` and apply it in both `engine/autofill/ext_backend.py` and `engine/autofill/watcher.py` before deciding
 - [ ] T037 [US2] [P] Per-field status wording reflects the control type (no more "attach manually" for a dropdown) in `web/templates/partials/autofill_status.html`, asserted in `tests/test_web.py`

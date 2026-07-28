@@ -106,20 +106,32 @@ just never reached the path 016 actually uses.
 second model call and cannot verify a negative); a confidence score (models are
 poorly calibrated on autobiographical facts they were never given).
 
-## R5 — Prompt isolation for factual questions
+## R5 — Prompt isolation is already correct; keep it that way
 
-**Decision**: the factual prompt receives the applicant's resume/profile
-grounding **only**. Company name, role title and job description are passed
-only to the cover-letter/motivation prompt.
+**CORRECTED 2026-07-28.** An earlier reading blamed the fabrications on job
+context leaking into the factual prompt. **The live path does not pass job
+context at all**: `answer_bank.suggest` builds its grounding as
+`f"RESUME/PROFILE:\n{resume_text[:4000]}"` (`answer_bank.py:170`) and receives
+no job argument. The company name reaches the model only inside the question
+text itself ("…with **Akuna** in the past?"), which is legitimate and
+unavoidable.
 
-**Rationale**: the run's fabrications are almost all contamination — "I interned
-at Akuna Capital", "I am currently a Software Engineer at Akuna Capital
-University" — the model absorbed the target company from context and wrote it
-into the applicant's history. Removing the context removes the failure mode at
-the source.
+The drafts that read like contamination — "I am currently an embedded systems
+intern at Akuna Capital University", which is the app's own company field —
+are consistent with R1's finding that most of the 170 rows are **historical**,
+produced by the pre-016 flow where `qa.draft(question, tag, profile, job)` did
+receive the job.
 
-**Alternatives considered**: instructing the model not to confuse the two
-(unreliable, already implied by "use ONLY the applicant facts").
+**Decision**: keep the current separation and pin it with a regression test —
+the factual prompt asserts no company/role/description text, and only the
+cover-letter prompt may receive them. This is a guard against reintroducing an
+old defect, not a repair of a current one.
+
+**Consequence**: the fabrication fix rests entirely on **R4 (the refusal
+contract)** and **R6 (never generating factual-history answers)**. The live
+run's own activity log confirms the current path still fabricates — "Have you
+ever applied to a full time or internship position with Akuna in the past?" →
+"Yes, I have applied…" — because `suggest` has no way to say it does not know.
 
 ## R6 — Factual-history questions are never AI-answered
 

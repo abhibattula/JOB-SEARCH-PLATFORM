@@ -1,6 +1,8 @@
 """005-T010: engine/autofill/fields.py classifier — fixture-dict tests only,
 no real browser/DOM handle involved (per plan.md's testability requirement).
 """
+import pytest
+
 from engine.autofill import fields
 
 
@@ -227,3 +229,106 @@ class TestRawAttributeClassification009:
         field = raw_attr_field(name="first_name",
                               label_text="Are you authorized to work in the US?")
         assert fields.classify(field) == "work_authorization"
+
+
+class TestFactualHistoryTags017:
+    """017-T019 (R6, FR-008): questions about the applicant's own history are
+    unknowable from a resume. Every one of these was fabricated on the
+    2026-07-28 Akuna run, so they get real tags and are never generated.
+    """
+
+    CASES = [
+        ("Have you ever applied to a full time or internship position with "
+         "Akuna in the past?", "applied_before"),
+        ("Have you applied to this role at Akuna previously?",
+         "applied_before"),
+        ("Have you ever worked for us before?", "worked_here_before"),
+        ("Are you a former employee of this company?", "worked_here_before"),
+        ("Do you have prior experience working at an options market making "
+         "firm?", "prior_industry_experience"),
+        ("Did you complete our online Options 101 Course? If not, head to "
+         "akunacapital.teachable.com for more information on this free "
+         "course that is open to all (but not required in order to apply)!",
+         "completed_course"),
+        ("Do you have any offer deadlines that we should be aware of?",
+         "offer_deadlines"),
+        ("If you have upcoming deadlines, please indicate which company and "
+         "when the deadline is:", "offer_deadlines"),
+        ("Do you live in New York or California?", "residency_state"),
+        ("Are you currently employed?", "currently_employed"),
+        ("Have you ever been convicted of a felony?", "criminal_history"),
+        ("Please provide three professional references.", "references"),
+    ]
+
+    @pytest.mark.parametrize("label,expected", CASES)
+    def test_classified(self, label, expected):
+        assert fields.classify(field(label_text=label)) == expected
+
+    def test_none_of_them_fall_through_to_free_text(self):
+        for label, _ in self.CASES:
+            assert fields.classify(field(label_text=label)) != \
+                "free_text_unknown", label
+
+    def test_a_years_of_experience_question_is_unaffected(self):
+        """Guard against the new prior-experience pattern swallowing the
+        existing tag."""
+        assert fields.classify(
+            field(label_text="How many years of experience do you have?")
+        ) == "years_experience"
+
+    def test_a_city_question_is_unaffected(self):
+        assert fields.classify(field(label_text="City")) == "location_city"
+
+
+class TestNameAndPhoneRegressions017:
+    """017-T033 (C3, C4): two wrong-value defects from the live Akuna run,
+    both caused by patterns matching more text than they meant to."""
+
+    def test_phonetically_is_not_a_phone_field(self):
+        """_PHONE_RE had no word boundary, so "how your name is pronounced
+        PHONEtically" matched and received the applicant's phone number."""
+        label = ("We care about addressing everyone correctly. To help us get "
+                 "it right, please write out how your name is pronounced "
+                 "phonetically to share with the hiring team.")
+        assert fields.classify(field(label_text=label)) != "phone"
+
+    def test_a_real_phone_field_still_classifies(self):
+        for label in ("Phone", "Phone*", "Mobile number", "Telephone",
+                      "Cell phone"):
+            assert fields.classify(field(label_text=label)) == "phone", label
+
+    def test_someone_elses_name_is_not_the_applicants_name(self):
+        """"please list their name" received the applicant's own name."""
+        label = ("If you heard about Akuna through an Akuna employee, please "
+                 "list their name:")
+        assert fields.classify(field(label_text=label)) not in (
+            "first_name", "last_name", "full_name")
+
+    @pytest.mark.parametrize("label", [
+        "Reference name",
+        "Manager's name",
+        "Emergency contact name",
+        "Referrer name",
+    ])
+    def test_third_party_name_fields_are_not_claimed(self, label):
+        assert fields.classify(field(label_text=label)) not in (
+            "first_name", "last_name", "full_name")
+
+    def test_preferred_name_is_its_own_tag(self):
+        label = ("Do you have a preferred name, other than the name indicated "
+                 "above? If yes, please indicate that name below.")
+        assert fields.classify(field(label_text=label)) == "preferred_name"
+
+    def test_middle_name_is_its_own_tag(self):
+        assert fields.classify(field(label_text="Middle name")) == \
+            "middle_name"
+
+    def test_the_applicants_own_name_fields_still_classify(self):
+        assert fields.classify(field(label_text="First Name*")) == "first_name"
+        assert fields.classify(field(label_text="Last Name*")) == "last_name"
+        assert fields.classify(field(label_text="Full name")) == "full_name"
+        assert fields.classify(
+            field(label_text="What is your legal first name?")) == "first_name"
+
+    def test_lever_bare_name_attribute_is_unchanged(self):
+        assert fields.classify(field(name="name")) == "full_name"

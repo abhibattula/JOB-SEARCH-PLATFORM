@@ -292,3 +292,103 @@ class TestConstrainedSuggest016:
         self._capture(monkeypatch, "An answer.")
         assert answer_bank.suggest("Q?", None, {"resume_text": "r"}) \
             == "An answer."
+
+
+class TestRefusalContract017:
+    """017-T015/T017 (R4, R5 corrected, FR-006/FR-007): the live drafting
+    path must be able to say it does not know.
+
+    On the 2026-07-28 Akuna run the model asserted the applicant had interned
+    at the target company, completed the company's own course, held an offer
+    deadline, and lived in California — none of it in their resume. The cause
+    is structural: `suggest` had no refusal branch, so it always had to
+    produce text. `qa.draft` has carried a CANNOT_ANSWER token since 010; the
+    path 016 actually uses never got one.
+    """
+
+    def _capture(self, monkeypatch, reply):
+        from engine import matcher
+
+        captured = {}
+
+        def fake_chat(messages, **kw):
+            captured["messages"] = messages
+            return reply
+
+        monkeypatch.setattr(matcher, "_chat", fake_chat)
+        monkeypatch.setattr(matcher, "llm_available", lambda: True)
+        return captured
+
+    UNGROUNDED = [
+        ("Have you ever applied to a full time or internship position with "
+         "Akuna in the past?", "applied_before"),
+        ("Do you have prior experience working at an options market making "
+         "firm?", "prior_industry_experience"),
+        ("Did you complete our online Options 101 Course?", "completed_course"),
+        ("Do you have any offer deadlines that we should be aware of?",
+         "offer_deadlines"),
+        ("Do you live in New York or California?", "residency_state"),
+    ]
+
+    @pytest.mark.parametrize("question,category", UNGROUNDED)
+    def test_every_prompt_offers_the_refusal_token(
+            self, tmp_db, monkeypatch, question, category):
+        captured = self._capture(monkeypatch, "Yes")
+        answer_bank.suggest(question, category,
+                            {"resume_text": "Embedded systems intern."})
+        system = captured["messages"][0]["content"]
+        assert answer_bank.REFUSAL_TOKEN in system
+
+    def test_option_and_combobox_prompts_also_offer_it(
+            self, tmp_db, monkeypatch):
+        captured = self._capture(monkeypatch, "Yes")
+        answer_bank.suggest("Pick one", "free_text_unknown",
+                            {"resume_text": "x"},
+                            descriptor_ctx={"options": ["Yes", "No"]})
+        assert answer_bank.REFUSAL_TOKEN in captured["messages"][0]["content"]
+
+        captured = self._capture(monkeypatch, "Yes")
+        answer_bank.suggest("Pick one", "free_text_unknown",
+                            {"resume_text": "x"},
+                            descriptor_ctx={"widget": "custom_combobox"})
+        assert answer_bank.REFUSAL_TOKEN in captured["messages"][0]["content"]
+
+    def test_a_refusal_is_passed_through_verbatim(self, tmp_db, monkeypatch):
+        self._capture(monkeypatch, answer_bank.REFUSAL_TOKEN)
+        out = answer_bank.suggest("Do you have any offer deadlines?",
+                                  "offer_deadlines", {"resume_text": "x"})
+        assert out == answer_bank.REFUSAL_TOKEN
+
+    def test_a_chatty_refusal_is_still_recognised(self, tmp_db, monkeypatch):
+        self._capture(
+            monkeypatch,
+            "CANNOT_ANSWER — the resume does not mention any offer deadlines.")
+        out = answer_bank.suggest("Do you have any offer deadlines?",
+                                  "offer_deadlines", {"resume_text": "x"})
+        assert answer_bank.is_refusal(out)
+
+    def test_a_real_answer_is_not_mistaken_for_a_refusal(self):
+        assert not answer_bank.is_refusal("3.2")
+        assert not answer_bank.is_refusal("December 2025")
+        assert not answer_bank.is_refusal("")
+
+    def test_the_factual_prompt_carries_no_job_or_company_context(
+            self, tmp_db, monkeypatch):
+        """R5 (corrected): the live path already passes resume grounding only.
+        This pins it, because the pre-016 flow did pass the job and produced
+        exactly the 'I interned at <target company>' class of answer."""
+        captured = self._capture(monkeypatch, "Yes")
+        answer_bank.suggest(
+            "Do you have prior experience at an options market making firm?",
+            "prior_industry_experience",
+            {"resume_text": "Embedded systems intern at Acme Robotics."})
+        blob = " ".join(m["content"] for m in captured["messages"])
+        assert "Acme Robotics" in blob            # the applicant's own facts
+        assert "RESUME/PROFILE" in blob
+        for leak in ("JOB DESCRIPTION", "ABOUT THE ROLE", "COMPANY:"):
+            assert leak not in blob
+
+    def test_suggest_accepts_no_job_argument(self):
+        import inspect
+
+        assert "job" not in inspect.signature(answer_bank.suggest).parameters

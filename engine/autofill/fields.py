@@ -68,8 +68,91 @@ _LINKEDIN_RE = re.compile(r"linkedin", re.IGNORECASE)
 _PORTFOLIO_RE = re.compile(
     r"portfolio|github|personal[\s_-]*website|website[\s_-]*url", re.IGNORECASE
 )
-_PHONE_RE = re.compile(r"phone|mobile|telephone", re.IGNORECASE)
+# 017 (R6, FR-008): questions about the applicant's OWN HISTORY. A resume
+# cannot answer any of these, and every one of them was fabricated on the
+# 2026-07-28 live run ("Yes, I have applied to a full-time position with
+# Akuna in the past", "Yes, I completed the Options 101 Course", "Yes, I have
+# an offer deadline of December 31, 2025", "California"). They get real tags
+# so they can be answered from the applicant's own library — never generated.
+_APPLIED_BEFORE_RE = re.compile(
+    r"\bapplied\b.{0,60}\b(previous\w*|before|in\s+the\s+past)\b|"
+    r"\bhave\s+you\s+(ever\s+)?applied\b",
+    re.IGNORECASE,
+)
+_WORKED_HERE_RE = re.compile(
+    r"\bworked\s+(for|at|with)\s+(us|our|this\s+company)\b|"
+    r"\bformer\s+employee\b|"
+    r"\bpreviously\s+employed\s+(by|at|with)\s+(us|our|this)\b",
+    re.IGNORECASE,
+)
+_PRIOR_INDUSTRY_RE = re.compile(
+    r"\bprior\s+experience\b|\bprevious\s+experience\s+(at|with|in)\b",
+    re.IGNORECASE,
+)
+_COMPLETED_COURSE_RE = re.compile(
+    r"\b(did|have)\s+you\s+completed?\b|"
+    r"\bcompleted\s+(our|the)\b.{0,40}\bcourse\b",
+    re.IGNORECASE,
+)
+_OFFER_DEADLINE_RE = re.compile(
+    r"\boffer\s+deadlines?\b|\bupcoming\s+deadlines?\b|"
+    r"\bdeadlines?\s+that\s+we\s+should\b",
+    re.IGNORECASE,
+)
+_RESIDENCY_RE = re.compile(
+    r"\bdo\s+you\s+(currently\s+)?live\s+in\b|"
+    r"\bare\s+you\s+a\s+resident\s+of\b|"
+    r"\bwhich\s+state\s+do\s+you\s+(live|reside)\b",
+    re.IGNORECASE,
+)
+_CURRENTLY_EMPLOYED_RE = re.compile(r"\bcurrently\s+employed\b", re.IGNORECASE)
+_CRIMINAL_RE = re.compile(
+    r"\bconvicted\b|\bfelony\b|\bmisdemeanou?r\b|"
+    r"\bcriminal\s+(record|history|conviction|background)\b",
+    re.IGNORECASE,
+)
+_REFERENCES_RE = re.compile(
+    r"\bprofessional\s+references\b|\bprovide\b.{0,25}\breferences\b|"
+    r"\blist\b.{0,25}\breferences\b|\breference\s+contacts?\b",
+    re.IGNORECASE,
+)
+
+# 017: the classified questions that must never be AI-answered. Kept here
+# beside the patterns that produce them so the two cannot drift; the drafter
+# imports it as its refusal set.
+FACTUAL_HISTORY_TAGS = frozenset({
+    "applied_before", "worked_here_before", "prior_industry_experience",
+    "completed_course", "offer_deadlines", "residency_state",
+    "currently_employed", "criminal_history", "references",
+    # a referrer's or reference's name is someone else's fact
+    "third_party_name",
+})
+
+# 017 (C3): word-bounded. Without \b, "how your name is pronounced
+# PHONEtically" matched and the live run put the applicant's phone number in
+# the name-pronunciation box.
+_PHONE_RE = re.compile(r"\bphone\b|\bmobile\b|\btelephone\b|\bcell\b",
+                       re.IGNORECASE)
 _EMAIL_RE = re.compile(r"\bemail\b", re.IGNORECASE)
+# 017 (C4): a name field that belongs to SOMEONE ELSE. _FULL_NAME_RE ends in
+# a bare \bname\b, so "If you heard about us through an employee, please list
+# their name" received the applicant's own name on the live run. Never
+# generated either — the model cannot know a referrer's name.
+_THIRD_PARTY_NAME_RE = re.compile(
+    r"\b(their|his|her|they)\s+name\b|"
+    r"\b(employee|employer|referrer|referral|reference|manager|supervisor|"
+    r"colleague|contact|emergency|recruiter|friend|person)('?s)?\s+name\b|"
+    r"\bname\s+of\s+(the\s+)?(employee|referrer|reference|manager|contact)\b",
+    re.IGNORECASE,
+)
+# 017: "Preferred Name" used to match \bname\b and receive the legal full name.
+_PREFERRED_NAME_RE = re.compile(
+    r"preferred[\s_-]*name|nick[\s_-]*name|name\s+you\s+(go\s+by|prefer)|"
+    r"what\s+should\s+we\s+call\s+you",
+    re.IGNORECASE,
+)
+_MIDDLE_NAME_RE = re.compile(r"middle[\s_-]*(name|initial)", re.IGNORECASE)
+
 _FIRST_NAME_RE = re.compile(r"first[\s_-]*name|given[\s_-]*name", re.IGNORECASE)
 _LAST_NAME_RE = re.compile(r"last[\s_-]*name|family[\s_-]*name|surname", re.IGNORECASE)
 _FULL_NAME_RE = re.compile(r"full[\s_-]*name|your[\s_-]*name|\bname\b", re.IGNORECASE)
@@ -119,6 +202,28 @@ def classify(field: FieldDescriptor) -> str:
             return "cover_letter"
         return "resume_upload"
 
+    # 017 (FR-008): the applicant's own history — never AI-answerable.
+    # Checked before the generic Q&A tags so they cannot fall through to
+    # free_text_unknown, which is what let the model invent them.
+    if _APPLIED_BEFORE_RE.search(text):
+        return "applied_before"
+    if _WORKED_HERE_RE.search(text):
+        return "worked_here_before"
+    if _PRIOR_INDUSTRY_RE.search(text):
+        return "prior_industry_experience"
+    if _COMPLETED_COURSE_RE.search(text):
+        return "completed_course"
+    if _OFFER_DEADLINE_RE.search(text):
+        return "offer_deadlines"
+    if _RESIDENCY_RE.search(text):
+        return "residency_state"
+    if _CURRENTLY_EMPLOYED_RE.search(text):
+        return "currently_employed"
+    if _CRIMINAL_RE.search(text):
+        return "criminal_history"
+    if _REFERENCES_RE.search(text):
+        return "references"
+
     # Q&A-bank style fields.
     if _YEARS_EXPERIENCE_RE.search(text):
         return "years_experience"
@@ -139,6 +244,16 @@ def classify(field: FieldDescriptor) -> str:
 
     # Basic identity fields. The HTML autocomplete attribute is the
     # highest-confidence identity signal a form can carry (009 FR-005).
+    # 017 (C4): name questions that are NOT about the applicant, and the two
+    # name variants a bare \bname\b used to swallow. Checked before every
+    # other name rule, including the autocomplete shortcuts.
+    if _THIRD_PARTY_NAME_RE.search(text):
+        return "third_party_name"
+    if _PREFERRED_NAME_RE.search(text):
+        return "preferred_name"
+    if _MIDDLE_NAME_RE.search(text):
+        return "middle_name"
+
     if autocomplete == "given-name":
         return "first_name"
     if autocomplete == "family-name":
