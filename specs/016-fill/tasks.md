@@ -219,7 +219,7 @@ the app; tailor bounded and honest.
 
 ## Phase 7: Verification, docs, ship
 
-- [ ] T022 E2E (R14) — extend
+- [x] T022 E2E (R14) — extend
   `tests/integration/test_pairing_e2e.py` (BOTH browser families,
   existing real-uvicorn + Playwright harness): apply-opener fixture
   (form appears only after the click), new-tab transfer variant,

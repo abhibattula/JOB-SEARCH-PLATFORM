@@ -124,9 +124,11 @@
         break;
       case "watch_state":
         // reply to our own ready-probe: begin watching if the SW says so.
-        // Origin unknown here (restored watch) → stay conservative: no
-        // auto-open (adhoc default true).
-        if (message.watched) { startWatch(); }
+        // adhoc rides along (absent → conservative true: no auto-open).
+        if (message.watched) {
+          adhoc = message.adhoc !== false;
+          startWatch();
+        }
         break;
       case "unwatch": teardown(); break;
       case "fill":

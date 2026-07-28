@@ -91,6 +91,24 @@ def _launch(channel, ext_dir, profile_dir):
     return p, ctx
 
 
+def _wait_fixture_state(port, page_key, predicate, timeout=45.0):
+    """The practice fixtures self-report their DOM state (extension-opened
+    tabs have no Playwright page handle) — poll until the predicate holds."""
+    import httpx
+
+    deadline = time.monotonic() + timeout
+    state = None
+    while time.monotonic() < deadline:
+        snapshot = httpx.get(
+            f"http://127.0.0.1:{port}/practice/fixture-state",
+            timeout=5).json()
+        state = snapshot.get(page_key)
+        if state and predicate(state):
+            return state
+        time.sleep(1.0)
+    return state
+
+
 def _doctor(port):
     import httpx
 
@@ -128,7 +146,8 @@ def test_human_pairing_path_connects_and_fills(app_server, tmp_path,
 
     # 2. Load the stamped folder itself into the real browser.
     db.save_profile(first_name="Pairing", last_name="Proof",
-                    email="pairing-e2e@example.com", phone="5551230000")
+                    email="pairing-e2e@example.com", phone="5551230000",
+                    authorized_without_sponsorship="yes")
     p, ctx = _launch(channel, dest, tmp_path / f"profile-{channel}")
     try:
         # 3. The companion must connect and identify its browser (SC-004).
@@ -165,6 +184,27 @@ def test_human_pairing_path_connects_and_fills(app_server, tmp_path,
             f"practice run did not use the companion; status: {status}")
         assert status["activity"].get("fields_filled", 0) >= 1, (
             f"companion never filled a field in {channel}; status: {status}")
+
+        # 5. 016 (US2/US3): the DOM itself is the ground truth — choice
+        #    fills, sensitive left blank + flagged, panel present, and
+        #    ZERO automated submit clicks.
+        state = _wait_fixture_state(
+            port, "apply",
+            lambda s: s.get("sponsorship_no") and s.get("first_name")
+            and s.get("eeo_flag"))
+        assert state, "practice page never reported a filled state"
+        assert state["first_name"] == "Pairing"
+        assert state["sponsorship_no"] is True, (
+            "sponsorship radio group was not answered from the profile")
+        assert state["eeo_value"] == "", (
+            "an EEO question was auto-answered — never allowed")
+        assert state["eeo_flag"] == "needs_you", (
+            "sensitive field missing its needs-you highlight")
+        assert state["panel"] is True, "on-page panel not injected"
+        clicks = httpx.get(
+            f"http://127.0.0.1:{port}/practice/submit-log",
+            timeout=5).json()["clicks"]
+        assert clicks == 0, "an automated click hit the submit control"
 
         httpx.post(f"http://127.0.0.1:{port}/api/autofill/stop", timeout=10)
     finally:
@@ -256,3 +296,120 @@ def test_serializer_parity_same_logical_fields():
     named = {d["name"]: d for d in via_scanner}
     assert named["first_name"]["required"] is True
     assert named["notice"]["maxlength"] == 10
+
+
+def _connect_companion(app_server, tmp_path, profile_name):
+    """Stamp, launch bundled Chromium with the stamped folder, wait for the
+    companion to connect. Returns (playwright, context, port)."""
+    import time as time_mod
+
+    from engine import db
+    from scripts import stamp_extension
+
+    port = app_server["port"]
+    dest = stamp_extension.stamp(port)
+    db.save_profile(first_name="Opener", last_name="Proof",
+                    email="opener-e2e@example.com", phone="5551230001",
+                    authorized_without_sponsorship="yes")
+    p, ctx = _launch("chromium", dest, tmp_path / profile_name)
+    deadline = time_mod.monotonic() + CONNECT_TIMEOUT_S
+    while time_mod.monotonic() < deadline:
+        if _doctor(port)["companion"]["connected"]:
+            return p, ctx, port
+        time_mod.sleep(1.0)
+    ctx.close()
+    p.stop()
+    pytest.skip("companion never connected for the opener test")
+
+
+def _queue_posting_job(port, newtab=False):
+    import httpx
+
+    from engine import db
+
+    url = f"http://127.0.0.1:{port}/practice/posting"
+    if newtab:
+        url += "?newtab=1"
+    db.upsert_job({"title": "DV Engineer", "company": "Aurora",
+                   "url": url, "source": "manual", "description": "fixture",
+                   "posted_date": None})
+    job = db.get_job_by_url(url)
+    assert job is not None
+    resp = httpx.post(f"http://127.0.0.1:{port}/api/autofill/queue",
+                      json={"job_ids": [job["id"]]}, timeout=15)
+    assert resp.status_code == 200 and resp.json()["backend"] == "extension"
+    return job["id"]
+
+
+def _wait_for_fill(port, min_filled=1, timeout=FILL_TIMEOUT_S):
+    import time as time_mod
+
+    import httpx
+
+    deadline = time_mod.monotonic() + timeout
+    status = None
+    while time_mod.monotonic() < deadline:
+        status = httpx.get(f"http://127.0.0.1:{port}/api/autofill/status",
+                           timeout=5).json()
+        if status["activity"].get("fields_filled", 0) >= min_filled:
+            return status
+        time_mod.sleep(1.0)
+    return status
+
+
+def test_apply_opener_reveals_hidden_form_and_fills(app_server, tmp_path):
+    """016 (T022, D1/FR-016): on a posting whose form is hidden behind
+    Apply, the assistant opens it ONCE and fills the revealed fields —
+    and never touches the submit control (SC-004)."""
+    import time as time_mod
+
+    import httpx
+
+    p, ctx, port = _connect_companion(app_server, tmp_path, "profile-opener")
+    try:
+        _queue_posting_job(port)
+        status = _wait_for_fill(port)
+        assert status and status["activity"].get("fields_filled", 0) >= 1, (
+            f"opener flow never filled a field; status: {status}")
+        state = _wait_fixture_state(
+            port, "posting",
+            lambda s: s.get("revealed") and s.get("first_name"))
+        assert state, "posting page never reported a filled state"
+        assert state["revealed"] is True, (
+            "the Apply control was never clicked — form still hidden")
+        assert state["first_name"] == "Opener"
+        clicks = httpx.get(f"http://127.0.0.1:{port}/practice/submit-log",
+                           timeout=5).json()["clicks"]
+        assert clicks == 0
+        httpx.post(f"http://127.0.0.1:{port}/api/autofill/stop", timeout=10)
+    finally:
+        try:
+            ctx.close()
+        finally:
+            p.stop()
+
+
+def test_apply_opener_newtab_transfers_watch_and_fills(app_server, tmp_path):
+    """016 (T022, FR-005): when Apply opens the form in a CHILD tab, the
+    watch transfers and filling continues there."""
+    import time as time_mod
+
+    import httpx
+
+    p, ctx, port = _connect_companion(app_server, tmp_path, "profile-newtab")
+    try:
+        _queue_posting_job(port, newtab=True)
+        status = _wait_for_fill(port)
+        assert status and status["activity"].get("fields_filled", 0) >= 1, (
+            f"new-tab flow never filled a field; status: {status}")
+        state = _wait_fixture_state(
+            port, "apply", lambda s: s.get("first_name"), timeout=60.0)
+        assert state and state["first_name"] == "Opener", (
+            "filling did not continue in the transferred child tab; "
+            f"state: {state}")
+        httpx.post(f"http://127.0.0.1:{port}/api/autofill/stop", timeout=10)
+    finally:
+        try:
+            ctx.close()
+        finally:
+            p.stop()

@@ -714,6 +714,21 @@ def create_app() -> FastAPI:
     # 016 (T014): server-side submit-click log — the E2E's proof that NO
     # automated click ever hits a submit control (SC-004).
     app.state.practice_submit_clicks = 0
+    # 016 (T022): the practice pages beacon their own DOM state here —
+    # extension-opened tabs aren't reachable via Playwright page handles,
+    # so the fixtures self-report and the E2E polls this (still DOM truth).
+    app.state.practice_fixture_state = {}
+
+    @app.post("/practice/fixture-state")
+    async def practice_fixture_state_write(request: Request):
+        payload = await request.json()
+        key = str(payload.get("page") or "unknown")
+        request.app.state.practice_fixture_state[key] = payload
+        return {"ok": True}
+
+    @app.get("/practice/fixture-state")
+    def practice_fixture_state_read(request: Request):
+        return request.app.state.practice_fixture_state
 
     @app.post("/practice/submit-log")
     def practice_submit_log(request: Request):

@@ -96,9 +96,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // A content script announcing it's loaded — tell it whether its tab is
   // being watched (closes the watch_start-before-inject race).
   if (sender.tab && msg && msg._je_ready) {
+    // 016 (T015): carry the watch ORIGIN too — content scripts usually
+    // start via this probe (the watch_start broadcast races injection),
+    // and only queue-driven watches may auto-open the application form.
+    // Restored watches (jobId unknown) stay conservative: adhoc.
+    const entry = watched.get(sender.tab.id);
     chrome.tabs.sendMessage(
       sender.tab.id,
-      { type: "watch_state", watched: watched.has(sender.tab.id) },
+      { type: "watch_state", watched: watched.has(sender.tab.id),
+        adhoc: !entry || entry.jobId == null || entry.jobId === -2 },
       sender.frameId !== undefined ? { frameId: sender.frameId } : undefined,
     ).catch(() => {});
     return false;

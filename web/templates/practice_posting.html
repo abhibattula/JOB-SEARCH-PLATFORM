@@ -50,5 +50,22 @@
       Submit application
     </button>
   </form>
+  <script>
+    // 016 (T022): self-report for the E2E (see practice_apply.html).
+    setInterval(function () {
+      try {
+        var sponsorNo = document.querySelector('input[name=sponsorship][value=No]');
+        fetch('/practice/fixture-state', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            page: 'posting',
+            revealed: !document.getElementById('application').hidden,
+            first_name: (document.getElementById('first_name') || {}).value || '',
+            sponsorship_no: !!(sponsorNo && sponsorNo.checked),
+          }),
+        });
+      } catch (e) { /* fixture beacon only */ }
+    }, 1000);
+  </script>
 </body>
 </html>
