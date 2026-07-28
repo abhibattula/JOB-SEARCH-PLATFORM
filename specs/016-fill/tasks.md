@@ -232,7 +232,7 @@ the app; tailor bounded and honest.
   015 stamp/doctor gates). Cross-platform sweep: grep for stale pinned
   asserts (the 013/015 lesson — version pins, platform-conditional
   asserts) BEFORE tagging; fix all fallout.
-- [ ] T024 Docs + memory — `docs/USER_MANUAL.md` §20 (fill-first flow,
+- [x] T024 Docs + memory — `docs/USER_MANUAL.md` §20 (fill-first flow,
   panel, highlights, apply-opener, sensitive policy, tailor states,
   isolation default), `README.md` companion section, `WHATS_NEW["1.6.0"]`
   final copy; auto-memory updates (job-engine status, apply-assist

@@ -66,33 +66,34 @@ entirely on your machine for $0.
   back to CPU when there's no GPU; NVIDIA users can unlock full GPU with one
   `pip install` of a CUDA `llama-cpp-python` wheel (the installer stays the CPU
   build, same size).
-- **Apply Assist — fills in your own browser (v1.0)**: install the free
-  one-time **browser companion** (a Chrome/Edge extension — see the in-app
-  Companion page) and applications fill in *your everyday browser*, where
-  you're already signed in to job sites. Without it, Apply Assist fills in a
-  dedicated assistant window opened in your **default browser** (v1.3 — no
-  longer forced to Edge); the screen shows which mode and browser is active. Either way it opens each shortlisted job at its real
-  application form and then **watches the page continuously**, filling every
-  recognized field
-  the moment it exists: slow-rendering forms, forms revealed by the site's
-  own Apply button, every page of a multi-step application, and forms
-  embedded in iframes. A **Test Apply Assist** button runs a bundled
-  practice application so you can watch your own data fill in seconds —
-  proof on your machine before any real posting. Recognized fields —
-  name, contact info, links, **your resume file itself**, work
-  authorization/sponsorship dropdowns (matched to the site's own option
-  wording), and common short-answer questions — from your profile and a
-  reusable answer bank. **Open-ended questions** ("Why this company?") get an
-  **AI draft** grounded in your resume, filled and flagged for your review
-  before you submit; confirmed answers are saved and reused, and sensitive
-  (visa/EEO) questions are never AI-answered. Multi-page applications keep filling as *you* click
-  the site's own Next button; a per-field fill report shows exactly what was
-  entered; closing the browser mid-queue is resumable; a batch summary wraps
-  every run. **You always click the actual submit/login button yourself; the
-  app never does.** Unrecognized or legally-sensitive questions pause for
-  your review before anything is saved or typed. Saved logins autofill from
-  your OS's own credential store (never this app's database) the same way —
-  filled, never auto-submitted.
+- **Apply Assist — fills for real, on the page (v1.0, rebuilt in v1.6)**:
+  install the free one-time **browser companion** (a Chrome/Edge extension —
+  see the in-app Companion page) and applications fill in *your everyday
+  browser*, where you're already signed in to job sites. Without it, Apply
+  Assist fills in a dedicated assistant window opened in your **preferred
+  browser** (Chrome by default, changeable in Settings); the screen shows
+  which mode and browser is active. Each shortlisted job opens at its real
+  posting; on recognized boards (Greenhouse/Lever/Ashby style) the assistant
+  **clicks the posting's own form-opening Apply button once** (never
+  anything that submits) and then **watches the page continuously**: known
+  answers — name, contact info, links, **your resume file itself**,
+  work-authorization/sponsorship answers straight from your profile, and
+  your reusable answer bank — land **within seconds**, including in iframes,
+  late-rendering sections, multi-step pages, and forms that open in a new
+  tab. **Dropdowns, radios and yes/no questions are answered from the
+  field's actual options** — never with prose. **Open-ended questions** get
+  an AI draft generated in the background and typed in when ready, marked
+  with a highlight until you edit it; drafts auto-save for reuse
+  (job-specific essays never cross jobs). **Sensitive questions (visa/EEO/
+  demographics/disability/veteran/criminal/references) are never
+  AI-answered** — they stay blank with a visible highlight for you. A live
+  **on-page panel** shows progress, what needs you, and a Fill-again
+  button; the app keeps a passive activity log — nothing blocks on
+  approvals. A **Test Apply Assist** button runs a bundled practice
+  application so you can watch your own data fill in seconds. **You always
+  click the actual submit/login button yourself; the app never does.**
+  Saved logins autofill from your OS's own credential store (never this
+  app's database) the same way — filled, never auto-submitted.
 - **Discovery badge — score any job you browse (v1.2)**: with the companion
   connected, a small badge appears on any job posting you visit — LinkedIn,
   Indeed, Greenhouse/Lever/Ashby, or a company career page — showing your

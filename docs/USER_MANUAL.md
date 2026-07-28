@@ -629,6 +629,53 @@ UNKNOWN badges everywhere = run `python cli.py load-sponsorship`.
   "couldn't read this page" dead end, and the silent identity auto-fill
   are all gone.
 
+## 20. What changed in v1.6.0 (The Fill Release)
+
+Apply Assist now fills for real, on the page — the entire review loop moved
+out of the app window and onto the job form itself. Same stack, still $0 and
+offline; you still perform every final submit, always.
+
+- **Filling is immediate and never blocks.** Known answers (name, email,
+  phone, links, saved answers) land within seconds of the form appearing —
+  even while the AI is still thinking about other questions. The old
+  behavior (everything held back until every field was decided, sometimes
+  for minutes) is gone.
+- **Drafts arrive by themselves.** Unknown questions are drafted in the
+  background (one draft per question — no more silent re-drafting loops)
+  and typed into the field the moment they're ready, marked with a purple
+  outline until you edit them. Every draft is auto-saved to your answer
+  bank; job-specific essays are never reused on a different job.
+- **Dropdowns, radios and yes/no questions are answered properly** — from
+  the field's actual options, never with an essay. Work-authorization and
+  sponsorship questions answer straight from your Profile (set
+  "authorized without sponsorship" there); if the app can't derive the
+  answer it leaves the field blank with an amber outline for you.
+- **Sensitive questions are never auto-answered.** EEO/demographic,
+  disability, veteran-status, criminal-history and reference questions are
+  always left for you, visibly highlighted — there is no AI involvement at
+  all for these.
+- **The form opens itself.** On recognized job boards (Greenhouse, Lever,
+  Ashby style), if the posting hides its application behind an "Apply"
+  button, the assistant clicks that one form-opening button for you —
+  exactly once, never anything that submits, advances, logs in, or pays.
+  If the form opens in a new tab, filling follows it there.
+- **A live panel on the page** shows connection status, how many fields are
+  filled, what needs your attention, and a "Fill again" button. The app's
+  Apply Assist screen now shows a passive activity log instead of blocking
+  questions — nothing waits for your approval to fill.
+- **The popup tells the truth.** "Fill this page" while a queue is running
+  now explains it's busy instead of silently doing nothing, and the popup
+  stays open to show the outcome.
+- **"Tailor for this job" can no longer crash the app.** The on-device AI
+  now runs in an isolated helper process by default — if the AI hits a
+  native fault, only the helper restarts (visible in Diagnostics) and the
+  app keeps running. Tailoring shows an honest "can take a few minutes"
+  state and a clear error if it fails, instead of a vanished app.
+- If something looks stuck: the panel's **Fill again**, the app's
+  **Re-scan** (now functional in companion mode), and **Diagnostics →
+  Companion & pairing** (which now also counts dropped traffic and page
+  scan errors) are the three levers.
+
 ## 19. What changed in v1.5.0 (The Pairing Release)
 
 Apply Assist's companion pairing was rebuilt end-to-end, and the on-device AI
