@@ -300,44 +300,35 @@ class TestPage:
         resp = client.get("/partials/autofill/status")
         assert resp.status_code == 200
 
-    def test_status_partial_renders_pending_confirmation(self, client, monkeypatch):
-        """005-T035: the confirm-before-use UI must render without error
-        when a pending drafted answer is present."""
+    def test_status_partial_renders_activity_log(self, client, monkeypatch):
+        """016 (FR-019): the passive activity log renders drafting/drafted/
+        needs-you entries (the 005 confirm-before-use gate is gone)."""
         from engine.autofill import browser_controller
 
         monkeypatch.setattr(
             browser_controller, "current_job",
             lambda: {
                 "job_id": 1, "remaining": 0, "fell_back": False,
-                "pending": {
-                    "question_raw": "How did you hear about us?",
-                    "category": "how_heard",
-                    "drafted_answer": "Found it on LinkedIn",
-                },
+                "activity": [
+                    {"question": "How did you hear about us?",
+                     "state": "drafted",
+                     "answer_preview": "Found it on LinkedIn",
+                     "reason": None},
+                    {"question": "Tell us about a project",
+                     "state": "drafting", "answer_preview": "",
+                     "reason": None},
+                    {"question": "What is your ethnicity?",
+                     "state": "needs_you", "answer_preview": "",
+                     "reason": "sensitive"},
+                ],
             },
         )
         resp = client.get("/partials/autofill/status")
         assert resp.status_code == 200
         assert "How did you hear about us?" in resp.text
-        assert "unreviewed" in resp.text
-
-    def test_status_partial_renders_sensitive_pending_badge(self, client, monkeypatch):
-        from engine.autofill import browser_controller
-
-        monkeypatch.setattr(
-            browser_controller, "current_job",
-            lambda: {
-                "job_id": 1, "remaining": 0, "fell_back": False,
-                "pending": {
-                    "question_raw": "Do you require visa sponsorship?",
-                    "category": "sponsorship_requirement",
-                    "drafted_answer": "",
-                },
-            },
-        )
-        resp = client.get("/partials/autofill/status")
-        assert resp.status_code == 200
-        assert "sensitive" in resp.text
+        assert "Found it on LinkedIn" in resp.text
+        assert "drafting" in resp.text
+        assert "needs you" in resp.text
 
 
 class Test008BrowserRoutes:

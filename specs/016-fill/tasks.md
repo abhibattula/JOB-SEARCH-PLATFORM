@@ -178,7 +178,7 @@ radios/comboboxes correct, EEO blank + flagged, honest outcomes.
   renders `ai_draft`/`needs_you` flags as outline + badge keyed by
   `je_idx`; input listener clears; reapplied across rescans while the
   flag holds. Tests: asset assertions + E2E visibility check (T022).
-- [ ] T018 [US3] App UI rework (R11) —
+- [x] T018 [US3] App UI rework (R11) —
   `web/templates/partials/autofill_status.html`: blocking review box →
   passive activity log (drafting/drafted/filled/needs-you, links to the
   bank); `web/templates/autofill.html` presentation; 015 fill-path

@@ -125,15 +125,19 @@ def test_unclean_exit_banner_shows_once_and_dismisses(tmp_db):
     assert "closed unexpectedly" not in c.get("/").text
 
 
-def test_pending_panel_has_drafting_state():
-    """015 (FR-003): the pending panel renders a live 'drafting…' state while
-    the background suggestion generates (never a silent empty draft)."""
+def test_activity_log_replaces_the_blocking_pending_panel():
+    """016 (FR-019): the status partial shows a PASSIVE activity log
+    (drafting / drafted / needs-you) — the blocking review box is gone;
+    corrections happen on the page and the bank is curated from the
+    profile."""
     import pathlib
 
     html = pathlib.Path("web/templates/partials/autofill_status.html").read_text(
         encoding="utf-8")
-    assert "pending.drafting" in html
-    assert "drafting a suggestion" in html
+    assert "current.pending" not in html
+    assert "current.activity" in html
+    assert "needs you" in html
+    assert "answer bank" in html
 
 
 def test_stamp_failure_banner_on_autofill_and_companion(tmp_db):
