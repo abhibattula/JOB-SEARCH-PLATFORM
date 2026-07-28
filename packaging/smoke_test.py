@@ -115,6 +115,30 @@ def main() -> int:
         print(f"FAIL: local-llm-selftest did not return ok+reply: {selftest}")
         return 1
 
+    # 016 (T023, RC5): the riskiest generation in the app — grammar-
+    # constrained JSON via the isolated AI runtime. Tailoring had NEVER
+    # completed on the user's machine (the process died mid-inference with
+    # nothing logged); completing here, with the app still serving after,
+    # is the containment proof. Runs under the new default isolation.
+    tailor_body = urllib.request.urlopen(
+        base + "/api/diagnostics/tailor-selftest", timeout=420
+    ).read()
+    tailor_selftest = json.loads(tailor_body)
+    print(f"tailor-selftest -> {tailor_selftest}")
+    if not tailor_selftest.get("completed"):
+        proc.terminate()
+        print(f"FAIL: tailor selftest did not complete: {tailor_selftest}")
+        return 1
+    if not tailor_selftest.get("isolated"):
+        proc.terminate()
+        print("FAIL: frozen app is not running the isolated AI runtime")
+        return 1
+    alive = urllib.request.urlopen(base + "/", timeout=10).status
+    if alive != 200:
+        proc.terminate()
+        print("FAIL: app not serving after the tailor selftest")
+        return 1
+
     # 007: same reasoning, for the bundled DejaVu fonts + fpdf2 — a real
     # render, so dropped font data files fail the release loudly instead
     # of surfacing as broken PDF downloads in production.
@@ -220,14 +244,18 @@ def main() -> int:
     # 012: the discovery content script must ship too, or the browse-time badge
     # silently does nothing in the frozen build.
     ext_discovery = os.path.join(data_dir, "extension", "content", "discovery.js")
+    # 016: the apply-opener must ship too, or postings never auto-open.
+    ext_opener = os.path.join(data_dir, "extension", "content", "opener.js")
     if not (os.path.exists(ext_manifest) and os.path.exists(ext_pairing)
-            and os.path.exists(ext_guard) and os.path.exists(ext_discovery)):
+            and os.path.exists(ext_guard) and os.path.exists(ext_discovery)
+            and os.path.exists(ext_opener)):
         proc.terminate()
         print("FAIL: companion extension not fully materialized "
               f"(manifest={os.path.exists(ext_manifest)} "
               f"pairing={os.path.exists(ext_pairing)} "
               f"click_guard={os.path.exists(ext_guard)} "
-              f"discovery={os.path.exists(ext_discovery)})")
+              f"discovery={os.path.exists(ext_discovery)} "
+              f"opener={os.path.exists(ext_opener)})")
         return 1
     ext_manifest_data = json.loads(
         open(ext_manifest, encoding="utf-8").read())

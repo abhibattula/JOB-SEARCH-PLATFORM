@@ -340,3 +340,20 @@ def test_tailor_button_sets_honest_expectations():
         encoding="utf-8")
     assert html.count("can take a few minutes") >= 2  # first-run + regenerate
     assert 'role="alert"' in html
+
+
+def test_tailor_selftest_endpoint_reports_verdict(tmp_db, monkeypatch):
+    """016 (T023): the tailor selftest returns a verdict (never a 500) and
+    names the isolation mode — the frozen smoke gates on it."""
+    from fastapi.testclient import TestClient
+
+    from engine import tailor
+    from web.main import create_app
+
+    monkeypatch.setattr(tailor, "tailor_for_job",
+                        lambda *a, **k: None)  # completed, unparsed
+    body = TestClient(create_app()).get(
+        "/api/diagnostics/tailor-selftest").json()
+    assert body["completed"] is True
+    assert body["parsed"] is False
+    assert isinstance(body["isolated"], bool)
