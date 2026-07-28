@@ -91,6 +91,21 @@ def _get_model():
         return _model
 
 
+def _completion_kwargs(payload: dict) -> dict:
+    """016 (T020): the create_chat_completion kwargs — ALWAYS carries an
+    explicit max_tokens (llama-cpp's None means 'generate to n_ctx')."""
+    kwargs = {
+        "messages": payload.get("messages") or [],
+        "temperature": 0.2,
+        "max_tokens": int(payload.get("max_tokens") or MAX_TOKENS_PROSE),
+    }
+    if payload.get("json_mode"):
+        # 008 (FR-028): grammar-constrained JSON decoding — structurally
+        # valid JSON every time instead of best-effort prose.
+        kwargs["response_format"] = {"type": "json_object"}
+    return kwargs
+
+
 def _chat_impl(payload: dict) -> str:
     """Worker-side executor — runs ONLY on the engine/inference.py owner
     thread (015 FR-001: llama objects are not thread-safe; loading happens
@@ -98,17 +113,19 @@ def _chat_impl(payload: dict) -> str:
     model = _get_model()
     if model is None:
         raise RuntimeError("local model unavailable")
-    kwargs = {"messages": payload["messages"], "temperature": 0.2}
-    if payload.get("json_mode"):
-        # 008 (FR-028): grammar-constrained JSON decoding — structurally
-        # valid JSON every time instead of best-effort prose.
-        kwargs["response_format"] = {"type": "json_object"}
-    completion = model.create_chat_completion(**kwargs)
+    completion = model.create_chat_completion(**_completion_kwargs(payload))
     return completion["choices"][0]["message"]["content"] or ""
 
 
+# 016 (T020, R13): explicit output caps per purpose — grammar-constrained
+# JSON used to run unbounded to n_ctx (the riskiest generation, RC5).
+MAX_TOKENS_JSON = 1536
+MAX_TOKENS_PROSE = 768
+
+
 def chat(messages: list[dict], json_mode: bool = False,
-         timeout_s: float | None = None) -> str:
+         timeout_s: float | None = None,
+         max_tokens: int | None = None) -> str:
     """Raises RuntimeError if the bundled model is missing, fails to load,
     times out, or the AI queue is saturated — callers (engine/matcher.py's
     tier dispatcher) treat all of these the same as a failed cloud call:
@@ -117,8 +134,11 @@ def chat(messages: list[dict], json_mode: bool = False,
     015 (FR-001): routes through the single-owner inference worker, so every
     caller in the app is serialized onto one thread — the unserialized
     concurrent calls this replaces are what crashed the app natively
-    (ggml-cpu.dll access violation)."""
+    (ggml-cpu.dll access violation). 016 (R13): every generation carries an
+    explicit output cap."""
     from . import inference
 
+    if max_tokens is None:
+        max_tokens = MAX_TOKENS_JSON if json_mode else MAX_TOKENS_PROSE
     return inference.run_chat(messages, json_mode=json_mode,
-                              timeout_s=timeout_s)
+                              timeout_s=timeout_s, max_tokens=max_tokens)

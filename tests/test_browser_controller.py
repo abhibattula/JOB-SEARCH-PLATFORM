@@ -145,177 +145,246 @@ class TestNeverClicksAnything:
         assert ":not([type=button])" in query
 
 
-class TestPendingConfirmation:
-    """005-T035: unrecognized/no-saved-answer Q&A fields draft a suggestion
-    and pause for review (FR-011) rather than being auto-filled."""
+class TestUnknownQuestions016:
+    """016 (T005/T006, FR-003): unknown questions go to the background
+    drafter — decide never blocks, never parks, and both questions on a
+    form draft concurrently (no single-pending gate)."""
 
-    def test_unanswered_question_sets_pending_and_returns_no_value(self, tmp_db, monkeypatch):
-        from engine import matcher
+    @pytest.fixture(autouse=True)
+    def _drafter(self):
+        from engine.autofill import drafter
 
-        monkeypatch.setattr(matcher, "_chat", lambda messages, **kw: "Drafted answer")
-        monkeypatch.setenv("LLM_API_KEY", "test-key")
-        bc._state.pending = None
+        drafter.reset_for_tests(backoff_base_s=0.1, backoff_cap_s=0.5)
+        yield drafter
+        drafter.reset_for_tests()
 
-        raw = {"tag": "input", "type": "text", "name": "how_heard", "id": "hh",
-               "label_text": "How did you hear about us?", "placeholder": "",
-               "aria_label": "", "autocomplete": ""}
-        value = bc._value_for_tag("how_heard", raw, {"resume_text": "..."}, job_id=1)
+    def _raw(self, name="hh", label="How did you hear about us?"):
+        return {"tag": "input", "type": "text", "name": name, "id": name,
+                "label_text": label, "placeholder": "", "aria_label": "",
+                "autocomplete": "", "options": [], "maxlength": None}
 
-        assert value is None  # never auto-filled from an unreviewed draft
-        assert bc._state.pending is not None
-        assert bc._state.pending["question_raw"] == "How did you hear about us?"
-        # 015 (FR-003): the suggestion is generated in the background; once
-        # it completes it lands on the parked pending.
-        bc._join_pending_drafts_for_tests()
-        assert bc._state.pending["drafted_answer"] == "Drafted answer"
-        assert bc._state.pending["drafting"] is False
+    def test_unknown_question_schedules_draft_and_returns_none(self, tmp_db):
+        from engine.autofill import drafter
 
-    def test_only_one_pending_confirmation_tracked_at_a_time(self, tmp_db, monkeypatch):
-        from engine import matcher
+        drafter.set_generator_for_tests(lambda q, c, p: "Drafted answer")
+        value = bc._value_for_tag("how_heard", self._raw(),
+                                  {"resume_text": "..."}, job_id=1)
+        assert value is None  # this pass skips; the draft lands via push
+        record = drafter.get(1, "How did you hear about us?")
+        assert record is not None and record["state"] in ("drafting", "done")
 
-        monkeypatch.setattr(matcher, "_chat", lambda messages, **kw: "First draft")
-        monkeypatch.setenv("LLM_API_KEY", "test-key")
-        bc._state.pending = None
+    def test_all_unknowns_draft_concurrently_no_single_gate(self, tmp_db):
+        from engine.autofill import drafter
 
-        raw1 = {"tag": "input", "type": "text", "name": "q1", "id": "q1",
-                "label_text": "Question one?", "placeholder": "", "aria_label": "", "autocomplete": ""}
-        raw2 = {"tag": "input", "type": "text", "name": "q2", "id": "q2",
-                "label_text": "Question two?", "placeholder": "", "aria_label": "", "autocomplete": ""}
-        bc._value_for_tag("how_heard", raw1, {}, job_id=1)
-        bc._value_for_tag("how_heard", raw2, {}, job_id=1)
+        drafter.set_generator_for_tests(lambda q, c, p: "ans")
+        bc._value_for_tag("how_heard", self._raw("q1", "Question one?"), {}, job_id=1)
+        bc._value_for_tag("how_heard", self._raw("q2", "Question two?"), {}, job_id=1)
+        assert drafter.get(1, "Question one?") is not None
+        assert drafter.get(1, "Question two?") is not None
 
-        assert bc._state.pending["question_raw"] == "Question one?"
-
-    def test_existing_answer_bank_entry_does_not_set_pending(self, tmp_db, monkeypatch):
-        from engine.autofill import answer_bank
+    def test_existing_answer_bank_entry_wins_without_drafting(self, tmp_db):
+        from engine.autofill import answer_bank, drafter
 
         answer_bank.save("Known question?", "Known answer", category="how_heard")
-        bc._state.pending = None
-        raw = {"tag": "input", "type": "text", "name": "q", "id": "q",
-               "label_text": "Known question?", "placeholder": "", "aria_label": "", "autocomplete": ""}
-
-        value = bc._value_for_tag("how_heard", raw, {}, job_id=1)
-
+        value = bc._value_for_tag(
+            "how_heard", self._raw("q", "Known question?"), {}, job_id=1)
         assert value == "Known answer"
-        assert bc._state.pending is None
+        assert drafter.get(1, "Known question?") is None
+
+    def test_cached_draft_served_as_flagged_draft(self, tmp_db):
+        import time
+
+        from engine.autofill import drafter, field_core
+
+        drafter.set_generator_for_tests(lambda q, c, p: "Because I build tools.")
+        bc._value_for_tag("how_heard", self._raw(), {}, job_id=1)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and \
+                not drafter.answer_for(1, "How did you hear about us?"):
+            time.sleep(0.01)
+        value = bc._value_for_tag("how_heard", self._raw(), {}, job_id=1)
+        assert value == "Because I build tools."
+        assert isinstance(value, field_core.Draft)  # fills + ai_draft flag
 
 
-class TestParkThenDraft:
-    """015 (FR-002/FR-003, SC-002): a pending question parks IMMEDIATELY and
-    the suggestion generates off every lock — the status paths the UI polls
-    every ~3s must answer fast while the (minutes-long on CPU) suggestion is
-    still running. This is the regression guard for the chronic freeze."""
+class TestProfileFacts016:
+    """016 (FR-012): work-auth/sponsorship questions answer from the
+    profile — never from a model; not derivable → left for the human."""
+
+    @pytest.fixture(autouse=True)
+    def _drafter(self, monkeypatch):
+        from engine.autofill import drafter
+
+        drafter.reset_for_tests()
+
+        def boom(*a, **k):
+            raise AssertionError("profile facts must never reach a model")
+
+        from engine import matcher, qa
+        from engine.autofill import answer_bank
+
+        monkeypatch.setattr(matcher, "_chat", boom)
+        monkeypatch.setattr(qa, "draft", boom)
+        monkeypatch.setattr(answer_bank, "suggest", boom)
+        yield drafter
+        drafter.reset_for_tests()
+
+    def _raw(self, label):
+        return {"tag": "select", "type": "", "name": "wa", "id": "wa",
+                "label_text": label, "placeholder": "", "aria_label": "",
+                "autocomplete": "", "options": ["Yes", "No"], "maxlength": None}
+
+    def test_sponsorship_requirement_from_profile(self, tmp_db):
+        profile = {"authorized_without_sponsorship": "yes"}
+        value = bc._value_for_tag(
+            "sponsorship_requirement",
+            self._raw("Will you now or in the future require sponsorship?"),
+            profile, job_id=1)
+        assert value == "No"
+
+    def test_sponsorship_requirement_inverse(self, tmp_db):
+        profile = {"authorized_without_sponsorship": "no"}
+        value = bc._value_for_tag(
+            "sponsorship_requirement",
+            self._raw("Will you require sponsorship?"), profile, job_id=1)
+        assert value == "Yes"
+
+    def test_work_authorization_yes_when_authorized(self, tmp_db):
+        profile = {"authorized_without_sponsorship": "yes"}
+        value = bc._value_for_tag(
+            "work_authorization",
+            self._raw("Are you legally authorized to work in the US?"),
+            profile, job_id=1)
+        assert value == "Yes"
+
+    def test_unknown_fact_stays_unfilled_and_flagged(self, tmp_db):
+        from engine.autofill import drafter
+
+        value = bc._value_for_tag(
+            "work_authorization",
+            self._raw("Are you legally authorized to work in the US?"),
+            {}, job_id=1)
+        assert value is None
+        record = drafter.get(1, "Are you legally authorized to work in the US?")
+        assert record is not None
+        assert record["state"] == "failed"
+        assert record["reason"] == "profile_fact_missing"
+
+
+class TestFillFirstResponsiveness016:
+    """016 (T005/T006, SC-002): decide stays fast and every status surface
+    answers while a slow draft generates in the background — the chronic-
+    freeze regression guard, restated for the fill-first model. Also the
+    push: a completed draft nudges the active backend by itself."""
+
+    @pytest.fixture(autouse=True)
+    def _drafter(self):
+        from engine.autofill import drafter
+
+        drafter.reset_for_tests(backoff_base_s=0.1, backoff_cap_s=0.5)
+        yield drafter
+        drafter.reset_for_tests()
 
     def _raw(self):
         return {"tag": "input", "type": "text", "name": "q", "id": "q",
                 "label_text": "Why us?", "placeholder": "", "aria_label": "",
-                "autocomplete": ""}
+                "autocomplete": "", "options": [], "maxlength": None}
 
-    def test_park_is_immediate_and_status_stays_responsive(self, tmp_db, monkeypatch):
+    def test_decide_and_status_fast_while_draft_generates(self, tmp_db):
         import threading
         import time
 
-        from engine.autofill import answer_bank
+        from engine.autofill import drafter
 
         release = threading.Event()
-
-        def slow_suggest(question, category, profile):
-            release.wait(timeout=10)
-            return "Drafted later"
-
-        monkeypatch.setattr(answer_bank, "suggest", slow_suggest)
+        drafter.set_generator_for_tests(
+            lambda q, c, p: (release.wait(timeout=10), "Drafted later")[1])
         bc._state.running = True
         bc._state.job_ids = [1]
         bc._state.index = 0
-        bc._state.pending = None
 
         start = time.monotonic()
         value = bc._value_for_tag("how_heard", self._raw(), {}, job_id=1)
         assert value is None
-        assert time.monotonic() - start < 1.0  # parked, not generated inline
+        assert time.monotonic() - start < 1.0  # scheduled, not generated inline
 
-        with bc._lock:
-            parked = dict(bc._state.pending)
-        assert parked["drafting"] is True
-        assert parked["drafted_answer"] is None
-
-        # the panels the UI polls keep answering while the draft generates
         start = time.monotonic()
         snapshot = bc.queue_snapshot()
         current = bc.current_job()
         assert time.monotonic() - start < 1.0
         assert snapshot["queue"]
-        assert current["pending"]["drafting"] is True
+        drafting = [e for e in current["activity"] if e["state"] == "drafting"]
+        assert drafting and drafting[0]["question"] == "Why us?"
 
         release.set()
-        bc._join_pending_drafts_for_tests()
-        with bc._lock:
-            assert bc._state.pending["drafted_answer"] == "Drafted later"
-            assert bc._state.pending["drafting"] is False
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and \
+                not drafter.answer_for(1, "Why us?"):
+            time.sleep(0.01)
+        assert drafter.answer_for(1, "Why us?") == "Drafted later"
+        current = bc.current_job()
+        drafted = [e for e in current["activity"] if e["state"] == "drafted"]
+        assert drafted and drafted[0]["answer_preview"].startswith("Drafted")
 
-    def test_stale_draft_never_lands_after_resolve(self, tmp_db, monkeypatch):
-        import threading
+    def test_draft_completion_nudges_assistant_backend(self, tmp_db, monkeypatch):
+        import time
 
-        from engine.autofill import answer_bank
+        from engine.autofill import drafter
 
-        release = threading.Event()
-        monkeypatch.setattr(
-            answer_bank, "suggest",
-            lambda *a, **k: (release.wait(timeout=10), "Too late")[1])
-        monkeypatch.setattr(bc, "_dispatch",
-                            lambda name, payload=None, wait=None: None)
-        bc._state.running = True
-        bc._state.job_ids = [1]
-        bc._state.index = 0
-        bc._state.pending = None
-
-        bc._value_for_tag("how_heard", self._raw(), {}, job_id=1)
-        bc.resolve_pending("my own answer")  # user answered before the AI did
-        assert bc._state.pending is None
-
-        release.set()
-        bc._join_pending_drafts_for_tests()
-        # the late draft must not resurrect or mutate the cleared pending
-        assert bc._state.pending is None
-
-
-class TestResolvePending:
-    def test_resolve_pending_clears_state_and_forces_a_fill_pass(self, monkeypatch):
-        """009: the confirmed answer is already in the answer bank (the
-        route saved it) — resolving simply clears the pending slot, unlocks
-        any no_match verdicts, and forces a tick so the normal fill pass
-        writes it. No element bookkeeping, no cross-thread fill."""
         dispatched = []
         monkeypatch.setattr(
             bc, "_dispatch",
-            lambda name, payload=None, wait=None: dispatched.append(name),
-        )
+            lambda name, payload=None, wait=None: dispatched.append(name))
+        drafter.set_generator_for_tests(lambda q, c, p: "ans")
         bc._state.running = True
         bc._state.job_ids = [1]
         bc._state.index = 0
-        bc._state.pending = {"job_id": 1, "question_raw": "Q?", "category": "how_heard",
-                             "drafted_answer": "draft", "field_id": "hh",
-                             "field_name": "how_heard"}
-        bc._state.handled[1] = {("doc1", "3"): "no_match", ("doc1", "1"): "filled"}
+        bc._state.backend = "playwright"
 
-        bc.resolve_pending("Confirmed answer")
-
-        assert bc._state.pending is None
+        bc._value_for_tag("how_heard", self._raw(), {}, job_id=1)
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and "FORCE_TICK" not in dispatched:
+            time.sleep(0.01)
         assert "FORCE_TICK" in dispatched
-        # no_match unlocked so the newly-confirmed answer can fill it;
-        # filled entries stay settled
-        assert bc._state.handled[1] == {("doc1", "1"): "filled"}
 
-    def test_resolve_pending_is_noop_when_nothing_pending(self, monkeypatch):
+
+class TestRescanNudge016:
+    """016 (FR-008): the app's Re-scan works in companion mode — it sends
+    the rescan message instead of silently doing nothing."""
+
+    def test_rescan_nudges_extension_backend(self, tmp_db):
+        from engine.autofill import ext_backend
+
+        sent: list[dict] = []
+        ext_backend.register(sent.append, lambda code: None, "1.6.0")
+        bc._state.running = True
+        bc._state.job_ids = [1]
+        bc._state.index = 0
+        bc._state.backend = "extension"
+
+        result = bc.rescan()
+        assert result == {"forced": True, "nudged": True}
+        assert any(m["type"] == "rescan" for m in sent)
+
+    def test_rescan_still_ticks_playwright_backend(self, tmp_db, monkeypatch):
+        dispatched = []
         monkeypatch.setattr(
             bc, "_dispatch",
-            lambda name, payload=None, wait=None: (_ for _ in ()).throw(
-                AssertionError("must not dispatch with nothing pending")
-            ),
-        )
-        bc._state.pending = None
-        bc.resolve_pending("anything")  # must not raise
-        assert bc._state.pending is None
+            lambda name, payload=None, wait=None: dispatched.append(name))
+        bc._state.running = True
+        bc._state.job_ids = [1]
+        bc._state.index = 0
+        bc._state.backend = "playwright"
+
+        result = bc.rescan()
+        assert result is not None and result["forced"] is True
+        assert "FORCE_TICK" in dispatched
+
+    def test_the_park_gate_is_gone(self):
+        """016 (FR-019): the blocking approval gate is removed for good —
+        no pending slot, no resolve_pending API."""
+        assert not hasattr(bc, "resolve_pending")
+        assert not hasattr(bc._state, "pending")
 
 
 class TestNameFields:
@@ -557,7 +626,7 @@ class TestFacade009:
         )
         j1 = seed_job("https://x.example/1")
         bc.start_queue([j1])
-        assert bc.rescan() == {"forced": True}
+        assert bc.rescan() == {"forced": True, "nudged": True}
         assert "FORCE_TICK" in dispatched
 
     def test_rescan_without_session_returns_none(self, tmp_db):

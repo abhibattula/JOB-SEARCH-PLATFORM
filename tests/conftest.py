@@ -33,9 +33,6 @@ def _isolated_browser_controller_state():
 
     browser_controller.stop_queue()
     yield
-    # 015: background suggestion threads must not outlive the test's stubs
-    # (same lesson as profile_import — a leaked thread sees the real model)
-    browser_controller._join_pending_drafts_for_tests(timeout=2)
     browser_controller.stop_queue()
 
 
@@ -50,10 +47,15 @@ def _isolated_profile_import_state(monkeypatch):
     from engine import profile_import
 
     profile_import.reset_state()
-    from engine.autofill import ext_backend
+    from engine.autofill import drafter, ext_backend
 
     ext_backend.reset_for_tests()
+    drafter.reset_for_tests()
     yield
     profile_import.join_for_tests()
     profile_import.reset_state()
     ext_backend.reset_for_tests()
+    # 016: drafter workers must be joined BEFORE monkeypatch teardown (this
+    # fixture depends on `monkeypatch` precisely for that ordering) — a
+    # leaked drafting thread outliving its stubs would see the real model.
+    drafter.reset_for_tests()

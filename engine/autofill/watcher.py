@@ -122,11 +122,34 @@ SERIALIZE_JS = r"""
     }
     return el.value || '';
   }
+  // 016 (T011, R6): group question helper + radio-set merging, kept
+  // logically parallel with content/scanner.js groupQuestion/groupControls.
+  function groupQuestion(el) {
+    var fieldset = el.closest('fieldset');
+    if (fieldset) {
+      var legend = fieldset.querySelector('legend');
+      if (legend && legend.innerText.trim()) { return legend.innerText.trim(); }
+    }
+    var rg = el.closest('[role=radiogroup]');
+    if (rg) {
+      var aria = rg.getAttribute('aria-label');
+      if (aria) { return aria; }
+      var ids = rg.getAttribute('aria-labelledby');
+      if (ids) {
+        var texts = ids.split(/\s+/).map(function (id) {
+          var node = document.getElementById(id);
+          return node ? node.innerText.trim() : '';
+        }).filter(Boolean);
+        if (texts.length) { return texts.join(' '); }
+      }
+    }
+    return '';
+  }
   const els = document.querySelectorAll(selector);
-  return Array.from(els).map(el => {
+  const pairs = Array.from(els).map(el => {
     if (!el.dataset.jeIdx) { el.dataset.jeIdx = String(window.__jeNext++); }
     const widget = jeWidget(el);
-    return {
+    return { el: el, desc: {
       doc: window.__jeDoc,
       je_idx: el.dataset.jeIdx,
       tag: el.tagName.toLowerCase(),
@@ -142,12 +165,63 @@ SERIALIZE_JS = r"""
       options: el.tagName === 'SELECT'
         ? Array.from(el.options).map(o => o.text)
         : null,
+      members: [],
       widget: widget,
       automation_id: el.getAttribute('data-automation-id') || '',
+      maxlength: el.maxLength && el.maxLength > 0 ? el.maxLength : null,
+      required: !!(el.required ||
+                   el.getAttribute('aria-required') === 'true'),
       focused: el === document.activeElement,
       visible: !!(el.offsetParent || el.type === 'file'),
-    };
+    } };
   });
+  const radios = new Map();
+  const checks = new Map();
+  pairs.forEach(function (pair, i) {
+    var type = pair.el.type || '';
+    if (type === 'radio' && pair.el.name) {
+      if (!radios.has(pair.el.name)) { radios.set(pair.el.name, []); }
+      radios.get(pair.el.name).push(i);
+    } else if (type === 'checkbox' && pair.el.name) {
+      if (!checks.has(pair.el.name)) { checks.set(pair.el.name, []); }
+      checks.get(pair.el.name).push(i);
+    }
+  });
+  const drop = new Set();
+  for (const idxs of radios.values()) {
+    if (idxs.length < 2) { continue; }
+    const members = idxs.map(function (i) {
+      return { je_idx: pairs[i].desc.je_idx,
+               label: pairs[i].desc.label_text || pairs[i].el.value || '' };
+    });
+    const first = pairs[idxs[0]];
+    const checkedIdx = idxs.find(function (i) { return pairs[i].el.checked; });
+    first.desc = Object.assign({}, first.desc, {
+      type: 'radio_group',
+      label_text: groupQuestion(first.el),
+      options: members.map(function (m) { return m.label; }),
+      members: members,
+      value: checkedIdx === undefined ? ''
+        : (pairs[checkedIdx].desc.label_text || pairs[checkedIdx].el.value || ''),
+      focused: idxs.some(function (i) { return pairs[i].desc.focused; }),
+      visible: idxs.some(function (i) { return pairs[i].desc.visible; }),
+      required: idxs.some(function (i) { return pairs[i].desc.required; }),
+    });
+    idxs.slice(1).forEach(function (i) { drop.add(i); });
+  }
+  for (const idxs of checks.values()) {
+    if (idxs.length < 2) { continue; }
+    const question = groupQuestion(pairs[idxs[0]].el);
+    if (question) {
+      idxs.forEach(function (i) {
+        var own = pairs[i].desc.label_text;
+        pairs[i].desc.label_text = own ? question + ' — ' + own : question;
+      });
+    }
+  }
+  return pairs
+    .filter(function (_pair, i) { return !drop.has(i); })
+    .map(function (pair) { return pair.desc; });
 }
 """
 
@@ -223,7 +297,7 @@ def _process_field(frame, ats, descriptor, get_value, record, handled, result) -
         return
     if decision.action == "settle":
         record(descriptor, decision.tag, "", decision.outcome)
-        handled[key] = decision.outcome
+        handled[key] = field_core.settle_entry(decision.outcome)
         return
 
     try:
@@ -238,7 +312,7 @@ def _process_field(frame, ats, descriptor, get_value, record, handled, result) -
                 # custom widgets rejecting programmatic attachment are
                 # reported, never fatal (007 edge case, preserved)
                 record(descriptor, decision.tag, "", "needs_manual")
-                handled[key] = "needs_manual"
+                handled[key] = field_core.settle_entry("needs_manual")
                 return
             record(descriptor, decision.tag, decision.preview, "filled")
             handled[key] = "filled"
@@ -253,7 +327,7 @@ def _process_field(frame, ats, descriptor, get_value, record, handled, result) -
                 _fill_widget(frame, locator, decision)
             except _DenylistedClick:
                 record(descriptor, decision.tag, "", "needs_manual")
-                handled[key] = "needs_manual"
+                handled[key] = field_core.settle_entry("needs_manual")
                 return
             except Exception as exc:
                 if _is_closed_error(exc):
@@ -263,9 +337,25 @@ def _process_field(frame, ats, descriptor, get_value, record, handled, result) -
                 except Exception:
                     pass
                 record(descriptor, decision.tag, "", "needs_manual")
-                handled[key] = "needs_manual"
+                handled[key] = field_core.settle_entry("needs_manual")
                 return
             record(descriptor, decision.tag, decision.preview, "filled")
+            handled[key] = "filled"
+            result.filled_now += 1
+            return
+
+        # 016 (T013): grouped radios — check the MATCHED member's own
+        # element (the group's je_idx is only its first member).
+        if decision.kind == "radio":
+            member = next((m for m in descriptor.get("members") or []
+                           if m.get("label") == decision.option_label), None)
+            if member is None:
+                record(descriptor, decision.tag, "", "needs_manual")
+                handled[key] = field_core.settle_entry("needs_manual")
+                return
+            frame.locator(f'[data-je-idx="{member["je_idx"]}"]').check()
+            record(descriptor, decision.tag, decision.preview, "filled",
+                   decision.ai_draft)
             handled[key] = "filled"
             result.filled_now += 1
             return

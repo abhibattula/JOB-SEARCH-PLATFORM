@@ -281,9 +281,11 @@ class TestWidgetFills011:
         assert item["kind"] == "typeahead" and item["value"] == "Austin, TX"
 
     def test_c1_sensitive_combobox_no_answer_sends_no_fill(self, queue, sent):
-        # a work-auth CUSTOM COMBOBOX with no saved answer must raise the
-        # pending confirmation and send NO fill item — never an AI draft,
-        # exactly like the native-select sensitive path.
+        # 016: a work-auth CUSTOM COMBOBOX with no profile fact must send NO
+        # fill item and never reach a model — it is recorded needs-you for
+        # the human (the fill-first replacement for the 015 pending gate).
+        from engine.autofill import drafter
+
         open_the_tab(queue, sent)
         sent.clear()
         ext_backend.handle_message(fields_msg(descriptors=[
@@ -296,9 +298,118 @@ class TestWidgetFills011:
         for m in sent:
             if m["type"] == "fill":
                 assert not any(i["je_idx"] == "6" for i in m["items"])
-        # and it is surfaced for confirmation
-        assert bc._state.pending is not None
-        assert bc._state.pending["category"] == "work_authorization"
+        # and it is surfaced for the human, not drafted
+        record = drafter.get(
+            queue, "Are you legally authorized to work in the US?")
+        assert record is not None and record["state"] == "failed"
+        assert record["reason"] == "profile_fact_missing"
+
+
+class TestDecideFast016:
+    """016 (T005, R1): the fields handler is decide-fast — no model call is
+    reachable from handle_message; known fills dispatch incrementally while
+    unknown questions draft in the background; a completed draft pushes a
+    rescan nudge and the next scan fills it from the cache."""
+
+    UNKNOWN = dict(je_idx="5", tag="textarea", type="", name="essay",
+                   id="essay", label_text="Tell us why you want to join")
+
+    @pytest.fixture(autouse=True)
+    def _drafter(self):
+        from engine.autofill import drafter
+
+        drafter.reset_for_tests(backoff_base_s=0.1, backoff_cap_s=0.5)
+        yield drafter
+        drafter.reset_for_tests()
+
+    @staticmethod
+    def _wait(predicate, timeout=5.0):
+        import time
+
+        deadline = time.monotonic() + timeout
+        while time.monotonic() < deadline:
+            if predicate():
+                return True
+            time.sleep(0.01)
+        return False
+
+    def test_no_model_call_reachable_from_handler(self, queue, sent,
+                                                  monkeypatch):
+        from engine import matcher, qa
+        from engine.autofill import answer_bank, drafter
+
+        def boom(*a, **k):
+            raise AssertionError("model call reached from the bridge handler")
+
+        monkeypatch.setattr(matcher, "_chat", boom)
+        monkeypatch.setattr(qa, "draft", boom)
+        monkeypatch.setattr(answer_bank, "suggest", boom)
+        drafter.set_generator_for_tests(lambda q, c, p: None)
+        open_the_tab(queue, sent)
+        sent.clear()
+        ext_backend.handle_message(fields_msg(descriptors=[
+            descriptor(), descriptor(**self.UNKNOWN)]))
+        fill = next(m for m in sent if m["type"] == "fill")
+        assert any(i["value"] == "Abhinav" for i in fill["items"])
+        self._wait(lambda: (drafter.get(queue, self.UNKNOWN["label_text"])
+                            or {}).get("state") == "failed")
+
+    def test_known_fills_dispatch_while_draft_still_running(self, queue, sent):
+        import threading
+        import time
+
+        from engine.autofill import drafter
+
+        release = threading.Event()
+        drafter.set_generator_for_tests(
+            lambda q, c, p: (release.wait(timeout=10), "late")[1])
+        open_the_tab(queue, sent)
+        sent.clear()
+        start = time.monotonic()
+        ext_backend.handle_message(fields_msg(descriptors=[
+            descriptor(), descriptor(**self.UNKNOWN)]))
+        assert time.monotonic() - start < 1.0  # the handler never waited
+        fill = next(m for m in sent if m["type"] == "fill")
+        assert any(i["value"] == "Abhinav" for i in fill["items"])
+        # heartbeat stays fresh while the draft is still running
+        ext_backend.handle_message(ext_protocol.Pong())
+        assert ext_backend.status()["last_seen_age_s"] < 1.0
+        release.set()
+
+    def test_draft_completion_pushes_rescan_then_next_scan_fills(
+            self, queue, sent):
+        from engine.autofill import drafter
+
+        drafter.set_generator_for_tests(
+            lambda q, c, p: "Because I love hardware.")
+        open_the_tab(queue, sent)
+        sent.clear()
+        message = fields_msg(descriptors=[descriptor(**self.UNKNOWN)])
+        ext_backend.handle_message(message)
+        assert self._wait(
+            lambda: any(m["type"] == "rescan" for m in sent)), \
+            "completed draft never pushed a rescan nudge"
+        ext_backend.handle_message(message)  # the nudged rescan arrives
+        fill = [m for m in sent if m["type"] == "fill"][-1]
+        item = next(i for i in fill["items"] if i["je_idx"] == "5")
+        assert item["value"] == "Because I love hardware."
+        assert item["flag"] == "ai_draft"
+
+    def test_unique_question_drafts_once_across_rescans(self, queue, sent):
+        from engine.autofill import drafter
+
+        calls = []
+        drafter.set_generator_for_tests(
+            lambda q, c, p: calls.append(1) and None)
+        open_the_tab(queue, sent)
+        message = fields_msg(descriptors=[descriptor(**self.UNKNOWN)])
+        for _ in range(5):
+            ext_backend.handle_message(message)
+        self._wait(lambda: len(calls) >= 1)
+        import time
+
+        time.sleep(0.05)  # give an (incorrect) second draft a chance
+        assert len(calls) == 1
 
 
 class TestAdHocFillHere:
@@ -511,3 +622,192 @@ class TestBrowserAndRejects015:
         ext_backend.record_reject("auth")
         ext_backend.reset_for_tests()
         assert ext_backend.reject_stats()["auth"] == 0
+
+
+class TestInflightTTL016:
+    """016 (T007): a fill whose result never comes back must not block its
+    field forever — in-flight entries expire (~20 s) and the next scan
+    re-decides."""
+
+    def test_expired_inflight_entry_is_retried(self, queue, sent):
+        import time as time_mod
+
+        open_the_tab(queue, sent)
+        message = fields_msg(descriptors=[descriptor()])
+        ext_backend.handle_message(message)
+        assert len([m for m in sent if m["type"] == "fill"]) == 1
+        # the fill_result never arrives; age the entry past the TTL
+        with ext_backend._lock:
+            for fkey, info in list(ext_backend._inflight.items()):
+                ext_backend._inflight[fkey] = info[:-1] + (
+                    time_mod.monotonic() - ext_backend.INFLIGHT_TTL_S - 1,)
+        ext_backend.handle_message(message)
+        assert len([m for m in sent if m["type"] == "fill"]) == 2
+
+    def test_fresh_inflight_entry_still_blocks_double_fill(self, queue, sent):
+        open_the_tab(queue, sent)
+        message = fields_msg(descriptors=[descriptor()])
+        ext_backend.handle_message(message)
+        ext_backend.handle_message(message)
+        assert len([m for m in sent if m["type"] == "fill"]) == 1
+
+    def test_settled_no_match_records_epoch_tuple(self, queue, sent, monkeypatch):
+        from engine.autofill import answer_bank, drafter
+
+        monkeypatch.setattr(answer_bank, "lookup",
+                            lambda q: {"answer": "A paragraph that matches "
+                                       "no option at all", "source": "user"})
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(descriptors=[
+            descriptor(je_idx="6", tag="select", type="", name="auth",
+                       id="auth", label_text="Authorized?",
+                       options=["Yes", "No"]),
+        ]))
+        entry = bc._state.handled[queue][("docA", "6")]
+        assert isinstance(entry, tuple) and entry[0] == "no_match"
+        assert entry[1] == drafter.cache_version()
+
+
+class TestTabFollowing016:
+    """016 (T008, R4): watch-transfer — a tab opened FROM the watched tab
+    becomes the fill target; open_tab gets ack timeout + one retry then a
+    visible launch_failed; wrong-tab fields are counted for the doctor."""
+
+    def test_child_tab_transfers_watch(self, queue, sent):
+        open_the_tab(queue, sent)  # tab 40
+        sent.clear()
+        ext_backend.handle_message(ext_protocol.ChildTab(
+            tab_id=99, opener_tab_id=40))
+        assert ext_backend._watch["tab_id"] == 99
+        assert any(m["type"] == "watch_start" and m["tab_id"] == 99
+                   for m in sent)
+        # filling continues in the child tab
+        ext_backend.handle_message(fields_msg(
+            tab_id=99, doc="docB", descriptors=[descriptor(doc="docB")]))
+        assert any(m["type"] == "fill" for m in sent)
+
+    def test_child_of_unwatched_opener_ignored(self, queue, sent):
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(ext_protocol.ChildTab(
+            tab_id=99, opener_tab_id=777))
+        assert ext_backend._watch["tab_id"] == 40
+
+    def test_wrong_tab_fields_increment_doctor_counter(self, queue, sent):
+        open_the_tab(queue, sent)
+        before = ext_backend.counters()["dropped_fields"]
+        ext_backend.handle_message(fields_msg(
+            tab_id=555, descriptors=[descriptor()]))
+        assert ext_backend.counters()["dropped_fields"] == before + 1
+
+    def test_open_ack_timeout_retries_once_then_launch_failed(self, tmp_db,
+                                                              sent):
+        # No running queue here: the live worker thread must not race the
+        # explicit check_pending_open() calls (it legitimately runs the
+        # same check every ~2 s while an extension queue is active).
+        ext_backend.open_job(7, "https://x.example/apply")
+        assert len([m for m in sent if m["type"] == "open_tab"]) == 1
+
+        def age_all():
+            with ext_backend._lock:
+                for entry in ext_backend._watch["pending_open"].values():
+                    entry["deadline"] = 0.0
+
+        age_all()
+        ext_backend.check_pending_open()
+        assert len([m for m in sent if m["type"] == "open_tab"]) == 2  # retry
+        age_all()
+        ext_backend.check_pending_open()
+        assert bc._state.outcomes[7]["reason"] == "launch_failed"
+        assert not ext_backend._watch["pending_open"]  # never hangs silently
+
+
+class TestVersionGate016:
+    """016 (T013, FR-015): new fill kinds are withheld from an old
+    companion — it would text-set the radio and lie (silent mis-fill)."""
+
+    GROUP = dict(je_idx="7", tag="input", type="radio_group",
+                 name="authorized", id="auth",
+                 label_text="Are you legally authorized to work in the US?",
+                 options=["Yes", "No"],
+                 members=[{"je_idx": "7", "label": "Yes"},
+                          {"je_idx": "8", "label": "No"}])
+
+    def _prep(self, queue, sent):
+        db.save_profile(authorized_without_sponsorship="yes")
+        open_the_tab(queue, sent)
+        sent.clear()
+
+    def test_old_companion_never_receives_radio_kind(self, queue, sent):
+        self._prep(queue, sent)  # fixture registered version "1.0.0"
+        ext_backend.handle_message(fields_msg(
+            descriptors=[descriptor(**self.GROUP)]))
+        for m in sent:
+            if m["type"] == "fill":
+                assert not any(i.get("kind") == "radio" for i in m["items"])
+
+    def test_current_companion_receives_radio_fill(self, queue, sent,
+                                                   monkeypatch):
+        from engine import APP_VERSION
+
+        self._prep(queue, sent)
+        ext_backend.register(sent.append, lambda code: None, APP_VERSION)
+        sent.clear()
+        ext_backend.handle_message(fields_msg(
+            descriptors=[descriptor(**self.GROUP)]))
+        fill = next(m for m in sent if m["type"] == "fill")
+        item = fill["items"][0]
+        assert item["kind"] == "radio" and item["value"] == "Yes"
+
+
+class TestFillAgain016:
+    """016 (T016, R10): the panel's Fill again clears retryable ledger
+    entries, re-arms failed drafts, and nudges a rescan — user-typed
+    values stay sacred via the write-time guards."""
+
+    def test_fill_again_clears_ledger_resets_backoff_and_nudges(
+            self, queue, sent):
+        from engine.autofill import drafter, field_core
+
+        drafter.reset_for_tests(backoff_base_s=60.0)
+        drafter.set_generator_for_tests(lambda q, c, p: None)  # always fails
+        open_the_tab(queue, sent)
+        with bc._lock:
+            bc._state.handled[queue] = {
+                ("docA", "1"): "filled",
+                ("docA", "2"): "skipped_existing",
+                ("docA", "3"): field_core.settle_entry("no_match"),
+            }
+        drafter.ensure(queue, "Hard question?", {"tag": "free_text_unknown",
+                                                 "options": [],
+                                                 "maxlength": None,
+                                                 "widget": ""}, {})
+        deadline_ok = False
+        import time as time_mod
+        for _ in range(200):
+            record = drafter.get(queue, "Hard question?")
+            if record and record["state"] == "failed":
+                deadline_ok = True
+                break
+            time_mod.sleep(0.01)
+        assert deadline_ok
+        sent.clear()
+
+        ext_backend.handle_message(ext_protocol.FillAgain(tab_id=40))
+
+        ledger = bc._state.handled[queue]
+        assert ("docA", "2") in ledger          # skipped_existing kept
+        assert ("docA", "1") not in ledger      # re-decides (sacred rule guards)
+        assert ("docA", "3") not in ledger
+        record = drafter.get(queue, "Hard question?")
+        assert record["next_retry_at"] == 0.0   # backoff re-armed
+        assert any(m["type"] == "rescan" for m in sent)
+        drafter.reset_for_tests()
+
+    def test_fill_again_from_unwatched_tab_ignored(self, queue, sent):
+        open_the_tab(queue, sent)
+        with bc._lock:
+            bc._state.handled[queue] = {("docA", "3"): "no_match"}
+        sent.clear()
+        ext_backend.handle_message(ext_protocol.FillAgain(tab_id=999))
+        assert bc._state.handled[queue] == {("docA", "3"): "no_match"}
+        assert not any(m["type"] == "rescan" for m in sent)

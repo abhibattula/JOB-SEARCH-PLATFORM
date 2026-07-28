@@ -48,6 +48,25 @@
       <option>No, I am not authorized</option>
     </select>
 
+    <h2>Sponsorship <span class="hint">(radio group — v1.6)</span></h2>
+    <fieldset id="sponsor-group" style="border:1px solid #d5dde5;border-radius:6px">
+      <legend style="font-weight:600;font-size:0.9rem">Will you now or in the future require sponsorship?</legend>
+      <label style="font-weight:400"><input type="radio" name="sponsorship" value="Yes" style="width:auto"> Yes</label>
+      <label style="font-weight:400"><input type="radio" name="sponsorship" value="No" style="width:auto"> No</label>
+    </fieldset>
+
+    <label for="notice_period">Notice period <span class="hint">(10 characters max)</span></label>
+    <input id="notice_period" name="notice_period" type="text" maxlength="10">
+
+    <h2>Voluntary self-identification <span class="hint">(never auto-answered — v1.6)</span></h2>
+    <label for="eeo_gender">Gender (voluntary EEO disclosure)</label>
+    <select id="eeo_gender" name="eeo_gender">
+      <option value="">Please select</option>
+      <option>Male</option>
+      <option>Female</option>
+      <option>Decline to answer</option>
+    </select>
+
     <h2>How did you hear about us? <span class="hint">(custom dropdown — v1.1)</span></h2>
     <label id="hh-combo-label">How did you hear about this role?</label>
     <div role="combobox" aria-label="How did you hear about this role?"
@@ -103,9 +122,30 @@
       to the fill engine; now it fills like everything else.</p>
     <iframe src="/practice/frame" title="Links section"></iframe>
 
-    <button type="button" onclick="alert('This is only practice — nothing is submitted. In a real application, YOU always click the real submit button.')">
+    <button type="button" onclick="fetch('/practice/submit-log', {method: 'POST'}); alert('This is only practice — nothing is submitted. In a real application, YOU always click the real submit button.')">
       Submit application (practice — does nothing)
     </button>
   </form>
+  <script>
+    // 016 (T022): self-report the DOM state for the E2E (extension-opened
+    // tabs have no Playwright handle). Local page, same origin, harmless.
+    setInterval(function () {
+      try {
+        var sponsorNo = document.querySelector('input[name=sponsorship][value=No]');
+        var eeo = document.getElementById('eeo_gender');
+        fetch('/practice/fixture-state', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            page: 'apply',
+            first_name: (document.getElementById('first_name') || {}).value || '',
+            sponsorship_no: !!(sponsorNo && sponsorNo.checked),
+            eeo_value: (eeo || {}).value || '',
+            eeo_flag: (eeo && eeo.dataset.jeFlag) || '',
+            panel: !!document.getElementById('je-companion-overlay-host'),
+          }),
+        });
+      } catch (e) { /* fixture beacon only */ }
+    }, 1000);
+  </script>
 </body>
 </html>

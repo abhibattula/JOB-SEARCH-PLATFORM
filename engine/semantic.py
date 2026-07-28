@@ -37,23 +37,35 @@ def available() -> bool:
         return False
 
 
+# 016 (T020, R13): one load attempt per session — a failing 330 MB load
+# used to be re-attempted on EVERY embed call.
+_load_attempted = False
+
+
 def _load():
-    global _model
+    global _model, _load_attempted
     with _lock:
         if _model is None:
+            if _load_attempted:
+                raise RuntimeError(
+                    "embedding model previously failed to load this session")
+            _load_attempted = True
             from llama_cpp import Llama
             from .local_llm import _llm_kwargs
 
             # 013: GPU offload + CPU threads (graceful CPU fallback), same as
             # the chat model — a no-op on the CPU wheel, a win on a GPU wheel.
+            # 016 (R13): n_batch capped — the scores buffer is
+            # n_batch × n_vocab × 4 bytes (≈537 MB at the default 512).
             kwargs = _llm_kwargs()
             try:
                 _model = Llama(model_path=str(_model_path()), embedding=True,
-                               n_ctx=2048, verbose=False, **kwargs)
+                               n_ctx=2048, n_batch=256, verbose=False,
+                               **kwargs)
             except Exception:
                 cpu = dict(kwargs, n_gpu_layers=0)
                 _model = Llama(model_path=str(_model_path()), embedding=True,
-                               n_ctx=2048, verbose=False, **cpu)
+                               n_ctx=2048, n_batch=256, verbose=False, **cpu)
         return _model
 
 

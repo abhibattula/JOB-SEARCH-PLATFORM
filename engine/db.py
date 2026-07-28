@@ -961,12 +961,28 @@ def store_h1b_employers(employers: dict) -> None:
                     json.dumps(record["lca_titles"]) if record.get("lca_titles") else None,
                 ),
             )
+    _invalidate_h1b_cache()
+
+
+_h1b_cache: dict = {"path": None, "data": None}
+
+
+def _invalidate_h1b_cache() -> None:
+    _h1b_cache["path"] = None
+    _h1b_cache["data"] = None
 
 
 def load_h1b_employers() -> dict:
+    """016 (T004, R5): memoized per db path — the discovery score path
+    calls this per request and must never re-read the full table each
+    time. Treat the returned dict as read-only; writers invalidate via
+    store_h1b_employers()."""
+    path = str(get_db_path())
+    if _h1b_cache["data"] is not None and _h1b_cache["path"] == path:
+        return _h1b_cache["data"]
     with _conn() as conn:
         rows = conn.execute("SELECT * FROM h1b_employers").fetchall()
-    return {
+    data = {
         row["normalized_name"]: {
             "display_name": row["display_name"],
             "approvals": row["approvals"],
@@ -977,6 +993,9 @@ def load_h1b_employers() -> dict:
         }
         for row in rows
     }
+    _h1b_cache["path"] = path
+    _h1b_cache["data"] = data
+    return data
 
 
 def get_unchecked_companies() -> list[dict]:

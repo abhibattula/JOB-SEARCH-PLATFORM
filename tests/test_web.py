@@ -125,15 +125,19 @@ def test_unclean_exit_banner_shows_once_and_dismisses(tmp_db):
     assert "closed unexpectedly" not in c.get("/").text
 
 
-def test_pending_panel_has_drafting_state():
-    """015 (FR-003): the pending panel renders a live 'drafting…' state while
-    the background suggestion generates (never a silent empty draft)."""
+def test_activity_log_replaces_the_blocking_pending_panel():
+    """016 (FR-019): the status partial shows a PASSIVE activity log
+    (drafting / drafted / needs-you) — the blocking review box is gone;
+    corrections happen on the page and the bank is curated from the
+    profile."""
     import pathlib
 
     html = pathlib.Path("web/templates/partials/autofill_status.html").read_text(
         encoding="utf-8")
-    assert "pending.drafting" in html
-    assert "drafting a suggestion" in html
+    assert "current.pending" not in html
+    assert "current.activity" in html
+    assert "needs you" in html
+    assert "answer bank" in html
 
 
 def test_stamp_failure_banner_on_autofill_and_companion(tmp_db):
@@ -290,3 +294,66 @@ def test_app_js_notes_open_substitution():
 
     js = pathlib.Path("web/static/app.js").read_text(encoding="utf-8")
     assert "opened_with" in js
+
+
+def test_practice_form_covers_choice_controls(tmp_db):
+    """016 (T014): the practice fixture exercises everything US2 ships —
+    radio group with a legend question, maxlength field, EEO question, and
+    a submit-click log so the E2E can assert ZERO automated submit clicks."""
+    from fastapi.testclient import TestClient
+
+    from web.main import create_app
+
+    page = TestClient(create_app()).get("/practice/apply").text
+    assert "Will you now or in the future require sponsorship?" in page
+    assert 'type="radio"' in page and "<legend" in page
+    assert 'maxlength="10"' in page
+    assert "eeo_gender" in page
+    assert "/practice/submit-log" in page
+
+
+def test_practice_posting_fixture_with_apply_opener(tmp_db):
+    """016 (T014): a Greenhouse-shaped posting whose form is hidden until
+    the Apply control is clicked; ?newtab=1 opens the form in a child tab
+    (the watch-transfer E2E case)."""
+    from fastapi.testclient import TestClient
+
+    from web.main import create_app
+
+    client = TestClient(create_app())
+    page = client.get("/practice/posting").text
+    assert 'id="apply_button"' in page
+    assert 'id="application"' in page and "hidden" in page
+    newtab = client.get("/practice/posting?newtab=1").text
+    assert 'target="_blank"' in newtab
+
+    assert client.post("/practice/submit-log").status_code == 200
+    assert client.get("/practice/submit-log").json()["clicks"] == 1
+
+
+def test_tailor_button_sets_honest_expectations():
+    """016 (T021/FR-022): the tailor buttons show a can-take-minutes
+    in-progress state and render the failure reason (never a dead app)."""
+    import pathlib
+
+    html = pathlib.Path("web/templates/job_detail.html").read_text(
+        encoding="utf-8")
+    assert html.count("can take a few minutes") >= 2  # first-run + regenerate
+    assert 'role="alert"' in html
+
+
+def test_tailor_selftest_endpoint_reports_verdict(tmp_db, monkeypatch):
+    """016 (T023): the tailor selftest returns a verdict (never a 500) and
+    names the isolation mode — the frozen smoke gates on it."""
+    from fastapi.testclient import TestClient
+
+    from engine import tailor
+    from web.main import create_app
+
+    monkeypatch.setattr(tailor, "tailor_for_job",
+                        lambda *a, **k: None)  # completed, unparsed
+    body = TestClient(create_app()).get(
+        "/api/diagnostics/tailor-selftest").json()
+    assert body["completed"] is True
+    assert body["parsed"] is False
+    assert isinstance(body["isolated"], bool)

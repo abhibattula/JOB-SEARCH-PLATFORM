@@ -193,3 +193,31 @@ class TestRejectRecording015:
                 ws.send_text(hello_frame(v=99))
                 ws.receive_text()
         assert ext_backend.reject_stats()["protocol"] == 1
+
+
+class TestDoctorCounters016:
+    """016 (T010): the doctor exposes the silent-drop tripwires."""
+
+    def test_doctor_includes_dropped_fields_and_scan_errors(self, tmp_db):
+        from fastapi.testclient import TestClient
+
+        from engine.autofill import ext_backend
+        from web.main import create_app
+
+        ext_backend.record_reject("auth")  # unrelated counters still work
+        client = TestClient(create_app())
+        doctor = client.get("/api/companion/doctor").json()
+        assert doctor["counters"] == {"dropped_fields": 0, "scan_errors": 0}
+
+    def test_doctor_counters_track_drops(self, tmp_db):
+        from fastapi.testclient import TestClient
+
+        from engine.autofill import ext_backend, ext_protocol
+        from web.main import create_app
+
+        ext_backend.register(lambda m: None, lambda code: None, "1.6.0")
+        ext_backend.handle_message(ext_protocol.ScanError(
+            tab_id=4, message="TypeError: boom"))
+        client = TestClient(create_app())
+        doctor = client.get("/api/companion/doctor").json()
+        assert doctor["counters"]["scan_errors"] == 1

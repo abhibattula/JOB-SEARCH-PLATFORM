@@ -123,6 +123,16 @@ templates.env.globals["current_theme"] = _current_theme
 # 008 (FR-032): plain-language changelog behind the What's New overlay —
 # keyed by APP_VERSION, shown once per version.
 WHATS_NEW: dict[str, list[str]] = {
+    "1.6.0": [
+        "Apply Assist now fills the page for real: known answers land in "
+        "seconds, drafts arrive by themselves, and dropdown/yes-no questions "
+        "are answered from the field's actual options.",
+        "Everything happens on the page: the form opens itself on supported "
+        "job boards, a small panel shows progress, and anything needing your "
+        "eye is highlighted — you correct it right there and submit yourself.",
+        "Tailoring can no longer crash the app: the on-device AI runs "
+        "isolated and restarts by itself if anything goes wrong.",
+    ],
     "1.5.0": [
         "Apply Assist pairing rebuilt: a live Connect page that verifies each "
         "step and says exactly what's wrong when something is.",
@@ -692,6 +702,42 @@ def create_app() -> FastAPI:
     @app.get("/practice/frame", response_class=HTMLResponse)
     def practice_frame(request: Request):
         return templates.TemplateResponse(request, "practice_frame.html", {})
+
+    @app.get("/practice/posting", response_class=HTMLResponse)
+    def practice_posting(request: Request, newtab: int = 0):
+        """016 (T014): a Greenhouse-shaped posting fixture — the form is
+        hidden until the Apply control is clicked (the D1 apply-opener
+        case); ?newtab=1 opens the form in a child tab (watch transfer)."""
+        return templates.TemplateResponse(
+            request, "practice_posting.html", {"newtab": bool(newtab)})
+
+    # 016 (T014): server-side submit-click log — the E2E's proof that NO
+    # automated click ever hits a submit control (SC-004).
+    app.state.practice_submit_clicks = 0
+    # 016 (T022): the practice pages beacon their own DOM state here —
+    # extension-opened tabs aren't reachable via Playwright page handles,
+    # so the fixtures self-report and the E2E polls this (still DOM truth).
+    app.state.practice_fixture_state = {}
+
+    @app.post("/practice/fixture-state")
+    async def practice_fixture_state_write(request: Request):
+        payload = await request.json()
+        key = str(payload.get("page") or "unknown")
+        request.app.state.practice_fixture_state[key] = payload
+        return {"ok": True}
+
+    @app.get("/practice/fixture-state")
+    def practice_fixture_state_read(request: Request):
+        return request.app.state.practice_fixture_state
+
+    @app.post("/practice/submit-log")
+    def practice_submit_log(request: Request):
+        request.app.state.practice_submit_clicks += 1
+        return {"clicks": request.app.state.practice_submit_clicks}
+
+    @app.get("/practice/submit-log")
+    def practice_submit_log_read(request: Request):
+        return {"clicks": request.app.state.practice_submit_clicks}
 
     def _browser_intent() -> dict:
         """015 (FR-019): OS default vs preference, for the mismatch line.

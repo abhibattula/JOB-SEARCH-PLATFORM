@@ -150,11 +150,25 @@ def consume_file_token(token: str) -> str | None:
 
 # --- watch session (extension analogue of the worker's current page) --------
 
-# tab/job the companion is watching; pending open_tab correlations
+# tab/job the companion is watching; pending open_tab correlations —
+# 016 (T008): req_id -> {job_id, url, deadline, retried}; expired entries
+# get ONE retry, then a visible launch_failed (never a silent hang).
 _watch: dict = {"tab_id": None, "job_id": None, "pending_open": {}}
-# (tab_id, frame_id, je_idx) -> (descriptor_raw, tag, preview) for fills
-# whose result has not come back — prevents double-fill on overlapping scans
+OPEN_TAB_ACK_S = 5.0
+
+# 016 (T008/T010): doctor tripwires — silently-dropped traffic is counted.
+_counters: dict = {"dropped_fields": 0, "scan_errors": 0}
+
+
+def counters() -> dict:
+    with _lock:
+        return dict(_counters)
+# (tab_id, frame_id, je_idx) -> (descriptor_raw, tag, preview, ai_draft,
+# sent_at) for fills whose result has not come back — prevents double-fill
+# on overlapping scans. 016 (T007): entries EXPIRE — a lost fill_result
+# must not block its field for the life of the document.
 _inflight: dict[tuple, tuple] = {}
+INFLIGHT_TTL_S = 20.0
 # per-frame seen counts for the watched tab (overlay + activity aggregation)
 _frame_seen: dict[int, int] = {}
 # detected submissions awaiting user confirmation (FR-020; consumed by the
@@ -168,12 +182,19 @@ def _outbound(type_: str, **payload) -> dict:
     return ext_protocol.outbound(type_, **payload)
 
 
-def open_job(job_id: int, url: str) -> None:
-    """OPEN_JOB translated for the companion: open a tab, then watch it."""
+def _queue_open(job_id: int, url: str, retried: bool = False) -> None:
     req_id = _secrets.token_hex(8)
     with _lock:
-        _watch["pending_open"][req_id] = job_id
+        _watch["pending_open"][req_id] = {
+            "job_id": job_id, "url": url, "retried": retried,
+            "deadline": time.monotonic() + OPEN_TAB_ACK_S,
+        }
     send(_outbound("open_tab", req_id=req_id, job_id=job_id, url=url))
+
+
+def open_job(job_id: int, url: str) -> None:
+    """OPEN_JOB translated for the companion: open a tab, then watch it."""
+    _queue_open(job_id, url)
 
 
 def open_practice(url: str) -> None:
@@ -181,10 +202,36 @@ def open_practice(url: str) -> None:
     watched as a job-less session (PRACTICE_JOB_ID)."""
     from . import browser_controller as bc
 
-    req_id = _secrets.token_hex(8)
+    _queue_open(bc.PRACTICE_JOB_ID, url)
+
+
+def check_pending_open() -> None:
+    """016 (T008): called from the worker's ~2 s tick while the extension
+    backend is active — expire unacknowledged open_tab requests: one
+    retry, then a visible launch_failed so the queue never hangs."""
+    now = time.monotonic()
+    to_retry: list[dict] = []
+    failed: list[dict] = []
     with _lock:
-        _watch["pending_open"][req_id] = bc.PRACTICE_JOB_ID
-    send(_outbound("open_tab", req_id=req_id, job_id=bc.PRACTICE_JOB_ID, url=url))
+        for req_id, entry in list(_watch["pending_open"].items()):
+            if now < entry["deadline"]:
+                continue
+            del _watch["pending_open"][req_id]
+            (failed if entry["retried"] else to_retry).append(entry)
+    for entry in to_retry:
+        _queue_open(entry["job_id"], entry["url"], retried=True)
+    if failed:
+        from . import browser_controller as bc
+
+        for entry in failed:
+            bc._mark_fallback(entry["job_id"], "launch_failed",
+                              "the companion never opened the tab "
+                              "(retried once)")
+        bc._set_activity(
+            phase="error",
+            message="couldn't open the application tab — check the "
+                    "companion, then Resume or press Next",
+        )
 
 
 def close_current() -> None:
@@ -229,15 +276,68 @@ def handle_message(msg) -> None:
         _handle_score_request(msg)
     elif isinstance(msg, ext_protocol.SaveJob):
         _handle_save_job(msg)
+    elif isinstance(msg, ext_protocol.ChildTab):
+        _handle_child_tab(msg)
+    elif isinstance(msg, ext_protocol.ScanError):
+        _handle_scan_error(msg)
+    elif isinstance(msg, ext_protocol.FillAgain):
+        _handle_fill_again(msg)
     # Pong: heartbeat only (touch() above)
+
+
+def _handle_fill_again(msg) -> None:
+    """016 (T016, R10): the panel's Fill again — clear retryable ledger
+    entries (user-typed values stay sacred via the write-time guards),
+    re-arm failed drafts once, then nudge a rescan."""
+    from . import browser_controller as bc, drafter
+
+    with _lock:
+        if msg.tab_id != _watch["tab_id"]:
+            return
+        job_id = _watch["job_id"]
+        _inflight.clear()
+    if job_id is None:
+        return
+    with bc._lock:
+        ledger = bc._state.handled.get(job_id) or {}
+        for lkey in [k for k, v in list(ledger.items())
+                     if (v[0] if isinstance(v, tuple) else v)
+                     != "skipped_existing"]:
+            del ledger[lkey]
+    drafter.reset_backoff_for_job(job_id)
+    send(_outbound("rescan", reason="fill_again"))
+
+
+def _handle_scan_error(msg) -> None:
+    """016 (T010): a content-script scan exception, counted for the doctor
+    (it used to be swallowed, leaving the tab permanently silent)."""
+    with _lock:
+        _counters["scan_errors"] += 1
+    log.warning("companion scan error on tab %s: %s", msg.tab_id,
+                (msg.message or "")[:200])
 
 
 def _handle_tab_opened(msg) -> None:
     with _lock:
-        job_id = _watch["pending_open"].pop(msg.req_id, None)
-        if job_id is None:
+        entry = _watch["pending_open"].pop(msg.req_id, None)
+        if entry is None:
             return
+        job_id = entry["job_id"]
         _watch.update(tab_id=msg.tab_id, job_id=job_id)
+        _inflight.clear()
+        _frame_seen.clear()
+    send(_outbound("watch_start", tab_id=msg.tab_id, job_id=job_id))
+
+
+def _handle_child_tab(msg) -> None:
+    """016 (T008, R4): the watch TRANSFERS to a tab opened from the watched
+    tab (embedded boards open the real form in a child tab). Singular
+    target — the old tab's fields intentionally stop."""
+    with _lock:
+        if _watch["tab_id"] is None or msg.opener_tab_id != _watch["tab_id"]:
+            return
+        job_id = _watch["job_id"]
+        _watch["tab_id"] = msg.tab_id
         _inflight.clear()
         _frame_seen.clear()
     send(_outbound("watch_start", tab_id=msg.tab_id, job_id=job_id))
@@ -254,6 +354,7 @@ def _handle_fields(msg) -> None:
 
     with _lock:
         if msg.tab_id != _watch["tab_id"]:
+            _counters["dropped_fields"] += 1  # doctor tripwire (T008)
             return
         job_id = _watch["job_id"]
     if job_id is None:
@@ -284,25 +385,42 @@ def _handle_fields(msg) -> None:
         return bc._value_for_tag(tag, raw, profile, job_id)
 
     ats = adapters.ats_from_url(msg.url)
-    items: list[dict] = []
     seen = 0
+    # 016 (T017): fields the HUMAN must answer (sensitive / missing fact /
+    # no valid option) — highlighted on the page + listed in the panel.
+    from . import drafter
+
+    needs_you_idx: list[str] = []
+    needs_you_labels: list[str] = []
     for desc in msg.descriptors:
         raw = desc.as_watcher_dict()
         fkey = (msg.tab_id, msg.frame_id, raw["je_idx"])
-        if fkey in _inflight:
-            seen += 1
-            continue
+        with _lock:
+            info = _inflight.get(fkey)
+            if info is not None:
+                if time.monotonic() - info[-1] <= INFLIGHT_TTL_S:
+                    seen += 1
+                    continue
+                del _inflight[fkey]  # lost fill_result — re-decide (T007)
         decision = field_core.decide(ats, raw, ledger, get_value)
         if decision.action == "ignore":
             continue
         seen += 1
         lkey = field_core.key(raw)
         if decision.action == "skip":
+            question = (raw.get("label_text") or raw.get("placeholder")
+                        or raw.get("aria_label") or "")
+            if question:
+                record = drafter.get(job_id, question)
+                if record and record["state"] == "failed" and \
+                        record["reason"] in drafter._NEEDS_YOU_REASONS:
+                    needs_you_idx.append(raw["je_idx"])
+                    needs_you_labels.append(question)
             continue
         if decision.action == "settle":
             bc._record(job_id, raw, decision.tag, "", decision.outcome)
             with bc._lock:
-                ledger[lkey] = decision.outcome
+                ledger[lkey] = field_core.settle_entry(decision.outcome)
             continue
         # action == "fill"
         item: dict = {"je_idx": raw["je_idx"], "flag": None}
@@ -322,6 +440,19 @@ def _handle_fields(msg) -> None:
         elif decision.kind == "typeahead":
             # 011: type then pick the matching suggestion
             item.update(kind="typeahead", value=str(decision.value))
+        elif decision.kind == "radio":
+            # 016 (T013): version gate — an old companion has no radio
+            # branch and would text-set the element (silent mis-fill). The
+            # doctor already surfaces the version mismatch; the field stays
+            # open and fills the moment the companion is reloaded.
+            from .. import APP_VERSION
+
+            with _lock:
+                companion_version = _session["version"]
+            if companion_version != APP_VERSION:
+                continue
+            item.update(kind="radio", value=str(decision.value),
+                        option_label=decision.option_label)
         elif decision.kind == "checkbox":
             item.update(kind="checkbox", value="on")
         else:
@@ -330,16 +461,16 @@ def _handle_fields(msg) -> None:
             item["flag"] = "ai_draft"
         with _lock:
             _inflight[fkey] = (raw, decision.tag, decision.preview,
-                               decision.ai_draft)
-        items.append(item)
+                               decision.ai_draft, time.monotonic())
+        # 016 (T005/R1): incremental dispatch — a decided fill goes out
+        # IMMEDIATELY. Batching until the whole form was decided is what
+        # withheld name/email fills behind slow decisions (RC1).
+        send(_outbound("fill", tab_id=msg.tab_id, frame_id=msg.frame_id,
+                       items=[item]))
 
     with _lock:
         _frame_seen[msg.frame_id] = seen
         total_seen = sum(_frame_seen.values())
-
-    if items:
-        send(_outbound("fill", tab_id=msg.tab_id, frame_id=msg.frame_id,
-                       items=items))
 
     with bc._lock:
         filled_total = bc._state.activity.get("fields_filled", 0)
@@ -363,6 +494,9 @@ def _handle_fields(msg) -> None:
         )
     send(_outbound("overlay_state", tab_id=msg.tab_id, summary={
         "seen": total_seen, "filled": filled_total, "drafts": draft_count,
+        "needs_you": len(needs_you_idx),
+        "needs_you_idx": needs_you_idx,
+        "attention": needs_you_labels[:5],
         "message": "you click the actual apply/submit",
     }))
 
@@ -383,7 +517,7 @@ def _handle_fill_result(msg) -> None:
             info = _inflight.pop(fkey, None)
         if info is None:
             continue
-        raw, tag, preview, ai_draft = info
+        raw, tag, preview, ai_draft, _sent_at = info
         lkey = field_core.key(raw)
         if item.outcome == "filled":
             bc._record(job_id, raw, tag, preview, "filled", ai_draft)
@@ -393,7 +527,8 @@ def _handle_fill_result(msg) -> None:
         elif item.outcome == "needs_manual":
             bc._record(job_id, raw, tag, "", "needs_manual")
             with bc._lock:
-                bc._state.handled.setdefault(job_id, {})[lkey] = "needs_manual"
+                bc._state.handled.setdefault(job_id, {})[lkey] = \
+                    field_core.settle_entry("needs_manual")
         # focused / not_found: retryable — no record, next scan re-decides
     if filled_now:
         with bc._lock:
@@ -471,7 +606,6 @@ def _handle_fill_here(msg) -> None:
         bc._state.handled = {ADHOC_JOB_ID: {}}
         bc._state.fill_reports = {ADHOC_JOB_ID: []}
         bc._state.outcomes = {}
-        bc._state.pending = None
         bc._state.interrupted = False
         bc._state.summary = None
         bc._state.activity = bc._fresh_activity()
@@ -576,3 +710,4 @@ def reset_for_tests() -> None:
         _inflight.clear()
         _frame_seen.clear()
         _pending_submissions.clear()
+        _counters.update(dropped_fields=0, scan_errors=0)

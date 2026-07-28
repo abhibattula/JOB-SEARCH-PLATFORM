@@ -47,16 +47,21 @@ def preflight():
 @router.post("/queue")
 def start_queue(body: QueueRequest):
     global _last_preflight
-    from engine.autofill import browser_controller
+    from engine.autofill import browser_controller, ext_backend
 
-    check = browser_controller.preflight()
-    _last_preflight = check
-    if not check["ok"]:
-        raise HTTPException(
-            status_code=409,
-            detail=f"Couldn't start a browser: {check['error']} — install"
-            " Microsoft Edge or Google Chrome, then try again.",
-        )
+    # 016 (FR-009): a live companion IS the browser — never launch a
+    # headless Playwright probe when the extension will do the filling.
+    if ext_backend.is_live():
+        _last_preflight = {"ok": True, "channel": "companion", "error": None}
+    else:
+        check = browser_controller.preflight()
+        _last_preflight = check
+        if not check["ok"]:
+            raise HTTPException(
+                status_code=409,
+                detail=f"Couldn't start a browser: {check['error']} — install"
+                " Microsoft Edge or Google Chrome, then try again.",
+            )
     try:
         current = browser_controller.start_queue(body.job_ids)
     except Exception as exc:
@@ -185,9 +190,10 @@ class ConfirmAnswerRequest(BaseModel):
 
 @router.post("/answers/confirm")
 def confirm_answer(body: ConfirmAnswerRequest):
-    """The only write path into answer_bank (FR-011) — a drafted suggestion
-    is never saved until the user explicitly confirms/edits it here. Also
-    records the per-application snapshot (FR-021) if a queue is active."""
+    """016 (FR-019): bank curation ONLY — saving here updates the reusable
+    answer bank (and the per-application snapshot for a tracked job); it no
+    longer gates or triggers any filling. The page picks the new answer up
+    on its own next scan."""
     from engine.autofill import answer_bank, browser_controller
 
     bank_id = answer_bank.save(body.question_raw, body.answer, category=body.category)
@@ -200,7 +206,6 @@ def confirm_answer(body: ConfirmAnswerRequest):
         answer_bank.record_application_answer(
             current["job_id"], body.question_raw, bank_id, body.answer
         )
-    browser_controller.resolve_pending(body.answer)
     return {"saved": True}
 
 
@@ -223,9 +228,9 @@ class DraftDecision(BaseModel):
 
 @router.post("/drafts/{draft_id}")
 def decide_draft(draft_id: int, body: DraftDecision):
-    """010 FR-013: confirm (optionally edited) a draft → saved answer +
-    re-fill if the field still holds the draft; or discard it."""
-    from engine.autofill import browser_controller, drafts
+    """010 FR-013: confirm (optionally edited) a draft → saved answer; or
+    discard it. 016: curation only — filling is never gated on this."""
+    from engine.autofill import drafts
 
     if body.action == "discard":
         drafts.discard(draft_id)
@@ -234,8 +239,7 @@ def decide_draft(draft_id: int, body: DraftDecision):
         result = drafts.confirm(draft_id, body.text)
         if result is None:
             raise HTTPException(status_code=404, detail="draft not found")
-        # unlock the field so the confirmed text refills over the draft
-        browser_controller.resolve_pending(result["answer"])
+        # 016 (FR-019): bank curation only — no fill side effects here
         return {"ok": True, "status": "confirmed", **result}
     raise HTTPException(status_code=400, detail="action must be confirm or discard")
 

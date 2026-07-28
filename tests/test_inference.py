@@ -181,7 +181,8 @@ class TestWiring:
 
         calls: list[tuple] = []
 
-        def fake_run_chat(messages, json_mode=False, timeout_s=None):
+        def fake_run_chat(messages, json_mode=False, timeout_s=None,
+                          max_tokens=None):
             calls.append((messages, json_mode))
             return "stub-reply"
 
@@ -222,7 +223,7 @@ class TestWiring:
         seen: dict = {}
         monkeypatch.setattr(
             inference, "run_chat",
-            lambda m, json_mode=False, timeout_s=None:
+            lambda m, json_mode=False, timeout_s=None, max_tokens=None:
             seen.update(t=timeout_s) or "ok")
         local_llm.chat([{"role": "user", "content": "q"}], timeout_s=42)
         assert seen["t"] == 42
@@ -325,3 +326,81 @@ def test_time_budgets_default_and_env_override(monkeypatch):
     monkeypatch.setenv("JOBS_AI_TIMEOUT_EMBED", "3.5")
     assert inference._timeout_for("chat") == 7.0
     assert inference._timeout_for("embed") == 3.5
+
+
+class TestIsolationDefault016:
+    """016 (T019, R12): fault isolation is the DEFAULT — a native fault
+    kills only the AI child (the tailor hard-crash class). Env "0" is the
+    thread-mode escape hatch."""
+
+    def test_isolation_is_the_default(self, monkeypatch):
+        monkeypatch.delenv("JOBS_AI_SUBPROCESS", raising=False)
+        assert inference._subprocess_enabled() is True
+
+    def test_env_zero_restores_thread_mode(self, monkeypatch):
+        monkeypatch.setenv("JOBS_AI_SUBPROCESS", "0")
+        assert inference._subprocess_enabled() is False
+
+    def test_default_path_serves_and_survives_child_kill(self, monkeypatch):
+        import os
+        import signal
+        import time as time_mod
+
+        monkeypatch.delenv("JOBS_AI_SUBPROCESS", raising=False)
+        monkeypatch.setenv("JOBS_AI_TEST_ECHO", "1")
+        inference.reset_for_tests()
+        try:
+            assert inference.run_chat([{"role": "user", "content": "hi"}],
+                                      timeout_s=30) == "echo:hi"
+            pid = inference._child_pid_for_tests()
+            assert pid, "default mode must run in the isolated child"
+            os.kill(pid, signal.SIGTERM)
+            recovered = False
+            deadline = time_mod.monotonic() + 15
+            while time_mod.monotonic() < deadline:
+                try:
+                    if inference.run_chat(
+                            [{"role": "user", "content": "again"}],
+                            timeout_s=10) == "echo:again":
+                        recovered = True
+                        break
+                except RuntimeError:
+                    continue
+            assert recovered, "app-side AI never recovered after child death"
+            assert inference.runtime_restart_count() >= 1
+        finally:
+            inference.reset_for_tests()
+
+
+class TestGenerationBounds016:
+    """016 (T020, R13): every local generation carries an explicit output
+    cap — grammar-constrained JSON can no longer run unbounded to n_ctx."""
+
+    def test_local_chat_carries_purpose_scoped_max_tokens(self):
+        from engine import local_llm
+
+        captured = {}
+        inference.reset_for_tests()
+        inference.set_executors_for_tests({
+            "chat": lambda p: captured.update(p) or "ok",
+            "embed": lambda p: [0.0],
+        })
+        try:
+            local_llm.chat([{"role": "user", "content": "hi"}], json_mode=True)
+            assert captured["max_tokens"] == 1536
+            local_llm.chat([{"role": "user", "content": "hi"}])
+            assert captured["max_tokens"] == 768
+            local_llm.chat([{"role": "user", "content": "hi"}], max_tokens=512)
+            assert captured["max_tokens"] == 512
+        finally:
+            inference.reset_for_tests()
+
+    def test_completion_kwargs_always_cap_output(self):
+        from engine import local_llm
+
+        kwargs = local_llm._completion_kwargs(
+            {"messages": [], "json_mode": True, "max_tokens": 1536})
+        assert kwargs["max_tokens"] == 1536
+        assert kwargs["response_format"] == {"type": "json_object"}
+        floor = local_llm._completion_kwargs({"messages": []})
+        assert floor["max_tokens"] > 0  # never unbounded

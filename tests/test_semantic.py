@@ -99,3 +99,48 @@ class TestPipelineIntegration:
         pipeline._score_new_jobs()  # must not raise; jobs still get scored
         jobs, _ = db.query_jobs(window=None, statuses=None, entry_level=None)
         assert jobs[0]["match_score"] is not None
+
+
+class TestLoadHygiene016:
+    """016 (T020, R13): a failing 330 MB embedder load is attempted ONCE
+    per session, and the scores buffer is capped via n_batch."""
+
+    def test_load_failure_never_retries(self, monkeypatch):
+        import sys
+        import types
+
+        calls = []
+
+        class BoomLlama:
+            def __init__(self, *args, **kwargs):
+                calls.append(1)
+                raise RuntimeError("corrupt gguf")
+
+        monkeypatch.setitem(sys.modules, "llama_cpp",
+                            types.SimpleNamespace(Llama=BoomLlama))
+        monkeypatch.setattr(semantic, "_model", None)
+        monkeypatch.setattr(semantic, "_load_attempted", False)
+        with pytest.raises(Exception):
+            semantic._load()
+        first_round = len(calls)
+        assert first_round >= 1
+        with pytest.raises(Exception):
+            semantic._load()
+        assert len(calls) == first_round  # no re-attempt
+
+    def test_embedder_caps_n_batch(self, monkeypatch):
+        import sys
+        import types
+
+        seen = {}
+
+        class FakeLlama:
+            def __init__(self, *args, **kwargs):
+                seen.update(kwargs)
+
+        monkeypatch.setitem(sys.modules, "llama_cpp",
+                            types.SimpleNamespace(Llama=FakeLlama))
+        monkeypatch.setattr(semantic, "_model", None)
+        monkeypatch.setattr(semantic, "_load_attempted", False)
+        semantic._load()
+        assert seen.get("n_batch") == 256

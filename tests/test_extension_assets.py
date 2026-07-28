@@ -239,3 +239,150 @@ class TestPopupDiagnostics015:
     def test_popup_fill_button_explains_instead_of_noop(self):
         pj = self._popup()
         assert "Can't fill" in pj or "Can&#39;t fill" in pj
+
+
+class TestTabFollowingAssets016:
+    """016 (T008): the service worker follows child tabs and persists the
+    watched set across MV3 restarts."""
+
+    def test_tabs_listen_for_child_tabs_and_report_them(self):
+        js = (EXT / "background" / "tabs.js").read_text(encoding="utf-8")
+        assert "tabs.onCreated" in js
+        assert "openerTabId" in js
+        assert '"child_tab"' in js
+
+    def test_watched_set_persisted_to_session_storage(self):
+        tabs_js = (EXT / "background" / "tabs.js").read_text(encoding="utf-8")
+        assert "storage.session" in tabs_js and "watchedTabs" in tabs_js
+        sw = (EXT / "background" / "service-worker.js").read_text(encoding="utf-8")
+        assert "restoreWatched" in sw
+
+
+class TestDecongestionAndErrors016:
+    """016 (T009/T010): discovery scores once per page state; companion
+    errors and scan failures are surfaced, never silently dropped."""
+
+    def test_discovery_scores_once_per_page_state(self):
+        js = (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
+        assert "scoredFor" in js, (
+            "no per-href score cache — the 1.5 s score flood head-of-line "
+            "blocks the fill path (RC1 evidence)")
+
+    def test_service_worker_surfaces_error_messages(self):
+        sw = (EXT / "background" / "service-worker.js").read_text(
+            encoding="utf-8")
+        assert 'case "error"' in sw
+        assert "lastError" in sw
+
+    def test_popup_renders_last_error_and_never_blind_closes(self):
+        js = (EXT / "popup" / "popup.js").read_text(encoding="utf-8")
+        assert "lastError" in js
+        assert "window.close" not in js, (
+            "the popup must stay open to show the fill outcome — closing "
+            "instantly is how the busy error vanished (RC4)")
+
+    def test_content_script_reports_scan_errors(self):
+        js = (EXT / "content" / "main.js").read_text(encoding="utf-8")
+        assert '"scan_error"' in js
+
+
+class TestGroupingAssets016:
+    """016 (T011): both serializers carry the radio-grouping pass and the
+    required flag — changed in lockstep (the E2E parity test proves the
+    behavior; these fail fast on a missing half)."""
+
+    def test_scanner_js_groups_radios(self):
+        js = (EXT / "content" / "scanner.js").read_text(encoding="utf-8")
+        for token in ("radio_group", "members", "required", "legend"):
+            assert token in js, f"scanner.js missing {token!r}"
+
+    def test_watcher_serializer_groups_radios(self):
+        from engine.autofill import watcher
+
+        for token in ("radio_group", "members", "required", "legend"):
+            assert token in watcher.SERIALIZE_JS, \
+                f"watcher SERIALIZE_JS missing {token!r}"
+
+
+class TestFillerUpgrades016:
+    """016 (T013, R8): real radio branch, normalized select matching,
+    widened combobox harvest — behavior is DOM-verified in the E2E; these
+    fail fast if a half is missing."""
+
+    def test_filler_has_a_real_radio_branch(self):
+        js = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
+        assert 'kind === "radio"' in js
+        assert "radioGroupMembers" in js
+        assert "checked = true" in js
+
+    def test_select_matching_is_normalized_not_strict(self):
+        js = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
+        assert "normText(o.text)" in js, (
+            "selectByLabel must match normalized option text — strict "
+            "equality broke canonicalized answers (RC2)")
+
+    def test_combobox_harvest_widened_beyond_role_option(self):
+        js = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
+        assert "[role=listbox] li" in js
+        assert "select__option" in js
+
+
+class TestApplyOpener016:
+    """016 (T015, constitution v1.1.4): the apply-opener is a SEPARATE
+    allowlisted one-shot step — the fill path's click guard still denies
+    "apply" and is untouched."""
+
+    def test_opener_module_exists_with_bounds(self):
+        js = (EXT / "content" / "opener.js").read_text(encoding="utf-8")
+        assert "OPENERS" in js
+        assert "attemptedFor" in js          # one-shot per page state
+        assert 'type === "submit"' in js     # never a submit control
+        assert "hasFillableForm" in js       # only when no form is open
+
+    def test_opener_registered_before_main(self):
+        manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))
+        scripts = manifest["content_scripts"][0]["js"]
+        assert "content/opener.js" in scripts
+        assert scripts.index("content/opener.js") < scripts.index("content/main.js")
+
+    def test_click_guard_still_denies_apply(self):
+        js = (EXT / "content" / "click_guard.js").read_text(encoding="utf-8")
+        assert '"apply"' in js  # the FILL path's denylist is unchanged
+
+    def test_opener_selectors_mirror_adapters_registry(self):
+        from engine.autofill import adapters
+
+        js = (EXT / "content" / "opener.js").read_text(encoding="utf-8")
+        assert adapters.APPLY_OPENERS, "registry must not be empty"
+        for ats, selector in adapters.APPLY_OPENERS.items():
+            assert selector in js, f"opener.js missing {ats} selector"
+
+    def test_main_wires_opener_for_queue_watches_only(self):
+        main = (EXT / "content" / "main.js").read_text(encoding="utf-8")
+        assert "jeOpener" in main
+        assert "adhoc" in main  # popup fill-here never auto-opens
+
+
+class TestPanelAndHighlights016:
+    """016 (T016/T017, D2/D3): the on-page panel gains needs-attention
+    reporting and Fill again; drafted/needs-you fields carry a visible
+    highlight cleared by the user's own edit."""
+
+    def test_overlay_panel_has_fill_again_and_attention(self):
+        js = (EXT / "content" / "overlay.js").read_text(encoding="utf-8")
+        assert "Fill again" in js
+        assert "attention" in js
+        assert "onFillAgain" in js
+        assert "note" in js
+
+    def test_filler_annotates_flags_and_clears_on_edit(self):
+        js = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
+        assert "jeFlag" in js
+        assert "outline" in js
+        assert "annotateNeedsYou" in js
+        assert "removeEventListener" in js  # cleared by the user's edit
+
+    def test_main_wires_fill_again_and_needs_you(self):
+        js = (EXT / "content" / "main.js").read_text(encoding="utf-8")
+        assert '"fill_again"' in js
+        assert "needs_you_idx" in js

@@ -630,7 +630,10 @@ def tailor_job(job_id: int, request: Request):
     )
     if result is None:
         raise HTTPException(
-            status_code=502, detail="The AI response was invalid — try again."
+            status_code=502,
+            detail="Tailoring didn't complete — the on-device AI timed out "
+            "or returned an invalid result. The app is fine; try again "
+            "(Diagnostics shows the AI runtime state).",
         )
     db.set_tailor(job_id, result.model_dump_json())
     return result.model_dump()
@@ -957,6 +960,32 @@ def local_llm_selftest():
         return {"ok": True, "reply": reply}
     except Exception:
         return {"ok": False, "reply": ""}
+
+
+@router.get("/diagnostics/tailor-selftest")
+def tailor_selftest():
+    """016 (T023, RC5): the app's riskiest generation — grammar-constrained
+    JSON through the isolated AI runtime, end to end. COMPLETING WITHOUT
+    KILLING THE PROCESS is the pass condition (tailoring had never once
+    survived on the user's machine); `parsed` reports schema validity but
+    is not the gate. Always 200."""
+    from engine import inference, tailor
+
+    try:
+        result = tailor.tailor_for_job(
+            "Abhinav B — Computer Engineering new grad. Skills: Python, "
+            "Verilog, SystemVerilog, FPGA validation. Projects: RISC-V "
+            "core testbench with constrained-random stimulus.",
+            "Design Verification Engineer", "Aurora Semiconductors",
+            "Verify digital designs with UVM, SystemVerilog and Python.",
+        )
+        return {"completed": True, "parsed": result is not None,
+                "isolated": inference._subprocess_enabled(),
+                "runtime_restarts": inference.runtime_restart_count()}
+    except Exception as exc:  # noqa: BLE001 — verdict, never a 500
+        return {"completed": False, "parsed": False,
+                "isolated": inference._subprocess_enabled(),
+                "error": f"{type(exc).__name__}: {exc}"[:300]}
 
 
 class SaveCredentialRequest(BaseModel):

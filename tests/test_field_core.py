@@ -190,3 +190,101 @@ class TestWidgetAware011:
             tag="how_heard", type="", name="source", widget="custom_combobox",
             options=["LinkedIn"]), value=field_core.Draft("LinkedIn"))
         assert d.kind == "combobox" and d.ai_draft is False
+
+
+class TestLedgerRepair016:
+    """016 (T007, R3): no_match/needs_manual settle WITH the drafter cache
+    epoch — a NEWER answer re-opens the field; filled/skipped_existing stay
+    permanently settled; legacy plain-string entries keep their old
+    (never-retry) meaning."""
+
+    def _descriptor(self, **over):
+        d = {"je_idx": "3", "doc": "docA", "tag": "select", "type": "",
+             "name": "auth", "id": "auth", "label_text": "Authorized?",
+             "placeholder": "", "aria_label": "", "autocomplete": "",
+             "value": "", "options": ["Yes", "No"], "maxlength": None,
+             "focused": False, "visible": True, "widget": ""}
+        d.update(over)
+        return d
+
+    def test_settle_entry_carries_epoch_for_retryable_outcomes(self):
+        from engine.autofill import drafter
+
+        drafter.reset_for_tests()
+        entry = field_core.settle_entry("no_match")
+        assert entry == ("no_match", drafter.cache_version())
+        assert field_core.settle_entry("filled") == "filled"
+        assert field_core.settle_entry("skipped_existing") == "skipped_existing"
+
+    def test_no_match_retries_when_a_newer_answer_exists(self, monkeypatch):
+        from engine.autofill import drafter
+
+        drafter.reset_for_tests()
+        handled = {("docA", "3"): ("no_match", 0)}
+        monkeypatch.setattr(drafter, "cache_version", lambda: 1)  # newer
+        decision = field_core.decide(None, self._descriptor(), handled,
+                                     lambda tag, raw: "Yes")
+        assert decision.action == "fill" and decision.option_label == "Yes"
+
+    def test_no_match_skips_at_same_epoch(self):
+        from engine.autofill import drafter
+
+        drafter.reset_for_tests()
+        handled = {("docA", "3"): ("no_match", drafter.cache_version())}
+        decision = field_core.decide(None, self._descriptor(), handled,
+                                     lambda tag, raw: "Yes")
+        assert decision.action == "skip"
+
+    def test_legacy_string_terminal_never_retries(self, monkeypatch):
+        from engine.autofill import drafter
+
+        drafter.reset_for_tests()
+        monkeypatch.setattr(drafter, "cache_version", lambda: 99)
+        handled = {("docA", "3"): "no_match"}
+        decision = field_core.decide(None, self._descriptor(), handled,
+                                     lambda tag, raw: "Yes")
+        assert decision.action == "skip"
+
+    def test_filled_stays_settled_regardless_of_epoch(self, monkeypatch):
+        from engine.autofill import drafter
+
+        drafter.reset_for_tests()
+        monkeypatch.setattr(drafter, "cache_version", lambda: 99)
+        handled = {("docA", "3"): "filled"}
+        decision = field_core.decide(None, self._descriptor(), handled,
+                                     lambda tag, raw: "Yes")
+        assert decision.action == "skip"
+
+
+class TestRadioGroupDecision016:
+    """016 (T011/T013, R6): a grouped radio field decides to kind="radio"
+    with the matched member label; an unmatched value settles no_match."""
+
+    def _group(self, value=""):
+        return {"je_idx": "7", "doc": "docA", "tag": "input",
+                "type": "radio_group", "name": "authorized",
+                "id": "auth_yes",
+                "label_text": "Are you legally authorized to work in the US?",
+                "placeholder": "", "aria_label": "", "autocomplete": "",
+                "value": value, "options": ["Yes", "No"],
+                "members": [{"je_idx": "7", "label": "Yes"},
+                            {"je_idx": "8", "label": "No"}],
+                "maxlength": None, "focused": False, "visible": True,
+                "widget": "", "required": True}
+
+    def test_matched_value_fills_as_radio_kind(self):
+        decision = field_core.decide(None, self._group(), {},
+                                     lambda tag, raw: "Yes")
+        assert decision.action == "fill" and decision.kind == "radio"
+        assert decision.option_label == "Yes" and decision.value == "Yes"
+
+    def test_unmatched_value_settles_no_match(self):
+        decision = field_core.decide(None, self._group(), {},
+                                     lambda tag, raw: "A long paragraph")
+        assert decision.action == "settle" and decision.outcome == "no_match"
+
+    def test_already_checked_group_is_sacred(self):
+        decision = field_core.decide(None, self._group(value="No"), {},
+                                     lambda tag, raw: "Yes")
+        assert decision.action == "settle"
+        assert decision.outcome == "skipped_existing"

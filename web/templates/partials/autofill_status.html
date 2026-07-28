@@ -184,48 +184,33 @@
     any corrections, and click the site's own submit button yourself. When
     you're done (or want to skip this one), click below.</p>
 
-  {% if current.pending %}
-  <div class="autofill-pending" id="autofill-pending-form">
-  <script>reveal(document.getElementById("autofill-pending-form"));</script>
-    <p>
-      <strong>Question needs your review</strong>
-      {% if current.pending.category in ('work_authorization', 'sponsorship_requirement', 'eeo_disclosure') %}
-      <span class="badge excluded" title="This question is legally significant — it will only ever be filled from an answer you've confirmed.">sensitive</span>
-      {% endif %}
-    </p>
-    <p class="data">{{ current.pending.question_raw }}</p>
-    <p class="muted">
-      {% if current.pending.drafting %}
-      ▸ drafting a suggestion from your resume… type your own answer now, or
-      wait a moment for the draft to appear here:
-      {% elif current.pending.drafted_answer %}
-      AI-drafted, <strong>unreviewed</strong> — edit if needed, then confirm:
-      {% else %}
-      No AI draft available — type an answer to save and use it:
-      {% endif %}
-    </p>
-    <textarea id="pending-answer-text" rows="3">{{ current.pending.drafted_answer or '' }}</textarea>
-    <button type="button" id="pending-confirm-btn">Confirm &amp; fill</button>
+  {% if current.activity %}
+  <div class="autofill-activity" id="autofill-activity-log">
+    <p><strong>Question activity</strong> <span class="muted">— everything
+      fills on the page; anything marked <em>needs you</em> is highlighted
+      there for you to answer directly.</span></p>
+    <ul class="activity-log">
+      {% for entry in current.activity %}
+      <li>
+        {% if entry.state == 'drafting' %}
+        <span class="badge">drafting…</span>
+        {% elif entry.state == 'drafted' %}
+        <span class="badge saved" title="AI-drafted and filled on the page — highlighted until you edit it. Auto-saved to your answer bank.">drafted</span>
+        {% elif entry.state == 'needs_you' %}
+        <span class="badge excluded" title="Never auto-answered ({{ entry.reason }}) — answer it on the page.">needs you</span>
+        {% else %}
+        <span class="badge">{{ entry.state }}</span>
+        {% endif %}
+        <span class="data">{{ entry.question }}</span>
+        {% if entry.answer_preview %}
+        <span class="muted">— {{ entry.answer_preview }}</span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    <p class="muted">Reusable answers live in your
+      <a href="/profile#answers">answer bank</a> — edit them there any time.</p>
   </div>
-  <script>
-    (function () {
-      const btn = document.getElementById('pending-confirm-btn');
-      if (!btn) return;
-      btn.addEventListener('click', async () => {
-        const answer = document.getElementById('pending-answer-text').value;
-        await fetch('/api/autofill/answers/confirm', {
-          method: 'POST',
-          headers: {'Content-Type': 'application/json'},
-          body: JSON.stringify({
-            question_raw: {{ current.pending.question_raw | tojson }},
-            answer: answer,
-            category: {{ current.pending.category | tojson }},
-          }),
-        });
-        htmx.trigger('#autofill-queue', 'load');
-      });
-    })();
-  </script>
   {% endif %}
 
   <div class="settings-actions">

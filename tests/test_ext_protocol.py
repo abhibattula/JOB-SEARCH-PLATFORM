@@ -166,6 +166,66 @@ class TestWidgetKinds011:
             ))
 
 
+class TestProtocolAdditions016:
+    """016 (T002): additive protocol — PROTOCOL_V stays 1; payloads from
+    old companions (no new fields) remain valid; new messages parse."""
+
+    def test_protocol_v_still_1(self):
+        assert proto.PROTOCOL_V == 1
+
+    def test_descriptor_members_and_required_parse(self):
+        msg = proto.parse_inbound(envelope(
+            "fields", tab_id=1, frame_id=0, url="u", doc="d",
+            descriptors=[make_descriptor(
+                type="radio_group", options=["Yes", "No"],
+                members=[{"je_idx": "7", "label": "Yes"},
+                         {"je_idx": "8", "label": "No"}],
+                required=True,
+            )],
+        ))
+        d = msg.descriptors[0]
+        assert d.type == "radio_group"
+        assert [m.label for m in d.members] == ["Yes", "No"]
+        assert d.required is True
+        raw = d.as_watcher_dict()
+        assert raw["members"][0]["je_idx"] == "7"
+        assert raw["required"] is True
+
+    def test_old_descriptor_without_new_fields_still_valid(self):
+        msg = proto.parse_inbound(envelope(
+            "fields", tab_id=1, frame_id=0, url="u", doc="d",
+            descriptors=[make_descriptor()],
+        ))
+        assert msg.descriptors[0].members == []
+        assert msg.descriptors[0].required is False
+
+    def test_scan_error_message(self):
+        msg = proto.parse_inbound(envelope(
+            "scan_error", tab_id=3, message="TypeError: boom"))
+        assert isinstance(msg, proto.ScanError)
+        assert msg.tab_id == 3 and "boom" in msg.message
+
+    def test_child_tab_message(self):
+        msg = proto.parse_inbound(envelope(
+            "child_tab", tab_id=10, opener_tab_id=4))
+        assert isinstance(msg, proto.ChildTab)
+        assert msg.tab_id == 10 and msg.opener_tab_id == 4
+
+    def test_fill_again_message(self):
+        msg = proto.parse_inbound(envelope("fill_again", tab_id=6))
+        assert isinstance(msg, proto.FillAgain)
+        assert msg.tab_id == 6
+
+    def test_fill_item_radio_kind_and_needs_you_flag(self):
+        item = proto.FillItem(je_idx="7", kind="radio", value="Yes",
+                              flag="needs_you")
+        assert item.kind == "radio" and item.flag == "needs_you"
+
+    def test_rescan_outbound_envelope(self):
+        out = proto.outbound("rescan", reason="draft_ready")
+        assert out["type"] == "rescan" and out["v"] == 1
+
+
 class TestHelloBrowser015:
     """015 (T009): Hello gains an OPTIONAL browser field — additive,
     PROTOCOL_V stays 1, old companions (no field) remain valid."""

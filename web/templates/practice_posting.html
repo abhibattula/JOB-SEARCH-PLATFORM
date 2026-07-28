@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Aurora Semiconductors — Job Posting (practice)</title>
+  <style>
+    body { font-family: system-ui, sans-serif; max-width: 680px; margin: 2rem auto;
+           padding: 0 1rem; color: #1c2733; background: #f6f8fa; }
+    .card { background: #fff; border: 1px solid #d5dde5; border-radius: 8px;
+            padding: 1.2rem 1.4rem; margin-bottom: 1rem; }
+    label { display: block; margin: 0.8rem 0 0.2rem; font-weight: 600; font-size: 0.9rem; }
+    input { width: 100%; padding: 0.45rem 0.6rem; font-size: 0.95rem;
+            border: 1px solid #b8c4cf; border-radius: 5px; box-sizing: border-box; }
+    input[type=radio] { width: auto; }
+    .btn { display: inline-block; margin-top: 1rem; padding: 0.6rem 1.4rem;
+           font-size: 1rem; background: #2757a8; color: #fff; border: 0;
+           border-radius: 6px; text-decoration: none; cursor: pointer; }
+    .hint { color: #5b6b7b; font-size: 0.85rem; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <h1>Design Verification Engineer (New Grad)</h1>
+    <p class="hint">Practice POSTING fixture: like a real job board, the
+      application form appears only after Apply — Apply Assist opens it for
+      you (it never touches the real submit).</p>
+    {% if newtab %}
+    <a id="apply_button" class="btn" href="/practice/apply" target="_blank"
+       rel="opener">Apply for this job</a>
+    {% else %}
+    <a id="apply_button" class="btn" href="#application"
+       onclick="document.getElementById('application').hidden = false; return true;">
+      Apply for this job</a>
+    {% endif %}
+  </div>
+
+  <form id="application" class="card" hidden onsubmit="return false">
+    <h2>Apply</h2>
+    <label for="first_name">First Name</label>
+    <input id="first_name" name="first_name" type="text" autocomplete="given-name">
+    <label for="email">Email</label>
+    <input id="email" name="email" type="email" autocomplete="email">
+    <fieldset style="border:1px solid #d5dde5;border-radius:6px">
+      <legend style="font-weight:600;font-size:0.9rem">Will you now or in the future require sponsorship?</legend>
+      <label style="font-weight:400"><input type="radio" name="sponsorship" value="Yes"> Yes</label>
+      <label style="font-weight:400"><input type="radio" name="sponsorship" value="No"> No</label>
+    </fieldset>
+    <button type="button" class="btn"
+            onclick="fetch('/practice/submit-log', {method: 'POST'})">
+      Submit application
+    </button>
+  </form>
+  <script>
+    // 016 (T022): self-report for the E2E (see practice_apply.html).
+    setInterval(function () {
+      try {
+        var sponsorNo = document.querySelector('input[name=sponsorship][value=No]');
+        fetch('/practice/fixture-state', {
+          method: 'POST', headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({
+            page: 'posting',
+            revealed: !document.getElementById('application').hidden,
+            first_name: (document.getElementById('first_name') || {}).value || '',
+            sponsorship_no: !!(sponsorNo && sponsorNo.checked),
+          }),
+        });
+      } catch (e) { /* fixture beacon only */ }
+    }, 1000);
+  </script>
+</body>
+</html>

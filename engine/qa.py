@@ -38,6 +38,28 @@ def is_ai_eligible(tag: str | None) -> bool:
     return tag in AI_ELIGIBLE_TAGS
 
 
+# 016 (FR-012): questions whose answers are PROFILE FACTS — answered from
+# the profile with no model call, or left for the human. Never drafted.
+PROFILE_FACT_TAGS = frozenset({"work_authorization", "sponsorship_requirement"})
+
+
+def profile_fact_answer(tag: str | None, profile: dict) -> str | None:
+    """Yes/No from the profile's authorized_without_sponsorship field.
+    Deliberately conservative: work authorization is only derivable when
+    the user is authorized WITHOUT sponsorship — someone needing future
+    sponsorship may still be authorized today (OPT), which one field
+    cannot express, so that case stays with the human."""
+    authorized = (profile or {}).get("authorized_without_sponsorship") or ""
+    if tag == "sponsorship_requirement":
+        if authorized == "yes":
+            return "No"
+        if authorized == "no":
+            return "Yes"
+    if tag == "work_authorization" and authorized == "yes":
+        return "Yes"
+    return None
+
+
 def _grounding(profile: dict) -> str:
     parts = []
     resume = (profile or {}).get("resume_text") or ""

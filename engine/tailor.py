@@ -35,28 +35,38 @@ _SYSTEM = (
 )
 
 
+# 016 (T021, R13): the combined prompt stays inside the documented safe
+# local band (resume_extract.py: a >6k-char prompt overflowed the local
+# context and failed silently 100% of the time) — tailor used to send 2×
+# that. One LLM attempt with an explicit time budget; the tier dispatcher's
+# cloud fallthrough is unchanged.
+TAILOR_RESUME_CHARS = 3600
+TAILOR_DESC_CHARS = 2400
+TAILOR_TIMEOUT_S = 300.0
+
+
 def tailor_for_job(
     resume_text: str, title: str, company: str, description: str
 ) -> TailorResult | None:
     if not matcher.llm_available():
         return None
     user = (
-        f"RESUME:\n{resume_text[:matcher.MAX_CHARS]}\n\n"
+        f"RESUME:\n{resume_text[:TAILOR_RESUME_CHARS]}\n\n"
         f"JOB: {title} at {company}\n"
-        f"DESCRIPTION:\n{description[:matcher.MAX_CHARS]}"
+        f"DESCRIPTION:\n{description[:TAILOR_DESC_CHARS]}"
     )
     messages = [
         {"role": "system", "content": _SYSTEM},
         {"role": "user", "content": user},
     ]
-    for attempt in range(2):
-        try:
-            raw = matcher._chat(messages, purpose="json")
-        except Exception:
-            log.warning("tailor LLM call failed (attempt %d)", attempt + 1, exc_info=True)
-            continue
-        try:
-            return TailorResult.model_validate_json(matcher._extract_json(raw))
-        except (ValidationError, json.JSONDecodeError, ValueError):
-            log.info("invalid tailor output on attempt %d", attempt + 1)
-    return None
+    try:
+        raw = matcher._chat(messages, purpose="json",
+                            timeout_s=TAILOR_TIMEOUT_S)
+    except Exception:
+        log.warning("tailor LLM call failed", exc_info=True)
+        return None
+    try:
+        return TailorResult.model_validate_json(matcher._extract_json(raw))
+    except (ValidationError, json.JSONDecodeError, ValueError):
+        log.info("invalid tailor output")
+        return None

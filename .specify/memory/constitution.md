@@ -1,6 +1,22 @@
 <!--
 Sync Impact Report
 ==================
+Version change: 1.1.3 → 1.1.4 (2026-07-27)
+Modified sections:
+  - Principle I › closing paragraph — appended a Principle III CLARIFICATION
+    (feature 016): the automation MAY click a control that ONLY opens or
+    reveals the application form the user chose to pursue (e.g., a job
+    posting's "Apply" button that scrolls to or displays the embedded form),
+    identified via a strict per-ATS allowlist and never a control of type
+    submit. It MUST still never click any control that submits an
+    application, advances a wizard (next/continue), saves, finishes, logs
+    in, registers, creates an account, or pays — the human performs every
+    final submit/login. A bounded navigation-to-the-form relaxation; the
+    feature 011 fill-path click rule is unchanged.
+Templates status: all compatible (no template references the apply-opener
+rule).
+
+Previous report (1.1.2 → 1.1.3, 2026-07-24):
 Version change: 1.1.2 → 1.1.3 (2026-07-24)
 Modified sections:
   - Principle I › closing paragraph — appended a Principle III CLARIFICATION
@@ -87,6 +103,17 @@ lists or other pages, and sends the read metadata only to the local app over
 the existing authenticated companion channel. This is a bounded read-only
 addition, not a relaxation of the no-click/no-submit rule above or of the
 polite-ingestion rule in Principle III.
+Clarification (feature 016): the automation MAY click a control that ONLY
+opens or reveals the application form the user has chosen to pursue (e.g.,
+a job posting's "Apply" button that scrolls to or displays the embedded
+application form), identified by a strict per-ATS allowlist and never a
+control of type submit — this is navigation to the form, the same intent as
+the user opening it, not submission. It MUST still never click any control
+that submits an application, advances a multi-step wizard, saves, finishes,
+logs in, registers, creates an account, or pays; the human performs every
+final submit/login themselves. The feature 011 fill-path click rule is
+unchanged ("apply" remains denied during filling); form-opening is a
+separate, allowlisted, one-shot step.
 
 ### II. Zero-Subscription Cost
 
@@ -162,4 +189,4 @@ templates listed there. Plans and task lists MUST pass the Constitution Check ga
 deviations discovered during implementation MUST be either corrected or recorded in
 Complexity Tracking before the milestone is declared done.
 
-**Version**: 1.1.3 | **Ratified**: 2026-07-18 | **Last Amended**: 2026-07-24
+**Version**: 1.1.4 | **Ratified**: 2026-07-18 | **Last Amended**: 2026-07-27

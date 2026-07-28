@@ -6,10 +6,14 @@ import {
 } from "./socket.js";
 import {
   openTab, closeTab, watchStart, watchStop, toContent, relayFromContent,
-  watched,
+  restoreWatched, watched,
 } from "./tabs.js";
 
 setConnected(false);
+
+// 016 (T008): rebuild the watched set on EVERY worker start — content
+// scripts probing an awake-but-amnesiac worker must not go dormant.
+restoreWatched();
 
 // Registered at TOP LEVEL so Chrome knows to spin this worker back up when
 // the alarm fires — this is what makes the companion survive the ~30s idle
@@ -34,6 +38,14 @@ state.onMessage = (msg) => {
       break;
     case "save_result": toContent(msg.tab_id, { ...msg, type: "save_result" }, 0);
       break;
+    // 016 (T010): app-side refusals (e.g. busy) are STORED so the popup can
+    // show them — this used to hit `default:` and vanish (RC4).
+    case "error":
+      chrome.storage.session.set({
+        lastError: { code: msg.code || "", message: msg.message || "",
+                     at: Date.now() },
+      }).catch(() => {});
+      break;
     default: break;
   }
 };
@@ -44,16 +56,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // so the popup can explain WHY it isn't connected. A freshly-woken worker
   // has blank memory; fall back to the storage.session mirror.
   if (msg && msg.type === "status?") {
-    if (state.lastAttempt) {
-      sendResponse({ connected: state.connected,
-                     lastAttempt: state.lastAttempt });
-    } else {
-      chrome.storage.session.get("lastAttempt")
-        .then((o) => sendResponse({ connected: state.connected,
-                                    lastAttempt: o.lastAttempt || null }))
-        .catch(() => sendResponse({ connected: state.connected,
-                                    lastAttempt: null }));
-    }
+    chrome.storage.session.get(["lastAttempt", "lastError"])
+      .then((stored) => sendResponse({
+        connected: state.connected,
+        lastAttempt: state.lastAttempt || stored.lastAttempt || null,
+        lastError: stored.lastError || null,
+      }))
+      .catch(() => sendResponse({ connected: state.connected,
+                                  lastAttempt: state.lastAttempt || null,
+                                  lastError: null }));
     return true;
   }
   // Popup asked for an immediate reconnect attempt (015: "Connect now")
@@ -85,9 +96,15 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // A content script announcing it's loaded — tell it whether its tab is
   // being watched (closes the watch_start-before-inject race).
   if (sender.tab && msg && msg._je_ready) {
+    // 016 (T015): carry the watch ORIGIN too — content scripts usually
+    // start via this probe (the watch_start broadcast races injection),
+    // and only queue-driven watches may auto-open the application form.
+    // Restored watches (jobId unknown) stay conservative: adhoc.
+    const entry = watched.get(sender.tab.id);
     chrome.tabs.sendMessage(
       sender.tab.id,
-      { type: "watch_state", watched: watched.has(sender.tab.id) },
+      { type: "watch_state", watched: watched.has(sender.tab.id),
+        adhoc: !entry || entry.jobId == null || entry.jobId === -2 },
       sender.frameId !== undefined ? { frameId: sender.frameId } : undefined,
     ).catch(() => {});
     return false;
