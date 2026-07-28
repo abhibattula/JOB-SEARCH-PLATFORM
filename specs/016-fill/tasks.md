@@ -226,7 +226,7 @@ the app; tailor bounded and honest.
   radio/select/combobox DOM-verified fills, EEO blank + flagged, panel
   present, highlights until edit, ZERO submit clicks (server-side click
   log), serializer parity (T011's test goes green here if deferred).
-- [ ] T023 Full battery (default isolation ON) — `pytest -q` ×2,
+- [x] T023 Full battery (default isolation ON) — `pytest -q` ×2,
   `-m browser`, `-m slow`, frozen build + `packaging/smoke_test.py`
   (extended: runs under default isolation + tailor smoke call + existing
   015 stamp/doctor gates). Cross-platform sweep: grep for stale pinned
