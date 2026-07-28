@@ -270,7 +270,20 @@ def test_serializer_parity_same_logical_fields():
                   "content" / "scanner.js").read_text(encoding="utf-8")
 
     with sync_playwright() as pw:
-        browser = pw.chromium.launch(channel="chromium", headless=True)
+        # Parity needs ANY Chromium-family engine: bundled Chromium locally,
+        # the runner's installed Edge/Chrome on CI (bundled Chromium is a
+        # local-only test dep — the 015 convention; launching it directly
+        # broke the first v1.6.0 tag on BOTH runners).
+        browser = None
+        for parity_channel in ("chromium", "msedge", "chrome"):
+            try:
+                browser = pw.chromium.launch(channel=parity_channel,
+                                             headless=True)
+                break
+            except Exception:
+                continue
+        if browser is None:
+            pytest.skip("no Chromium-family browser available for parity")
         page = browser.new_page()
         page.set_content(FIXTURE_FORM_HTML)
         page.add_script_tag(content=scanner_js)
