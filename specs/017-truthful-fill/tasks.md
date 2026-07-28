@@ -84,12 +84,12 @@ per story.
 - [ ] T028 [US2] GREEN: implement the ancestry de-duplication and widget inheritance in `extension/content/scanner.js` and the mirrored `SERIALIZE_JS` in `engine/autofill/watcher.py`, in lockstep
 - [ ] T029 [US2] [P] RED: assert a checkbox set sharing a legend becomes ONE descriptor (`type: "checkbox_group"`, options from member labels, `je_idx` from the first member) and that selecting two members emits two existing `kind:"checkbox"` fill items
 - [ ] T030 [US2] GREEN: implement checkbox grouping in both serializers and per-member emission in `engine/autofill/ext_backend.py`; no new `FillItem.kind`
-- [ ] T031 [US2] [P] RED: in `tests/test_field_core.py` and `tests/test_drafter.py`, assert prose is refused for a choice control with unknown options and a bare `Yes` is refused for a descriptive free-text work-auth question
-- [ ] T032 [US2] GREEN: wire `value_fits` into `field_core.decide` and `drafter._validate`
+- [x] T031 [US2] [P] RED: in `tests/test_field_core.py` and `tests/test_drafter.py`, assert prose is refused for a choice control with unknown options and a bare `Yes` is refused for a descriptive free-text work-auth question
+- [x] T032 [US2] GREEN: wire `value_fits` into `field_core.decide` and `drafter._validate`
 - [x] T033 [US2] [P] RED: in `tests/test_fields.py`, assert "how your name is pronounced phonetically" is not a phone field, "please list their name" is not a name field, "Preferred Name" is `preferred_name`, and Lever's bare `name=` attribute still classifies as `full_name`
 - [x] T034 [US2] GREEN: word-bound `_PHONE_RE`, add the third-party disqualifier to the name patterns, and add `preferred_name` / `middle_name` tags ahead of `_FULL_NAME_RE` in `engine/autofill/fields.py`
-- [ ] T035 [US2] [P] RED: in `tests/test_field_core.py`, assert `name_layout` across four shapes — First+Last, lone `Name`, `Name` + `Last name`, and `Name` + `Preferred Name`
-- [ ] T036 [US2] GREEN: implement `field_core.name_layout(descriptors)` and apply it in both `engine/autofill/ext_backend.py` and `engine/autofill/watcher.py` before deciding
+- [x] T035 [US2] [P] RED: in `tests/test_field_core.py`, assert `name_layout` across four shapes — First+Last, lone `Name`, `Name` + `Last name`, and `Name` + `Preferred Name`
+- [x] T036 [US2] GREEN: implement `field_core.name_layout(descriptors)` and apply it in both `engine/autofill/ext_backend.py` and `engine/autofill/watcher.py` before deciding
 - [ ] T037 [US2] [P] Per-field status wording reflects the control type (no more "attach manually" for a dropdown) in `web/templates/partials/autofill_status.html`, asserted in `tests/test_web.py`
 - [ ] T038 [US2] FR-048: the same question in two documents of one application is answered once and generated once — test in `tests/test_ext_backend.py`, implement in the drafter key/ledger path
 

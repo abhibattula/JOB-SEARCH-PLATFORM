@@ -276,7 +276,13 @@ def tick(page, *, get_value, record, handled: dict) -> TickResult:
             continue
         any_frame_ok = True
         ats = adapters.ats_from_url(frame.url)
+        # 017 (FR-017): resolve first-vs-full name across the whole document
+        # before deciding any single field.
+        name_overrides = field_core.name_layout(descriptors, ats)
         for descriptor in descriptors:
+            override = name_overrides.get(descriptor.get("je_idx"))
+            if override:
+                descriptor["tag_override"] = override
             _process_field(frame, ats, descriptor, get_value, record, handled, result)
 
     if frames and not any_frame_ok:

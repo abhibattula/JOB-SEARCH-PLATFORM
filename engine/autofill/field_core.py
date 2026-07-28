@@ -51,7 +51,10 @@ _CHOICE_TYPES = {"radio_group", "checkbox_group", "select-one", "select-multiple
 # like an option label — the filler fuzzy-matches it against what it harvests.
 _MAX_OPTION_WORDS = 4
 _MAX_OPTION_CHARS = 60
-_SENTENCE_PUNCT = re.compile(r"[.!?;]|,\s")
+# Sentence-enders only. A comma does NOT disqualify a label: real option text
+# is full of them ("Arlington, TX", "Black or African American, non-Hispanic"),
+# and the word budget already rejects run-on answers.
+_SENTENCE_PUNCT = re.compile(r"[.!?;]")
 
 # A label that asks for a date, a status, a list or an explanation cannot be
 # answered with a bare yes/no token, however yes/no-ish its topic is.
@@ -187,6 +190,36 @@ class Decision:
     ai_draft: bool = False
 
 
+def name_layout(descriptors: list[dict], ats: str | None = None) -> dict:
+    """017 (FR-017): resolve first-vs-full name using the whole document.
+
+    `classify` sees one descriptor at a time, so a lone "Name" box and a
+    "Name" box sitting next to "Last name" look identical to it — and the
+    live run filled the second kind with the applicant's full name. When a
+    document carries a distinct last-name field, a sibling classified
+    `full_name` is really the first name.
+
+    Returns {je_idx: tag} overrides; an empty dict means "leave everything
+    as classified".
+    """
+    by_doc: dict = {}
+    for descriptor in descriptors:
+        tag = adapters.classify(ats, descriptor) or fields_mod.classify(descriptor)
+        if tag in ("full_name", "last_name"):
+            by_doc.setdefault(descriptor.get("doc"), []).append(
+                (descriptor.get("je_idx"), tag))
+
+    overrides: dict = {}
+    for entries in by_doc.values():
+        tags = {tag for _, tag in entries}
+        if "last_name" not in tags or "full_name" not in tags:
+            continue
+        for je_idx, tag in entries:
+            if tag == "full_name":
+                overrides[je_idx] = "first_name"
+    return overrides
+
+
 def decide(ats: str | None, descriptor: dict, handled: dict, get_value) -> Decision:
     if not descriptor.get("visible") and (descriptor.get("type") or "") != "file":
         return Decision("ignore")
@@ -205,7 +238,11 @@ def decide(ats: str | None, descriptor: dict, handled: dict, get_value) -> Decis
             else:
                 return Decision("skip")
 
-    tag = adapters.classify(ats, descriptor) or fields_mod.classify(descriptor)
+    # 017 (FR-017): a document-level override from name_layout wins — it is
+    # the only rule that can see more than this one field.
+    tag = (descriptor.get("tag_override")
+           or adapters.classify(ats, descriptor)
+           or fields_mod.classify(descriptor))
 
     # A value already present is sacred — the user's own input above all.
     if (descriptor.get("value") or "").strip():
@@ -218,6 +255,16 @@ def decide(ats: str | None, descriptor: dict, handled: dict, get_value) -> Decis
     value = get_value(tag, descriptor)
     if value is None:
         return Decision("skip")
+
+    # 017 (FR-012): the answer must fit the control. Settling `no_match`
+    # leaves the field untouched and epoch-retryable, so a later, correctly
+    # shaped answer still gets its chance — the field is never given a value
+    # of the wrong shape just because one was available.
+    fits, fit_reason = value_fits(descriptor, value)
+    if not fits:
+        if fit_reason == "empty":
+            return Decision("skip")
+        return Decision("settle", tag=tag, outcome="no_match")
 
     if tag == "resume_upload" or (descriptor.get("type") or "") == "file":
         name = str(value).replace("\\", "/").rsplit("/", 1)[-1]

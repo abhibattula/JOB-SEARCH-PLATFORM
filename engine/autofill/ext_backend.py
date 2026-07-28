@@ -392,8 +392,15 @@ def _handle_fields(msg) -> None:
 
     needs_you_idx: list[str] = []
     needs_you_labels: list[str] = []
-    for desc in msg.descriptors:
-        raw = desc.as_watcher_dict()
+    # 017 (FR-017): first-vs-full name is a document-level question — a
+    # "Name" box sitting beside "Last name" is the FIRST name, which no
+    # single-descriptor classifier can see.
+    raws = [desc.as_watcher_dict() for desc in msg.descriptors]
+    name_overrides = field_core.name_layout(raws, ats)
+    for raw in raws:
+        override = name_overrides.get(raw.get("je_idx"))
+        if override:
+            raw["tag_override"] = override
         fkey = (msg.tab_id, msg.frame_id, raw["je_idx"])
         with _lock:
             info = _inflight.get(fkey)

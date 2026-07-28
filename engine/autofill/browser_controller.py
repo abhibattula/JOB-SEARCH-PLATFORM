@@ -404,6 +404,13 @@ def _value_for_tag(tag: str, raw: dict, profile: dict, job_id: int):
         "maxlength": raw.get("maxlength"),
         "type": raw.get("type") or "",
         "widget": raw.get("widget") or "",
+        # 017 (FR-012): the shape rule needs the label — a question asking
+        # WHEN something expires cannot take a yes/no — and the ancestry
+        # flag, because an input inside a dropdown is a dropdown.
+        "label_text": raw.get("label_text") or "",
+        "placeholder": raw.get("placeholder") or "",
+        "aria_label": raw.get("aria_label") or "",
+        "nested_in_choice": bool(raw.get("nested_in_choice")),
     }, profile)
     return None
 

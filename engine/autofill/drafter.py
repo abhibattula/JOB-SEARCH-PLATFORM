@@ -131,11 +131,15 @@ def _validate(answer: str | None, descriptor_ctx: dict):
             if _normalize_for_match(option) == wanted:
                 return True, option, None  # canonical option text wins
         return False, None, "no_valid_option"
-    if (descriptor_ctx.get("widget") or "") == "custom_combobox":
-        # options unknown until fill time — the answer must LOOK like an
-        # option label (the harvest fuzzy-matches it on the page)
-        if len(answer.split()) > 4:
-            return False, None, "not_an_option_label"
+    # 017 (FR-012): one shared shape rule instead of a widget-flag-keyed word
+    # cap. The old check fired only when `widget == "custom_combobox"`, so a
+    # search input nested inside a React-select control — which carries no
+    # widget flag of its own — escaped it entirely and received paragraphs.
+    from . import field_core as _core
+
+    fits, fit_reason = _core.value_fits(descriptor_ctx, answer)
+    if not fits:
+        return False, None, fit_reason
     maxlength = descriptor_ctx.get("maxlength")
     if maxlength and len(answer) > int(maxlength):
         answer = answer[:int(maxlength)].rstrip()

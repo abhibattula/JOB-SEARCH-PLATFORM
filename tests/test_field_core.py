@@ -288,3 +288,117 @@ class TestRadioGroupDecision016:
                                      lambda tag, raw: "Yes")
         assert decision.action == "settle"
         assert decision.outcome == "skipped_existing"
+
+
+class TestShapeEnforcedAtDecision017:
+    """017-T031 (FR-012): decide() refuses to emit a fill whose shape does not
+    fit the control. Both live-run defect classes end here.
+    """
+
+    AKUNA_EXPIRY = ("If you have a current work authorization/status, when "
+                    "does it expire? (Please enter N/A if you do not require "
+                    "work authorization.)")
+
+    def test_a_yes_no_fact_is_not_written_into_a_descriptive_text_field(self):
+        d = decide(make_descriptor(label_text=self.AKUNA_EXPIRY,
+                                   name="", id=""),
+                   value="Yes")
+        assert d.action == "settle"
+        assert d.outcome == "no_match"
+
+    def test_a_real_answer_for_that_field_still_fills(self):
+        d = decide(make_descriptor(label_text=self.AKUNA_EXPIRY,
+                                   name="", id=""),
+                   value="2027-06-30")
+        assert d.action == "fill"
+        assert d.value == "2027-06-30"
+
+    def test_prose_is_not_written_into_a_choice_with_unknown_options(self):
+        paragraph = ("Yes, I have applied to a full-time or internship "
+                     "position with Akuna in the past. I am currently an "
+                     "embedded systems intern.")
+        d = decide(make_descriptor(widget="custom_combobox", options=None,
+                                   label_text="Acknowledgement", name="",
+                                   id=""),
+                   value=paragraph)
+        assert d.action == "settle"
+        assert d.outcome == "no_match"
+
+    def test_prose_is_not_written_into_an_input_nested_in_a_choice_widget(self):
+        """The React-select search box: its own attributes say free text, its
+        ancestry says dropdown."""
+        d = decide(make_descriptor(nested_in_choice=True, options=None,
+                                   label_text="Acknowledgement", name="",
+                                   id=""),
+                   value="Yes, I acknowledge this and understand the terms.")
+        assert d.action == "settle"
+        assert d.outcome == "no_match"
+
+    def test_a_short_label_still_fills_a_combobox(self):
+        d = decide(make_descriptor(widget="custom_combobox", options=None,
+                                   label_text="How did you hear about us?",
+                                   name="", id=""),
+                   value="LinkedIn")
+        assert d.action == "fill"
+        assert d.kind == "combobox"
+
+    def test_ordinary_prose_still_fills_a_textarea(self):
+        d = decide(make_descriptor(tag="textarea", label_text="Cover letter",
+                                   name="", id=""),
+                   value="I am excited about this role because ...")
+        assert d.action == "fill"
+        assert d.kind == "text"
+
+
+class TestNameLayout017:
+    """017-T035 (FR-017): first-vs-full name is a DOCUMENT-level question.
+
+    classify() sees one field at a time, so a lone "Name" box and a "Name"
+    box sitting beside "Last name" are indistinguishable to it. On a form
+    with both, "Name" means the first name.
+    """
+
+    def layout(self, *labels):
+        descriptors = [
+            make_descriptor(je_idx=str(index), name="", id="",
+                            label_text=label)
+            for index, label in enumerate(labels)
+        ]
+        return field_core.name_layout(descriptors), descriptors
+
+    def test_a_lone_name_field_stays_the_full_name(self):
+        overrides, _ = self.layout("Name")
+        assert overrides == {}
+
+    def test_name_beside_last_name_means_first_name(self):
+        overrides, _ = self.layout("Name", "Last name")
+        assert overrides == {"0": "first_name"}
+
+    def test_first_and_last_are_untouched(self):
+        overrides, _ = self.layout("First name", "Last name")
+        assert overrides == {}
+
+    def test_preferred_name_is_not_demoted(self):
+        """It is its own tag, not a full-name candidate."""
+        overrides, _ = self.layout("Name", "Preferred name")
+        assert overrides == {}
+
+    def test_only_name_fields_in_the_same_document_count(self):
+        first = make_descriptor(je_idx="1", doc="docA", name="", id="",
+                                label_text="Name")
+        other = make_descriptor(je_idx="2", doc="docB", name="", id="",
+                                label_text="Last name")
+        assert field_core.name_layout([first, other]) == {}
+
+    def test_the_override_is_honoured_by_decide(self):
+        d = field_core.decide(
+            None,
+            make_descriptor(je_idx="0", name="", id="", label_text="Name",
+                            tag_override="first_name"),
+            {},
+            lambda tag, descriptor: "Abhinav" if tag == "first_name" else
+            "Abhinav Battula",
+        )
+        assert d.action == "fill"
+        assert d.tag == "first_name"
+        assert d.value == "Abhinav"
