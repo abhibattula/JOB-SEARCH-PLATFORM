@@ -533,3 +533,29 @@ class TestNeverGenerated017:
     def test_the_016_alias_still_resolves(self):
         assert drafter.SENSITIVE_TAGS is drafter.NEVER_GENERATED_TAGS
         assert "eeo_disclosure" in drafter.NEVER_GENERATED_TAGS
+
+
+class TestOneQuestionAcrossDocuments017:
+    """017-T038 (FR-048): the same question in a page AND an embedded frame
+    is one question. The Akuna form spans two documents and its fill report
+    listed the shared fields twice — generating twice would double the model
+    cost and could produce two different answers for one question."""
+
+    def test_two_documents_generate_once(self):
+        calls = []
+        drafter.set_generator_for_tests(
+            lambda q, c, p: calls.append(q) or "Abhinav Battula")
+        question = "What is your legal first name?"
+        # same job, same question, reached from two different documents
+        drafter.ensure(51, question, ctx(), PROFILE)
+        drafter.ensure(51, question, ctx(), PROFILE)
+        assert wait_until(lambda: drafter.answer_for(51, question))
+        assert len(calls) == 1
+
+    def test_the_shared_answer_is_available_to_both(self):
+        drafter.set_generator_for_tests(lambda q, c, p: "Abhinav Battula")
+        question = "What is your legal first name?"
+        drafter.ensure(52, question, ctx(), PROFILE)
+        assert wait_until(lambda: drafter.answer_for(52, question))
+        # a second document asking the same question reads the same cache
+        assert drafter.answer_for(52, question) == "Abhinav Battula"

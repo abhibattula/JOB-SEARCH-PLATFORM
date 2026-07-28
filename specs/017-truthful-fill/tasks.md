@@ -90,8 +90,8 @@ per story.
 - [x] T034 [US2] GREEN: word-bound `_PHONE_RE`, add the third-party disqualifier to the name patterns, and add `preferred_name` / `middle_name` tags ahead of `_FULL_NAME_RE` in `engine/autofill/fields.py`
 - [x] T035 [US2] [P] RED: in `tests/test_field_core.py`, assert `name_layout` across four shapes — First+Last, lone `Name`, `Name` + `Last name`, and `Name` + `Preferred Name`
 - [x] T036 [US2] GREEN: implement `field_core.name_layout(descriptors)` and apply it in both `engine/autofill/ext_backend.py` and `engine/autofill/watcher.py` before deciding
-- [ ] T037 [US2] [P] Per-field status wording reflects the control type (no more "attach manually" for a dropdown) in `web/templates/partials/autofill_status.html`, asserted in `tests/test_web.py`
-- [ ] T038 [US2] FR-048: the same question in two documents of one application is answered once and generated once — test in `tests/test_ext_backend.py`, implement in the drafter key/ledger path
+- [x] T037 [US2] [P] Per-field status wording reflects the control type (no more "attach manually" for a dropdown) in `web/templates/partials/autofill_status.html`, asserted in `tests/test_web.py`
+- [x] T038 [US2] FR-048: the same question in two documents of one application is answered once and generated once — test in `tests/test_ext_backend.py`, implement in the drafter key/ledger path
 
 **Checkpoint**: US1 + US2 — the fill is truthful and correctly shaped.
 

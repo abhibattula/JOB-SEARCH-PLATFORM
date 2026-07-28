@@ -145,7 +145,11 @@
           <td class="data">
             {%- if entry.ai_draft and entry.outcome == 'filled' -%}✎ AI draft — review
             {%- elif entry.outcome == 'filled' -%}✓ filled
-            {%- elif entry.outcome == 'needs_manual' -%}⚠ attach manually
+            {#- 017 (FR-018): say what the field actually is. Every failure
+                used to read "attach manually", including dropdowns. -#}
+            {%- elif entry.outcome == 'needs_manual' and entry.tag == 'resume_upload' -%}⚠ attach it yourself
+            {%- elif entry.outcome == 'needs_manual' and entry.tag == 'cover_letter' -%}⚠ attach it yourself
+            {%- elif entry.outcome == 'needs_manual' -%}⚠ answer it on the page
             {%- elif entry.outcome == 'skipped_existing' -%}· kept your value
             {%- elif entry.outcome == 'no_match' -%}· no matching option
             {%- elif entry.outcome == 'paused' -%}▸ awaiting your answer
