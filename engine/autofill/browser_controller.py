@@ -343,25 +343,18 @@ def _value_for_tag(tag: str, raw: dict, profile: dict, job_id: int):
         if not saved:
             return None
         return saved["email"] if tag == "login_email" else saved["password"]
-    if tag == "full_name":
-        first = profile.get("first_name") or ""
-        last = profile.get("last_name") or ""
-        combined = f"{first} {last}".strip()
-        return combined or None
-    if tag == "first_name":
-        return profile.get("first_name")
-    if tag == "last_name":
-        return profile.get("last_name")
-    if tag == "email":
-        return profile.get("email")
-    if tag == "phone":
-        return profile.get("phone")
     if tag == "resume_upload":
         return _resume_file_for_job(job_id, profile)
-    if tag in ("linkedin_url",):
-        return profile.get("linkedin_url")
-    if tag in ("portfolio_url",):
-        return profile.get("portfolio_url")
+
+    # 017 (R12, FR-020): one resolver for every question the applicant has
+    # already answered on their profile — consulted BEFORE the answer bank so
+    # a corrected profile immediately overrides a stale learned answer. It
+    # replaces the per-tag ladder that used to live here.
+    from . import profile_answers
+
+    answered = profile_answers.answer_for(tag, profile)
+    if answered is not None:
+        return answered
     # Everything else goes: answer bank → profile facts → drafter cache.
     # 016 (fill-first, FR-003/FR-012/FR-019): decide NEVER generates and
     # NEVER parks — unknown questions are scheduled on the background
@@ -381,16 +374,18 @@ def _value_for_tag(tag: str, raw: dict, profile: dict, job_id: int):
             return field_core.Draft(existing["answer"])
         return existing["answer"]
 
-    from .. import qa
     from . import drafter
 
-    if tag in qa.PROFILE_FACT_TAGS:
-        fact = qa.profile_fact_answer(tag, profile)
-        if fact is not None:
-            drafter.clear(job_id, question)
-            return fact
-        # not derivable — the human answers this one, visibly
+    # 017 (FR-023, FR-008): the profile could not answer this and the bank
+    # has nothing. For a question that is answerable ONLY from the applicant
+    # — a profile fact, their own history, or self-identification — that is
+    # the end of the road: it goes to them, visibly, rather than to a model
+    # that would have to invent it.
+    if tag in profile_answers.PROFILE_ANSWER_TAGS:
         drafter.mark_needs_you(job_id, question, "profile_fact_missing")
+        return None
+    if tag in drafter.NEVER_GENERATED_TAGS:
+        drafter.mark_needs_you(job_id, question, "never_generated")
         return None
 
     cached = drafter.answer_for(job_id, question)

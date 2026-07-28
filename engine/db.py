@@ -214,6 +214,44 @@ _MIGRATIONS = {
         # 008: profile-driven search + semantic ranking
         ("search_terms", "TEXT"),
         ("resume_embedding", "BLOB"),
+        # 017: a profile that can answer a real application
+        ("preferred_name", "TEXT"),
+        ("middle_name", "TEXT"),
+        ("pronouns", "TEXT"),
+        ("address_line1", "TEXT"),
+        ("address_line2", "TEXT"),
+        ("city", "TEXT"),
+        ("state_region", "TEXT"),
+        ("postal_code", "TEXT"),
+        ("country", "TEXT"),
+        ("current_location", "TEXT"),
+        ("work_auth_type", "TEXT"),
+        ("work_auth_expiry", "TEXT"),
+        ("work_auth_extensions", "TEXT"),
+        ("sponsorship_future", "TEXT"),
+        ("sponsorship_detail", "TEXT"),
+        ("desired_salary", "TEXT"),
+        ("earliest_start_date", "TEXT"),
+        ("notice_period", "TEXT"),
+        ("willing_to_relocate", "TEXT"),
+        ("remote_preference", "TEXT"),
+        ("willing_to_travel", "TEXT"),
+        ("years_experience", "TEXT"),
+        ("current_employer", "TEXT"),
+        ("current_title", "TEXT"),
+        ("highest_education", "TEXT"),
+        ("graduation_month", "TEXT"),
+        ("graduation_year", "TEXT"),
+        ("gpa", "TEXT"),
+        ("github_url", "TEXT"),
+        ("other_url", "TEXT"),
+        ("how_heard_default", "TEXT"),
+        ("selfid_gender", "TEXT"),
+        ("selfid_race", "TEXT"),
+        ("selfid_veteran", "TEXT"),
+        ("selfid_disability", "TEXT"),
+        ("selfid_orientation", "TEXT"),
+        ("target_titles", "TEXT"),
     ],
     # 017: one row per (job, question) + when it was last refreshed
     "ai_drafts": [
@@ -1177,6 +1215,9 @@ def _force_run_started_at(run_id: int, started_at: str) -> None:
 _PROFILE_JSON_FIELDS = (
     "skills", "target_locations", "preferences", "resume_sections",
     "search_terms",  # 008: {"terms": [...], "derived_from": ..., "updated_at": ...}
+    "target_titles",  # 017: proposed by the resume importer since 008 and
+                      # silently dropped until now — it was in neither
+                      # _PROFILE_COLUMNS nor this list
 )
 # Single source of truth for save_profile()'s INSERT/UPDATE — every
 # user_profile column except id/updated_at (which are handled specially).
@@ -1189,6 +1230,21 @@ _PROFILE_COLUMNS = (
     "resume_file_path", "resume_sections", "sections_edited_at",
     "search_terms",  # 008: profile-driven search
     "resume_embedding",  # 008: semantic pre-ranking (BLOB, not JSON)
+    # 017: identity, address, work-auth detail, preferences,
+    # experience facts, links and voluntary self-identification.
+    "preferred_name", "middle_name", "pronouns",
+    "address_line1", "address_line2", "city",
+    "state_region", "postal_code", "country",
+    "current_location", "work_auth_type", "work_auth_expiry",
+    "work_auth_extensions", "sponsorship_future", "sponsorship_detail",
+    "desired_salary", "earliest_start_date", "notice_period",
+    "willing_to_relocate", "remote_preference", "willing_to_travel",
+    "years_experience", "current_employer", "current_title",
+    "highest_education", "graduation_month", "graduation_year",
+    "gpa", "github_url", "other_url",
+    "how_heard_default", "selfid_gender", "selfid_race",
+    "selfid_veteran", "selfid_disability", "selfid_orientation",
+    "target_titles",
 )
 
 

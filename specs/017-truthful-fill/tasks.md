@@ -101,9 +101,9 @@ per story.
 
 **Goal**: the profile can answer a real application.
 
-- [ ] T039 [US3] [P] RED: in `tests/test_db.py`, a table-driven test asserting every `_PROFILE_COLUMNS` entry saves and reloads unchanged — which also fails today for `target_titles`
-- [ ] T040 [US3] GREEN: add the columns from data-model.md §1 to `_MIGRATIONS` and `_PROFILE_COLUMNS` in `engine/db.py`, including `target_titles`
-- [ ] T041 [US3] Wire `profile_answers.answer_for` into `browser_controller._value_for_tag` ahead of the answer-bank path and fold `qa.PROFILE_FACT_TAGS` / `qa.profile_fact_answer` into it; update `tests/test_browser_controller.py`
+- [x] T039 [US3] [P] RED: in `tests/test_db.py`, a table-driven test asserting every `_PROFILE_COLUMNS` entry saves and reloads unchanged — which also fails today for `target_titles`
+- [x] T040 [US3] GREEN: add the columns from data-model.md §1 to `_MIGRATIONS` and `_PROFILE_COLUMNS` in `engine/db.py`, including `target_titles`
+- [x] T041 [US3] Wire `profile_answers.answer_for` into `browser_controller._value_for_tag` ahead of the answer-bank path and fold `qa.PROFILE_FACT_TAGS` / `qa.profile_fact_answer` into it; update `tests/test_browser_controller.py`
 - [ ] T042 [US3] [P] RED: in `tests/test_fields.py` and `tests/test_adapters.py`, assert the location tag family classifies and that Greenhouse `candidate-location` / Ashby `_systemfield_location` map to `location_full` rather than `free_text_unknown`
 - [ ] T043 [US3] GREEN: add the location tags in `engine/autofill/fields.py` and remap in `engine/autofill/adapters.py`
 - [ ] T044 [US3] [P] RED: assert every library tag resolves from the profile with no generator call

@@ -167,7 +167,7 @@ class TestUnknownQuestions016:
         from engine.autofill import drafter
 
         drafter.set_generator_for_tests(lambda q, c, p: "Drafted answer")
-        value = bc._value_for_tag("how_heard", self._raw(),
+        value = bc._value_for_tag("free_text_unknown", self._raw(),
                                   {"resume_text": "..."}, job_id=1)
         assert value is None  # this pass skips; the draft lands via push
         record = drafter.get(1, "How did you hear about us?")
@@ -177,8 +177,8 @@ class TestUnknownQuestions016:
         from engine.autofill import drafter
 
         drafter.set_generator_for_tests(lambda q, c, p: "ans")
-        bc._value_for_tag("how_heard", self._raw("q1", "Question one?"), {}, job_id=1)
-        bc._value_for_tag("how_heard", self._raw("q2", "Question two?"), {}, job_id=1)
+        bc._value_for_tag("free_text_unknown", self._raw("q1", "Question one?"), {}, job_id=1)
+        bc._value_for_tag("free_text_unknown", self._raw("q2", "Question two?"), {}, job_id=1)
         assert drafter.get(1, "Question one?") is not None
         assert drafter.get(1, "Question two?") is not None
 
@@ -197,12 +197,12 @@ class TestUnknownQuestions016:
         from engine.autofill import drafter, field_core
 
         drafter.set_generator_for_tests(lambda q, c, p: "Because I build tools.")
-        bc._value_for_tag("how_heard", self._raw(), {}, job_id=1)
+        bc._value_for_tag("free_text_unknown", self._raw(), {}, job_id=1)
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline and \
                 not drafter.answer_for(1, "How did you hear about us?"):
             time.sleep(0.01)
-        value = bc._value_for_tag("how_heard", self._raw(), {}, job_id=1)
+        value = bc._value_for_tag("free_text_unknown", self._raw(), {}, job_id=1)
         assert value == "Because I build tools."
         assert isinstance(value, field_core.Draft)  # fills + ai_draft flag
 
@@ -304,7 +304,7 @@ class TestFillFirstResponsiveness016:
         bc._state.index = 0
 
         start = time.monotonic()
-        value = bc._value_for_tag("how_heard", self._raw(), {}, job_id=1)
+        value = bc._value_for_tag("free_text_unknown", self._raw(), {}, job_id=1)
         assert value is None
         assert time.monotonic() - start < 1.0  # scheduled, not generated inline
 
@@ -341,7 +341,7 @@ class TestFillFirstResponsiveness016:
         bc._state.index = 0
         bc._state.backend = "playwright"
 
-        bc._value_for_tag("how_heard", self._raw(), {}, job_id=1)
+        bc._value_for_tag("free_text_unknown", self._raw(), {}, job_id=1)
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline and "FORCE_TICK" not in dispatched:
             time.sleep(0.01)
@@ -400,7 +400,7 @@ class TestNameFields:
         value = bc._value_for_tag("full_name", raw, {"first_name": "Ada", "last_name": "Lovelace"}, job_id=1)
         assert value == "Ada Lovelace"
 
-    def test_full_name_none_when_neither_set(self):
+    def test_full_name_none_when_neither_set(self, tmp_db):
         raw = {"tag": "input", "type": "text", "name": "name", "id": "name",
                "label_text": "Full Name", "placeholder": "", "aria_label": "", "autocomplete": ""}
         assert bc._value_for_tag("full_name", raw, {}, job_id=1) is None
