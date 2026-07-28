@@ -104,10 +104,10 @@ per story.
 - [x] T039 [US3] [P] RED: in `tests/test_db.py`, a table-driven test asserting every `_PROFILE_COLUMNS` entry saves and reloads unchanged — which also fails today for `target_titles`
 - [x] T040 [US3] GREEN: add the columns from data-model.md §1 to `_MIGRATIONS` and `_PROFILE_COLUMNS` in `engine/db.py`, including `target_titles`
 - [x] T041 [US3] Wire `profile_answers.answer_for` into `browser_controller._value_for_tag` ahead of the answer-bank path and fold `qa.PROFILE_FACT_TAGS` / `qa.profile_fact_answer` into it; update `tests/test_browser_controller.py`
-- [ ] T042 [US3] [P] RED: in `tests/test_fields.py` and `tests/test_adapters.py`, assert the location tag family classifies and that Greenhouse `candidate-location` / Ashby `_systemfield_location` map to `location_full` rather than `free_text_unknown`
-- [ ] T043 [US3] GREEN: add the location tags in `engine/autofill/fields.py` and remap in `engine/autofill/adapters.py`
-- [ ] T044 [US3] [P] RED: assert every library tag resolves from the profile with no generator call
-- [ ] T045 [US3] GREEN: add the library tags to `engine/autofill/fields.py` and resolve them in `engine/autofill/profile_answers.py`
+- [x] T042 [US3] [P] RED: in `tests/test_fields.py` and `tests/test_adapters.py`, assert the location tag family classifies and that Greenhouse `candidate-location` / Ashby `_systemfield_location` map to `location_full` rather than `free_text_unknown`
+- [x] T043 [US3] GREEN: add the location tags in `engine/autofill/fields.py` and remap in `engine/autofill/adapters.py`
+- [x] T044 [US3] [P] RED: assert every library tag resolves from the profile with no generator call
+- [x] T045 [US3] GREEN: add the library tags to `engine/autofill/fields.py` and resolve them in `engine/autofill/profile_answers.py`
 - [ ] T046 [US3] Profile UI sections (Identity, Address, Work authorization detail, Preferences, Experience, Links, Voluntary self-identification, Answer library) in `web/templates/profile.html` and the matching optional form fields in `web/routes_api.py`; assert the round trip through the route in `tests/test_api.py`
 
 **Checkpoint**: refusals decay — the profile answers what it can.
@@ -120,8 +120,8 @@ per story.
 - [ ] T048 [US4] GREEN: add the canonical fourth pass and the optional `tag` parameter to `fields.match_option`
 - [ ] T049 [US4] [P] RED: assert a bare "Gender" label classifies as `selfid_gender` (not `free_text_unknown`), that `criminal_history` and `references` now have producers, that stored self-ID fills, and that blank stays blank
 - [ ] T050 [US4] GREEN: split `_EEO_RE` into the self-ID producer tags and add the missing producers in `engine/autofill/fields.py`; resolve them in `profile_answers.py`; keep them all in the never-generated set
-- [ ] T051 [US4] [P] RED: assert routine acknowledgements resolve from the library and the Akuna exclusivity acknowledgement is never answered by any path
-- [ ] T052 [US4] GREEN: implement the `acknowledgement` tag and its binding/routine sub-classification in `engine/autofill/fields.py`
+- [x] T051 [US4] [P] RED: assert routine acknowledgements resolve from the library and the Akuna exclusivity acknowledgement is never answered by any path
+- [x] T052 [US4] GREEN: implement the `acknowledgement` tag and its binding/routine sub-classification in `engine/autofill/fields.py`
 
 **Checkpoint**: stored values reach forms regardless of wording.
 

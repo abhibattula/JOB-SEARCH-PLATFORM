@@ -56,7 +56,7 @@ NEVER_GENERATED_TAGS = {
     "eeo_disclosure", "demographics", "disability", "veteran_status",
     "selfid_gender", "selfid_race", "selfid_veteran", "selfid_disability",
     "selfid_orientation", "pronouns",
-} | set(_fields_mod.FACTUAL_HISTORY_TAGS)
+} | set(_fields_mod.FACTUAL_HISTORY_TAGS) | set(_fields_mod.LIBRARY_TAGS)
 
 SENSITIVE_TAGS = NEVER_GENERATED_TAGS  # 016 name, retained
 
@@ -339,7 +339,8 @@ def clear(job_id: int, question: str) -> None:
 # highlighted on the page, not silently skipped.
 _NEEDS_YOU_REASONS = ("sensitive", "no_valid_option", "profile_fact_missing",
                       "attempts_exhausted", "job_budget_exhausted",
-                      "cannot_answer", "never_generated", "wrong_shape")
+                      "cannot_answer", "never_generated", "wrong_shape",
+                      "binding_commitment")
 
 
 def list_for_job(job_id: int, limit: int = 50) -> list[dict]:
@@ -384,7 +385,8 @@ def answer_for(job_id: int, question: str) -> str | None:
 # question would just burn the same budget on the same failure.
 _NEVER_RETRY_REASONS = ("sensitive", "profile_fact_missing",
                         "attempts_exhausted", "job_budget_exhausted",
-                        "cannot_answer", "never_generated")
+                        "cannot_answer", "never_generated",
+                        "binding_commitment")
 
 
 def reset_backoff_for(job_id: int, questions: list[str]) -> None:

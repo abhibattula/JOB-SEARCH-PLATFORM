@@ -364,6 +364,19 @@ def _value_for_tag(tag: str, raw: dict, profile: dict, job_id: int):
     question = raw.get("label_text") or raw.get("placeholder") or raw.get("aria_label") or ""
     if not question:
         return None
+
+    # 017 (D5, FR-027): a BINDING acknowledgement is never answered by any
+    # automatic path — not the model, not the answer library. Saying yes to
+    # the Akuna exclusivity clause withdraws the applicant from every other
+    # Tech/Quant role at that firm for the season; that is theirs to decide.
+    from . import fields as _fields
+
+    if tag == "acknowledgement" and _fields.is_binding_acknowledgement(question):
+        from . import drafter as _drafter
+
+        _drafter.mark_needs_you(job_id, question, "binding_commitment")
+        return None
+
     existing = answer_bank.lookup(question)
     if existing:
         if existing.get("source") == "ai":

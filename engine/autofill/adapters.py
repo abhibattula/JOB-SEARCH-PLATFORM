@@ -62,7 +62,9 @@ _MAPS: dict[str, dict[str, str]] = {
         "job_application[phone]": "phone",
         "job_application[resume]": "resume_upload",
         "job_application[cover_letter]": "cover_letter",
-        "candidate-location": "free_text_unknown",
+        # 017 (C18): was free_text_unknown, so the model was asked
+        # to guess where the applicant lives.
+        "candidate-location": "location_full",
     },
     "lever": {
         "name": "full_name",
@@ -81,7 +83,7 @@ _MAPS: dict[str, dict[str, str]] = {
         "_systemfield_email": "email",
         "_systemfield_phone": "phone",
         "_systemfield_resume": "resume_upload",
-        "_systemfield_location": "free_text_unknown",
+        "_systemfield_location": "location_full",  # 017 (C18)
     },
     # 011: iCIMS — stable lowercased field ids/names
     "icims": {

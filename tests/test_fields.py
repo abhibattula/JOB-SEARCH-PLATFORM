@@ -332,3 +332,76 @@ class TestNameAndPhoneRegressions017:
 
     def test_lever_bare_name_attribute_is_unchanged(self):
         assert fields.classify(field(name="name")) == "full_name"
+
+
+class TestLocationAndLibraryTags017:
+    """017-T042/T044 (FR-021/FR-022): questions the profile can answer.
+
+    `Country*` was left blank on the live run because no country tag existed,
+    and Greenhouse's location field was mapped to free_text_unknown — so the
+    model was asked to guess where the applicant lives.
+    """
+
+    LOCATION = [
+        ("Country", "location_country"),
+        ("Country*", "location_country"),
+        ("State", "location_state"),
+        ("State / Province", "location_state"),
+        ("Zip code", "location_postal"),
+        ("Postal code", "location_postal"),
+        ("Street address", "location_address1"),
+        ("Address line 2", "location_address2"),
+        ("City", "location_city"),
+    ]
+
+    @pytest.mark.parametrize("label,expected", LOCATION)
+    def test_location_tags(self, label, expected):
+        assert fields.classify(field(label_text=label)) == expected
+
+    LIBRARY = [
+        ("Are you at least 18 years of age?", "age_18_plus"),
+        ("Are you 18 years or older?", "age_18_plus"),
+        ("Are you subject to a non-compete agreement?", "non_compete"),
+        ("Do you hold an active security clearance?", "security_clearance"),
+        ("Are you willing to undergo a background check?", "background_check"),
+        ("Are you willing to submit to a drug test?", "drug_test"),
+        ("Are you willing to relocate?", "relocate"),
+        ("Are you willing to travel?", "travel"),
+        ("What is your earliest start date?", "start_date"),
+        ("What is your notice period?", "notice_period"),
+        ("What is your GPA?", "gpa"),
+        ("What education level are you currently pursuing?", "degree"),
+        ("Graduation Month", "graduation_date"),
+        ("Graduation Year", "graduation_date"),
+    ]
+
+    @pytest.mark.parametrize("label,expected", LIBRARY)
+    def test_library_tags(self, label, expected):
+        assert fields.classify(field(label_text=label)) == expected
+
+    ACKNOWLEDGEMENTS = [
+        ("I certify that all information I have provided in order to apply "
+         "for this position with Akuna is true, complete, and accurate.",
+         "acknowledgement"),
+        ("I acknowledge that my resume must be submitted in PDF format to be "
+         "considered.", "acknowledgement"),
+    ]
+
+    @pytest.mark.parametrize("label,expected", ACKNOWLEDGEMENTS)
+    def test_acknowledgement_tag(self, label, expected):
+        assert fields.classify(field(label_text=label)) == expected
+
+    def test_a_binding_acknowledgement_is_recognised_as_binding(self):
+        """D5: this one withdraws the applicant from every other Tech/Quant
+        role at the firm for the season. It must never be auto-answered."""
+        label = ("By submitting this application and answering “yes” below, I "
+                 "acknowledge that this role is my top preference and I will "
+                 "not be considered for other Tech and/or Quant roles at "
+                 "Akuna for this recruiting season.")
+        assert fields.classify(field(label_text=label)) == "acknowledgement"
+        assert fields.is_binding_acknowledgement(label) is True
+
+    def test_a_routine_acknowledgement_is_not_binding(self):
+        assert fields.is_binding_acknowledgement(
+            "I certify that all information I have provided is accurate."
+        ) is False

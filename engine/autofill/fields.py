@@ -60,6 +60,73 @@ _LOCATION_CITY_RE = re.compile(
     r"\blocation\b(?!.*preferen)",
     re.IGNORECASE,
 )
+# 017 (C18, FR-021): the rest of an address. Only `city` existed, so
+# "Country*" was left blank on the live Akuna run and Greenhouse's location
+# field was mapped to free_text_unknown — the model was asked to guess where
+# the applicant lives.
+_LOCATION_COUNTRY_RE = re.compile(r"\bcountry\b", re.IGNORECASE)
+_LOCATION_STATE_RE = re.compile(
+    r"\bstate\b|\bprovince\b|\bregion\b(?!.*preferen)", re.IGNORECASE)
+_LOCATION_POSTAL_RE = re.compile(
+    r"\bzip\b|\bzip[\s_-]*code\b|\bpostal[\s_-]*code\b|\bpostcode\b",
+    re.IGNORECASE)
+_LOCATION_ADDRESS2_RE = re.compile(
+    r"address[\s_-]*(line[\s_-]*)?2|\bapt\b|\bsuite\b|\bunit\b",
+    re.IGNORECASE)
+_LOCATION_ADDRESS1_RE = re.compile(
+    r"street[\s_-]*address|address[\s_-]*(line[\s_-]*)?1|^address$|"
+    r"\bmailing[\s_-]*address\b",
+    re.IGNORECASE)
+
+# 017 (FR-022): common application questions the applicant answers once.
+_AGE_18_RE = re.compile(
+    r"\b18\s+years?\s+(or\s+older|of\s+age)\b|\bat\s+least\s+18\b|"
+    r"\bare\s+you\s+18\b",
+    re.IGNORECASE)
+_NON_COMPETE_RE = re.compile(r"non[\s_-]*compete", re.IGNORECASE)
+_CLEARANCE_RE = re.compile(r"security\s+clearance|\bclearance\b", re.IGNORECASE)
+_BACKGROUND_CHECK_RE = re.compile(r"background\s+check", re.IGNORECASE)
+_DRUG_TEST_RE = re.compile(r"drug\s+(test|screen)", re.IGNORECASE)
+_RELOCATE_RE = re.compile(r"\brelocat", re.IGNORECASE)
+_TRAVEL_RE = re.compile(r"\bwilling\s+to\s+travel\b|\btravel\s+requirement",
+                        re.IGNORECASE)
+_START_DATE_RE = re.compile(
+    r"start[\s_-]*date|earliest[\s_-].{0,15}start|when\s+can\s+you\s+start|"
+    r"available[\s_-].{0,15}start",
+    re.IGNORECASE)
+_NOTICE_PERIOD_RE = re.compile(r"notice[\s_-]*period", re.IGNORECASE)
+_GPA_RE = re.compile(r"\bgpa\b|grade[\s_-]*point", re.IGNORECASE)
+_DEGREE_RE = re.compile(
+    r"education\s+level|degree\s+(level|type)|highest\s+(level\s+of\s+)?"
+    r"education|level\s+of\s+education|are\s+you\s+currently\s+pursuing",
+    re.IGNORECASE)
+_GRADUATION_RE = re.compile(
+    r"graduation\s+(month|year|date)|expected\s+graduation|"
+    r"when\s+.{0,20}\bgraduate\b",
+    re.IGNORECASE)
+
+# 017 (R16, D5): consent and acknowledgement questions.
+_ACKNOWLEDGEMENT_RE = re.compile(
+    r"\bi\s+acknowledge\b|\bi\s+certify\b|\bi\s+agree\b|\bi\s+consent\b|"
+    r"\bby\s+submitting\b|\bi\s+understand\s+that\b|\bi\s+confirm\b",
+    re.IGNORECASE)
+# Binding = the applicant GIVES SOMETHING UP. Answering the Akuna exclusivity
+# acknowledgement "yes" withdraws them from every other Tech/Quant role at the
+# firm for the season, so no automatic path may answer it.
+_BINDING_ACK_RE = re.compile(
+    r"top\s+preference|will\s+not\s+be\s+considered|sole\s+application|"
+    r"not\s+be\s+considered\s+for\s+other|only\s+application|"
+    r"non[\s_-]*compete|withdraw\s+.{0,30}other\s+application",
+    re.IGNORECASE)
+
+
+def is_binding_acknowledgement(text: str | None) -> bool:
+    """D5: True when agreeing costs the applicant something they cannot get
+    back. Binding acknowledgements are never answered automatically — not by
+    the model, and not from the answer library."""
+    return bool(_BINDING_ACK_RE.search(text or ""))
+
+
 _SCHOOL_RE = re.compile(
     r"\bschool\b|\buniversity\b|\bcollege\b|\binstitution\b|alma[\s_-]*mater",
     re.IGNORECASE,
@@ -120,6 +187,15 @@ _REFERENCES_RE = re.compile(
 # 017: the classified questions that must never be AI-answered. Kept here
 # beside the patterns that produce them so the two cannot drift; the drafter
 # imports it as its refusal set.
+# 017 (FR-022): questions the applicant answers ONCE in their library. The
+# model can no more know whether they hold a clearance than whether they
+# applied here before, so these are never generated either — they resolve
+# from the answer bank or go to the applicant.
+LIBRARY_TAGS = frozenset({
+    "age_18_plus", "non_compete", "security_clearance", "background_check",
+    "drug_test", "acknowledgement",
+})
+
 FACTUAL_HISTORY_TAGS = frozenset({
     "applied_before", "worked_here_before", "prior_industry_experience",
     "completed_course", "offer_deadlines", "residency_state",
@@ -224,6 +300,48 @@ def classify(field: FieldDescriptor) -> str:
     if _REFERENCES_RE.search(text):
         return "references"
 
+    # 017 (D5): consent. Binding ones are never answered by any automatic
+    # path; routine ones resolve from the applicant's own library.
+    if _ACKNOWLEDGEMENT_RE.search(text):
+        return "acknowledgement"
+
+    # 017 (FR-022): common questions the applicant answers once. Checked
+    # before the generic Q&A tags so they stop reaching the drafter.
+    if _AGE_18_RE.search(text):
+        return "age_18_plus"
+    if _NON_COMPETE_RE.search(text):
+        return "non_compete"
+    if _CLEARANCE_RE.search(text):
+        return "security_clearance"
+    if _BACKGROUND_CHECK_RE.search(text):
+        return "background_check"
+    if _DRUG_TEST_RE.search(text):
+        return "drug_test"
+    if _RELOCATE_RE.search(text):
+        return "relocate"
+    if _TRAVEL_RE.search(text):
+        return "travel"
+    if _NOTICE_PERIOD_RE.search(text):
+        return "notice_period"
+    if _START_DATE_RE.search(text):
+        return "start_date"
+    if _GPA_RE.search(text):
+        return "gpa"
+    if _GRADUATION_RE.search(text):
+        return "graduation_date"
+    if _DEGREE_RE.search(text):
+        return "degree"
+
+    # 017 (FR-021): the rest of an address.
+    if _LOCATION_COUNTRY_RE.search(text):
+        return "location_country"
+    if _LOCATION_POSTAL_RE.search(text):
+        return "location_postal"
+    if _LOCATION_ADDRESS2_RE.search(text):
+        return "location_address2"
+    if _LOCATION_ADDRESS1_RE.search(text):
+        return "location_address1"
+
     # Q&A-bank style fields.
     if _YEARS_EXPERIENCE_RE.search(text):
         return "years_experience"
@@ -233,6 +351,8 @@ def classify(field: FieldDescriptor) -> str:
         return "how_heard"
     if _SCHOOL_RE.search(text):
         return "school"
+    if _LOCATION_STATE_RE.search(text):
+        return "location_state"
     if _LOCATION_CITY_RE.search(text):
         return "location_city"
 
