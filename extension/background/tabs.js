@@ -37,7 +37,9 @@ export async function closeTab(tabId) {
 export function watchStart(tabId, jobId) {
   watched.set(tabId, { jobId });
   persistWatched();
-  broadcastToTab(tabId, { type: "watch" });
+  // 016 (T015): adhoc (popup fill-here, job -2) watches never auto-open
+  // the application form — only queue-driven ones do.
+  broadcastToTab(tabId, { type: "watch", adhoc: jobId === -2 });
 }
 
 export function watchStop(tabId) {

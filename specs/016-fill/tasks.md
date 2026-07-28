@@ -156,7 +156,7 @@ radios/comboboxes correct, EEO blank + flagged, honest outcomes.
 
 ## Phase 5: US3 — Everything happens on the page (P3)
 
-- [ ] T015 [US3] Apply-opener (R9, constitution v1.1.4) —
+- [x] T015 [US3] Apply-opener (R9, constitution v1.1.4) —
   `extension/content/opener.js` (NEW): per-ATS allowlist
   (Greenhouse/Lever/Ashby selectors), structural guards (never
   `type=submit`, not inside a form with filled inputs), one-shot per

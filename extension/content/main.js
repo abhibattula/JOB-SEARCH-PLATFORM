@@ -12,6 +12,10 @@
   let observer = null;
   let debounceTimer = null;
   let safetyTimer = null;
+  // 016 (T015): the apply-opener runs ONLY for queue-driven watches — a
+  // popup "Fill this page" (adhoc) or a restored watch of unknown origin
+  // must never auto-click anything. Conservative default: adhoc.
+  let adhoc = true;
   const isTop = window === window.top;
 
   function toApp(payload) {
@@ -46,6 +50,18 @@
       doc: window.jeScanner.docToken(),
       descriptors,
     });
+    // 016 (T015): queue-driven watch on a recognized posting with no
+    // fillable form → open the application ONCE; the observer/next scan
+    // picks up the revealed fields.
+    if (isTop && !adhoc && window.jeOpener
+        && !descriptors.some((d) => d.visible)) {
+      const opened = window.jeOpener.maybeOpen(function () {
+        if (window.jeOverlay && window.jeOverlay.note) {
+          window.jeOverlay.note("opened the application form");
+        }
+      });
+      if (opened) { scheduleScan(); }
+    }
   }
 
   function scheduleScan() {
@@ -93,9 +109,14 @@
   chrome.runtime.onMessage.addListener((message) => {
     if (!message || !message.type) { return; }
     switch (message.type) {
-      case "watch": startWatch(); break;
+      case "watch":
+        adhoc = !!message.adhoc;
+        startWatch();
+        break;
       case "watch_state":
-        // reply to our own ready-probe: begin watching if the SW says so
+        // reply to our own ready-probe: begin watching if the SW says so.
+        // Origin unknown here (restored watch) → stay conservative: no
+        // auto-open (adhoc default true).
         if (message.watched) { startWatch(); }
         break;
       case "unwatch": teardown(); break;

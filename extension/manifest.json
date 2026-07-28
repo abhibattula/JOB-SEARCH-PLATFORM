@@ -20,6 +20,7 @@
         "content/scanner.js",
         "content/filler.js",
         "content/overlay.js",
+        "content/opener.js",
         "content/main.js"
       ]
     },

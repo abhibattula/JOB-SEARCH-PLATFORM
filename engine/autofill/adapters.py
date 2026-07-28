@@ -22,6 +22,16 @@ from urllib.parse import urlsplit
 
 from .fields import FieldDescriptor
 
+# 016 (T015, constitution v1.1.4): per-ATS APPLY-OPENER selectors — the
+# controls that ONLY open/reveal the application form on a posting page.
+# SINGLE SOURCE for the allowlist; extension/content/opener.js mirrors
+# these strings verbatim (asset-parity-tested). Never a submit control.
+APPLY_OPENERS = {
+    "greenhouse": "#apply_button, a[href='#application'], a[href*='#app']",
+    "lever": "a.postings-btn[href*='/apply'], a[href$='/apply']",
+    "ashby": "a[href*='/application'], button[data-testid*='apply']",
+}
+
 _HOSTS = {
     "boards.greenhouse.io": "greenhouse",
     "job-boards.greenhouse.io": "greenhouse",

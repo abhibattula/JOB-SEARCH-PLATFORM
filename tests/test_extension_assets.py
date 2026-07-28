@@ -325,3 +325,39 @@ class TestFillerUpgrades016:
         js = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
         assert "[role=listbox] li" in js
         assert "select__option" in js
+
+
+class TestApplyOpener016:
+    """016 (T015, constitution v1.1.4): the apply-opener is a SEPARATE
+    allowlisted one-shot step — the fill path's click guard still denies
+    "apply" and is untouched."""
+
+    def test_opener_module_exists_with_bounds(self):
+        js = (EXT / "content" / "opener.js").read_text(encoding="utf-8")
+        assert "OPENERS" in js
+        assert "attemptedFor" in js          # one-shot per page state
+        assert 'type === "submit"' in js     # never a submit control
+        assert "hasFillableForm" in js       # only when no form is open
+
+    def test_opener_registered_before_main(self):
+        manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))
+        scripts = manifest["content_scripts"][0]["js"]
+        assert "content/opener.js" in scripts
+        assert scripts.index("content/opener.js") < scripts.index("content/main.js")
+
+    def test_click_guard_still_denies_apply(self):
+        js = (EXT / "content" / "click_guard.js").read_text(encoding="utf-8")
+        assert '"apply"' in js  # the FILL path's denylist is unchanged
+
+    def test_opener_selectors_mirror_adapters_registry(self):
+        from engine.autofill import adapters
+
+        js = (EXT / "content" / "opener.js").read_text(encoding="utf-8")
+        assert adapters.APPLY_OPENERS, "registry must not be empty"
+        for ats, selector in adapters.APPLY_OPENERS.items():
+            assert selector in js, f"opener.js missing {ats} selector"
+
+    def test_main_wires_opener_for_queue_watches_only(self):
+        main = (EXT / "content" / "main.js").read_text(encoding="utf-8")
+        assert "jeOpener" in main
+        assert "adhoc" in main  # popup fill-here never auto-opens
