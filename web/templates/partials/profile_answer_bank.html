@@ -66,6 +66,19 @@
   <button type="button" id="eeo-save-btn">Save EEO answers</button>
 </div>
 
+
+<div class="reset-learned" id="reset-learned">
+  <h4>Reset learned answers</h4>
+  <p class="muted">Apply Assist saves the answers it drafts so they refill next
+    time. If it ever wrote something that is not true about you, remove them
+    here. Answers <strong>you</strong> typed — on this page or in the on-page
+    panel — are never removed.</p>
+  <p class="data" id="reset-learned-count">Checking…</p>
+  <button type="button" class="ghost" id="reset-learned-btn">
+    Reset learned answers
+  </button>
+</div>
+
 <script>
 (function () {
   async function confirmAnswer(question, answer, category) {
@@ -96,6 +109,30 @@
     }
     location.reload();
   });
+
+  (async () => {
+    const out = document.getElementById('reset-learned-count');
+    if (!out) { return; }
+    try {
+      const r = await fetch('/api/autofill/answers/learned');
+      const c = await r.json();
+      out.textContent = c.answers + ' saved AI answer(s) and '
+        + c.drafts + ' unconfirmed draft(s) would be removed.';
+    } catch (e) { out.textContent = ''; }
+  })();
+
+  document.getElementById('reset-learned-btn').addEventListener('click',
+    async (evt) => {
+      const out = document.getElementById('reset-learned-count');
+      if (!confirm('Remove every answer Apply Assist wrote? Answers you typed '
+                   + 'yourself are kept.')) { return; }
+      evt.target.disabled = true;
+      const r = await fetch('/api/autofill/answers/purge', {method: 'POST'});
+      const body = await r.json();
+      out.textContent = 'Removed ' + body.removed_answers + ' answer(s) and '
+        + body.removed_drafts + ' draft(s).';
+      location.reload();
+    });
 
   document.querySelectorAll('.answer-bank-delete').forEach((btn) => {
     btn.addEventListener('click', async () => {

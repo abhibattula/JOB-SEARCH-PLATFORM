@@ -657,3 +657,111 @@ class TestFillFirstRoutes016:
         assert response.status_code == 200
         saved = answer_bank.lookup("What is your notice period?")
         assert saved is not None and saved["answer"] == "Two weeks"
+
+
+class TestPurgeLearnedAnswers017:
+    """017-T023 (FR-011, FR-046): the applicant can remove what the model
+    invented, and only that.
+
+    The drafter auto-saves accepted answers to the bank, so the 2026-07-28
+    run's fabrications ("Yes, I have applied to Akuna in the past") would
+    refill on every future application until they can be deleted. Answers the
+    applicant wrote themselves must survive.
+    """
+
+    def _seed(self):
+        from engine.autofill import answer_bank, drafts
+
+        answer_bank.save_auto(question="Invented?", answer="Yes, in the past",
+                              tag="free_text_unknown", origin="ai")
+        answer_bank.save_with_provenance("Auto saved?", "Something",
+                                         "auto_saved")
+        answer_bank.save("My own answer?", "3.2", category="gpa")
+        drafts.record(5, "Drafted?", "Some draft", tier="local")
+
+    def test_counts_are_reported_before_deleting(self, client):
+        self._seed()
+        body = client.get("/api/autofill/answers/learned").json()
+        assert body["answers"] == 2
+        assert body["drafts"] == 1
+
+    def test_purge_removes_only_model_written_rows(self, client):
+        from engine.autofill import answer_bank, drafts
+
+        self._seed()
+        body = client.post("/api/autofill/answers/purge").json()
+        assert body["removed_answers"] == 2
+        assert body["removed_drafts"] == 1
+
+        remaining = {row["question_raw"] for row in answer_bank.list_all()}
+        assert remaining == {"My own answer?"}
+        assert drafts.list_for_job(5) == []
+
+    def test_purge_is_idempotent(self, client):
+        self._seed()
+        client.post("/api/autofill/answers/purge")
+        body = client.post("/api/autofill/answers/purge").json()
+        assert body == {"removed_answers": 0, "removed_drafts": 0}
+
+    def test_an_answer_the_applicant_typed_is_never_removed(self, client):
+        """FR-046: panel-captured answers are stored as the applicant's own
+        precisely so a purge cannot destroy them."""
+        from engine.autofill import answer_bank
+
+        answer_bank.save("Do you live in New York or California?", "No",
+                         category="residency_state")
+        client.post("/api/autofill/answers/purge")
+        assert answer_bank.lookup(
+            "Do you live in New York or California?")["answer"] == "No"
+
+
+class TestControlsAlwaysReachable017:
+    """017-T025 (FR-009/FR-010): Stop must be reachable at any form size.
+
+    On the 2026-07-28 run a 91-field application plus a 170-row review list
+    pushed the controls so far down the page that the applicant could not
+    scroll to Stop at all.
+    """
+
+    def _running_session(self, monkeypatch, drafts_count=0):
+        from engine.autofill import browser_controller, drafts as drafts_mod
+
+        monkeypatch.setattr(
+            browser_controller, "current_job",
+            lambda: {"job_id": 1, "remaining": 0, "fell_back": False,
+                     "activity": []},
+        )
+        rows = [{"id": index, "question": f"Question {index}?",
+                 "draft_text": f"Answer {index}", "status": "drafted"}
+                for index in range(drafts_count)]
+        monkeypatch.setattr(drafts_mod, "list_for_job", lambda job_id: rows)
+
+    def test_controls_render_before_the_report_and_drafts(
+            self, client, monkeypatch):
+        self._running_session(monkeypatch, drafts_count=40)
+        body = client.get("/partials/autofill/status").text
+
+        controls = body.index('id="autofill-controls"')
+        assert "Stop" in body
+        assert controls < body.index('id="ai-drafts-review"'), \
+            "the controls must come before the draft list, not after it"
+
+    def test_the_draft_list_is_bounded(self, client, monkeypatch):
+        self._running_session(monkeypatch, drafts_count=170)
+        body = client.get("/partials/autofill/status").text
+
+        assert body.count('class="ai-draft"') <= 20
+        assert "Showing the 20 most recent" in body
+
+    def test_a_short_list_renders_in_full_without_the_notice(
+            self, client, monkeypatch):
+        self._running_session(monkeypatch, drafts_count=3)
+        body = client.get("/partials/autofill/status").text
+
+        assert body.count('class="ai-draft"') == 3
+        assert "Showing the 20 most recent" not in body
+
+    def test_the_polled_region_does_not_move_the_viewport(self, client):
+        """A swap that re-anchors the scroll makes a long page unusable."""
+        body = client.get("/autofill").text
+        assert 'hx-swap="innerHTML show:none"' in body

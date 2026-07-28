@@ -51,6 +51,26 @@
     {% endif %}
   </div>
 
+  {# 017 (FR-009): the controls live at the TOP and stick to the viewport.
+     On the 2026-07-28 run a 91-field form plus 170 review rows pushed Stop
+     so far down the page that it could not be reached at all. #}
+  <div class="settings-actions autofill-controls" id="autofill-controls">
+    <button hx-post="/api/autofill/next" hx-swap="none" data-toast="Next application"
+            hx-on::after-request="htmx.trigger('#autofill-queue','load')">
+      Done, next application
+    </button>
+    <button class="ghost" hx-post="/api/autofill/rescan" hx-swap="none"
+            data-toast="Page re-scanned"
+            title="Re-read and fill this page — useful when the site redrew its form without navigating"
+            hx-on::after-request="htmx.trigger('#autofill-queue','load')">
+      Re-scan this page
+    </button>
+    <button class="ghost" hx-post="/api/autofill/stop" hx-swap="none" data-toast="Stopped"
+            hx-on::after-request="htmx.trigger('#autofill-queue','load')">
+      Stop
+    </button>
+  </div>
+
   {# 013 (FR-004) → 015 (D2/FR-012/FR-013): the active fill path is ALWAYS
      stated — the signed-out assistant window is a loud warning with a
      connect link, never a silent surprise. #}
@@ -145,7 +165,14 @@
     <p class="muted">These answers were drafted from your resume and filled
       into the form, flagged for you. Edit and confirm to save them for
       reuse — nothing is submitted until you click the site's submit button.</p>
-    {% for d in drafts %}
+    {# 017 (FR-010): bounded. An unbounded list re-rendered every 3 seconds is
+       what made this page unusable. #}
+    {% if drafts | length > 20 %}
+    <p class="muted">Showing the 20 most recent. Confirm or discard them, or
+      use <strong>Reset learned answers</strong> on the Profile page to clear
+      drafts left by earlier runs.</p>
+    {% endif %}
+    {% for d in drafts[:20] %}
     <form class="ai-draft" data-draft-id="{{ d.id }}"
           onsubmit="return confirmDraft(event, {{ d.id }})">
       <label class="muted">{{ d.question }}</label>
@@ -213,22 +240,8 @@
   </div>
   {% endif %}
 
-  <div class="settings-actions">
-    <button hx-post="/api/autofill/next" hx-swap="none" data-toast="Next application"
-            hx-on::after-request="htmx.trigger('#autofill-queue','load')">
-      Done, next application
-    </button>
-    <button class="ghost" hx-post="/api/autofill/rescan" hx-swap="none"
-            data-toast="Page re-scanned"
-            title="Re-read and fill this page — useful when the site redrew its form without navigating"
-            hx-on::after-request="htmx.trigger('#autofill-queue','load')">
-      Re-scan this page
-    </button>
-    <button class="ghost" hx-post="/api/autofill/stop" hx-swap="none" data-toast="Stopped"
-            hx-on::after-request="htmx.trigger('#autofill-queue','load')">
-      Stop
-    </button>
-  </div>
+  {# 017: the controls now live at the top of this panel (sticky) so they are
+     reachable at any form size — see #autofill-controls above. #}
 </div>
 {% elif snapshot and snapshot.summary %}
 <div class="mission-panel">

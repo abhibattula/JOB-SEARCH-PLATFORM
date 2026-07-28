@@ -215,6 +215,11 @@ _MIGRATIONS = {
         ("search_terms", "TEXT"),
         ("resume_embedding", "BLOB"),
     ],
+    # 017: one row per (job, question) + when it was last refreshed
+    "ai_drafts": [
+        ("question_normalized", "TEXT"),
+        ("updated_at", "TEXT"),
+    ],
     # 010: AI draft provenance rides answer_bank.source ('user'|'confirmed'|
     # 'auto_saved'); these columns record when/where a draft originated
     "answer_bank": [
@@ -280,6 +285,40 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
     # 008 backfill: existing rows were last confirmed at their first ingest
     conn.execute("UPDATE jobs SET last_seen_at = first_seen WHERE last_seen_at IS NULL")
     conn.execute("UPDATE jobs SET delisted = 0 WHERE delisted IS NULL")
+    _repair_ai_drafts(conn)
+
+
+def _repair_ai_drafts(conn: sqlite3.Connection) -> None:
+    """017 (FR-005): collapse ai_drafts to one row per (job, question).
+
+    `record` used to INSERT unconditionally, so every re-run of a job added
+    another row for the same question. A real install carried 170 rows for
+    ~30 questions of a single job, and the review block rendered all of them
+    on every 3-second poll — which is what made the page unscrollable and put
+    Stop out of reach.
+
+    Idempotent, so it runs on every init. The SQL normalisation is a coarser
+    `lower(trim(...))` than `drafter.normalize_question`; that only affects
+    legacy rows, and any survivor is re-normalised the next time its question
+    is answered.
+    """
+    # Drop first: backfilling normalised values onto legacy rows makes
+    # duplicates collide, and the index from a previous repair would reject
+    # the very UPDATE that lets us dedupe them.
+    conn.execute("DROP INDEX IF EXISTS idx_ai_drafts_job_question")
+    conn.execute(
+        "UPDATE ai_drafts SET question_normalized = lower(trim(question))"
+        " WHERE question_normalized IS NULL OR question_normalized = ''"
+    )
+    conn.execute(
+        "DELETE FROM ai_drafts WHERE id NOT IN ("
+        "  SELECT MAX(id) FROM ai_drafts"
+        "  GROUP BY COALESCE(job_id, -1), question_normalized)"
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_drafts_job_question"
+        " ON ai_drafts(job_id, question_normalized)"
+    )
 
 
 def _backup_db(path: Path) -> Path:

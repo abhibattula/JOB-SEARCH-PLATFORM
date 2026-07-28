@@ -199,6 +199,15 @@ def _run_completion_effects(job_id: int, question: str, answer: str,
     tag = descriptor_ctx.get("tag") or "free_text_unknown"
     scoped_job = job_id if tag in JOB_SCOPED_TAGS else None
     bank_save = _bank_save_override or _default_bank_save
+    # 017 (T012): record the answer so the app's review surface reflects THIS
+    # run. Until now `drafts.record` had no production caller, so the review
+    # block could only ever show rows left by earlier versions.
+    try:
+        from . import drafts
+
+        drafts.record(job_id, question, answer, tier=None)
+    except Exception:  # noqa: BLE001 — the draft itself must survive
+        log.warning("draft store write failed", exc_info=True)
     try:
         bank_save(question=question, answer=answer, tag=tag, origin="ai",
                   job_id=scoped_job)
@@ -271,6 +280,35 @@ def ensure(job_id: int, question: str, descriptor_ctx: dict,
                              "next_retry_at": 0.0, "at": time.monotonic()}
         tasks = _ensure_workers()
     tasks.put((key, question, dict(descriptor_ctx or {}), dict(profile or {})))
+
+
+def rehydrate_from_store(job_id: int) -> None:
+    """017 (FR-004): restore this job's answers from the draft store.
+
+    `_records` lives in process memory, so before this a crash or restart
+    re-drafted an entire form — real cost on a 90-field application, and the
+    2026-07-28 session carried an "app closed unexpectedly" banner. Existing
+    records win: anything decided this session is fresher than the store.
+    """
+    from . import drafts
+
+    try:
+        stored = drafts.answers_for_job(job_id)
+    except Exception:  # noqa: BLE001 — a cold store must never block a fill
+        log.warning("draft rehydration failed for job %s", job_id,
+                    exc_info=True)
+        return
+    if not stored:
+        return
+    with _lock:
+        for question, answer in stored.items():
+            key = _key(job_id, question)
+            if key in _records:
+                continue
+            _records[key] = {"question": question, "state": "done",
+                             "reason": None, "answer": answer,
+                             "attempts": 0, "next_retry_at": float("inf"),
+                             "at": time.monotonic()}
 
 
 def mark_needs_you(job_id: int, question: str, reason: str) -> None:

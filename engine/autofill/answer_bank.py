@@ -160,6 +160,33 @@ def save_auto(*, question: str, answer: str, tag: str | None,
     return row["id"] if row is not None and row["source"] == "ai" else None
 
 
+def count_model_written() -> int:
+    """017 (FR-011): how many stored answers the model wrote, not the user."""
+    with db._conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS n FROM answer_bank"
+            " WHERE source IN ('ai', 'auto_saved')"
+        ).fetchone()
+    return int(row["n"])
+
+
+def purge_model_written() -> int:
+    """017 (FR-011/FR-046): remove every answer the MODEL produced, and only
+    those.
+
+    The drafter auto-saves accepted answers, so a fabricated one refills on
+    every future application until it is deleted — the 2026-07-28 run left
+    claims like "Yes, I have applied to Akuna in the past" in the bank.
+    Rows with source 'user' or 'confirmed' are the applicant's own words,
+    including everything captured from the on-page panel, and are never
+    touched.
+    """
+    with db._conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM answer_bank WHERE source IN ('ai', 'auto_saved')")
+        return cur.rowcount or 0
+
+
 def list_all() -> list[dict]:
     """All confirmed answer-bank entries, newest-updated first — backs the
     Profile page's Common Questions management UI (006-B): the user can

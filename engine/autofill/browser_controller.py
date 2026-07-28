@@ -131,6 +131,15 @@ def _choose_backend() -> str:
 
 def _open_job_on_backend(job_id: int) -> None:
     """Route OPEN_JOB to the active backend."""
+    # 017 (FR-004): restore this job's stored answers before any scan, so a
+    # restart or crash does not re-draft a form we already have answers for.
+    try:
+        from . import drafter
+
+        drafter.rehydrate_from_store(job_id)
+    except Exception:  # noqa: BLE001 — never block opening the application
+        log.warning("draft rehydration failed for job %s", job_id,
+                    exc_info=True)
     if _state.backend == "extension":
         from .. import db
         from . import apply_urls, ext_backend

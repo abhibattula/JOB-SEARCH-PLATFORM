@@ -15,15 +15,51 @@ def _utcnow() -> str:
     return db._utcnow()
 
 
+def _normalized(question: str) -> str:
+    from . import drafter
+
+    return drafter.normalize_question(question)
+
+
 def record(job_id: int | None, question: str, draft_text: str,
            tier: str | None) -> int:
+    """017 (FR-005): upsert — one row per (job, question).
+
+    Previously an INSERT, so the same question accumulated a row per run.
+    The 2026-07-28 install carried 170 rows for ~30 questions of one job,
+    which the review block rendered in full every 3 seconds.
+    """
+    normalized = _normalized(question)
+    now = _utcnow()
     with db._conn() as conn:
+        row = conn.execute(
+            "SELECT id FROM ai_drafts WHERE question_normalized = ?"
+            " AND (job_id = ? OR (? IS NULL AND job_id IS NULL))",
+            (normalized, job_id, job_id),
+        ).fetchone()
+        if row is not None:
+            conn.execute(
+                "UPDATE ai_drafts SET question = ?, draft_text = ?,"
+                " status = 'drafted', tier = ?, updated_at = ? WHERE id = ?",
+                (question, draft_text, tier, now, row["id"]),
+            )
+            return row["id"]
         cur = conn.execute(
-            "INSERT INTO ai_drafts (job_id, question, draft_text, status,"
-            " tier, created_at) VALUES (?,?,?,?,?,?)",
-            (job_id, question, draft_text, "drafted", tier, _utcnow()),
+            "INSERT INTO ai_drafts (job_id, question, question_normalized,"
+            " draft_text, status, tier, created_at, updated_at)"
+            " VALUES (?,?,?,?,?,?,?,?)",
+            (job_id, question, normalized, draft_text, "drafted", tier,
+             now, now),
         )
         return cur.lastrowid
+
+
+def answers_for_job(job_id: int | None) -> dict[str, str]:
+    """017 (FR-004): stored answers for restart durability — the drafter
+    rehydrates from these so a crash or restart does not re-draft a form
+    the applicant already has answers for."""
+    return {row["question"]: row["draft_text"]
+            for row in list_for_job(job_id) if row["draft_text"]}
 
 
 def list_for_job(job_id: int | None) -> list[dict]:
@@ -87,6 +123,23 @@ def auto_save_for_job(job_id: int, final_by_question: dict[str, str]) -> int:
                 (row["id"],))
         saved += 1
     return saved
+
+
+def count_unconfirmed() -> int:
+    with db._conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS n FROM ai_drafts WHERE status = 'drafted'"
+        ).fetchone()
+    return int(row["n"])
+
+
+def purge_unconfirmed() -> int:
+    """017 (FR-011): drop drafts the applicant never confirmed. Confirmed and
+    auto-saved rows are kept — they are already part of the answer bank's
+    history."""
+    with db._conn() as conn:
+        cur = conn.execute("DELETE FROM ai_drafts WHERE status = 'drafted'")
+        return cur.rowcount or 0
 
 
 def prune_stale(max_age_days: int = 30) -> None:

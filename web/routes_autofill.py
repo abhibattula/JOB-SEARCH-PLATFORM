@@ -282,6 +282,26 @@ def list_answer_bank():
     return {"entries": answer_bank.list_all()}
 
 
+@router.get("/answers/learned")
+def learned_answer_counts():
+    """017 (FR-011): what a purge would remove, shown before confirming."""
+    from engine.autofill import answer_bank, drafts
+
+    return {"answers": answer_bank.count_model_written(),
+            "drafts": drafts.count_unconfirmed()}
+
+
+@router.post("/answers/purge")
+def purge_learned_answers():
+    """017 (FR-011/FR-046): remove every answer the MODEL wrote. Answers the
+    applicant typed themselves — source 'user' or 'confirmed', including
+    everything captured from the on-page panel — are never touched."""
+    from engine.autofill import answer_bank, drafts
+
+    return {"removed_answers": answer_bank.purge_model_written(),
+            "removed_drafts": drafts.purge_unconfirmed()}
+
+
 @router.delete("/answers/{bank_id}")
 def delete_answer_bank_entry(bank_id: int):
     from engine.autofill import answer_bank
