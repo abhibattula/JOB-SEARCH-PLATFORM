@@ -488,10 +488,26 @@ window.jePanel = (function () {
     d.jeAnswers = String(state.answers.length);
     d.jeSaved = state.saved ? "1" : "0";
     d.jeCompany = state.posting ? (state.posting.company || "") : "";
+
+    // The score attributes are ABSENT until a score exists, never present and
+    // empty. The widget now mounts on detection, before any score has come
+    // back — writing `data-je-score=""` made the long-standing
+    // `#host[data-je-score]` wait match an unscored card, so a test could read
+    // the score before it arrived. It passed on this machine and failed on the
+    // slower macOS runner. Absence must mean absence.
     const s = state.score;
-    d.jeScore = s && !s.needs_resume ? String(s.score) : "";
-    d.jeBand = s ? (s.needs_resume ? "none" : (s.band || "fair")) : "";
-    d.jeSponsor = s ? (s.sponsorKey || "unknown") : "";
+    if (s && !s.needs_resume) {
+      d.jeScore = String(s.score);
+    } else {
+      delete d.jeScore;
+    }
+    if (s) {
+      d.jeBand = s.needs_resume ? "none" : (s.band || "fair");
+      d.jeSponsor = s.sponsorKey || "unknown";
+    } else {
+      delete d.jeBand;
+      delete d.jeSponsor;
+    }
   }
 
   // ---------- answers ----------

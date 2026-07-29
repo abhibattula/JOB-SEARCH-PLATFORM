@@ -580,6 +580,29 @@ class TestOneCompanionNotTwo:
             }""")
         assert in_frame == 0, "a sub-frame mounted its own companion"
 
+    def test_the_score_attribute_is_absent_until_there_is_a_score(
+            self, context, app_server, fixture_server):
+        """`#host[data-je-score]` has meant "this page is scored" since 012,
+        and the 012 suite waits on exactly that selector.
+
+        018 mounts the widget on DETECTION, before any score exists. Writing
+        `data-je-score=""` in that window kept the attribute present and empty,
+        so the wait matched an unscored card and the next line read a blank
+        score. It passed on a fast machine and failed on the macOS CI runner —
+        the whole class of bug this feature exists to stop. Absence must mean
+        absence.
+        """
+        assert _wait_connected()
+        page = _open_and_wait_companion(
+            context, f"{fixture_server}/bare_application.html")
+        time.sleep(2)
+        ds = _dataset(page)
+        assert ds.get("jeDetection") == "form", ds
+        assert "jeScore" not in ds, (
+            "an unscored companion still advertises data-je-score")
+        assert "jeBand" not in ds
+        assert "jeSponsor" not in ds
+
     def test_the_merged_host_carries_the_state_mirror(self, context, app_server,
                                                       fixture_server):
         """FR-017: the light-DOM mirror the 012/016/017 suites assert on has
