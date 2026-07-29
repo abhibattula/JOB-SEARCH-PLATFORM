@@ -69,30 +69,30 @@ state and fill state; collapse/expand toggles and persists.
 
 ### Tests first (RED)
 
-- [ ] T023 [P] [US2] Browser test: on a scored posting **and** during a fill, assert `document.querySelectorAll('[id$="-host"]')` yields exactly one Job Engine host (FR-004)
-- [ ] T024 [P] [US2] Browser test: the merged host carries every `data-je-*` attribute the 012/016/017 suites assert — `jeScore`, `jeBand`, `jeCompany`, `jeSponsor`, `jeSaved`, `jeCollapsed`, `jeSeen`, `jeFilled`, `jeNeedsYou`, `jeAnswers` — plus the new `jeSession` and `jeDetection`
-- [ ] T025 [P] [US2] Browser test: the companion rests collapsed; clicking it expands; clicking collapse returns it to the pill; `data-je-collapsed` mirrors the state
-- [ ] T026 [P] [US2] Browser test: the collapsed pill shows the match score when idle on a posting, and `filled/seen` while filling
-- [ ] T027 [P] [US2] Browser test: the card auto-expands when a session starts, and again when `needs_you` first becomes non-zero — but not again after the applicant collapses it
-- [ ] T028 [P] [US2] Browser test: with the viewport resized to 500 px tall, the expanded card's rect stays within the viewport and its body scrolls internally
-- [ ] T029 [P] [US2] In `tests/test_extension_assets.py`, assert `extension/content/panel.js` contains no `.click(` (the widget never clicks a page element) and that `overlay.js` no longer exists
-- [ ] T030 [P] [US2] Browser test: no companion host is created inside a cross-origin sub-frame (fixture page embedding an iframe from the second fixture origin)
+- [x] T023 [P] [US2] Browser test: on a scored posting **and** during a fill, assert `document.querySelectorAll('[id$="-host"]')` yields exactly one Job Engine host (FR-004)
+- [x] T024 [P] [US2] Browser test: the merged host carries every `data-je-*` attribute the 012/016/017 suites assert — `jeScore`, `jeBand`, `jeCompany`, `jeSponsor`, `jeSaved`, `jeCollapsed`, `jeSeen`, `jeFilled`, `jeNeedsYou`, `jeAnswers` — plus the new `jeSession` and `jeDetection`
+- [x] T025 [P] [US2] Browser test: the companion rests collapsed; clicking it expands; clicking collapse returns it to the pill; `data-je-collapsed` mirrors the state
+- [x] T026 [P] [US2] Browser test: the collapsed pill shows the match score when idle on a posting, and `filled/seen` while filling
+- [x] T027 [P] [US2] Browser test: the card auto-expands when a session starts, and again when `needs_you` first becomes non-zero — but not again after the applicant collapses it
+- [x] T028 [P] [US2] Browser test: with the viewport resized to 500 px tall, the expanded card's rect stays within the viewport and its body scrolls internally
+- [x] T029 [P] [US2] In `tests/test_extension_assets.py`, assert `extension/content/panel.js` contains no `.click(` (the widget never clicks a page element) and that `overlay.js` no longer exists
+- [x] T030 [P] [US2] Browser test: no companion host is created inside a cross-origin sub-frame (fixture page embedding an iframe from the second fixture origin)
 
 ### Implementation (GREEN)
 
-- [ ] T031 [US2] Create `extension/content/panel.js` — single host `je-companion-host`, open shadow root, the corrected positioning from T015, mounting to `document.body || document.documentElement`, guarded to `window === window.top`
-- [ ] T032 [US2] Implement the card structure per `contracts/companion-ui.md` §3: header (state dot, collapse, dismiss), score block, primary + secondary actions, progress row, notice line, answer groups, and the unchanged "You click apply / submit — never us."
-- [ ] T033 [US2] Implement the collapsed pill and its content rules, plus the auto-expand rules and the per-tab in-memory collapse state (research R9 — not `storage.session`, which excludes content scripts)
-- [ ] T034 [US2] Implement the primary-action state machine from `data-model.md` §2 (`idle|starting|filling|stopped|done` × `detection`) as a pure function so it is unit-testable
-- [ ] T035 [US2] Implement the light-DOM `data-je-*` mirror on the merged host
-- [ ] T036 [US2] Style pass: spacing scale, one accent, legible contrast on light and dark boards, visible focus ring, `prefers-reduced-motion`, `max-height` clamped to the viewport with an internally scrolling body
-- [ ] T037 [US2] Expose `window.jeOverlay` from `panel.js` as a facade with the exact 017 surface (`show`, `hide`, `update`, `note`, `setAnswers`, `onAnswer`, `onInsert`, `onJump`, `onFillAgain`) delegating to the panel, and `window.jePanel` for the new surface (`setPosting`, `setScore`, `setSession`, `notice`)
-- [ ] T038 [US2] Rewrite `extension/content/discovery.js` rendering to call `window.jePanel` instead of owning a host; keep **all** detection, scoring, save and dismiss logic unchanged
-- [ ] T039 [US2] Delete `extension/content/overlay.js` and remove it from `extension/manifest.json`
-- [ ] T040 [US2] Retarget the US1 tests (T007–T014) and `tests/integration/test_discovery_badge.py` onto `je-companion-host`
-- [ ] T041 [P] [US2] Add `tests/test_panel_state.py` covering the T034 state machine table-driven across every `session` × `detection` combination
-- [ ] T041a [US2] Tear down cleanly on an orphaned frame (extension reloaded): `panel.js` removes its host and stops its ticks when `chrome.runtime.sendMessage` throws, matching `main.js`'s existing `teardown()` (FR-006); browser test reloads the extension mid-session and asserts no console error storm and no orphan host
-- [ ] T041b [P] [US2] Browser test: every companion control is reachable by keyboard (Tab order covers primary, save, collapse, dismiss and each group header) and `:focus-visible` renders a ring (FR-018)
+- [x] T031 [US2] Create `extension/content/panel.js` — single host `je-companion-host`, open shadow root, the corrected positioning from T015, mounting to `document.body || document.documentElement`, guarded to `window === window.top`
+- [x] T032 [US2] Implement the card structure per `contracts/companion-ui.md` §3: header (state dot, collapse, dismiss), score block, primary + secondary actions, progress row, notice line, answer groups, and the unchanged "You click apply / submit — never us."
+- [x] T033 [US2] Implement the collapsed pill and its content rules, plus the auto-expand rules and the per-tab in-memory collapse state (research R9 — not `storage.session`, which excludes content scripts)
+- [x] T034 [US2] Implement the primary-action state machine from `data-model.md` §2 (`idle|starting|filling|stopped|done` × `detection`) as a pure function so it is unit-testable
+- [x] T035 [US2] Implement the light-DOM `data-je-*` mirror on the merged host
+- [x] T036 [US2] Style pass: spacing scale, one accent, legible contrast on light and dark boards, visible focus ring, `prefers-reduced-motion`, `max-height` clamped to the viewport with an internally scrolling body
+- [x] T037 [US2] Expose `window.jeOverlay` from `panel.js` as a facade with the exact 017 surface (`show`, `hide`, `update`, `note`, `setAnswers`, `onAnswer`, `onInsert`, `onJump`, `onFillAgain`) delegating to the panel, and `window.jePanel` for the new surface (`setPosting`, `setScore`, `setSession`, `notice`)
+- [x] T038 [US2] Rewrite `extension/content/discovery.js` rendering to call `window.jePanel` instead of owning a host; keep **all** detection, scoring, save and dismiss logic unchanged
+- [x] T039 [US2] Delete `extension/content/overlay.js` and remove it from `extension/manifest.json`
+- [x] T040 [US2] Retarget the US1 tests (T007–T014) and `tests/integration/test_discovery_badge.py` onto `je-companion-host`
+- [x] T041 [P] [US2] Add `tests/test_panel_state.py` covering the T034 state machine table-driven across every `session` × `detection` combination
+- [x] T041a [US2] Tear down cleanly on an orphaned frame (extension reloaded): `panel.js` removes its host and stops its ticks when `chrome.runtime.sendMessage` throws, matching `main.js`'s existing `teardown()` (FR-006); browser test reloads the extension mid-session and asserts no console error storm and no orphan host
+- [x] T041b [P] [US2] Browser test: every companion control is reachable by keyboard (Tab order covers primary, save, collapse, dismiss and each group header) and `:focus-visible` renders a ring (FR-018)
 
 **Checkpoint**: one companion, polished, behaving as a pill-to-card.
 

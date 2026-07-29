@@ -19,7 +19,7 @@
         "content/click_guard.js",
         "content/scanner.js",
         "content/filler.js",
-        "content/overlay.js",
+        "content/panel.js",
         "content/discovery.js",
         "content/opener.js",
         "content/main.js"

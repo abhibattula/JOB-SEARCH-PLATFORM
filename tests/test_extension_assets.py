@@ -151,10 +151,17 @@ class TestDiscoveryBadge012:
         assert "linkedin" in src.lower()
         assert "indeed" in src.lower()
 
-    def test_uses_shadow_dom(self):
+    def test_it_renders_through_the_one_companion_widget(self):
+        """018 (D1): discovery kept every bit of its detection and scoring
+        logic but no longer owns a host — the shadow root moved to panel.js,
+        so the match score and the fill progress share ONE card instead of
+        two disconnected widgets in two corners."""
         src = self.DISCOVERY.read_text(encoding="utf-8")
-        assert "attachShadow" in src
-        assert "je-discovery-badge-host" in src
+        assert "window.jePanel" in src
+        assert "attachShadow" not in src, "discovery must not own a host"
+        panel = (EXT / "content" / "panel.js").read_text(encoding="utf-8")
+        assert "attachShadow" in panel
+        assert "je-companion-host" in panel
 
     def test_is_read_only_on_the_page(self):
         """The discovery script must never click/type-into/submit a PAGE
@@ -172,12 +179,10 @@ class TestDiscoveryBadge012:
         # no writing values into page inputs / dispatching input/change events
         assert ".value =" not in code and ".value=" not in code
         assert "dispatchEvent" not in code
-        # the ONLY DOM insertion is our own host (appendChild of `host`)
-        import re as _re
-        appends = _re.findall(r"\.appendChild\(([^)]*)\)", code)
-        assert appends and all("host" in a for a in appends), (
-            f"discovery appends something other than its own host: {appends}"
-        )
+        # 018: discovery inserts nothing at all now — rendering is the
+        # panel's job, and the panel only ever appends its own host.
+        assert ".appendChild(" not in code, (
+            "discovery must not insert anything into the page")
 
     def test_top_frame_guard(self):
         src = self.DISCOVERY.read_text(encoding="utf-8")
@@ -368,12 +373,14 @@ class TestPanelAndHighlights016:
     reporting and Fill again; drafted/needs-you fields carry a visible
     highlight cleared by the user's own edit."""
 
-    def test_overlay_panel_has_fill_again_and_attention(self):
-        js = (EXT / "content" / "overlay.js").read_text(encoding="utf-8")
+    def test_panel_has_fill_again_and_attention(self):
+        """018: these live in panel.js now — overlay.js was folded into the
+        one merged companion."""
+        js = (EXT / "content" / "panel.js").read_text(encoding="utf-8")
         assert "Fill again" in js
         assert "attention" in js
         assert "onFillAgain" in js
-        assert "note" in js
+        assert "notice" in js
 
     def test_filler_annotates_flags_and_clears_on_edit(self):
         js = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
@@ -466,7 +473,8 @@ class TestPanelIsTheReviewSurface017:
     """
 
     def panel(self):
-        return (EXT / "content" / "overlay.js").read_text(encoding="utf-8")
+        # 018: the review surface moved into the merged companion widget.
+        return (EXT / "content" / "panel.js").read_text(encoding="utf-8")
 
     def test_the_shadow_root_is_open_so_the_e2e_can_assert_it(self):
         assert 'attachShadow({ mode: "open" })' in self.panel()
@@ -496,10 +504,18 @@ class TestPanelIsTheReviewSurface017:
 
     def test_answer_text_is_never_injected_as_html(self):
         """Answers come from a model and from form labels — they go in as
-        textContent, never innerHTML."""
+        textContent, never innerHTML.
+
+        018: the panel does use innerHTML exactly once, to stamp out its own
+        static shell (a literal in this file, no interpolated data). Every
+        renderer that touches question or answer text must be clear of it, so
+        this asserts against the rendering half specifically AND caps the
+        total number of innerHTML uses at that one shell."""
         source = self.panel()
-        body = source[source.index("function renderRow"):]
+        body = source[source.index("function setAnswers"):]
         assert ".innerHTML" not in body
+        assert source.count(".innerHTML") == 1, (
+            "the only innerHTML in the panel may be its own static shell")
 
     def test_the_content_script_relays_the_capture_and_the_feed(self):
         source = (EXT / "content" / "main.js").read_text(encoding="utf-8")
@@ -534,8 +550,10 @@ class TestBadgeLauncher017:
         assert "apply_here" in self.badge()
 
     def test_it_opens_the_existing_panel_rather_than_a_second_widget(self):
+        """018: one widget at last — discovery renders through window.jePanel
+        instead of owning a badge alongside the fill panel."""
         source = self.badge()
-        assert "window.jeOverlay" in source
+        assert "window.jePanel" in source
 
     def test_it_still_mutates_nothing_on_the_page(self):
         """The 012 read-only guarantee is unchanged: the badge sends
@@ -561,7 +579,21 @@ class TestPinnedToViewport018:
     future editor could silently reintroduce.
     """
 
-    WIDGETS = ("discovery.js", "overlay.js")
+    WIDGETS = ("panel.js",)
+
+    def test_there_is_exactly_one_widget_module(self):
+        """018 (D1): overlay.js was folded into panel.js. Two modules meant
+        two hosts, two shadow roots and no shared state — the badge could not
+        see the fill progress and the panel could not see the match score."""
+        assert not (EXT / "content" / "overlay.js").exists(), (
+            "overlay.js is back — the companion must stay a single widget")
+        manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))
+        js = [j for cs in manifest["content_scripts"] for j in cs["js"]]
+        assert "content/panel.js" in js
+        assert "content/overlay.js" not in js
+        # panel.js must load before the scripts that drive it
+        assert js.index("content/panel.js") < js.index("content/discovery.js")
+        assert js.index("content/panel.js") < js.index("content/main.js")
 
     def _source(self, name):
         return (EXT / "content" / name).read_text(encoding="utf-8")

@@ -22,7 +22,7 @@
 
   let current = null;       // last detected posting {title,company,description,location}
   let dismissedFor = null;  // href the user dismissed the badge for
-  let host = null, root = null, els = {}, collapsed = false;
+  // 018 (D1): no host of its own — rendering belongs to window.jePanel.
   // 018 (R7): what this page is. `posting` comes from job metadata, `form`
   // from the read-only field probe. Either one is enough to show the widget —
   // through v1.7.0 only the first was, so a bare ATS application page (which
@@ -144,9 +144,25 @@
 
   // ---------- bridge ----------
 
+  // 018 (FR-006): an orphaned frame tears down instead of throwing on every
+  // tick. When the extension is reloaded or updated, this content script's
+  // context is invalidated and every sendMessage throws — the old code
+  // swallowed that and kept polling forever behind a widget whose controls
+  // could no longer reach the app. Take the widget down; a fresh content
+  // script is already running in its place.
+  let orphaned = false;
+
   function toApp(payload) {
+    if (orphaned) { return; }
     try { chrome.runtime.sendMessage({ _je: true, payload }); }
-    catch (_e) { /* extension reloaded — orphaned frame */ }
+    catch (_e) { teardown(); }
+  }
+
+  function teardown() {
+    orphaned = true;
+    clearInterval(pollTimer);
+    clearTimeout(startTimer);
+    if (window.jePanel) { window.jePanel.hide(); }
   }
 
   // 016 (T009, R5): score ONCE per page state — but cache only when a
@@ -199,205 +215,60 @@
     });
   }
 
-  // ---------- badge (our own DOM only) ----------
-
-  // 018 (R1): pin the host to the VIEWPORT — and keep it pinned.
+  // ---------- rendering: delegated to the ONE companion widget ----------
   //
-  // Every version since v1.0.0 did this:
-  //
-  //   host.style.cssText = "position:fixed;…;bottom:16px;all:initial;"
-  //
-  // `all` is a shorthand for EVERY CSS property, and it was declared LAST, so
-  // it reset `position` straight back to `static`, `inset` to `auto`,
-  // `z-index` to `auto` and `display` to `inline`. The host is appended as the
-  // last child of <body>, so a static host renders at the END of the document
-  // flow — the bottom of the page. Measured on the 5000px test fixture, the
-  // badge sat at y=5181. That is the whole of "the extension is going to
-  // bottom of the page where i cannot see".
-  //
-  // So: reset FIRST, then position. And position with `!important`, because a
-  // plain inline declaration sits in the author-normal cascade layer and loses
-  // to a page rule like `div { position: static !important }` — which the
-  // hostile-CSS fixture ships precisely because real reset stylesheets do.
-  function pinToViewport(el, zIndex) {
-    el.style.cssText = "all:initial";
-    el.style.setProperty("position", "fixed", "important");
-    el.style.setProperty("inset", "auto 16px 16px auto", "important");
-    el.style.setProperty("z-index", zIndex, "important");
-    el.style.setProperty("display", "block", "important");
-  }
-
-  function build() {
-    if (host) { return; }
-    host = document.createElement("div");
-    host.id = "je-discovery-badge-host";
-    pinToViewport(host, "2147483646");
-    // open root: CSS is still fully isolated by shadow DOM; open lets the
-    // integration test drive the Save button (a closed root is unreachable).
-    root = host.attachShadow({ mode: "open" });
-    root.innerHTML = `
-      <style>
-        *{box-sizing:border-box}
-        .card{font:13px/1.4 system-ui,-apple-system,sans-serif;width:264px;
-          background:#0d1117;color:#e6edf3;border:1px solid #30363d;
-          border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.45);overflow:hidden}
-        .hd{display:flex;align-items:center;gap:8px;padding:9px 11px;
-          background:#161b22;border-bottom:1px solid #30363d}
-        .hd .tag{font-weight:700;letter-spacing:.2px}
-        .hd .sp{flex:1}
-        .icon{cursor:pointer;color:#8b949e;font-size:14px;line-height:1;
-          padding:2px 4px;border-radius:4px;user-select:none}
-        .icon:hover{background:#21262d;color:#e6edf3}
-        .bd{padding:11px}
-        .co{color:#8b949e;font-size:12px;white-space:nowrap;overflow:hidden;
-          text-overflow:ellipsis}
-        .ti{font-weight:600;margin:1px 0 9px;white-space:nowrap;overflow:hidden;
-          text-overflow:ellipsis}
-        .row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-        .score{width:46px;height:46px;border-radius:50%;display:flex;
-          align-items:center;justify-content:center;font-weight:700;font-size:16px;
-          border:2px solid #30363d;flex:none}
-        .score.strong{color:#3fb950;border-color:#238636}
-        .score.good{color:#d29922;border-color:#9e6a03}
-        .score.fair{color:#8b949e}
-        .score.none{font-size:11px;font-weight:600;color:#8b949e}
-        .meta{min-width:0}
-        .band{font-weight:600;text-transform:capitalize}
-        .band.strong{color:#3fb950}.band.good{color:#d29922}.band.fair{color:#8b949e}
-        .pill{display:inline-block;margin-top:2px;padding:1px 7px;border-radius:999px;
-          font-size:11px;font-weight:600;background:#21262d;color:#8b949e}
-        .pill.grade{background:#132a17;color:#3fb950}
-        .pill.exempt{background:#132033;color:#58a6ff}
-        button.save{width:100%;padding:8px;border:0;border-radius:8px;
-          background:#238636;color:#fff;font-weight:600;font-size:13px;cursor:pointer}
-        button.save:hover{background:#2ea043}
-        button.save[disabled]{background:#21262d;color:#8b949e;cursor:default}
-        .note{color:#8b949e;font-size:11px;margin-top:7px}
-        .formnote{color:#8b949e;font-size:12px;margin-bottom:9px}
-        .collapsed .bd{display:none}
-        .collapsed .card{width:auto}
-      </style>
-      <div class="card" id="card">
-        <div class="hd">
-          <span class="tag">Job Engine</span><span class="sp"></span>
-          <span class="icon" id="collapse" title="Collapse">▁</span>
-          <span class="icon" id="dismiss" title="Dismiss">✕</span>
-        </div>
-        <div class="bd">
-          <div class="co" id="co"></div>
-          <div class="ti" id="ti"></div>
-          <div class="row" id="scorerow">
-            <div class="score" id="score">–</div>
-            <div class="meta">
-              <div class="band" id="band"></div>
-              <span class="pill" id="sponsor">H-1B: unknown</span>
-            </div>
-          </div>
-          <div class="formnote" id="formnote" style="display:none"></div>
-          <button class="save" id="apply">Apply with Apply Assist</button>
-          <button class="save ghost" id="save">Save to Job Engine</button>
-          <div class="note" id="note" style="display:none"></div>
-        </div>
-      </div>`;
-    els = {
-      card: root.getElementById("card"), co: root.getElementById("co"),
-      ti: root.getElementById("ti"), score: root.getElementById("score"),
-      band: root.getElementById("band"), sponsor: root.getElementById("sponsor"),
-      save: root.getElementById("save"), note: root.getElementById("note"),
-      apply: root.getElementById("apply"),
-      scorerow: root.getElementById("scorerow"),
-      formnote: root.getElementById("formnote"),
-    };
-    root.getElementById("dismiss").addEventListener("click", onDismiss);
-    root.getElementById("collapse").addEventListener("click", onCollapse);
-    els.save.addEventListener("click", onSave);
-    els.apply.addEventListener("click", onApply);
-    (document.body || document.documentElement).appendChild(host);
-  }
+  // 018 (D1): this script no longer owns a host. It kept all of its detection
+  // and scoring logic — that part was never the problem — and now feeds
+  // window.jePanel, so the match score and the fill progress share one card
+  // instead of sitting in two disconnected widgets in two corners.
 
   function removeBadge() {
-    if (host) { host.remove(); host = null; root = null; els = {}; collapsed = false; }
+    if (window.jePanel) { window.jePanel.hide(); }
   }
 
-  // 018 (FR-005): render on ANY qualifying page — a scored posting, a bare
-  // application form, or both. The score block only appears once a score
-  // exists; the primary action's label follows what we actually found.
+  // FR-005: render on ANY qualifying page — a scored posting, a bare
+  // application form, or both. The score block appears once a score exists;
+  // the primary action's label follows what we actually found.
   function render() {
-    if (dismissedFor === location.href) { return; }
-    build();
-    els.co.textContent = current ? (current.company || "—") : "";
-    els.ti.textContent = current ? current.title : (document.title || "");
-    host.dataset.jeCompany = current ? (current.company || "") : "";
-    host.dataset.jeDetection = detection;
-
-    const posting = !!current;
-    // Nothing to save when there is no posting to identify.
-    els.save.style.display = posting ? "" : "none";
-    els.scorerow.style.display = (posting && scoredFor === location.href)
-      ? "" : "none";
-    if (!posting) {
-      els.formnote.textContent = "Application form found — " + formFields +
-        " field" + (formFields === 1 ? "" : "s") + ".";
-      els.formnote.style.display = "";
-    } else {
-      els.formnote.style.display = "none";
-    }
-    if (!els.apply.disabled) { els.apply.textContent = primaryLabel(); }
-  }
-
-  function primaryLabel() {
-    return current ? "Apply with Apply Assist" : "Fill this page";
+    if (dismissedFor === location.href || !window.jePanel) { return; }
+    window.jePanel.setPosting(current);
+    window.jePanel.setDetection(detection, formFields);
   }
 
   function renderScore(r) {
-    if (dismissedFor === location.href) { return; }
+    if (dismissedFor === location.href || !window.jePanel) { return; }
     render();
-    els.scorerow.style.display = "";
-
-    if (r.needs_resume) {
-      els.score.className = "score none";
-      els.score.textContent = "—";
-      els.band.textContent = "";
-      els.note.style.display = "block";
-      els.note.textContent = "Add your resume in Job Engine to see your match.";
-      host.dataset.jeScore = "";
-      host.dataset.jeBand = "none";
-    } else {
-      const band = r.band || "fair";
-      els.score.className = "score " + band;
-      els.score.textContent = String(Math.round(r.match_score));
-      els.band.className = "band " + band;
-      els.band.textContent = band + " match";
-      els.note.style.display = "none";
-      host.dataset.jeScore = String(Math.round(r.match_score));
-      host.dataset.jeBand = band;
+    let sponsorText = "H-1B: unknown", sponsorClass = "chip";
+    if (r.sponsor_grade) {
+      sponsorText = "H-1B sponsor: " + r.sponsor_grade;
+      sponsorClass = "chip grade";
+    } else if (r.cap_exempt) {
+      sponsorText = "Cap-exempt likely";
+      sponsorClass = "chip exempt";
     }
-
-    let sp = "H-1B: unknown", cls = "pill";
-    if (r.sponsor_grade) { sp = "H-1B sponsor: " + r.sponsor_grade; cls = "pill grade"; }
-    else if (r.cap_exempt) { sp = "Cap-exempt likely"; cls = "pill exempt"; }
-    els.sponsor.textContent = sp;
-    els.sponsor.className = cls;
-    host.dataset.jeSponsor = r.sponsor_grade || (r.cap_exempt ? "cap-exempt" : "unknown");
-
+    window.jePanel.setScore({
+      score: r.needs_resume ? null : Math.round(r.match_score),
+      band: r.band || "fair",
+      needs_resume: !!r.needs_resume,
+      sponsorText: sponsorText,
+      sponsorClass: sponsorClass,
+      sponsorKey: r.sponsor_grade || (r.cap_exempt ? "cap-exempt" : "unknown"),
+    });
+    if (r.needs_resume) {
+      window.jePanel.notice("Add your resume in Job Engine to see your match.");
+    }
     setSaved(!!r.already_saved);
   }
 
   function setSaved(saved) {
-    if (!els.save) { return; }
-    els.save.disabled = saved;
-    els.save.textContent = saved ? "Saved ✓" : "Save to Job Engine";
-    if (host) { host.dataset.jeSaved = saved ? "1" : "0"; }
+    if (window.jePanel) { window.jePanel.setSaved(saved); }
   }
 
-  function onSave() { if (els.save && !els.save.disabled) { requestSave(); } }
-
   // 017 (FR-038/FR-039) / 018 (R2): start Apply Assist for whatever this page
-  // is. Sends a MESSAGE to the local app and opens our own panel — it clicks
-  // nothing on the page and mutates nothing, exactly as the badge has always
-  // behaved.
+  // is. Sends a MESSAGE to the local app — it clicks nothing on the page and
+  // mutates nothing, exactly as the badge has always behaved.
   //
-  // 018: this was a DEAD BUTTON for the whole of v1.7.0. It opened with
+  // 018: the apply action was a DEAD BUTTON for the whole of v1.7.0. It began
   //
   //     const p = current && current.posting;
   //     if (!p) { return; }
@@ -407,71 +278,62 @@
   // undefined and the handler returned before sending anything. The applicant
   // clicked "Apply with Apply Assist" and nothing whatsoever happened. It
   // passed CI because the only coverage was `assert "apply_here" in source`.
-  function onApply() {
-    if (!els.apply || els.apply.disabled) { return; }
-    const restore = primaryLabel();
-    els.apply.disabled = true;
-    els.apply.textContent = "Starting…";
-    showNote("");
-    if (current) {
-      toApp({ type: "apply_here", url: current.url, title: current.title || "",
-              company: current.company || "",
-              description: (current.description || "").slice(0, DESC_MAX) });
-    } else {
+  function onAction(action) {
+    if (action === "apply" && current) {
+      startSession({ type: "apply_here", url: current.url,
+                     title: current.title || "", company: current.company || "",
+                     description: (current.description || "").slice(0, DESC_MAX) });
+    } else if (action === "fill_here") {
       // No posting to record — fill the page the applicant is already on.
-      toApp({ type: "fill_here", url: location.href,
-              title: document.title || "" });
+      startSession({ type: "fill_here", url: location.href,
+                     title: document.title || "" });
+    } else if (action === "fill_again") {
+      // 016 (T016) kept working: main.js registers the handler, we route the
+      // click to it so there is still only one primary action on screen.
+      if (window.jeFillAgainHandler) { window.jeFillAgainHandler(); }
+      else { toApp({ type: "fill_again" }); }
     }
-    armOutcome(restore);
-    // Both content scripts share one isolated world, so the fill panel is
-    // directly reachable — no second floating widget, per D4.
-    if (window.jeOverlay && window.jeOverlay.show) { window.jeOverlay.show(); }
+  }
+
+  function startSession(payload) {
+    window.jePanel.setSession("starting");
+    window.jePanel.notice("");
+    toApp(payload);
+    armOutcome();
   }
 
   // 018 (FR-010): a control must never appear to have done nothing. The app
   // may refuse (a session is already running) or be unreachable; either way
-  // the button comes back and says why, rather than sitting on "Starting…".
-  function armOutcome(restoreLabel) {
+  // the primary action comes back and says why, rather than sitting on
+  // "Starting…" forever.
+  function armOutcome() {
     clearTimeout(startTimer);
     startTimer = setTimeout(function () {
       startTimer = null;
-      if (!els.apply) { return; }
-      els.apply.disabled = false;
-      els.apply.textContent = restoreLabel;
-      showNote("Couldn't start — open Job Engine and check Apply Assist.");
+      window.jePanel.setSession("idle");
+      window.jePanel.notice(
+        "Couldn't start — open Job Engine and check Apply Assist.");
     }, 8000);
   }
 
   function onSessionStarted() {
     clearTimeout(startTimer);
     startTimer = null;
-    if (host) { host.dataset.jeSession = "filling"; }
-    if (els.apply) {
-      els.apply.disabled = true;
-      els.apply.textContent = "Filling…";
-    }
+    window.jePanel.setSession("filling");
   }
 
   function onAppError(message) {
     clearTimeout(startTimer);
     startTimer = null;
-    if (els.apply) {
-      els.apply.disabled = false;
-      els.apply.textContent = primaryLabel();
-    }
-    showNote(message || "The app refused that — check Job Engine.");
+    window.jePanel.setSession("idle");
+    window.jePanel.notice(
+      message || "The app refused that — check Job Engine.");
   }
 
-  function showNote(text) {
-    if (!els.note) { return; }
-    els.note.textContent = text || "";
-    els.note.style.display = text ? "block" : "none";
-  }
-  function onDismiss() { dismissedFor = location.href; removeBadge(); }
-  function onCollapse() {
-    collapsed = !collapsed;
-    if (els.card) { els.card.classList.toggle("collapsed", collapsed); }
-    if (host) { host.dataset.jeCollapsed = collapsed ? "1" : "0"; }
+  if (window.jePanel) {
+    window.jePanel.onAction(onAction);
+    window.jePanel.onSave(requestSave);
+    window.jePanel.onDismiss(function () { dismissedFor = location.href; });
   }
 
   // ---------- messages from the app (via the SW) ----------
@@ -486,13 +348,7 @@
     // 018 (FR-010): the app confirmed the session — the primary action's
     // watchdog stands down.
     else if (m.type === "watch") { onSessionStarted(); }
-    else if (m.type === "unwatch") {
-      if (host) { host.dataset.jeSession = "idle"; }
-      if (els.apply) {
-        els.apply.disabled = false;
-        els.apply.textContent = primaryLabel();
-      }
-    }
+    else if (m.type === "unwatch") { window.jePanel.setSession("done"); }
     // 018 (FR-033): an app-side refusal reaches the page, not just the popup.
     else if (m.type === "app_error") { onAppError(m.message || m.code); }
   });
@@ -500,12 +356,17 @@
   // ---------- lifecycle: detect on load + in-place (SPA) navigation ----------
 
   let lastHref = location.href;
+  let pollTimer = null;
   function tick() {
+    if (orphaned) { return; }
     if (location.href !== lastHref) {   // SPA nav → new posting, reset dismiss
       lastHref = location.href;
       dismissedFor = null;
       scoredFor = null;                 // 016: new page state → new score
       lastRequestAt = 0;
+      // A new posting is a new session context — a finished fill on the
+      // previous page must not leave "Fill again" pointing at this one.
+      if (window.jePanel) { window.jePanel.setSession("idle"); }
       removeBadge();
     }
     // 018: classify FIRST, then decide. A page with no posting metadata but a
@@ -516,7 +377,7 @@
     if (current) { requestScore(); }
     render();
   }
-  setInterval(tick, POLL_MS);
+  pollTimer = setInterval(tick, POLL_MS);
   // first pass after the page settles
   if (document.readyState === "complete") { tick(); }
   else { window.addEventListener("load", tick, { once: true }); }

@@ -260,6 +260,41 @@ def _wait_for_session(timeout=20):
 # US1 — I can see it, and it does something
 # --------------------------------------------------------------------------
 
+class TestContentScriptsParse:
+    """A syntax error in ONE content script takes out the whole companion,
+    silently: the file never evaluates, `window.jePanel` is never defined, and
+    every script after it that touches it dies too. There is no visible
+    symptom except that nothing appears — which is indistinguishable from "the
+    page isn't a job posting".
+
+    This was not hypothetical. During 018 a CSS comment inside a template
+    literal contained backticks, which terminated the literal early; twenty
+    tests failed at once with nothing but timeouts to go on, and finding it
+    took a hand-rolled console dump. One second of this test would have said
+    exactly what was wrong.
+    """
+
+    def test_no_script_error_on_any_fixture(self, context, app_server,
+                                            fixture_server):
+        assert _wait_connected()
+        for name in ("hostile_css.html", "bare_application.html",
+                     "search_only.html", "framed_application.html"):
+            page = context.new_page()
+            errors = []
+            # `pageerror` is exactly an uncaught exception, which is what a
+            # parse failure produces. Console errors are also collected, minus
+            # resource-load noise (the fixture server has no favicon).
+            page.on("pageerror", lambda e: errors.append(str(e)))
+            page.on("console", lambda m: (
+                errors.append(m.text)
+                if m.type == "error" and "Failed to load resource" not in m.text
+                else None))
+            page.goto(f"{fixture_server}/{name}")
+            time.sleep(2.5)
+            page.close()
+            assert not errors, f"{name} raised: {errors}"
+
+
 class TestCompanionIsVisible:
     """R1: `all:initial` declared LAST reset `position:fixed`, so the widget
     rendered at the end of the document flow — the bottom of the page."""
@@ -408,6 +443,336 @@ class TestCompanionOnABareApplicationForm:
         time.sleep(4)
         assert _host_id(page) == "", (
             "the form probe fired on an ordinary page")
+
+
+# --------------------------------------------------------------------------
+# US2 — One companion, and it looks like a product
+# --------------------------------------------------------------------------
+
+def _dataset(page):
+    return page.evaluate(
+        """(ids) => {
+            const id = ids.find(i => document.getElementById(i));
+            return id ? {...document.getElementById(id).dataset} : {};
+        }""", list(HOST_IDS))
+
+
+def _host_count(page):
+    """Every Job Engine host in the document, however it is named."""
+    return page.evaluate(
+        """() => document.querySelectorAll(
+            '[id^="je-companion"], [id^="je-discovery"]').length""")
+
+
+def _collapsed(page):
+    return _dataset(page).get("jeCollapsed")
+
+
+def _pill_text(page):
+    return page.evaluate(
+        """(ids) => {
+            const id = ids.find(i => document.getElementById(i));
+            const root = document.getElementById(id).shadowRoot;
+            const pill = root.getElementById("pill");
+            return pill ? (pill.textContent || "").trim() : "";
+        }""", list(HOST_IDS))
+
+
+def _card_visible(page):
+    return page.evaluate(
+        """(ids) => {
+            const id = ids.find(i => document.getElementById(i));
+            const root = document.getElementById(id).shadowRoot;
+            const card = root.getElementById("card");
+            if (!card) { return false; }
+            const r = card.getBoundingClientRect();
+            return r.width > 0 && r.height > 0;
+        }""", list(HOST_IDS))
+
+
+class TestOneCompanionNotTwo:
+    """D1/FR-004: 017 decided one floating widget and shipped two — a badge
+    bottom-right and a fill panel top-right, with separate hosts, separate
+    shadow roots and no shared state."""
+
+    def test_exactly_one_host_on_a_posting(self, context, app_server,
+                                           fixture_server):
+        assert _wait_connected()
+        page = _open_and_wait_companion(
+            context, f"{fixture_server}/hostile_css.html")
+        time.sleep(1)
+        assert _host_count(page) == 1
+
+    def test_exactly_one_host_during_a_fill(self, context, app_server,
+                                            fixture_server):
+        assert _wait_connected()
+        page = _open_and_wait_companion(
+            context, f"{fixture_server}/bare_application.html")
+        _click(page, PRIMARY_IDS)
+        assert _wait_for_session() is not None
+        time.sleep(3)
+        assert _host_count(page) == 1, (
+            "a second widget appeared once filling started")
+
+    def test_no_companion_in_a_sub_frame(self, context, app_server,
+                                         fixture_server):
+        assert _wait_connected()
+        page = _open_and_wait_companion(
+            context, f"{fixture_server}/framed_application.html")
+        time.sleep(2)
+        assert _host_count(page) == 1
+        in_frame = page.evaluate(
+            """() => {
+                const doc = document.getElementById('embedded').contentDocument;
+                if (!doc) { return -1; }
+                return doc.querySelectorAll(
+                    '[id^="je-companion"], [id^="je-discovery"]').length;
+            }""")
+        assert in_frame == 0, "a sub-frame mounted its own companion"
+
+    def test_the_merged_host_carries_the_state_mirror(self, context, app_server,
+                                                      fixture_server):
+        """FR-017: the light-DOM mirror the 012/016/017 suites assert on has
+        to survive the merge, on the one remaining host."""
+        assert _wait_connected()
+        page = _open_and_wait_companion(
+            context, f"{fixture_server}/hostile_css.html")
+        page.wait_for_function(
+            "(ids) => ids.some(id => { const h = document.getElementById(id);"
+            " return h && h.dataset.jeScore; })",
+            arg=list(HOST_IDS), timeout=20000)
+        ds = _dataset(page)
+        for key in ("jeScore", "jeBand", "jeCompany", "jeSponsor", "jeSaved",
+                    "jeCollapsed", "jeSession", "jeDetection"):
+            assert key in ds, f"{key} missing from the merged host"
+        assert ds["jeDetection"] in ("posting", "posting+form")
+
+
+class TestPillAndCard:
+    """D2/FR-012–FR-015: it rests small and opens on demand."""
+
+    def test_it_rests_collapsed_and_opens_on_click(self, context, app_server,
+                                                   fixture_server):
+        assert _wait_connected()
+        page = _open_and_wait_companion(
+            context, f"{fixture_server}/hostile_css.html")
+        time.sleep(1)
+        assert _collapsed(page) == "1", "the companion did not rest collapsed"
+        assert not _card_visible(page)
+
+        _click(page, ["pill"])
+        page.wait_for_function(
+            "(ids) => ids.some(id => document.getElementById(id)"
+            ".dataset.jeCollapsed === '0')", arg=list(HOST_IDS), timeout=5000)
+        assert _card_visible(page)
+
+        _click(page, ["collapse"])
+        page.wait_for_function(
+            "(ids) => ids.some(id => document.getElementById(id)"
+            ".dataset.jeCollapsed === '1')", arg=list(HOST_IDS), timeout=5000)
+
+    def test_the_pill_shows_the_score_when_idle(self, context, app_server,
+                                                fixture_server):
+        assert _wait_connected()
+        page = _open_and_wait_companion(
+            context, f"{fixture_server}/hostile_css.html")
+        page.wait_for_function(
+            "(ids) => ids.some(id => { const h = document.getElementById(id);"
+            " return h && h.dataset.jeScore; })",
+            arg=list(HOST_IDS), timeout=20000)
+        score = _dataset(page)["jeScore"]
+        assert score and score in _pill_text(page)
+
+    def test_the_pill_shows_progress_while_filling(self, context, app_server,
+                                                   fixture_server):
+        assert _wait_connected()
+        page = _open_and_wait_companion(
+            context, f"{fixture_server}/bare_application.html")
+        _click(page, PRIMARY_IDS)
+        assert _wait_for_session() is not None
+        page.wait_for_function(
+            "(ids) => ids.some(id => { const h = document.getElementById(id);"
+            " return h && Number(h.dataset.jeSeen || 0) > 0; })",
+            arg=list(HOST_IDS), timeout=25000)
+        ds = _dataset(page)
+        assert "/" in _pill_text(page), (
+            f"pill showed {_pill_text(page)!r}, expected filled/seen "
+            f"(seen={ds.get('jeSeen')})")
+
+    def test_it_opens_itself_when_a_fill_starts(self, context, app_server,
+                                                fixture_server):
+        """FR-013: an action must never be missed because the card was shut."""
+        assert _wait_connected()
+        page = _open_and_wait_companion(
+            context, f"{fixture_server}/bare_application.html")
+        time.sleep(1)
+        assert _collapsed(page) == "1"
+        _click(page, PRIMARY_IDS)
+        page.wait_for_function(
+            "(ids) => ids.some(id => document.getElementById(id)"
+            ".dataset.jeCollapsed === '0')", arg=list(HOST_IDS), timeout=20000)
+
+    def test_the_card_stays_inside_a_short_viewport(self, context, app_server,
+                                                    fixture_server):
+        """FR-015: it must never grow past the screen — that is how 017's
+        draft flood made Stop unreachable in the app."""
+        assert _wait_connected()
+        page = _open_and_wait_companion(
+            context, f"{fixture_server}/hostile_css.html")
+        page.set_viewport_size({"width": 1280, "height": 500})
+        _click(page, ["pill"])
+        time.sleep(1)
+        g = page.evaluate(
+            """(ids) => {
+                const id = ids.find(i => document.getElementById(i));
+                const r = document.getElementById(id).getBoundingClientRect();
+                return {top: r.top, bottom: r.bottom, height: r.height,
+                        vh: window.innerHeight};
+            }""", list(HOST_IDS))
+        assert g["height"] <= g["vh"], (
+            f"the card is {g['height']}px tall in a {g['vh']}px viewport")
+        assert g["top"] >= 0 and g["bottom"] <= g["vh"] + 1
+
+
+def _primary_for(page, session, detection):
+    """Run the panel's OWN `primaryFor` against a state pair.
+
+    The function is pure, so every combination can be covered without staging
+    nine live sessions. It cannot be reached as `window.jePanel.primaryFor`
+    from here: content scripts run in an isolated world with a separate JS
+    heap, so a page-context `evaluate` sees nothing they define. (The host
+    ELEMENT is shared, which is why the dataset mirror and shadowRoot clicks
+    work — but expando properties are not.) So the shipped source is sliced
+    out of panel.js and evaluated as-is: the real code, really executed.
+    """
+    src = (EXT_SRC / "content" / "panel.js").read_text(encoding="utf-8")
+    start = src.index("function primaryFor(")
+    depth, i = 0, src.index("{", start)
+    while True:
+        if src[i] == "{":
+            depth += 1
+        elif src[i] == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        i += 1
+    fn = src[start:i + 1]
+    return page.evaluate(
+        "([s, d]) => { " + fn + " return primaryFor(s, d); }",
+        [session, detection])
+
+
+class TestCompanionIsUsableByKeyboard:
+    """FR-018: reachable and operable without a mouse, with a visible focus
+    ring. A floating widget that can only be poked at is a widget half the
+    people who need it cannot use."""
+
+    def test_the_pill_opens_on_enter(self, context, app_server,
+                                     fixture_server):
+        assert _wait_connected()
+        page = _open_and_wait_companion(
+            context, f"{fixture_server}/hostile_css.html")
+        time.sleep(1)
+        assert _collapsed(page) == "1"
+        page.evaluate(
+            """(ids) => {
+                const id = ids.find(i => document.getElementById(i));
+                const pill = document.getElementById(id).shadowRoot
+                    .getElementById("pill");
+                pill.focus();
+                pill.dispatchEvent(new KeyboardEvent("keydown",
+                    {key: "Enter", bubbles: true}));
+            }""", list(HOST_IDS))
+        page.wait_for_function(
+            "(ids) => ids.some(id => document.getElementById(id)"
+            ".dataset.jeCollapsed === '0')", arg=list(HOST_IDS), timeout=5000)
+
+    FOCUS_JS = """
+        ([ids, controls]) => {
+            const id = ids.find(i => document.getElementById(i));
+            const root = document.getElementById(id).shadowRoot;
+            const bad = [];
+            for (const c of controls) {
+                const el = root.getElementById(c);
+                if (!el) { bad.push(c + ":missing"); continue; }
+                el.focus();
+                if (root.activeElement !== el) { bad.push(c); }
+            }
+            return bad;
+        }"""
+
+    def test_every_control_is_focusable(self, context, app_server,
+                                        fixture_server):
+        """Checked in each state separately: whichever of pill and card is
+        showing owns the focus order, and the other is `hidden` — which
+        correctly cannot take focus."""
+        assert _wait_connected()
+        page = _open_and_wait_companion(
+            context, f"{fixture_server}/hostile_css.html")
+        time.sleep(1)
+
+        collapsed_bad = page.evaluate(self.FOCUS_JS, [list(HOST_IDS), ["pill"]])
+        assert collapsed_bad == [], f"pill not reachable: {collapsed_bad}"
+
+        _click(page, ["pill"])
+        time.sleep(0.5)
+        expanded_bad = page.evaluate(
+            self.FOCUS_JS,
+            [list(HOST_IDS), ["collapse", "dismiss", "primary", "save"]])
+        assert expanded_bad == [], f"not keyboard-reachable: {expanded_bad}"
+
+    def test_focus_is_visible(self, context, app_server, fixture_server):
+        assert _wait_connected()
+        page = _open_and_wait_companion(
+            context, f"{fixture_server}/hostile_css.html")
+        outline = page.evaluate(
+            """(ids) => {
+                const id = ids.find(i => document.getElementById(i));
+                const root = document.getElementById(id).shadowRoot;
+                for (const sheet of root.styleSheets) {
+                    for (const rule of sheet.cssRules) {
+                        if ((rule.selectorText || "").includes("focus-visible")) {
+                            return rule.style.outline || rule.style.outlineWidth;
+                        }
+                    }
+                }
+                return "";
+            }""", list(HOST_IDS))
+        assert outline, "no :focus-visible outline is defined"
+
+
+class TestPrimaryActionStateMachine:
+    """FR-007: exactly one primary action, whose label and behaviour follow
+    the state. Driven through the pure function the panel exports, so every
+    combination is covered without staging each one in a live session."""
+
+    CASES = [
+        # session,     detection,       action,           label fragment
+        ("idle",       "posting",       "apply",          "apply assist"),
+        ("idle",       "posting+form",  "apply",          "apply assist"),
+        ("idle",       "form",          "fill_here",      "fill this page"),
+        ("starting",   "posting",       "",               "starting"),
+        ("starting",   "form",          "",               "starting"),
+        ("filling",    "posting",       "stop",           "stop"),
+        ("filling",    "form",          "stop",           "stop"),
+        ("stopped",    "posting",       "fill_again",     "fill again"),
+        ("done",       "form",          "fill_again",     "fill again"),
+    ]
+
+    def test_every_state_maps_to_one_action(self, context, app_server,
+                                            fixture_server):
+        assert _wait_connected()
+        page = _open_and_wait_companion(
+            context, f"{fixture_server}/hostile_css.html")
+        for session, detection, action, fragment in self.CASES:
+            got = _primary_for(page, session, detection)
+            assert got["action"] == action, (
+                f"{session}/{detection}: expected action {action!r}, "
+                f"got {got['action']!r}")
+            assert fragment in got["label"].lower(), (
+                f"{session}/{detection}: label {got['label']!r} does not "
+                f"contain {fragment!r}")
+            assert got["disabled"] is (session == "starting")
 
 
 class TestCompanionStillTouchesNothing:
