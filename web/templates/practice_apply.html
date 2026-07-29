@@ -102,6 +102,77 @@
       })();
     </script>
 
+    <h2>The shapes that used to break it (017)</h2>
+
+    <label for="their_name">If you heard about us through an employee, please
+      list their name:</label>
+    <input id="their_name" name="their_name" type="text">
+
+    <label for="phonetic_name">We care about addressing everyone correctly. To
+      help us get it right, please write out how your name is pronounced
+      phonetically to share with the hiring team.*</label>
+    <input id="phonetic_name" name="phonetic_name" type="text">
+
+    <label for="work_auth_expiry">If you have a current work
+      authorization/status, when does it expire? (Please enter N/A if you do
+      not require work authorization.) *</label>
+    <input id="work_auth_expiry" name="work_auth_expiry" type="text">
+
+    <label for="gender_select">How would you describe your gender identity?</label>
+    <select id="gender_select" name="gender_select">
+      <option value="">Select...</option>
+      <option>Man</option>
+      <option>Woman</option>
+      <option>Non-binary</option>
+      <option>Prefer not to say</option>
+    </select>
+
+    <label for="country">Country*</label>
+    <input id="country" name="country" type="text">
+
+    <fieldset>
+      <legend>We care about addressing everyone correctly. Add your personal
+        pronouns below to share with the hiring team. *</legend>
+      <label><input type="checkbox" name="pronouns" value="She/her/hers"> She/her/hers</label>
+      <label><input type="checkbox" name="pronouns" value="He/him/his"> He/him/his</label>
+      <label><input type="checkbox" name="pronouns" value="They/them/theirs"> They/them/theirs</label>
+      <label><input type="checkbox" name="pronouns" value="I do not wish to answer."> I do not wish to answer.</label>
+    </fieldset>
+
+    <!-- A React-select shaped control: the wrapper is the field, the search
+         input inside it is part of the widget. Before 017 both were captured
+         and the inner input inherited this 400-character label. -->
+    <label for="ack-input">By submitting this application and answering
+      &ldquo;yes&rdquo; below, I acknowledge that this role is my top
+      preference and I will not be considered for other Tech and/or Quant
+      roles at Akuna for this recruiting season. This acknowledgement does not
+      limit applications to Trading roles - in addition to this role, you may
+      apply to any Trader roles of interest. *</label>
+    <div class="select__control" id="ack-control" role="combobox"
+         aria-haspopup="listbox" aria-expanded="false">
+      <span class="select__singleValue" id="ack-value"></span>
+      <input id="ack-input" class="select__input" autocomplete="off">
+    </div>
+    <div class="select__menu" role="listbox" id="ack-menu" style="display:none">
+      <div class="select__option" role="option">Yes</div>
+      <div class="select__option" role="option">No</div>
+    </div>
+    <script>
+      (function () {
+        var control = document.getElementById('ack-control');
+        var menu = document.getElementById('ack-menu');
+        var value = document.getElementById('ack-value');
+        control.addEventListener('click', function () {
+          menu.style.display = menu.style.display === 'none' ? '' : 'none';
+        });
+        menu.addEventListener('click', function (evt) {
+          if (!evt.target.matches('.select__option')) { return; }
+          value.textContent = evt.target.textContent;
+          menu.style.display = 'none';
+        });
+      })();
+    </script>
+
     <div id="delayed-section">
       <p class="hint">… more questions loading (this section renders 1.5s
         late, like a real script-driven form) …</p>
@@ -142,6 +213,21 @@
             eeo_value: (eeo || {}).value || '',
             eeo_flag: (eeo && eeo.dataset.jeFlag) || '',
             panel: !!document.getElementById('je-companion-overlay-host'),
+            // 017: the defects from the live Akuna run, observable.
+            resume_filename: ((document.getElementById('resume') || {}).files
+                              || [{}])[0] ? document.getElementById('resume').files[0].name : '',
+            resume_size: ((document.getElementById('resume') || {}).files
+                          || [{}])[0] ? document.getElementById('resume').files[0].size : 0,
+            their_name: (document.getElementById('their_name') || {}).value || '',
+            phonetic_name: (document.getElementById('phonetic_name') || {}).value || '',
+            work_auth_expiry: (document.getElementById('work_auth_expiry') || {}).value || '',
+            country: (document.getElementById('country') || {}).value || '',
+            gender_value: (document.getElementById('gender_select') || {}).value || '',
+            ack_typed: (document.getElementById('ack-input') || {}).value || '',
+            ack_value: (document.getElementById('ack-value') || {}).textContent || '',
+            pronouns_checked: Array.prototype.filter.call(
+              document.querySelectorAll('input[name=pronouns]'),
+              function (el) { return el.checked; }).length,
           }),
         });
       } catch (e) { /* fixture beacon only */ }

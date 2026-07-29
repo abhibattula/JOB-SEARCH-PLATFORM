@@ -25,9 +25,9 @@ implementable, testable and shippable.
 
 **Purpose**: the observation surface every later test depends on.
 
-- [ ] T001 Extend the practice fixture with the Akuna-shaped controls in `web/templates/practice_apply.html`: a React-select dropdown whose `<label>` is a 400-character acknowledgement and whose search `<input>` is nested inside `div.select__control`; a binding-exclusivity variant; a pronoun checkbox group in a `<fieldset><legend>`; a "please list their name" field; a "how your name is pronounced phonetically" field; a work-authorization expiry text field; a gender `<select>` worded `Man/Woman/Prefer not to say`; a location typeahead; a lone-`Name` variant
-- [ ] T002 Extend the fixture beacon in `web/templates/practice_apply.html` and `web/main.py` (`/practice/fixture-state`) to report the résumé input's attached filename and size, the acknowledgement field's value, the pronoun group's checked members, and the "their name" / "phonetically" field values
-- [ ] T003 [P] Create empty test modules `tests/test_vocab.py`, `tests/test_profile_answers.py`, `tests/test_field_shape.py`
+- [x] T001 Extend the practice fixture with the Akuna-shaped controls in `web/templates/practice_apply.html`: a React-select dropdown whose `<label>` is a 400-character acknowledgement and whose search `<input>` is nested inside `div.select__control`; a binding-exclusivity variant; a pronoun checkbox group in a `<fieldset><legend>`; a "please list their name" field; a "how your name is pronounced phonetically" field; a work-authorization expiry text field; a gender `<select>` worded `Man/Woman/Prefer not to say`; a location typeahead; a lone-`Name` variant
+- [x] T002 Extend the fixture beacon in `web/templates/practice_apply.html` and `web/main.py` (`/practice/fixture-state`) to report the résumé input's attached filename and size, the acknowledgement field's value, the pronoun group's checked members, and the "their name" / "phonetically" field values
+- [x] T003 [P] Create empty test modules `tests/test_vocab.py`, `tests/test_profile_answers.py`, `tests/test_field_shape.py`
 
 ---
 
