@@ -629,6 +629,69 @@ UNKNOWN badges everywhere = run `python cli.py load-sponsorship`.
   "couldn't read this page" dead end, and the silent identity auto-fill
   are all gone.
 
+## 21. What changed in v1.7.0 (The Truthful Fill)
+
+v1.6.0 got Apply Assist filling real applications. A run against a large
+Greenhouse form showed the next problem: *what* it filled was often wrong,
+sometimes invented, and the run could not be stopped. v1.7.0 is about
+answering truthfully, or not at all.
+
+**It no longer invents anything about you.** If a question cannot be answered
+from your profile or your resume, it is left for you rather than guessed.
+That covers the whole class the old version made up: whether you applied here
+before, whether you worked at a firm like theirs, whether you completed their
+course, your offer deadlines, which state you live in. You will see these
+marked *needs you* — that is the feature working, not a failure.
+
+**Nothing binding is ever agreed on your behalf.** Routine certifications
+("I certify this information is accurate") answer from your library. An
+acknowledgement that costs you something — "this role is my top preference and
+I will not be considered for other roles" — is never answered automatically,
+and the panel shows you the full text.
+
+**Answers now fit the field.** A yes/no fact can only go into a yes/no
+control, so a question asking *when* your work authorization expires gets a
+date or nothing. Paragraphs can never reach a dropdown. A question about
+someone else's name ("please list their name") no longer receives yours, and
+"how your name is pronounced phonetically" is no longer treated as a phone
+field.
+
+**Your Profile holds what a real application asks for.** New sections cover
+your address and current location, work-authorization detail (status, expiry,
+extension options, sponsorship needs), education and graduation dates,
+preferences, links, and — entirely optional — voluntary self-identification.
+Self-ID is stored only on your machine, never sent to any AI, and used only to
+select the matching option when a form asks. It maps onto whatever wording the
+form uses: your "Male" selects their "Man", "Straight" selects
+"Heterosexual", "Prefer not to say" finds "Decline to self-identify". Leave
+anything blank and that question is simply left for you.
+
+**The resume that goes out is yours.** The tailored PDF is attached only when
+you actually ran *Tailor for this job*; otherwise your own uploaded file goes
+out, under its real filename. The file is verified before it is attached, so a
+failed download can never end up as an empty or corrupt "resume.pdf".
+
+**You can read the drafted answers.** The on-page panel now lists every
+question with its full answer — copy it, insert it into the field, or jump to
+anything that needs you. Any question Apply Assist declined to answer gets a
+box: type your answer once, it fills immediately, and it is remembered for
+every future application that asks the same thing.
+
+**Apply with Apply Assist, from the job.** A button on the job page starts a
+session for that job, and the floating badge on a posting does the same in the
+browser. No more detour through the Apply Assist page.
+
+**Stop always works.** The controls are pinned to the top of the panel and the
+draft list is bounded, so a 90-field application can no longer bury them.
+
+**Cleaning up after the old version:** *Reset learned answers* on the Profile
+page removes everything the AI saved that may not be true about you. Answers
+you typed yourself are never touched. Old duplicate drafts are collapsed
+automatically the first time v1.7.0 opens your database.
+
+Still $0, still private, still never auto-submits — you click every apply,
+login and submit yourself.
+
 ## 20. What changed in v1.6.0 (The Fill Release)
 
 Apply Assist now fills for real, on the page — the entire review loop moved

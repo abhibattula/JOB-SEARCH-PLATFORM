@@ -169,7 +169,7 @@ per story.
 ## Phase 10: Polish and ship
 
 - [ ] T073 Extend `tests/integration/test_pairing_e2e.py` to assert, on the T001 fixture: the acknowledgement dropdown receives no text and is flagged; the pronoun group is one question; the "their name" and "phonetically" fields are untouched; self-ID and location fill from the profile; the attached file matches the source by name and size; the panel lists answers with Copy; and **zero** submit clicks
-- [ ] T074 [P] Update `USER_MANUAL.md`, `README.md` and `WHATS_NEW["1.7.0"]` in `web/main.py` — including the new Profile sections, the answer library, the purge action, and what Apply Assist will now refuse to answer and why
+- [x] T074 [P] Update `USER_MANUAL.md`, `README.md` and `WHATS_NEW["1.7.0"]` in `web/main.py` — including the new Profile sections, the answer library, the purge action, and what Apply Assist will now refuse to answer and why
 - [ ] T075 Full battery ×2 plus the `browser` and `slow` markers, then `python packaging/smoke_test.py` on the frozen build with `JOBS_AI_SUBPROCESS` at its default
 - [ ] T076 Ship v1.7.0: merge to `main`, mirror to `001-ai-job-engine`, tag, wait for the Release installers workflow, and verify **both** artifacts by magic bytes and SHA-256 against the release body; on any job failure delete the release and tag, fix, and re-tag
 

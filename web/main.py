@@ -123,6 +123,27 @@ templates.env.globals["current_theme"] = _current_theme
 # 008 (FR-032): plain-language changelog behind the What's New overlay —
 # keyed by APP_VERSION, shown once per version.
 WHATS_NEW: dict[str, list[str]] = {
+    "1.7.0": [
+        "Apply Assist no longer invents answers. If a question can't be "
+        "answered from your profile or resume — whether you applied here "
+        "before, whether you did their course, your offer deadlines — it is "
+        "left for you instead of guessed.",
+        "Answers now match the field: no more yes/no in a date box, no more "
+        "paragraphs in a dropdown, and your phone number stays out of the "
+        "name-pronunciation question.",
+        "Your Profile now holds what a real application asks for: address, "
+        "work-authorization detail, education, preferences, and optional "
+        "self-identification it maps onto each form's own wording "
+        "(Male/Man, Straight/Heterosexual).",
+        "The resume that goes out is yours — the tailored PDF only when you "
+        "actually tailored that job — and it is checked before it is attached.",
+        "Every drafted answer is readable on the page: copy it, insert it, or "
+        "answer a skipped question once and it fills automatically from then on.",
+        "Apply with Apply Assist straight from a job — in the app, or from "
+        "the badge on a posting.",
+        "Stop is always reachable, and Reset learned answers on the Profile "
+        "page clears anything the AI saved that isn't true about you.",
+    ],
     "1.6.0": [
         "Apply Assist now fills the page for real: known answers land in "
         "seconds, drafts arrive by themselves, and dropdown/yes-no questions "

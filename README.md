@@ -66,7 +66,18 @@ entirely on your machine for $0.
   back to CPU when there's no GPU; NVIDIA users can unlock full GPU with one
   `pip install` of a CUDA `llama-cpp-python` wheel (the installer stays the CPU
   build, same size).
-- **Apply Assist — fills for real, on the page (v1.0, rebuilt in v1.6)**:
+- **Apply Assist — truthful by design (v1.0, rebuilt in v1.6, made truthful
+  in v1.7)**: it answers from what *you* told it, or it leaves the question for
+  you. Anything it cannot ground in your profile or resume — whether you
+  applied here before, your offer deadlines, which state you live in — is
+  flagged rather than invented, and a binding acknowledgement ("this role is my
+  top preference and I will not be considered for other roles") is never
+  agreed on your behalf. Answers have to fit the field, so a yes/no fact can
+  never land in a date box and prose can never land in a dropdown. Your stored
+  self-identification is mapped onto each form's own wording (your "Male"
+  selects their "Man"), and every drafted answer is readable, copyable and
+  correctable on the page — answer a skipped question once and it fills
+  automatically from then on.
   install the free one-time **browser companion** (a Chrome/Edge extension —
   see the in-app Companion page) and applications fill in *your everyday
   browser*, where you're already signed in to job sites. Without it, Apply
