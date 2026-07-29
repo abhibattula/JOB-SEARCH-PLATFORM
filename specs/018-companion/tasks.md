@@ -181,9 +181,9 @@ app stops navigating away.
 - [x] T088 Bump the version to `1.8.0` everywhere `packaging/check_version.py` checks — including `extension/manifest.json` and `packaging/windows.iss` (edit byte-safely: that file is not UTF-8 clean)
 - [x] T089 Run the full battery twice: `python -m pytest -q` ×2
 - [x] T090 Run `python -m pytest -m browser -q` and the offline-model gates
-- [ ] T091 Run the frozen smoke (`packaging/smoke_test.py`) with `JOBS_AI_SUBPROCESS` default on
+- [x] T091 Run the frozen smoke (`packaging/smoke_test.py`) with `JOBS_AI_SUBPROCESS` default on
 - [ ] T092 Manual end-to-end per `quickstart.md` §5 against a real Greenhouse posting **and** its bare `…/application` URL
-- [ ] T093 Tag `v1.8.0`, wait for the release build, and verify **both** installers by magic bytes and SHA-256 against the release body
+- [x] T093 Tag `v1.8.0`, wait for the release build, and verify **both** installers by magic bytes and SHA-256 against the release body
 
 ---
 
