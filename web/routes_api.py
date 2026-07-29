@@ -657,6 +657,9 @@ def _profile_payload() -> dict:
         "portfolio_url": profile.get("portfolio_url"),
         # 007 resume builder — resume_file_path itself never leaves the
         # server (local filesystem path), only its existence does.
+        # 017: the fields a real application asks for. resume_file_path
+        # is still never returned — only has_resume_file below.
+        **{key: profile.get(key) or "" for key in PROFILE_017_FIELDS},
         "has_resume_file": bool(profile.get("resume_file_path")),
         "resume_sections": profile.get("resume_sections"),
         "sections_edited_at": profile.get("sections_edited_at"),
@@ -680,6 +683,33 @@ def _store_resume_file(raw: bytes, filename: str) -> str:
 @router.get("/profile")
 def get_profile():
     return _profile_payload()
+
+
+# 017 (FR-019): the fields a real application asks for. Every one is optional
+# and blank means "unknown" — the form field is then left untouched and
+# flagged, never guessed (FR-023).
+PROFILE_017_FIELDS = (
+    # identity
+    "preferred_name", "middle_name", "pronouns",
+    # address and current location
+    "address_line1", "address_line2", "city", "state_region", "postal_code",
+    "country", "current_location",
+    # work-authorization detail — the four questions Akuna actually asked
+    "work_auth_type", "work_auth_expiry", "work_auth_extensions",
+    "sponsorship_future", "sponsorship_detail",
+    # preferences
+    "desired_salary", "earliest_start_date", "notice_period",
+    "willing_to_relocate", "remote_preference", "willing_to_travel",
+    # experience facts
+    "years_experience", "current_employer", "current_title",
+    "highest_education", "graduation_month", "graduation_year", "gpa",
+    # links and defaults
+    "github_url", "other_url", "how_heard_default",
+    # voluntary self-identification (D1) — entered by the applicant only,
+    # never inferred, never sent to a model
+    "selfid_gender", "selfid_race", "selfid_veteran", "selfid_disability",
+    "selfid_orientation",
+)
 
 
 @router.post("/profile")
@@ -736,6 +766,16 @@ async def save_profile(
     }.items():
         if value is not None:
             fields[key] = value
+
+    # 017: the profile grew 37 columns. Reading them from the parsed form
+    # keeps the signature readable and means adding a field is a one-line
+    # change here plus the migration — the alternative was 37 more Form(None)
+    # parameters. The whitelist is explicit, so no unexpected key can reach
+    # save_profile.
+    form = await request.form()
+    for key in PROFILE_017_FIELDS:
+        if key in form:
+            fields[key] = str(form[key]).strip()
 
     if fields:
         db.save_profile(**fields)

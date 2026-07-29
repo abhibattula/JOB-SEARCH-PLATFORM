@@ -108,7 +108,7 @@ per story.
 - [x] T043 [US3] GREEN: add the location tags in `engine/autofill/fields.py` and remap in `engine/autofill/adapters.py`
 - [x] T044 [US3] [P] RED: assert every library tag resolves from the profile with no generator call
 - [x] T045 [US3] GREEN: add the library tags to `engine/autofill/fields.py` and resolve them in `engine/autofill/profile_answers.py`
-- [ ] T046 [US3] Profile UI sections (Identity, Address, Work authorization detail, Preferences, Experience, Links, Voluntary self-identification, Answer library) in `web/templates/profile.html` and the matching optional form fields in `web/routes_api.py`; assert the round trip through the route in `tests/test_api.py`
+- [x] T046 [US3] Profile UI sections (Identity, Address, Work authorization detail, Preferences, Experience, Links, Voluntary self-identification, Answer library) in `web/templates/profile.html` and the matching optional form fields in `web/routes_api.py`; assert the round trip through the route in `tests/test_api.py`
 
 **Checkpoint**: refusals decay — the profile answers what it can.
 
