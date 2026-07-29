@@ -1,8 +1,8 @@
 // Service worker entry: owns the socket, routes app↔content messages.
 import { setConnected } from "./badge.js";
 import {
-  armWatchdog, connect, onWatchdogTick, send, startKeepalive, state,
-  WATCHDOG_ALARM,
+  armWatchdog, connect, onWatchdogTick, readPairing, send, startKeepalive,
+  state, WATCHDOG_ALARM,
 } from "./socket.js";
 import {
   openTab, closeTab, watchStart, watchStop, toContent, relayFromContent,
@@ -33,10 +33,23 @@ state.onMessage = (msg) => {
                            msg.frame_id); break;
     case "overlay_state": toContent(msg.tab_id, { type: "overlay_state",
                                                   summary: msg.summary }, 0); break;
+    // 017 (FR-034): full answer text for the panel — top frame only.
+    case "answers": toContent(msg.tab_id, { type: "answers",
+                                            items: msg.items,
+                                            truncated: msg.truncated }, 0); break;
     // 012 discovery: score/save replies go to the requesting tab's top frame.
     case "score_result": toContent(msg.tab_id, { ...msg, type: "score_result" }, 0);
       break;
     case "save_result": toContent(msg.tab_id, { ...msg, type: "save_result" }, 0);
+      break;
+    // 017 (C12): the app has sent `rescan` from three call sites since 016,
+    // but nothing ever handled it — it fell through to `default:` and every
+    // draft-ready push and Fill again waited on the 2 s safety poll instead.
+    // Broadcast to every watched tab's top frame; the content script decides.
+    case "rescan":
+      watched.forEach((_entry, tabId) => {
+        toContent(tabId, { type: "rescan", reason: msg.reason || "" }, 0);
+      });
       break;
     // 016 (T010): app-side refusals (e.g. busy) are STORED so the popup can
     // show them — this used to hit `default:` and vanish (RC4).
@@ -108,6 +121,40 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
       sender.frameId !== undefined ? { frameId: sender.frameId } : undefined,
     ).catch(() => {});
     return false;
+  }
+  // 017 (C9, FR-029): fetch an app file on the content script's behalf.
+  // Only the service worker holds host_permissions for 127.0.0.1 — a
+  // content-script fetch of the app's relative url resolves against the job
+  // board, where Greenhouse answers with its own HTML and status 200, so an
+  // HTML page was being attached as the applicant's resume.
+  if (sender.tab && msg && msg._je_file) {
+    (async () => {
+      try {
+        const pairing = await readPairing();
+        if (!pairing || !pairing.port) {
+          return { ok: false, error: "no_pairing" };
+        }
+        const url = "http://127.0.0.1:" + pairing.port + msg.path;
+        const resp = await fetch(url);
+        if (!resp.ok) { return { ok: false, error: "http_" + resp.status }; }
+        const buffer = await resp.arrayBuffer();
+        const bytes = new Uint8Array(buffer);
+        let binary = "";
+        for (let i = 0; i < bytes.length; i += 1) {
+          binary += String.fromCharCode(bytes[i]);
+        }
+        return {
+          ok: true,
+          name: "",
+          mime: resp.headers.get("content-type") || "",
+          size: bytes.length,
+          bytes: btoa(binary),
+        };
+      } catch (e) {
+        return { ok: false, error: String(e && e.message ? e.message : e) };
+      }
+    })().then(sendResponse);
+    return true;  // async reply
   }
   // From a content script (has sender.tab)
   if (sender.tab && msg && msg._je) {

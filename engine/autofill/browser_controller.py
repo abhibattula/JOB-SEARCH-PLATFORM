@@ -131,6 +131,15 @@ def _choose_backend() -> str:
 
 def _open_job_on_backend(job_id: int) -> None:
     """Route OPEN_JOB to the active backend."""
+    # 017 (FR-004): restore this job's stored answers before any scan, so a
+    # restart or crash does not re-draft a form we already have answers for.
+    try:
+        from . import drafter
+
+        drafter.rehydrate_from_store(job_id)
+    except Exception:  # noqa: BLE001 — never block opening the application
+        log.warning("draft rehydration failed for job %s", job_id,
+                    exc_info=True)
     if _state.backend == "extension":
         from .. import db
         from . import apply_urls, ext_backend
@@ -295,19 +304,50 @@ def _mark_interrupted() -> None:
         _playwright = None
 
 
+def _was_tailored(job_id: int) -> bool:
+    """Whether the applicant actually ran Tailor for this job."""
+    from .. import db
+
+    try:
+        job = db.get_job(job_id) or {}
+    except Exception:  # noqa: BLE001 — a missing row is not an error here
+        return False
+    return bool((job.get("tailor_json") or "").strip())
+
+
 def _resume_file_for_job(job_id: int, profile: dict) -> str | None:
-    """The job's tailored PDF when available and the preference (default
-    on) allows it; otherwise the stored original upload."""
+    """017 (D6, FR-032): the tailored document ONLY when tailoring was
+    actually performed for this job; otherwise the applicant's own upload.
+
+    `tailored_resume_path` renders from the resume-builder sections whether or
+    not the job was ever tailored, so the previous rule sent an
+    app-generated PDF to every application. On the 2026-07-28 run the file
+    attached was `6532.pdf` — a rendering — on a job the applicant had not
+    tailored. Their uploaded PDF is the document they chose to represent
+    them, formatting and all.
+    """
     from .. import settings
 
-    if settings.get("AUTOFILL_USE_TAILORED_PDF") != "0":
+    if settings.get("AUTOFILL_USE_TAILORED_PDF") != "0" and _was_tailored(job_id):
         try:
             from .. import resume_pdf
 
             return str(resume_pdf.tailored_resume_path(job_id))
         except Exception:
             log.debug("tailored PDF unavailable — using original resume", exc_info=True)
-    return profile.get("resume_file_path") or None
+    stored = profile.get("resume_file_path") or None
+    if stored:
+        return stored
+    # No upload on file: fall back to a rendering rather than attaching
+    # nothing, since an application without a resume is rejected outright.
+    if settings.get("AUTOFILL_USE_TAILORED_PDF") != "0":
+        try:
+            from .. import resume_pdf
+
+            return str(resume_pdf.tailored_resume_path(job_id))
+        except Exception:
+            log.debug("no resume available for job %s", job_id, exc_info=True)
+    return None
 
 
 def _domain_for_job(job_id: int) -> str | None:
@@ -334,25 +374,36 @@ def _value_for_tag(tag: str, raw: dict, profile: dict, job_id: int):
         if not saved:
             return None
         return saved["email"] if tag == "login_email" else saved["password"]
-    if tag == "full_name":
-        first = profile.get("first_name") or ""
-        last = profile.get("last_name") or ""
-        combined = f"{first} {last}".strip()
-        return combined or None
-    if tag == "first_name":
-        return profile.get("first_name")
-    if tag == "last_name":
-        return profile.get("last_name")
-    if tag == "email":
-        return profile.get("email")
-    if tag == "phone":
-        return profile.get("phone")
     if tag == "resume_upload":
         return _resume_file_for_job(job_id, profile)
-    if tag in ("linkedin_url",):
-        return profile.get("linkedin_url")
-    if tag in ("portfolio_url",):
-        return profile.get("portfolio_url")
+
+    # 017 (FR-033): a cover-letter UPLOAD needs a file, not prose. This used
+    # to fall through to the drafter and hand set_input_files a paragraph.
+    if tag == "cover_letter" and (raw.get("type") or "") == "file":
+        try:
+            from .. import resume_pdf
+
+            return str(resume_pdf.cover_letter_path(job_id))
+        except Exception:
+            # No cover letter for this job yet — the applicant attaches one
+            # themselves rather than us inventing a document.
+            log.debug("no cover-letter file for job %s", job_id, exc_info=True)
+            from . import drafter as _d
+
+            question = (raw.get("label_text") or raw.get("placeholder")
+                        or raw.get("aria_label") or "Cover letter")
+            _d.mark_needs_you(job_id, question, "profile_fact_missing")
+            return None
+
+    # 017 (R12, FR-020): one resolver for every question the applicant has
+    # already answered on their profile — consulted BEFORE the answer bank so
+    # a corrected profile immediately overrides a stale learned answer. It
+    # replaces the per-tag ladder that used to live here.
+    from . import profile_answers
+
+    answered = profile_answers.answer_for(tag, profile)
+    if answered is not None:
+        return answered
     # Everything else goes: answer bank → profile facts → drafter cache.
     # 016 (fill-first, FR-003/FR-012/FR-019): decide NEVER generates and
     # NEVER parks — unknown questions are scheduled on the background
@@ -362,6 +413,19 @@ def _value_for_tag(tag: str, raw: dict, profile: dict, job_id: int):
     question = raw.get("label_text") or raw.get("placeholder") or raw.get("aria_label") or ""
     if not question:
         return None
+
+    # 017 (D5, FR-027): a BINDING acknowledgement is never answered by any
+    # automatic path — not the model, not the answer library. Saying yes to
+    # the Akuna exclusivity clause withdraws the applicant from every other
+    # Tech/Quant role at that firm for the season; that is theirs to decide.
+    from . import fields as _fields
+
+    if tag == "acknowledgement" and _fields.is_binding_acknowledgement(question):
+        from . import drafter as _drafter
+
+        _drafter.mark_needs_you(job_id, question, "binding_commitment")
+        return None
+
     existing = answer_bank.lookup(question)
     if existing:
         if existing.get("source") == "ai":
@@ -372,16 +436,18 @@ def _value_for_tag(tag: str, raw: dict, profile: dict, job_id: int):
             return field_core.Draft(existing["answer"])
         return existing["answer"]
 
-    from .. import qa
     from . import drafter
 
-    if tag in qa.PROFILE_FACT_TAGS:
-        fact = qa.profile_fact_answer(tag, profile)
-        if fact is not None:
-            drafter.clear(job_id, question)
-            return fact
-        # not derivable — the human answers this one, visibly
+    # 017 (FR-023, FR-008): the profile could not answer this and the bank
+    # has nothing. For a question that is answerable ONLY from the applicant
+    # — a profile fact, their own history, or self-identification — that is
+    # the end of the road: it goes to them, visibly, rather than to a model
+    # that would have to invent it.
+    if tag in profile_answers.PROFILE_ANSWER_TAGS:
         drafter.mark_needs_you(job_id, question, "profile_fact_missing")
+        return None
+    if tag in drafter.NEVER_GENERATED_TAGS:
+        drafter.mark_needs_you(job_id, question, "never_generated")
         return None
 
     cached = drafter.answer_for(job_id, question)
@@ -395,6 +461,13 @@ def _value_for_tag(tag: str, raw: dict, profile: dict, job_id: int):
         "maxlength": raw.get("maxlength"),
         "type": raw.get("type") or "",
         "widget": raw.get("widget") or "",
+        # 017 (FR-012): the shape rule needs the label — a question asking
+        # WHEN something expires cannot take a yes/no — and the ancestry
+        # flag, because an input inside a dropdown is a dropdown.
+        "label_text": raw.get("label_text") or "",
+        "placeholder": raw.get("placeholder") or "",
+        "aria_label": raw.get("aria_label") or "",
+        "nested_in_choice": bool(raw.get("nested_in_choice")),
     }, profile)
     return None
 
@@ -492,6 +565,10 @@ def current_job() -> dict | None:
         # 016 (FR-019): the passive activity log replaces the blocking
         # pending gate — drafting/drafted/needs-you per question.
         "activity": drafter.list_for_job(job_id),
+        # 017 (FR-047): the SAME answers the on-page panel shows. The panel
+        # is companion-only, so without this the assistant-window fallback
+        # would leave the applicant with no way to read or answer them.
+        "answers": drafter.answers_for_page(job_id),
     }
 
 

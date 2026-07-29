@@ -20,6 +20,34 @@ from .. import db
 
 FUZZY_MATCH_THRESHOLD = 85
 
+# 017 (R4, FR-006): the drafting path must be able to say it does not know.
+#
+# On the 2026-07-28 live run the model asserted the applicant had interned at
+# the target company, completed that company's own course, held an offer
+# deadline, and lived in a state they do not live in. The cause was
+# structural, not stochastic: suggest() had no refusal branch, so it always
+# had to return text. `qa.draft` has carried this token since feature 010;
+# the path 016 actually uses never got one.
+#
+# A refusal is passed through verbatim and mapped by drafter._validate to a
+# non-retryable "cannot_answer" — the question then goes to the human.
+REFUSAL_TOKEN = "CANNOT_ANSWER"
+
+_REFUSAL_RULE = (
+    f" If the answer is not present in the applicant's own resume/profile "
+    f"below, reply with exactly {REFUSAL_TOKEN} and nothing else. Never "
+    f"guess, never infer from the question, and never state anything about "
+    f"the applicant that the resume/profile does not say."
+)
+
+
+def is_refusal(text: str | None) -> bool:
+    """True when the model declined. Tolerates a chatty refusal — models
+    often append a reason despite being told not to."""
+    if not text:
+        return False
+    return REFUSAL_TOKEN in str(text).upper()
+
 
 def _normalize(question: str) -> str:
     return re.sub(r"\s+", " ", question.strip().casefold())
@@ -132,6 +160,33 @@ def save_auto(*, question: str, answer: str, tag: str | None,
     return row["id"] if row is not None and row["source"] == "ai" else None
 
 
+def count_model_written() -> int:
+    """017 (FR-011): how many stored answers the model wrote, not the user."""
+    with db._conn() as conn:
+        row = conn.execute(
+            "SELECT COUNT(*) AS n FROM answer_bank"
+            " WHERE source IN ('ai', 'auto_saved')"
+        ).fetchone()
+    return int(row["n"])
+
+
+def purge_model_written() -> int:
+    """017 (FR-011/FR-046): remove every answer the MODEL produced, and only
+    those.
+
+    The drafter auto-saves accepted answers, so a fabricated one refills on
+    every future application until it is deleted — the 2026-07-28 run left
+    claims like "Yes, I have applied to Akuna in the past" in the bank.
+    Rows with source 'user' or 'confirmed' are the applicant's own words,
+    including everything captured from the on-page panel, and are never
+    touched.
+    """
+    with db._conn() as conn:
+        cur = conn.execute(
+            "DELETE FROM answer_bank WHERE source IN ('ai', 'auto_saved')")
+        return cur.rowcount or 0
+
+
 def list_all() -> list[dict]:
     """All confirmed answer-bank entries, newest-updated first — backs the
     Profile page's Common Questions management UI (006-B): the user can
@@ -175,7 +230,7 @@ def suggest(question_raw: str, category: str | None, profile: dict,
             "You are answering a multiple-choice job-application question "
             "for an applicant, using ONLY the applicant facts below. Pick "
             "exactly one of the OPTIONS. Respond with ONLY that option's "
-            "text, exactly as written — nothing else."
+            "text, exactly as written — nothing else." + _REFUSAL_RULE
         )
         user = (f"QUESTION ({category or 'general'}): {question_raw}\n\n"
                 "OPTIONS:\n" + "\n".join(f"- {o}" for o in options)
@@ -185,7 +240,7 @@ def suggest(question_raw: str, category: str | None, profile: dict,
             "You are answering a dropdown job-application question whose "
             "options are hidden until clicked. Respond with ONLY the "
             "literal option label the form most likely offers — at most "
-            "4 words, no punctuation, never a sentence."
+            "4 words, no punctuation, never a sentence." + _REFUSAL_RULE
         )
         user = (f"QUESTION ({category or 'general'}): {question_raw}\n\n"
                 f"{grounding}")
@@ -198,7 +253,8 @@ def suggest(question_raw: str, category: str | None, profile: dict,
             "You are helping a job applicant draft a short, honest answer to an "
             "application question, using ONLY the facts in their resume/profile "
             "below. Never invent experience, credentials, or facts not present. "
-            "Respond with ONLY the answer text, no preamble." + length_rule
+            "Respond with ONLY the answer text, no preamble."
+            + length_rule + _REFUSAL_RULE
         )
         user = (f"QUESTION ({category or 'general'}): {question_raw}\n\n"
                 f"{grounding}")
@@ -207,9 +263,11 @@ def suggest(question_raw: str, category: str | None, profile: dict,
         {"role": "user", "content": user},
     ]
     try:
-        return matcher._chat(messages).strip()
+        reply = matcher._chat(messages).strip()
     except Exception:
         return ""
+    # A refusal is normalised so callers test one token, not a sentence.
+    return REFUSAL_TOKEN if is_refusal(reply) else reply
 
 
 def record_application_answer(

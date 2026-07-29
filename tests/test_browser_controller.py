@@ -6,6 +6,8 @@ queue logic is tested in isolation, and the fill-application logic is
 tested against a fake page/element that would raise if `.click()` were
 ever called.
 """
+import time
+
 import pytest
 
 from engine import db
@@ -167,7 +169,7 @@ class TestUnknownQuestions016:
         from engine.autofill import drafter
 
         drafter.set_generator_for_tests(lambda q, c, p: "Drafted answer")
-        value = bc._value_for_tag("how_heard", self._raw(),
+        value = bc._value_for_tag("free_text_unknown", self._raw(),
                                   {"resume_text": "..."}, job_id=1)
         assert value is None  # this pass skips; the draft lands via push
         record = drafter.get(1, "How did you hear about us?")
@@ -177,8 +179,8 @@ class TestUnknownQuestions016:
         from engine.autofill import drafter
 
         drafter.set_generator_for_tests(lambda q, c, p: "ans")
-        bc._value_for_tag("how_heard", self._raw("q1", "Question one?"), {}, job_id=1)
-        bc._value_for_tag("how_heard", self._raw("q2", "Question two?"), {}, job_id=1)
+        bc._value_for_tag("free_text_unknown", self._raw("q1", "Question one?"), {}, job_id=1)
+        bc._value_for_tag("free_text_unknown", self._raw("q2", "Question two?"), {}, job_id=1)
         assert drafter.get(1, "Question one?") is not None
         assert drafter.get(1, "Question two?") is not None
 
@@ -197,12 +199,12 @@ class TestUnknownQuestions016:
         from engine.autofill import drafter, field_core
 
         drafter.set_generator_for_tests(lambda q, c, p: "Because I build tools.")
-        bc._value_for_tag("how_heard", self._raw(), {}, job_id=1)
+        bc._value_for_tag("free_text_unknown", self._raw(), {}, job_id=1)
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline and \
                 not drafter.answer_for(1, "How did you hear about us?"):
             time.sleep(0.01)
-        value = bc._value_for_tag("how_heard", self._raw(), {}, job_id=1)
+        value = bc._value_for_tag("free_text_unknown", self._raw(), {}, job_id=1)
         assert value == "Because I build tools."
         assert isinstance(value, field_core.Draft)  # fills + ai_draft flag
 
@@ -304,7 +306,7 @@ class TestFillFirstResponsiveness016:
         bc._state.index = 0
 
         start = time.monotonic()
-        value = bc._value_for_tag("how_heard", self._raw(), {}, job_id=1)
+        value = bc._value_for_tag("free_text_unknown", self._raw(), {}, job_id=1)
         assert value is None
         assert time.monotonic() - start < 1.0  # scheduled, not generated inline
 
@@ -341,7 +343,7 @@ class TestFillFirstResponsiveness016:
         bc._state.index = 0
         bc._state.backend = "playwright"
 
-        bc._value_for_tag("how_heard", self._raw(), {}, job_id=1)
+        bc._value_for_tag("free_text_unknown", self._raw(), {}, job_id=1)
         deadline = time.monotonic() + 5
         while time.monotonic() < deadline and "FORCE_TICK" not in dispatched:
             time.sleep(0.01)
@@ -400,7 +402,7 @@ class TestNameFields:
         value = bc._value_for_tag("full_name", raw, {"first_name": "Ada", "last_name": "Lovelace"}, job_id=1)
         assert value == "Ada Lovelace"
 
-    def test_full_name_none_when_neither_set(self):
+    def test_full_name_none_when_neither_set(self, tmp_db):
         raw = {"tag": "input", "type": "text", "name": "name", "id": "name",
                "label_text": "Full Name", "placeholder": "", "aria_label": "", "autocomplete": ""}
         assert bc._value_for_tag("full_name", raw, {}, job_id=1) is None
@@ -570,14 +572,23 @@ class TestResumeFileSelection:
     tailored-PDF preference, toggle, fallback — lives in
     _resume_file_for_job; the attach mechanics live in test_watcher.py."""
 
-    def test_tailored_pdf_preferred_when_available(self, tmp_db, monkeypatch):
-        from engine import resume_pdf
+    def test_tailored_pdf_preferred_when_the_job_was_tailored(
+            self, tmp_db, monkeypatch):
+        """017 (D6): narrowed from "whenever a rendering is available" to
+        "when the applicant actually ran Tailor for this job". The renderer
+        produces a PDF from the resume-builder sections either way, so the
+        old rule sent an app-generated document to every application."""
+        from engine import db as edb, resume_pdf
 
+        job_id = seed_job("https://x.example/tailored-pref")
+        edb.set_tailor(job_id, '{"summary_line": "x"}')
         monkeypatch.setattr(
-            resume_pdf, "tailored_resume_path", lambda job_id: "C:/t/tailored-7.pdf"
+            resume_pdf, "tailored_resume_path",
+            lambda jid: f"C:/t/tailored-{jid}.pdf"
         )
-        path = bc._resume_file_for_job(7, {"resume_file_path": "C:/r/original.pdf"})
-        assert path == "C:/t/tailored-7.pdf"
+        path = bc._resume_file_for_job(
+            job_id, {"resume_file_path": "C:/r/original.pdf"})
+        assert path == f"C:/t/tailored-{job_id}.pdf"
 
     def test_toggle_off_uses_original_upload(self, tmp_db, monkeypatch):
         from engine import db as edb
@@ -802,3 +813,113 @@ class TestSnapshotBrowser015:
         snapshot = bc.queue_snapshot()
         assert snapshot["extension"]["browser"] == "chrome"
         ext_backend.reset_for_tests()
+
+
+class TestResumeChoice017:
+    """017-T057 (D6, FR-032): the tailored document goes out ONLY when the
+    applicant actually tailored that job.
+
+    tailored_resume_path renders from the resume-builder sections regardless,
+    so the old rule attached an app-generated PDF to every application. On
+    the 2026-07-28 run the attached file was `6532.pdf` — a rendering — on a
+    job that had never been tailored.
+    """
+
+    def _job(self, tailored: bool):
+        from engine import db
+
+        job_id = seed_job("https://x.example/tailor-choice")
+        if tailored:
+            db.set_tailor(job_id, '{"summary_line": "x"}')
+        return job_id
+
+    def test_an_untailored_job_gets_the_uploaded_resume(self, tmp_db):
+        job_id = self._job(tailored=False)
+        chosen = bc._resume_file_for_job(
+            job_id, {"resume_file_path": "C:/resumes/Abhinav_Battula.pdf"})
+        assert chosen == "C:/resumes/Abhinav_Battula.pdf"
+
+    def test_a_tailored_job_gets_the_tailored_document(self, tmp_db,
+                                                      monkeypatch):
+        from engine import resume_pdf
+
+        monkeypatch.setattr(resume_pdf, "tailored_resume_path",
+                            lambda job_id: f"/data/tailored/{job_id}.pdf")
+        job_id = self._job(tailored=True)
+        chosen = bc._resume_file_for_job(
+            job_id, {"resume_file_path": "C:/resumes/Abhinav_Battula.pdf"})
+        assert chosen == f"/data/tailored/{job_id}.pdf"
+
+    def test_with_no_upload_a_rendering_is_better_than_nothing(
+            self, tmp_db, monkeypatch):
+        """An application with no resume attached is rejected outright."""
+        from engine import resume_pdf
+
+        monkeypatch.setattr(resume_pdf, "tailored_resume_path",
+                            lambda job_id: f"/data/tailored/{job_id}.pdf")
+        job_id = self._job(tailored=False)
+        assert bc._resume_file_for_job(job_id, {}) == \
+            f"/data/tailored/{job_id}.pdf"
+
+    def test_the_setting_still_disables_the_rendering_entirely(
+            self, tmp_db, monkeypatch):
+        from engine import settings
+
+        monkeypatch.setattr(settings, "get",
+                            lambda key, default=None:
+                            "0" if key == "AUTOFILL_USE_TAILORED_PDF"
+                            else default)
+        job_id = self._job(tailored=True)
+        assert bc._resume_file_for_job(
+            job_id, {"resume_file_path": "C:/r.pdf"}) == "C:/r.pdf"
+        assert bc._resume_file_for_job(job_id, {}) is None
+
+
+class TestCoverLetterUpload017:
+    """017-T059 (FR-033): a cover-letter UPLOAD gets a rendered document.
+
+    It used to fall through to the drafter, so set_input_files was handed a
+    paragraph of prose as if it were a path.
+    """
+
+    def _file_field(self):
+        return {"tag": "input", "type": "file", "name": "cover_letter",
+                "id": "cover_letter", "label_text": "Cover letter",
+                "placeholder": "", "aria_label": "", "autocomplete": ""}
+
+    def test_a_rendered_pdf_is_attached(self, tmp_db, monkeypatch):
+        from engine import db, resume_pdf
+
+        job_id = seed_job("https://x.example/cover-letter-upload")
+        db.set_tailor(job_id, '{"cover_letter": "Dear team, ..."}')
+        monkeypatch.setattr(resume_pdf, "cover_letter_path",
+                            lambda jid: f"/data/tailored/{jid}-cover-letter.pdf")
+
+        value = bc._value_for_tag("cover_letter", self._file_field(), {},
+                                  job_id=job_id)
+        assert value == f"/data/tailored/{job_id}-cover-letter.pdf"
+
+    def test_without_one_the_applicant_attaches_it_themselves(self, tmp_db):
+        from engine.autofill import drafter
+
+        job_id = seed_job("https://x.example/cover-letter-none")
+        value = bc._value_for_tag("cover_letter", self._file_field(), {},
+                                  job_id=job_id)
+        assert value is None
+        record = drafter.get(job_id, "Cover letter")
+        assert record and record["state"] == "failed"
+
+    def test_a_cover_letter_TEXTAREA_is_unaffected(self, tmp_db, monkeypatch):
+        """Only the FILE variant changes — prose still drafts for a textarea."""
+        from engine.autofill import drafter
+
+        drafter.set_generator_for_tests(lambda q, c, p: "Dear team, ...")
+        job_id = seed_job("https://x.example/cover-letter-textarea")
+        field = dict(self._file_field(), tag="textarea", type="textarea")
+        # first pass schedules the draft and returns None
+        assert bc._value_for_tag("cover_letter", field, {}, job_id=job_id) is None
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and \
+                drafter.answer_for(job_id, "Cover letter") is None:
+            time.sleep(0.01)
+        assert drafter.answer_for(job_id, "Cover letter") == "Dear team, ..."

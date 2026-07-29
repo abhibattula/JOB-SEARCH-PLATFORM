@@ -811,3 +811,141 @@ class TestFillAgain016:
         ext_backend.handle_message(ext_protocol.FillAgain(tab_id=999))
         assert bc._state.handled[queue] == {("docA", "3"): "no_match"}
         assert not any(m["type"] == "rescan" for m in sent)
+
+
+class TestAnswerCapture017:
+    """017-T065 (D7, FR-045/FR-046): a question we refused becomes a question
+    the applicant answers ONCE.
+
+    Under the new refusal policy a real application leaves several questions
+    for the applicant. Capturing what they type — as THEIR answer — means the
+    manual effort decays across applications instead of repeating.
+    """
+
+    def _watching(self, tmp_db, monkeypatch, job_id=7):
+        sent = []
+        monkeypatch.setattr(ext_backend, "send", lambda payload: sent.append(payload))
+        with ext_backend._lock:
+            ext_backend._watch["tab_id"] = 11
+            ext_backend._watch["job_id"] = job_id
+        return sent
+
+    def test_the_answer_is_stored_as_the_applicants_own(self, tmp_db,
+                                                        monkeypatch):
+        from engine.autofill import answer_bank, ext_protocol
+
+        self._watching(tmp_db, monkeypatch)
+        ext_backend.handle_message(ext_protocol.AnswerQuestion(
+            tab_id=11, je_idx="31",
+            question="Have you ever applied to Akuna in the past?",
+            answer="No"))
+
+        row = answer_bank.lookup("Have you ever applied to Akuna in the past?")
+        assert row["answer"] == "No"
+        assert row["source"] == "user"
+
+    def test_it_survives_a_purge_of_model_written_answers(self, tmp_db,
+                                                          monkeypatch):
+        from engine.autofill import answer_bank, ext_protocol
+
+        self._watching(tmp_db, monkeypatch)
+        ext_backend.handle_message(ext_protocol.AnswerQuestion(
+            tab_id=11, question="Do you live in New York or California?",
+            answer="No"))
+
+        answer_bank.purge_model_written()
+
+        assert answer_bank.lookup(
+            "Do you live in New York or California?")["answer"] == "No"
+
+    def test_it_is_stored_verbatim(self, tmp_db, monkeypatch):
+        from engine.autofill import answer_bank, ext_protocol
+
+        self._watching(tmp_db, monkeypatch)
+        typed = "Yes — 2 weeks from the offer date"
+        ext_backend.handle_message(ext_protocol.AnswerQuestion(
+            tab_id=11, question="What is your notice period?", answer=typed))
+        assert answer_bank.lookup("What is your notice period?")["answer"] == \
+            typed
+
+    def test_the_refusal_is_cleared_and_a_rescan_requested(self, tmp_db,
+                                                           monkeypatch):
+        from engine.autofill import drafter, ext_protocol
+
+        sent = self._watching(tmp_db, monkeypatch)
+        drafter.mark_needs_you(7, "Any offer deadlines?", "never_generated")
+
+        ext_backend.handle_message(ext_protocol.AnswerQuestion(
+            tab_id=11, question="Any offer deadlines?", answer="No"))
+
+        assert drafter.get(7, "Any offer deadlines?") is None
+        assert any(p.get("type") == "rescan" for p in sent)
+
+    def test_an_empty_answer_is_ignored(self, tmp_db, monkeypatch):
+        from engine.autofill import answer_bank, ext_protocol
+
+        self._watching(tmp_db, monkeypatch)
+        ext_backend.handle_message(ext_protocol.AnswerQuestion(
+            tab_id=11, question="Any offer deadlines?", answer="   "))
+        assert answer_bank.lookup("Any offer deadlines?") is None
+
+    def test_a_message_from_another_tab_is_ignored(self, tmp_db, monkeypatch):
+        from engine.autofill import answer_bank, ext_protocol
+
+        self._watching(tmp_db, monkeypatch)
+        ext_backend.handle_message(ext_protocol.AnswerQuestion(
+            tab_id=999, question="Any offer deadlines?", answer="No"))
+        assert answer_bank.lookup("Any offer deadlines?") is None
+
+
+class TestApplyHere017:
+    """017-T070 (FR-038): the badge's Apply with Apply Assist saves the
+    posting and starts a NON-ad-hoc watch on that tab, so the session is tied
+    to a real job and the apply-opener is armed."""
+
+    def test_it_saves_the_posting_and_watches_the_tab(self, tmp_db,
+                                                      monkeypatch):
+        from engine import db
+        from engine.autofill import browser_controller, ext_protocol
+
+        sent = []
+        monkeypatch.setattr(ext_backend, "send", lambda p: sent.append(p))
+        started = {}
+        monkeypatch.setattr(browser_controller, "start_queue",
+                            lambda ids: started.setdefault("ids", ids))
+
+        ext_backend.handle_message(ext_protocol.ApplyHere(
+            tab_id=21, url="https://job-boards.greenhouse.io/akuna/jobs/6532",
+            title="Software Engineer (Entry-Level) - C++",
+            company="Akuna Capital", description="desc"))
+
+        row = db.get_job_by_url(
+            "https://job-boards.greenhouse.io/akuna/jobs/6532")
+        assert row is not None
+        assert row["status"] == "saved"
+        assert started["ids"] == [row["id"]]
+
+        watch = [p for p in sent if p.get("type") == "watch_start"]
+        assert watch and watch[0]["tab_id"] == 21
+        # a REAL job id, not the -2 ad-hoc sentinel
+        assert watch[0]["job_id"] == row["id"]
+        assert watch[0]["job_id"] > 0
+
+    def test_a_failure_to_start_is_surfaced_not_swallowed(self, tmp_db,
+                                                          monkeypatch):
+        from engine.autofill import browser_controller, ext_protocol
+
+        sent = []
+        monkeypatch.setattr(ext_backend, "send", lambda p: sent.append(p))
+
+        def boom(_ids):
+            raise RuntimeError("no browser")
+
+        monkeypatch.setattr(browser_controller, "start_queue", boom)
+
+        ext_backend.handle_message(ext_protocol.ApplyHere(
+            tab_id=21, url="https://x.example/apply-here-fail", title="T",
+            company="C"))
+
+        errors = [p for p in sent if p.get("type") == "error"]
+        assert errors and "no browser" in errors[0]["message"]

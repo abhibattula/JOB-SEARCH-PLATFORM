@@ -1,3 +1,5 @@
+import pytest
+
 """013/014: web-layer presentation helpers + app lifecycle."""
 from web.main import _humandate
 
@@ -357,3 +359,48 @@ def test_tailor_selftest_endpoint_reports_verdict(tmp_db, monkeypatch):
     assert body["completed"] is True
     assert body["parsed"] is False
     assert isinstance(body["isolated"], bool)
+
+
+class TestPracticeFixture017:
+    """017-T001/T002: the practice application reproduces the shapes that
+    failed on the live Akuna form, and reports enough for the E2E to prove
+    each defect is dead."""
+
+    @pytest.fixture()
+    def client(self, tmp_db):
+        from fastapi.testclient import TestClient
+
+        from web.main import create_app
+
+        return TestClient(create_app())
+
+    def test_it_carries_every_reported_shape(self, client):
+        body = client.get("/practice/apply").text
+        for marker in (
+            'id="their_name"',            # "please list THEIR name"
+            'id="phonetic_name"',         # "pronounced phonetically"
+            'id="work_auth_expiry"',      # free text asking WHEN it expires
+            'id="gender_select"',         # worded Man/Woman, not Male/Female
+            'id="country"',               # left blank on the live run
+            'name="pronouns"',            # checkbox group sharing one question
+            'class="select__control"',    # React-select wrapper
+            'class="select__input"',      # its nested search input
+        ):
+            assert marker in body, marker
+
+    def test_the_acknowledgement_is_the_binding_one(self, client):
+        body = client.get("/practice/apply").text
+        assert "will not be considered for other Tech" in body
+        assert "acknowledge that this role is my top" in body
+
+    def test_the_beacon_reports_what_the_e2e_must_assert(self, client):
+        body = client.get("/practice/apply").text
+        for key in ("resume_filename", "resume_size", "their_name",
+                    "phonetic_name", "work_auth_expiry", "country",
+                    "gender_value", "ack_typed", "pronouns_checked"):
+            assert key in body, key
+
+    def test_the_submit_control_is_still_only_practice(self, client):
+        body = client.get("/practice/apply").text
+        assert "only practice" in body
+        assert "/practice/submit-log" in body

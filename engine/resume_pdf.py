@@ -154,6 +154,44 @@ def _identity_from_profile(profile: dict) -> dict:
     }
 
 
+def cover_letter_path(job_id: int) -> Path:
+    """017 (FR-033): the job's cover letter as a FILE, cached beside the
+    tailored resume.
+
+    A cover-letter upload used to be handed drafted prose and pass it to
+    set_input_files as if it were a path. Cover letters were the one artifact
+    rendered per request and never persisted, so there was nothing to attach.
+    """
+    job = db.get_job(job_id)
+    if job is None:
+        raise KeyError(f"job {job_id} not found")
+    tailoring = {}
+    if job.get("tailor_json"):
+        try:
+            tailoring = json.loads(job["tailor_json"]) or {}
+        except (TypeError, ValueError):
+            tailoring = {}
+    letter = (tailoring.get("cover_letter") or "").strip()
+    if not letter:
+        raise ValueError("no cover letter for this job — run Tailor first")
+
+    profile = db.get_profile() or {}
+    out_dir = paths.data_dir() / "tailored"
+    out_dir.mkdir(parents=True, exist_ok=True)
+    pdf_path = out_dir / f"{job_id}-cover-letter.pdf"
+    fp_path = out_dir / f"{job_id}-cover-letter.fingerprint"
+    fingerprint = _fingerprint(letter, job.get("company") or "")
+
+    if not (pdf_path.exists() and fp_path.exists()
+            and fp_path.read_text(encoding="utf-8") == fingerprint):
+        data = render_cover_letter(
+            _identity_from_profile(profile), job.get("company") or "",
+            job.get("title") or "", letter)
+        pdf_path.write_bytes(data)
+        fp_path.write_text(fingerprint, encoding="utf-8")
+    return pdf_path
+
+
 def tailored_resume_path(job_id: int) -> Path:
     """Path to the job's tailored resume PDF, re-rendered transparently
     whenever the underlying sections or tailoring changed. Untailored jobs

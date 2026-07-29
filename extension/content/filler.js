@@ -117,11 +117,46 @@ window.jeFiller = (function () {
     safeClick(opt);
   }
 
-  async function attachFile(el, fileUrl) {
-    const resp = await fetch(fileUrl);
-    const blob = await resp.blob();
-    const name = (el.getAttribute("data-je-filename")) || "resume.pdf";
-    const file = new File([blob], name, { type: blob.type || "application/pdf" });
+  // 017 (C9, FR-029/FR-030): fetch the file through the SERVICE WORKER.
+  //
+  // This used to be a direct `fetch(fileUrl)` from the content script with
+  // the app's RELATIVE url, so it resolved against the job board. Greenhouse
+  // answers unknown paths with its SPA's HTML and status 200, which meant a
+  // `File` named resume.pdf containing an HTML page was attached and
+  // reported as filled. Making the url absolute does not help either: MV3
+  // content-script fetches carry the page's origin and the app sets no CORS
+  // headers. The service worker holds host_permissions for 127.0.0.1, and
+  // main.js has always stated that content scripts must not hit loopback.
+  //
+  // Nothing is attached unless the bytes look like the document we asked for.
+  function decodeBase64(b64) {
+    const binary = atob(b64);
+    const bytes = new Uint8Array(binary.length);
+    for (let i = 0; i < binary.length; i += 1) { bytes[i] = binary.charCodeAt(i); }
+    return bytes;
+  }
+
+  function looksLikeExpectedDocument(bytes, mime) {
+    if (!bytes || !bytes.length) { return false; }
+    if ((mime || "").indexOf("pdf") === -1) { return true; }
+    // "%PDF" — an HTML error body fails here, which is the whole point.
+    return bytes[0] === 0x25 && bytes[1] === 0x50 &&
+      bytes[2] === 0x44 && bytes[3] === 0x46;
+  }
+
+  async function attachFile(el, fileUrl, filename, mime) {
+    const reply = await chrome.runtime.sendMessage(
+      { _je_file: true, path: fileUrl });
+    if (!reply || !reply.ok) {
+      throw new Error("file unavailable: " + ((reply && reply.error) || "no reply"));
+    }
+    const bytes = decodeBase64(reply.bytes);
+    const type = mime || reply.mime || "application/pdf";
+    if (!looksLikeExpectedDocument(bytes, type)) {
+      throw new Error("fetched content is not the expected document");
+    }
+    const name = filename || reply.name || "resume.pdf";
+    const file = new File([bytes], name, { type: type });
     const dt = new DataTransfer();
     dt.items.add(file);
     el.files = dt.files;
@@ -184,7 +219,7 @@ window.jeFiller = (function () {
     }
     try {
       if (item.kind === "file") {
-        await attachFile(el, item.file_url);
+        await attachFile(el, item.file_url, item.filename, item.mime);
       } else if (item.kind === "select") {
         selectByLabel(el, item.option_label);
       } else if (item.kind === "combobox") {

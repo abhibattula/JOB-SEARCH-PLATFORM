@@ -44,6 +44,26 @@ def preflight():
     return _last_preflight
 
 
+@router.post("/apply/{job_id}")
+def apply_with_assist(job_id: int):
+    """017 (FR-040): start Apply Assist for ONE job, from that job.
+
+    Until now the only way in was the Apply Assist page, which lists only
+    jobs that are already saved AND passed the entry-level filter — so a job
+    you were looking at could not be filled without a detour. Saves the job
+    first (a job you are applying to is a job you saved) and then starts the
+    normal single-job queue.
+    """
+    from engine import db
+
+    job = db.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="unknown job")
+    if job.get("status") not in ("saved", "applied"):
+        db.set_status(job_id, "saved")
+    return start_queue(QueueRequest(job_ids=[job_id]))
+
+
 @router.post("/queue")
 def start_queue(body: QueueRequest):
     global _last_preflight
@@ -280,6 +300,26 @@ def list_answer_bank():
     from engine.autofill import answer_bank
 
     return {"entries": answer_bank.list_all()}
+
+
+@router.get("/answers/learned")
+def learned_answer_counts():
+    """017 (FR-011): what a purge would remove, shown before confirming."""
+    from engine.autofill import answer_bank, drafts
+
+    return {"answers": answer_bank.count_model_written(),
+            "drafts": drafts.count_unconfirmed()}
+
+
+@router.post("/answers/purge")
+def purge_learned_answers():
+    """017 (FR-011/FR-046): remove every answer the MODEL wrote. Answers the
+    applicant typed themselves — source 'user' or 'confirmed', including
+    everything captured from the on-page panel — are never touched."""
+    from engine.autofill import answer_bank, drafts
+
+    return {"removed_answers": answer_bank.purge_model_written(),
+            "removed_drafts": drafts.purge_unconfirmed()}
 
 
 @router.delete("/answers/{bank_id}")

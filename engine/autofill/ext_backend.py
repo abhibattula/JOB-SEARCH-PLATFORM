@@ -282,7 +282,47 @@ def handle_message(msg) -> None:
         _handle_scan_error(msg)
     elif isinstance(msg, ext_protocol.FillAgain):
         _handle_fill_again(msg)
+    elif isinstance(msg, ext_protocol.AnswerQuestion):
+        _handle_answer_question(msg)
+    elif isinstance(msg, ext_protocol.ApplyHere):
+        _handle_apply_here(msg)
     # Pong: heartbeat only (touch() above)
+
+
+def _handle_answer_question(msg) -> None:
+    """017 (D7, FR-045/FR-046): the applicant answered, in the panel, a
+    question we declined to answer.
+
+    Stored as THEIR answer — source 'user', never 'ai' — so it fills this
+    field now, fills every future application that asks the same thing, and
+    survives a purge of model-written answers. Stored verbatim: the app does
+    not rewrite, expand or "improve" what they typed.
+    """
+    from . import answer_bank, browser_controller as bc, drafter
+
+    question = (msg.question or "").strip()
+    answer = (msg.answer or "").strip()
+    if not question or not answer:
+        return
+    with _lock:
+        if msg.tab_id != _watch["tab_id"]:
+            return
+        job_id = _watch["job_id"]
+    try:
+        answer_bank.save(question, answer)
+    except Exception:  # noqa: BLE001 — never lose the fill over a bank write
+        log.warning("answer capture failed to save", exc_info=True)
+    if job_id is not None:
+        # Drop the refusal record and re-open the field so the next scan
+        # fills it from the bank.
+        drafter.clear(job_id, question)
+        with bc._lock:
+            ledger = bc._state.handled.get(job_id) or {}
+            for lkey in [k for k, v in list(ledger.items())
+                         if (v[0] if isinstance(v, tuple) else v)
+                         != "skipped_existing"]:
+                del ledger[lkey]
+    send(_outbound("rescan", reason="user_rescan"))
 
 
 def _handle_fill_again(msg) -> None:
@@ -306,6 +346,17 @@ def _handle_fill_again(msg) -> None:
             del ledger[lkey]
     drafter.reset_backoff_for_job(job_id)
     send(_outbound("rescan", reason="fill_again"))
+
+
+def _member_je_idx(raw: dict, label: str | None) -> str | None:
+    """017: the je_idx of the group member carrying `label`, or None."""
+    from . import drafter
+
+    wanted = drafter.normalize_question(label or "")
+    for member in raw.get("members") or []:
+        if drafter.normalize_question(member.get("label") or "") == wanted:
+            return member.get("je_idx")
+    return None
 
 
 def _handle_scan_error(msg) -> None:
@@ -392,8 +443,15 @@ def _handle_fields(msg) -> None:
 
     needs_you_idx: list[str] = []
     needs_you_labels: list[str] = []
-    for desc in msg.descriptors:
-        raw = desc.as_watcher_dict()
+    # 017 (FR-017): first-vs-full name is a document-level question — a
+    # "Name" box sitting beside "Last name" is the FIRST name, which no
+    # single-descriptor classifier can see.
+    raws = [desc.as_watcher_dict() for desc in msg.descriptors]
+    name_overrides = field_core.name_layout(raws, ats)
+    for raw in raws:
+        override = name_overrides.get(raw.get("je_idx"))
+        if override:
+            raw["tag_override"] = override
         fkey = (msg.tab_id, msg.frame_id, raw["je_idx"])
         with _lock:
             info = _inflight.get(fkey)
@@ -426,8 +484,18 @@ def _handle_fields(msg) -> None:
         item: dict = {"je_idx": raw["je_idx"], "flag": None}
         if decision.kind == "file":
             token = issue_file_token(str(decision.value))
+            # 017 (FR-031): send the real name and the expected type so the
+            # upload arrives as the applicant's own file and the companion
+            # can verify what it fetched before attaching it.
+            import mimetypes
+            import os
+
+            path = str(decision.value)
+            filename = os.path.basename(path.replace("\\", "/")) or "resume.pdf"
+            mime = mimetypes.guess_type(filename)[0] or "application/pdf"
             item.update(kind="file", value="",
-                        file_url=f"/api/bridge/file/{token}")
+                        file_url=f"/api/bridge/file/{token}",
+                        filename=filename, mime=mime)
         elif decision.secret:
             item.update(kind="secret", value=str(decision.value))
         elif decision.kind == "select":
@@ -455,6 +523,15 @@ def _handle_fields(msg) -> None:
                         option_label=decision.option_label)
         elif decision.kind == "checkbox":
             item.update(kind="checkbox", value="on")
+            # 017 (C8): a merged checkbox group is one logical field but the
+            # tick lands on a MEMBER. Re-address the item to that member's
+            # je_idx; the kind stays the ordinary "checkbox" an older
+            # companion already understands, so no version gate is needed.
+            if (raw.get("type") or "") == "checkbox_group":
+                member_idx = _member_je_idx(raw, decision.option_label)
+                if member_idx is None:
+                    continue
+                item["je_idx"] = member_idx
         else:
             item.update(kind="text", value=str(decision.value))
         if decision.ai_draft:
@@ -499,6 +576,22 @@ def _handle_fields(msg) -> None:
         "attention": needs_you_labels[:5],
         "message": "you click the actual apply/submit",
     }))
+
+    # 017 (FR-034): the FULL answer text goes to the page, including the
+    # questions we refused. Before this the page only ever received a count
+    # ("N AI draft(s) — review in the app"), so an answer that was drafted
+    # but not filled could not be read at all without leaving the tab.
+    job_id = _watch["job_id"]
+    if job_id is not None:
+        items = drafter.answers_for_page(job_id)
+        truncated = False
+        # Stay well inside MAX_MESSAGE_BYTES on a very large form; the app's
+        # own view stays complete either way (FR-049).
+        while len(items) > 1 and len(str(items)) > 400_000:
+            items.pop()
+            truncated = True
+        send(_outbound("answers", tab_id=msg.tab_id, job_id=job_id,
+                       items=items, truncated=truncated))
 
 
 def _handle_fill_result(msg) -> None:
@@ -697,6 +790,48 @@ def _handle_save_job(msg) -> None:
     already = status != "inserted"
     send(_outbound("save_result", tab_id=msg.tab_id, status=status,
                    job_id=job_id, already=already))
+
+
+def _handle_apply_here(msg) -> None:
+    """017 (FR-038): the floating badge's Apply with Apply Assist.
+
+    Saves the posting the applicant is looking at, then starts a watched
+    session on THAT tab with the real job id — a non-ad-hoc watch, so the
+    apply-opener is armed and the session is tied to a real job rather than
+    the -2 sentinel. It starts a fill session and nothing else: no control on
+    the page is clicked, here or anywhere in this path.
+    """
+    from .. import db
+
+    db.upsert_job({
+        "title": msg.title,
+        "company": msg.company,
+        "url": msg.url,
+        "description": (msg.description or "")[:_DISCOVERY_DESC_MAX],
+        "source": "manual",
+        "posted_date": None,
+    })
+    row = db.get_job_by_url(msg.url)
+    if row is None:
+        send(_outbound("error", code="unknown_job",
+                       message="Couldn't save this posting — open it from the app instead."))
+        return
+    job_id = row["id"]
+    if row.get("status") not in ("saved", "applied"):
+        db.set_status(job_id, "saved")
+
+    from . import browser_controller as bc
+
+    try:
+        bc.start_queue([job_id])
+    except Exception as exc:  # noqa: BLE001 — surface, never crash the bridge
+        log.warning("apply_here failed to start", exc_info=True)
+        send(_outbound("error", code="start_failed", message=str(exc)[:200]))
+        return
+    with _lock:
+        _watch["tab_id"] = msg.tab_id
+        _watch["job_id"] = job_id
+    send(_outbound("watch_start", tab_id=msg.tab_id, job_id=job_id))
 
 
 def reset_for_tests() -> None:

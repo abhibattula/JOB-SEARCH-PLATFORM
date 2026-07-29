@@ -214,6 +214,49 @@ _MIGRATIONS = {
         # 008: profile-driven search + semantic ranking
         ("search_terms", "TEXT"),
         ("resume_embedding", "BLOB"),
+        # 017: a profile that can answer a real application
+        ("preferred_name", "TEXT"),
+        ("middle_name", "TEXT"),
+        ("pronouns", "TEXT"),
+        ("address_line1", "TEXT"),
+        ("address_line2", "TEXT"),
+        ("city", "TEXT"),
+        ("state_region", "TEXT"),
+        ("postal_code", "TEXT"),
+        ("country", "TEXT"),
+        ("current_location", "TEXT"),
+        ("work_auth_type", "TEXT"),
+        ("work_auth_expiry", "TEXT"),
+        ("work_auth_extensions", "TEXT"),
+        ("sponsorship_future", "TEXT"),
+        ("sponsorship_detail", "TEXT"),
+        ("desired_salary", "TEXT"),
+        ("earliest_start_date", "TEXT"),
+        ("notice_period", "TEXT"),
+        ("willing_to_relocate", "TEXT"),
+        ("remote_preference", "TEXT"),
+        ("willing_to_travel", "TEXT"),
+        ("years_experience", "TEXT"),
+        ("current_employer", "TEXT"),
+        ("current_title", "TEXT"),
+        ("highest_education", "TEXT"),
+        ("graduation_month", "TEXT"),
+        ("graduation_year", "TEXT"),
+        ("gpa", "TEXT"),
+        ("github_url", "TEXT"),
+        ("other_url", "TEXT"),
+        ("how_heard_default", "TEXT"),
+        ("selfid_gender", "TEXT"),
+        ("selfid_race", "TEXT"),
+        ("selfid_veteran", "TEXT"),
+        ("selfid_disability", "TEXT"),
+        ("selfid_orientation", "TEXT"),
+        ("target_titles", "TEXT"),
+    ],
+    # 017: one row per (job, question) + when it was last refreshed
+    "ai_drafts": [
+        ("question_normalized", "TEXT"),
+        ("updated_at", "TEXT"),
     ],
     # 010: AI draft provenance rides answer_bank.source ('user'|'confirmed'|
     # 'auto_saved'); these columns record when/where a draft originated
@@ -280,6 +323,40 @@ def _apply_migrations(conn: sqlite3.Connection) -> None:
     # 008 backfill: existing rows were last confirmed at their first ingest
     conn.execute("UPDATE jobs SET last_seen_at = first_seen WHERE last_seen_at IS NULL")
     conn.execute("UPDATE jobs SET delisted = 0 WHERE delisted IS NULL")
+    _repair_ai_drafts(conn)
+
+
+def _repair_ai_drafts(conn: sqlite3.Connection) -> None:
+    """017 (FR-005): collapse ai_drafts to one row per (job, question).
+
+    `record` used to INSERT unconditionally, so every re-run of a job added
+    another row for the same question. A real install carried 170 rows for
+    ~30 questions of a single job, and the review block rendered all of them
+    on every 3-second poll — which is what made the page unscrollable and put
+    Stop out of reach.
+
+    Idempotent, so it runs on every init. The SQL normalisation is a coarser
+    `lower(trim(...))` than `drafter.normalize_question`; that only affects
+    legacy rows, and any survivor is re-normalised the next time its question
+    is answered.
+    """
+    # Drop first: backfilling normalised values onto legacy rows makes
+    # duplicates collide, and the index from a previous repair would reject
+    # the very UPDATE that lets us dedupe them.
+    conn.execute("DROP INDEX IF EXISTS idx_ai_drafts_job_question")
+    conn.execute(
+        "UPDATE ai_drafts SET question_normalized = lower(trim(question))"
+        " WHERE question_normalized IS NULL OR question_normalized = ''"
+    )
+    conn.execute(
+        "DELETE FROM ai_drafts WHERE id NOT IN ("
+        "  SELECT MAX(id) FROM ai_drafts"
+        "  GROUP BY COALESCE(job_id, -1), question_normalized)"
+    )
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_drafts_job_question"
+        " ON ai_drafts(job_id, question_normalized)"
+    )
 
 
 def _backup_db(path: Path) -> Path:
@@ -1138,6 +1215,9 @@ def _force_run_started_at(run_id: int, started_at: str) -> None:
 _PROFILE_JSON_FIELDS = (
     "skills", "target_locations", "preferences", "resume_sections",
     "search_terms",  # 008: {"terms": [...], "derived_from": ..., "updated_at": ...}
+    "target_titles",  # 017: proposed by the resume importer since 008 and
+                      # silently dropped until now — it was in neither
+                      # _PROFILE_COLUMNS nor this list
 )
 # Single source of truth for save_profile()'s INSERT/UPDATE — every
 # user_profile column except id/updated_at (which are handled specially).
@@ -1150,6 +1230,21 @@ _PROFILE_COLUMNS = (
     "resume_file_path", "resume_sections", "sections_edited_at",
     "search_terms",  # 008: profile-driven search
     "resume_embedding",  # 008: semantic pre-ranking (BLOB, not JSON)
+    # 017: identity, address, work-auth detail, preferences,
+    # experience facts, links and voluntary self-identification.
+    "preferred_name", "middle_name", "pronouns",
+    "address_line1", "address_line2", "city",
+    "state_region", "postal_code", "country",
+    "current_location", "work_auth_type", "work_auth_expiry",
+    "work_auth_extensions", "sponsorship_future", "sponsorship_detail",
+    "desired_salary", "earliest_start_date", "notice_period",
+    "willing_to_relocate", "remote_preference", "willing_to_travel",
+    "years_experience", "current_employer", "current_title",
+    "highest_education", "graduation_month", "graduation_year",
+    "gpa", "github_url", "other_url",
+    "how_heard_default", "selfid_gender", "selfid_race",
+    "selfid_veteran", "selfid_disability", "selfid_orientation",
+    "target_titles",
 )
 
 

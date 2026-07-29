@@ -167,6 +167,29 @@ class FillAgain(_Strict):
     tab_id: int
 
 
+class AnswerQuestion(_Strict):
+    """017 (D7, FR-045): the applicant typed an answer in the on-page panel
+    for a question the system declined to answer. Stored as THEIR answer
+    (source 'user', FR-046) so it fills this field now and every future
+    application that asks the same thing — and so a purge of AI-written
+    answers can never remove it."""
+    tab_id: int
+    je_idx: str = ""
+    question: str
+    answer: str
+
+
+class ApplyHere(_Strict):
+    """017 (FR-038): the floating badge's Apply with Apply Assist. The app
+    upserts the posting and starts a watched, non-ad-hoc session on THIS tab.
+    It starts a fill session and nothing else — no page control is clicked."""
+    tab_id: int
+    url: str
+    title: str = ""
+    company: str = ""
+    description: str = ""
+
+
 _INBOUND: dict[str, type[_Strict]] = {
     "hello": Hello,
     "tab_opened": TabOpened,
@@ -180,6 +203,8 @@ _INBOUND: dict[str, type[_Strict]] = {
     "scan_error": ScanError,
     "child_tab": ChildTab,
     "fill_again": FillAgain,
+    "answer_question": AnswerQuestion,
+    "apply_here": ApplyHere,
 }
 
 
@@ -213,6 +238,13 @@ class FillItem(_Strict):
     value: str = ""
     option_label: str | None = None
     file_url: str | None = None
+    # 017 (FR-031, additive — PROTOCOL_V stays 1): the file's REAL name and
+    # expected type. attachFile used to read a `data-je-filename` attribute
+    # that nothing ever wrote, so every upload arrived as "resume.pdf"; and
+    # with no expected type there was nothing to verify the bytes against.
+    # Older companions ignore both fields.
+    filename: str | None = None
+    mime: str | None = None
     # 016: "needs_you" marks an unfilled field for the on-page highlight.
     flag: Literal["ai_draft", "needs_you"] | None = None
 

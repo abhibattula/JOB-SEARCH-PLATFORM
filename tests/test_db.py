@@ -727,3 +727,42 @@ class TestEmployerCache016:
         monkeypatch.setenv("JOBS_DB_PATH", str(tmp_path / "two.db"))
         db.init_db()
         assert db.load_h1b_employers() == {}  # no stale carry-over
+
+
+class TestProfileRoundTrip017:
+    """017-T039: every column the profile claims to store must actually save
+    and reload. `target_titles` did not — the resume importer proposed it and
+    save_profile silently dropped it, because it was missing from
+    _PROFILE_COLUMNS."""
+
+    def test_every_profile_column_round_trips(self, tmp_db):
+        values = {}
+        for column in db._PROFILE_COLUMNS:
+            if column == "resume_embedding":
+                continue  # BLOB, exercised by the semantic tests
+            if column in ("skills", "target_locations", "target_titles"):
+                values[column] = ["one", "two"]
+            elif column in ("preferences", "search_terms"):
+                values[column] = {"k": "v"}
+            else:
+                values[column] = f"value-for-{column}"
+
+        db.save_profile(**values)
+        stored = db.get_profile()
+
+        missing = [c for c, v in values.items() if stored.get(c) != v]
+        assert missing == [], f"columns did not round-trip: {missing}"
+
+    def test_target_titles_is_persisted(self, tmp_db):
+        """The specific latent bug, pinned on its own."""
+        db.save_profile(target_titles=["Embedded Systems Engineer"])
+        assert db.get_profile()["target_titles"] == \
+            ["Embedded Systems Engineer"]
+
+    def test_the_new_017_columns_default_to_blank_not_missing(self, tmp_db):
+        db.save_profile(first_name="Abhinav")
+        stored = db.get_profile()
+        for column in ("city", "country", "work_auth_expiry", "selfid_gender",
+                       "preferred_name", "gpa"):
+            assert column in stored, column
+            assert not stored[column]

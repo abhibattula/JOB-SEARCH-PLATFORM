@@ -51,6 +51,26 @@
     {% endif %}
   </div>
 
+  {# 017 (FR-009): the controls live at the TOP and stick to the viewport.
+     On the 2026-07-28 run a 91-field form plus 170 review rows pushed Stop
+     so far down the page that it could not be reached at all. #}
+  <div class="settings-actions autofill-controls" id="autofill-controls">
+    <button hx-post="/api/autofill/next" hx-swap="none" data-toast="Next application"
+            hx-on::after-request="htmx.trigger('#autofill-queue','load')">
+      Done, next application
+    </button>
+    <button class="ghost" hx-post="/api/autofill/rescan" hx-swap="none"
+            data-toast="Page re-scanned"
+            title="Re-read and fill this page — useful when the site redrew its form without navigating"
+            hx-on::after-request="htmx.trigger('#autofill-queue','load')">
+      Re-scan this page
+    </button>
+    <button class="ghost" hx-post="/api/autofill/stop" hx-swap="none" data-toast="Stopped"
+            hx-on::after-request="htmx.trigger('#autofill-queue','load')">
+      Stop
+    </button>
+  </div>
+
   {# 013 (FR-004) → 015 (D2/FR-012/FR-013): the active fill path is ALWAYS
      stated — the signed-out assistant window is a loud warning with a
      connect link, never a silent surprise. #}
@@ -125,7 +145,11 @@
           <td class="data">
             {%- if entry.ai_draft and entry.outcome == 'filled' -%}✎ AI draft — review
             {%- elif entry.outcome == 'filled' -%}✓ filled
-            {%- elif entry.outcome == 'needs_manual' -%}⚠ attach manually
+            {#- 017 (FR-018): say what the field actually is. Every failure
+                used to read "attach manually", including dropdowns. -#}
+            {%- elif entry.outcome == 'needs_manual' and entry.tag == 'resume_upload' -%}⚠ attach it yourself
+            {%- elif entry.outcome == 'needs_manual' and entry.tag == 'cover_letter' -%}⚠ attach it yourself
+            {%- elif entry.outcome == 'needs_manual' -%}⚠ answer it on the page
             {%- elif entry.outcome == 'skipped_existing' -%}· kept your value
             {%- elif entry.outcome == 'no_match' -%}· no matching option
             {%- elif entry.outcome == 'paused' -%}▸ awaiting your answer
@@ -145,7 +169,14 @@
     <p class="muted">These answers were drafted from your resume and filled
       into the form, flagged for you. Edit and confirm to save them for
       reuse — nothing is submitted until you click the site's submit button.</p>
-    {% for d in drafts %}
+    {# 017 (FR-010): bounded. An unbounded list re-rendered every 3 seconds is
+       what made this page unusable. #}
+    {% if drafts | length > 20 %}
+    <p class="muted">Showing the 20 most recent. Confirm or discard them, or
+      use <strong>Reset learned answers</strong> on the Profile page to clear
+      drafts left by earlier runs.</p>
+    {% endif %}
+    {% for d in drafts[:20] %}
     <form class="ai-draft" data-draft-id="{{ d.id }}"
           onsubmit="return confirmDraft(event, {{ d.id }})">
       <label class="muted">{{ d.question }}</label>
@@ -184,6 +215,62 @@
     any corrections, and click the site's own submit button yourself. When
     you're done (or want to skip this one), click below.</p>
 
+  {# 017 (FR-047): the SAME answers the on-page panel shows. That panel is
+     companion-only, so without this the assistant-window fallback leaves the
+     applicant with no way to read them — or to answer the ones we declined. #}
+  {% if current.answers %}
+  <div class="answers-review" id="answers-review">
+    <h3>Answers on this application</h3>
+    <ul class="answer-list">
+      {% for item in current.answers %}
+      <li class="answer-item" data-state="{{ item.state }}">
+        <p class="q">{{ item.question }}</p>
+        {% if item.answer %}
+        <p class="a copy-block" onclick="copyText(this.innerText)"
+           title="Click to copy">{{ item.answer }}</p>
+        {% elif item.state == 'drafting' %}
+        <p class="a muted">drafting…</p>
+        {% endif %}
+        {% if item.askable %}
+        <p class="muted why">
+          {%- if item.reason == 'binding_commitment' -%}
+          This one commits you to something — your call, not ours.
+          {%- elif item.reason in ('never_generated', 'cannot_answer') -%}
+          Only you know this one.
+          {%- elif item.reason == 'profile_fact_missing' -%}
+          Add it to your <a href="/profile">profile</a> and it fills next time.
+          {%- else -%}
+          No option here matched your stored answer.
+          {%- endif -%}
+        </p>
+        <form class="answer-capture" data-question="{{ item.question }}"
+              onsubmit="return captureAnswer(event, this)">
+          <input type="text" name="answer" placeholder="Your answer — saved for next time">
+          <button type="submit">Save</button>
+        </form>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    <script>
+      async function captureAnswer(evt, form) {
+        evt.preventDefault();
+        const answer = form.answer.value.trim();
+        if (!answer) { return false; }
+        form.querySelector("button").disabled = true;
+        await fetch('/api/autofill/answers/confirm', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({question_raw: form.dataset.question,
+                                answer: answer}),
+        });
+        htmx.trigger('#autofill-queue', 'load');
+        return false;
+      }
+    </script>
+  </div>
+  {% endif %}
+
   {% if current.activity %}
   <div class="autofill-activity" id="autofill-activity-log">
     <p><strong>Question activity</strong> <span class="muted">— everything
@@ -213,22 +300,8 @@
   </div>
   {% endif %}
 
-  <div class="settings-actions">
-    <button hx-post="/api/autofill/next" hx-swap="none" data-toast="Next application"
-            hx-on::after-request="htmx.trigger('#autofill-queue','load')">
-      Done, next application
-    </button>
-    <button class="ghost" hx-post="/api/autofill/rescan" hx-swap="none"
-            data-toast="Page re-scanned"
-            title="Re-read and fill this page — useful when the site redrew its form without navigating"
-            hx-on::after-request="htmx.trigger('#autofill-queue','load')">
-      Re-scan this page
-    </button>
-    <button class="ghost" hx-post="/api/autofill/stop" hx-swap="none" data-toast="Stopped"
-            hx-on::after-request="htmx.trigger('#autofill-queue','load')">
-      Stop
-    </button>
-  </div>
+  {# 017: the controls now live at the top of this panel (sticky) so they are
+     reachable at any form size — see #autofill-controls above. #}
 </div>
 {% elif snapshot and snapshot.summary %}
 <div class="mission-panel">

@@ -386,3 +386,151 @@ class TestPanelAndHighlights016:
         js = (EXT / "content" / "main.js").read_text(encoding="utf-8")
         assert '"fill_again"' in js
         assert "needs_you_idx" in js
+
+
+class TestResumeTransport017:
+    """017-T053 (C9, FR-029/FR-030): the resume is fetched through the
+    service worker and verified before it is attached.
+
+    The content script used to fetch the app's RELATIVE url directly, so it
+    resolved against the job board. Greenhouse answers unknown paths with its
+    SPA's HTML and status 200 — meaning a File named resume.pdf containing an
+    HTML page was attached and reported as filled.
+    """
+
+    def test_the_content_script_no_longer_fetches_the_file_itself(self):
+        source = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
+        attach = source[source.index("async function attachFile"):]
+        attach = attach[:attach.index("\n  }")]
+        assert "fetch(" not in attach, \
+            "attachFile must go through the service worker, not fetch directly"
+        assert "_je_file" in attach
+
+    def test_the_service_worker_resolves_against_loopback(self):
+        source = (EXT / "background" / "service-worker.js").read_text(
+            encoding="utf-8")
+        assert "_je_file" in source
+        assert 'http://127.0.0.1:' in source
+        assert "readPairing" in source
+
+    def test_the_bytes_are_verified_before_attaching(self):
+        source = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
+        assert "looksLikeExpectedDocument" in source
+        # "%PDF" magic bytes — an HTML error body fails this check
+        for byte in ("0x25", "0x50", "0x44", "0x46"):
+            assert byte in source, byte
+
+    def test_the_dead_filename_attribute_lookup_is_gone(self):
+        source = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
+        assert "data-je-filename" not in source, \
+            "nothing ever wrote this attribute; the name now arrives on the item"
+
+    def test_the_real_filename_is_used(self):
+        source = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
+        assert "item.filename" in source
+
+
+class TestRescanHandled017:
+    """017-T062 (C12, FR-037): `rescan` was a dead protocol slot.
+
+    The app has sent it from three call sites since 016 — draft-ready pushes,
+    the panel's Fill again, and POST /api/autofill/rescan — and nothing ever
+    handled it, so every one of them waited on the 2-second safety poll.
+    """
+
+    def test_the_service_worker_handles_it(self):
+        source = (EXT / "background" / "service-worker.js").read_text(
+            encoding="utf-8")
+        assert 'case "rescan":' in source
+
+    def test_the_content_script_handles_it(self):
+        source = (EXT / "content" / "main.js").read_text(encoding="utf-8")
+        assert 'case "rescan":' in source
+
+    def test_it_only_rescans_and_touches_no_state(self):
+        source = (EXT / "content" / "main.js").read_text(encoding="utf-8")
+        body = source[source.index('case "rescan":'):]
+        body = body[:body.index("break;")]
+        assert "scan()" in body
+        for forbidden in ("teardown", "adhoc =", "startWatch"):
+            assert forbidden not in body, forbidden
+
+
+class TestPanelIsTheReviewSurface017:
+    """017-T064 (FR-034/FR-035/FR-036/FR-045): the panel shows the answers.
+
+    Before this it showed a COUNT — "N AI draft(s) — review in the app" — so
+    an answer that was drafted but not filled could not be read without
+    leaving the tab. The report was exactly that: "i am unable to see the
+    drafted responses".
+    """
+
+    def panel(self):
+        return (EXT / "content" / "overlay.js").read_text(encoding="utf-8")
+
+    def test_the_shadow_root_is_open_so_the_e2e_can_assert_it(self):
+        assert 'attachShadow({ mode: "open" })' in self.panel()
+
+    def test_it_renders_answers_with_copy_and_insert(self):
+        source = self.panel()
+        assert "setAnswers" in source
+        assert "clipboard.writeText" in source
+        assert "Insert" in source
+
+    def test_it_offers_an_input_for_questions_we_refused(self):
+        source = self.panel()
+        assert "askable" in source
+        assert "onAnswer" in source
+
+    def test_it_still_keeps_the_016_guarantees(self):
+        source = self.panel()
+        for required in ("Fill again", "onFillAgain", "note", "attention"):
+            assert required in source or required == "attention", required
+        assert "You click apply / submit" in source
+
+    def test_it_never_clicks_anything_on_the_page(self):
+        """The panel's own buttons use addEventListener; it must not invoke
+        .click() on any element."""
+        source = self.panel()
+        assert ".click(" not in source
+
+    def test_answer_text_is_never_injected_as_html(self):
+        """Answers come from a model and from form labels — they go in as
+        textContent, never innerHTML."""
+        source = self.panel()
+        body = source[source.index("function renderRow"):]
+        assert ".innerHTML" not in body
+
+    def test_the_content_script_relays_the_capture_and_the_feed(self):
+        source = (EXT / "content" / "main.js").read_text(encoding="utf-8")
+        assert 'case "answers":' in source
+        assert "answer_question" in source
+
+    def test_the_service_worker_routes_answers_to_the_top_frame(self):
+        source = (EXT / "background" / "service-worker.js").read_text(
+            encoding="utf-8")
+        assert 'case "answers":' in source
+
+
+class TestBadgeLauncher017:
+    """017-T070 (D4, FR-038/FR-039): the badge that already shows a match
+    score becomes the launcher — one floating widget, not two."""
+
+    def badge(self):
+        return (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
+
+    def test_it_offers_apply_with_apply_assist(self):
+        assert "Apply with Apply Assist" in self.badge()
+        assert "apply_here" in self.badge()
+
+    def test_it_opens_the_existing_panel_rather_than_a_second_widget(self):
+        source = self.badge()
+        assert "window.jeOverlay" in source
+
+    def test_it_still_mutates_nothing_on_the_page(self):
+        """The 012 read-only guarantee is unchanged: the badge sends
+        messages and renders its own shadow DOM, and that is all."""
+        source = self.badge()
+        assert ".click(" not in source
+        assert ".submit(" not in source
+        assert "dispatchEvent" not in source

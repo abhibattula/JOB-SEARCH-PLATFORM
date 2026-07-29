@@ -1170,3 +1170,67 @@ class Test013FeedPolish:
         job = seed_job()
         html = client.get(f"/jobs/{job['id']}").text
         assert 'class="back"' in html
+
+
+class TestProfile017Fields:
+    """017-T046 (FR-019): the new profile fields save and reload through the
+    real form POST, and the page renders them."""
+
+    FIELDS = {
+        "preferred_name": "Abhi", "middle_name": "K", "pronouns": "He/him",
+        "address_line1": "1 Main St", "city": "Arlington",
+        "state_region": "TX", "postal_code": "76010",
+        "country": "United States", "current_location": "Arlington, TX, USA",
+        "work_auth_type": "F-1 STEM OPT", "work_auth_expiry": "2027-06-30",
+        "work_auth_extensions": "24-month STEM extension",
+        "sponsorship_future": "yes",
+        "sponsorship_detail": "Will require H-1B in 2027",
+        "desired_salary": "120000", "earliest_start_date": "2026-01-05",
+        "notice_period": "2 weeks", "willing_to_relocate": "yes",
+        "remote_preference": "Hybrid", "willing_to_travel": "no",
+        "years_experience": "2", "current_employer": "Acme",
+        "current_title": "Embedded Systems Intern",
+        "highest_education": "Master's", "graduation_month": "December",
+        "graduation_year": "2025", "gpa": "3.2",
+        "github_url": "https://github.com/x", "other_url": "https://x.dev",
+        "how_heard_default": "Company website",
+        "selfid_gender": "Man", "selfid_race": "Asian",
+        "selfid_veteran": "Not a protected veteran",
+        "selfid_disability": "No", "selfid_orientation": "Straight",
+    }
+
+    def test_every_new_field_round_trips_through_the_form(self, client):
+        resp = client.post("/api/profile", data=self.FIELDS)
+        assert resp.status_code == 200
+
+        stored = client.get("/api/profile").json()
+        missing = {k: v for k, v in self.FIELDS.items() if stored.get(k) != v}
+        assert missing == {}
+
+    def test_the_profile_page_renders_the_new_sections(self, client):
+        body = client.get("/profile").text
+        for name in ("work_auth_expiry", "selfid_gender", "current_location",
+                     "graduation_year", "remote_preference"):
+            assert f'name="{name}"' in body, name
+
+    def test_self_identification_is_described_as_voluntary_and_local(
+            self, client):
+        body = client.get("/profile").text
+        assert "Voluntary self-identification" in body
+        assert "sent to any AI" in body
+        assert "stored only on this machine" in body
+
+    def test_the_resolver_answers_from_what_the_form_saved(self, client):
+        from engine import db
+        from engine.autofill import profile_answers
+
+        client.post("/api/profile", data=self.FIELDS)
+        profile = db.get_profile()
+
+        assert profile_answers.answer_for("work_auth_expiry", profile) == \
+            "2027-06-30"
+        assert profile_answers.answer_for("location_country", profile) == \
+            "United States"
+        assert profile_answers.answer_for("selfid_gender", profile) == "Man"
+        assert profile_answers.answer_for("graduation_date", profile) == \
+            "December 2025"

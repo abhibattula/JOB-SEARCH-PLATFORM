@@ -1,6 +1,8 @@
 """005-T010: engine/autofill/fields.py classifier — fixture-dict tests only,
 no real browser/DOM handle involved (per plan.md's testability requirement).
 """
+import pytest
+
 from engine.autofill import fields
 
 
@@ -70,15 +72,25 @@ class TestLegallySensitiveTagsWinOverGenericCatchAlls:
             label_text="Do you require sponsorship to work in this role?"
         )) == "sponsorship_requirement"
 
-    def test_eeo_disclosure_disability(self):
-        assert fields.classify(field(
-            label_text="Do you have a disability? (Voluntary Self-Identification)"
-        )) == "eeo_disclosure"
+    # 017 (R15): the single coarse eeo_disclosure tag was split into real
+    # per-question tags so each can be answered from the value the applicant
+    # stored. The property that matters here is unchanged and still asserted:
+    # these questions are never AI-answered.
+    def test_disability_is_self_identification(self):
+        from engine.autofill import drafter
 
-    def test_eeo_disclosure_veteran_status(self):
-        assert fields.classify(field(
-            label_text="Veteran Status"
-        )) == "eeo_disclosure"
+        tag = fields.classify(field(
+            label_text="Do you have a disability? (Voluntary Self-Identification)"
+        ))
+        assert tag == "selfid_disability"
+        assert tag in drafter.NEVER_GENERATED_TAGS
+
+    def test_veteran_status_is_self_identification(self):
+        from engine.autofill import drafter
+
+        tag = fields.classify(field(label_text="Veteran Status"))
+        assert tag == "selfid_veteran"
+        assert tag in drafter.NEVER_GENERATED_TAGS
 
     def test_eeo_disclosure_not_confused_with_generic_yes_no(self):
         # A generic yes/no question that is NOT legally sensitive must not
@@ -182,7 +194,7 @@ class TestMatchOption:
 def raw_attr_field(**overrides):
     """A descriptor the way real ATS forms present it: NO label/placeholder/
     aria — only raw name/id attributes (the exact shape that silently never
-    classified before 009: \s* does not match underscores)."""
+    classified before 009: plain \s* does not match underscores)."""
     field = {"tag": "input", "type": "text", "name": "", "id": "",
              "label_text": "", "placeholder": "", "aria_label": "",
              "autocomplete": ""}
@@ -227,3 +239,319 @@ class TestRawAttributeClassification009:
         field = raw_attr_field(name="first_name",
                               label_text="Are you authorized to work in the US?")
         assert fields.classify(field) == "work_authorization"
+
+
+class TestFactualHistoryTags017:
+    """017-T019 (R6, FR-008): questions about the applicant's own history are
+    unknowable from a resume. Every one of these was fabricated on the
+    2026-07-28 Akuna run, so they get real tags and are never generated.
+    """
+
+    CASES = [
+        ("Have you ever applied to a full time or internship position with "
+         "Akuna in the past?", "applied_before"),
+        ("Have you applied to this role at Akuna previously?",
+         "applied_before"),
+        ("Have you ever worked for us before?", "worked_here_before"),
+        ("Are you a former employee of this company?", "worked_here_before"),
+        ("Do you have prior experience working at an options market making "
+         "firm?", "prior_industry_experience"),
+        ("Did you complete our online Options 101 Course? If not, head to "
+         "akunacapital.teachable.com for more information on this free "
+         "course that is open to all (but not required in order to apply)!",
+         "completed_course"),
+        ("Do you have any offer deadlines that we should be aware of?",
+         "offer_deadlines"),
+        ("If you have upcoming deadlines, please indicate which company and "
+         "when the deadline is:", "offer_deadlines"),
+        ("Do you live in New York or California?", "residency_state"),
+        ("Are you currently employed?", "currently_employed"),
+        ("Have you ever been convicted of a felony?", "criminal_history"),
+        ("Please provide three professional references.", "references"),
+    ]
+
+    @pytest.mark.parametrize("label,expected", CASES)
+    def test_classified(self, label, expected):
+        assert fields.classify(field(label_text=label)) == expected
+
+    def test_none_of_them_fall_through_to_free_text(self):
+        for label, _ in self.CASES:
+            assert fields.classify(field(label_text=label)) != \
+                "free_text_unknown", label
+
+    def test_a_years_of_experience_question_is_unaffected(self):
+        """Guard against the new prior-experience pattern swallowing the
+        existing tag."""
+        assert fields.classify(
+            field(label_text="How many years of experience do you have?")
+        ) == "years_experience"
+
+    def test_a_city_question_is_unaffected(self):
+        assert fields.classify(field(label_text="City")) == "location_city"
+
+
+class TestNameAndPhoneRegressions017:
+    """017-T033 (C3, C4): two wrong-value defects from the live Akuna run,
+    both caused by patterns matching more text than they meant to."""
+
+    def test_phonetically_is_not_a_phone_field(self):
+        """_PHONE_RE had no word boundary, so "how your name is pronounced
+        PHONEtically" matched and received the applicant's phone number."""
+        label = ("We care about addressing everyone correctly. To help us get "
+                 "it right, please write out how your name is pronounced "
+                 "phonetically to share with the hiring team.")
+        assert fields.classify(field(label_text=label)) != "phone"
+
+    def test_a_real_phone_field_still_classifies(self):
+        for label in ("Phone", "Phone*", "Mobile number", "Telephone",
+                      "Cell phone"):
+            assert fields.classify(field(label_text=label)) == "phone", label
+
+    def test_someone_elses_name_is_not_the_applicants_name(self):
+        """"please list their name" received the applicant's own name."""
+        label = ("If you heard about Akuna through an Akuna employee, please "
+                 "list their name:")
+        assert fields.classify(field(label_text=label)) not in (
+            "first_name", "last_name", "full_name")
+
+    @pytest.mark.parametrize("label", [
+        "Reference name",
+        "Manager's name",
+        "Emergency contact name",
+        "Referrer name",
+    ])
+    def test_third_party_name_fields_are_not_claimed(self, label):
+        assert fields.classify(field(label_text=label)) not in (
+            "first_name", "last_name", "full_name")
+
+    def test_preferred_name_is_its_own_tag(self):
+        label = ("Do you have a preferred name, other than the name indicated "
+                 "above? If yes, please indicate that name below.")
+        assert fields.classify(field(label_text=label)) == "preferred_name"
+
+    def test_middle_name_is_its_own_tag(self):
+        assert fields.classify(field(label_text="Middle name")) == \
+            "middle_name"
+
+    def test_the_applicants_own_name_fields_still_classify(self):
+        assert fields.classify(field(label_text="First Name*")) == "first_name"
+        assert fields.classify(field(label_text="Last Name*")) == "last_name"
+        assert fields.classify(field(label_text="Full name")) == "full_name"
+        assert fields.classify(
+            field(label_text="What is your legal first name?")) == "first_name"
+
+    def test_lever_bare_name_attribute_is_unchanged(self):
+        assert fields.classify(field(name="name")) == "full_name"
+
+
+class TestLocationAndLibraryTags017:
+    """017-T042/T044 (FR-021/FR-022): questions the profile can answer.
+
+    `Country*` was left blank on the live run because no country tag existed,
+    and Greenhouse's location field was mapped to free_text_unknown — so the
+    model was asked to guess where the applicant lives.
+    """
+
+    LOCATION = [
+        ("Country", "location_country"),
+        ("Country*", "location_country"),
+        ("State", "location_state"),
+        ("State / Province", "location_state"),
+        ("Zip code", "location_postal"),
+        ("Postal code", "location_postal"),
+        ("Street address", "location_address1"),
+        ("Address line 2", "location_address2"),
+        ("City", "location_city"),
+    ]
+
+    @pytest.mark.parametrize("label,expected", LOCATION)
+    def test_location_tags(self, label, expected):
+        assert fields.classify(field(label_text=label)) == expected
+
+    LIBRARY = [
+        ("Are you at least 18 years of age?", "age_18_plus"),
+        ("Are you 18 years or older?", "age_18_plus"),
+        ("Are you subject to a non-compete agreement?", "non_compete"),
+        ("Do you hold an active security clearance?", "security_clearance"),
+        ("Are you willing to undergo a background check?", "background_check"),
+        ("Are you willing to submit to a drug test?", "drug_test"),
+        ("Are you willing to relocate?", "relocate"),
+        ("Are you willing to travel?", "travel"),
+        ("What is your earliest start date?", "start_date"),
+        ("What is your notice period?", "notice_period"),
+        ("What is your GPA?", "gpa"),
+        ("What education level are you currently pursuing?", "degree"),
+        ("Graduation Month", "graduation_date"),
+        ("Graduation Year", "graduation_date"),
+    ]
+
+    @pytest.mark.parametrize("label,expected", LIBRARY)
+    def test_library_tags(self, label, expected):
+        assert fields.classify(field(label_text=label)) == expected
+
+    ACKNOWLEDGEMENTS = [
+        ("I certify that all information I have provided in order to apply "
+         "for this position with Akuna is true, complete, and accurate.",
+         "acknowledgement"),
+        ("I acknowledge that my resume must be submitted in PDF format to be "
+         "considered.", "acknowledgement"),
+    ]
+
+    @pytest.mark.parametrize("label,expected", ACKNOWLEDGEMENTS)
+    def test_acknowledgement_tag(self, label, expected):
+        assert fields.classify(field(label_text=label)) == expected
+
+    def test_a_binding_acknowledgement_is_recognised_as_binding(self):
+        """D5: this one withdraws the applicant from every other Tech/Quant
+        role at the firm for the season. It must never be auto-answered."""
+        label = ("By submitting this application and answering “yes” below, I "
+                 "acknowledge that this role is my top preference and I will "
+                 "not be considered for other Tech and/or Quant roles at "
+                 "Akuna for this recruiting season.")
+        assert fields.classify(field(label_text=label)) == "acknowledgement"
+        assert fields.is_binding_acknowledgement(label) is True
+
+    def test_a_routine_acknowledgement_is_not_binding(self):
+        assert fields.is_binding_acknowledgement(
+            "I certify that all information I have provided is accurate."
+        ) is False
+
+
+class TestCanonicalOptionMatching017:
+    """017-T047 (FR-024/FR-025): stored values reach forms that word their
+    options differently — without loosening the passes that decide
+    work-authorization dropdowns."""
+
+    GENDER = ["Man", "Woman", "Non-binary", "I don't wish to answer"]
+    GENDER_ALT = ["Male", "Female", "Decline to self-identify"]
+
+    def test_stored_male_selects_man(self):
+        assert fields.match_option("Male", self.GENDER, "selfid_gender") == \
+            "Man"
+
+    def test_stored_man_selects_male(self):
+        assert fields.match_option("Man", self.GENDER_ALT,
+                                   "selfid_gender") == "Male"
+
+    def test_stored_straight_selects_heterosexual(self):
+        options = ["Heterosexual", "Gay", "Lesbian", "Bisexual"]
+        assert fields.match_option("Straight", options,
+                                   "selfid_orientation") == "Heterosexual"
+
+    def test_prefer_not_to_say_finds_the_decline_option(self):
+        assert fields.match_option("Prefer not to say", self.GENDER,
+                                   "selfid_gender") == "I don't wish to answer"
+        assert fields.match_option("Prefer not to say", self.GENDER_ALT,
+                                   "selfid_gender") == "Decline to self-identify"
+
+    def test_it_never_crosses_to_the_wrong_option(self):
+        assert fields.match_option("Male", ["Woman", "Non-binary"],
+                                   "selfid_gender") is None
+
+    def test_without_a_tag_the_old_behaviour_is_unchanged(self):
+        """Callers that pass no tag must see exactly the previous result."""
+        assert fields.match_option("Male", self.GENDER) is None
+
+    def test_work_authorization_matching_is_not_loosened(self):
+        """FR-025: a wrong authorization answer is worse than a blank one."""
+        options = ["Yes, I am authorized to work in the US",
+                   "No, I require sponsorship"]
+        assert fields.match_option("Yes", options, "work_authorization") == \
+            "Yes, I am authorized to work in the US"
+        for loose in ("authorized", "eligible", "citizen"):
+            assert fields.match_option(loose, options,
+                                       "work_authorization") is None, loose
+
+    def test_a_literal_match_still_wins_over_the_canonical_pass(self):
+        options = ["Man", "Male"]
+        assert fields.match_option("Male", options, "selfid_gender") == "Male"
+
+    def test_education_level_abbreviations(self):
+        options = ["High School", "Bachelor's Degree", "Master's Degree",
+                   "Doctorate"]
+        assert fields.match_option("MS", options, "highest_education") == \
+            "Master's Degree"
+
+    def test_pronoun_wording(self):
+        options = ["She/her/hers", "He/him/his", "They/them/theirs"]
+        assert fields.match_option("He/him", options, "pronouns") == \
+            "He/him/his"
+
+
+class TestSelfIdentificationTags017:
+    """017-T049 (R15, D1): self-identification questions get real tags so
+    they can be answered from what the applicant stored — never generated."""
+
+    CASES = [
+        ("How would you describe your gender identity? (mark all that apply)",
+         "selfid_gender"),
+        ("Gender", "selfid_gender"),
+        ("What is your gender?", "selfid_gender"),
+        ("How would you describe your racial/ethnic background?",
+         "selfid_race"),
+        ("Race / Ethnicity", "selfid_race"),
+        ("Are you a veteran or active member of the United States Armed "
+         "Forces?", "selfid_veteran"),
+        ("Do you have a disability or chronic condition (physical, visual, "
+         "auditory, cognitive, mental, emotional, or other) that "
+         "substantially limits one or more of your major life activities?",
+         "selfid_disability"),
+        ("How would you describe your sexual orientation? (mark all that "
+         "apply)", "selfid_orientation"),
+        ("Do you identify as transgender?", "selfid_orientation"),
+        ("We care about addressing everyone correctly. Add your personal "
+         "pronouns below to share with the hiring team.", "pronouns"),
+    ]
+
+    @pytest.mark.parametrize("label,expected", CASES)
+    def test_classified(self, label, expected):
+        assert fields.classify(field(label_text=label)) == expected
+
+    def test_a_bare_gender_label_no_longer_reaches_the_drafter(self):
+        """_EEO_RE demanded the words "gender identity", so a plain "Gender"
+        select fell through to free_text_unknown and WAS AI-answerable."""
+        assert fields.classify(field(label_text="Gender")) != \
+            "free_text_unknown"
+
+    def test_the_eeo_catch_all_still_works_for_unrecognised_wording(self):
+        assert fields.classify(
+            field(label_text="EEO information")) == "eeo_disclosure"
+
+    def test_every_self_id_tag_is_never_generated(self):
+        from engine.autofill import drafter
+
+        for _label, tag in self.CASES:
+            assert tag in drafter.NEVER_GENERATED_TAGS, tag
+
+
+class TestNamePronunciation017:
+    """017: "how your name is pronounced phonetically" is not a name field.
+
+    It contains "your name", so every name rule matched it. On the live Akuna
+    run it received the applicant's phone number (the phone regex had no word
+    boundary); with that fixed it received their first name instead. Only the
+    applicant knows how their own name sounds.
+    """
+
+    LABEL = ("We care about addressing everyone correctly. To help us get it "
+             "right, please write out how your name is pronounced "
+             "phonetically to share with the hiring team.")
+
+    def test_it_is_not_a_name_field(self):
+        tag = fields.classify(field(label_text=self.LABEL))
+        assert tag not in ("first_name", "last_name", "full_name",
+                           "preferred_name")
+
+    def test_it_is_not_a_phone_field(self):
+        assert fields.classify(field(label_text=self.LABEL)) != "phone"
+
+    def test_it_is_never_generated(self):
+        from engine.autofill import drafter
+
+        tag = fields.classify(field(label_text=self.LABEL))
+        assert tag == "name_pronunciation"
+        assert tag in drafter.NEVER_GENERATED_TAGS
+
+    def test_ordinary_name_fields_are_unaffected(self):
+        assert fields.classify(field(label_text="First Name*")) == "first_name"
+        assert fields.classify(field(label_text="Full name")) == "full_name"

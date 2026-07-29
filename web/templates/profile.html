@@ -47,7 +47,287 @@
              placeholder="e.g. OPT, H-1B, Citizen">
     </label>
 
-    {% include "partials/profile_answer_bank.html" %}
+    
+  <h2>Contact &amp; address</h2>
+  <p class="muted">Applications ask for these constantly. Anything you leave
+    blank is left blank on the form and highlighted for you — never guessed.</p>
+  <div class="grid-2">
+    <label>Preferred name
+      <span class="hint">Only used when a form asks for it — never as your legal name</span>
+      <input type="text" name="preferred_name"
+             value="{{ profile.preferred_name or '' }}">
+    </label>
+    <label>Middle name
+      <input type="text" name="middle_name"
+             value="{{ profile.middle_name or '' }}">
+    </label>
+    <label>Pronouns
+      <span class="hint">e.g. He/him, She/her, They/them</span>
+      <input type="text" name="pronouns"
+             value="{{ profile.pronouns or '' }}">
+    </label>
+    <label>Street address
+      <input type="text" name="address_line1"
+             value="{{ profile.address_line1 or '' }}">
+    </label>
+    <label>Address line 2
+      <input type="text" name="address_line2"
+             value="{{ profile.address_line2 or '' }}">
+    </label>
+    <label>City
+      <input type="text" name="city"
+             value="{{ profile.city or '' }}">
+    </label>
+    <label>State / Province
+      <input type="text" name="state_region"
+             value="{{ profile.state_region or '' }}">
+    </label>
+    <label>ZIP / Postal code
+      <input type="text" name="postal_code"
+             value="{{ profile.postal_code or '' }}">
+    </label>
+    <label>Country
+      <input type="text" name="country"
+             value="{{ profile.country or '' }}">
+    </label>
+    <label>Current location
+      <span class="hint">How you'd write it on a form, e.g. Arlington, TX, USA</span>
+      <input type="text" name="current_location"
+             value="{{ profile.current_location or '' }}">
+    </label>
+  </div>
+
+  <h2>Work authorization detail</h2>
+  <p class="muted">The questions a form asks after the yes/no one. Without
+    these, Apply Assist has to leave them for you.</p>
+  <div class="grid-2">
+    <label>Current status
+      <span class="hint">e.g. US Citizen, F-1 STEM OPT, H-1B</span>
+      <input type="text" name="work_auth_type"
+             value="{{ profile.work_auth_type or '' }}">
+    </label>
+    <label>When does it expire?
+      <span class="hint">A date, or N/A if you don't require work authorization</span>
+      <input type="text" name="work_auth_expiry"
+             value="{{ profile.work_auth_expiry or '' }}">
+    </label>
+    <label>Extension options
+      <span class="hint">e.g. 24-month STEM extension available, or N/A</span>
+      <input type="text" name="work_auth_extensions"
+             value="{{ profile.work_auth_extensions or '' }}">
+    </label>
+    <label>Will you need sponsorship in future?
+      <select name="sponsorship_future">
+        <option value=""
+          {% if profile.sponsorship_future == "" %}selected{% endif %}>—</option>
+        <option value="yes"
+          {% if profile.sponsorship_future == "yes" %}selected{% endif %}>Yes</option>
+        <option value="no"
+          {% if profile.sponsorship_future == "no" %}selected{% endif %}>No</option>
+      </select>
+    </label>
+    <label>Additional sponsorship detail
+      <input type="text" name="sponsorship_detail"
+             value="{{ profile.sponsorship_detail or '' }}">
+    </label>
+  </div>
+
+  <h2>Education &amp; experience</h2>
+  <div class="grid-2">
+    <label>Highest education
+      <select name="highest_education">
+        <option value=""
+          {% if profile.highest_education == "" %}selected{% endif %}>—</option>
+        <option value="High school"
+          {% if profile.highest_education == "High school" %}selected{% endif %}>High school</option>
+        <option value="Associate"
+          {% if profile.highest_education == "Associate" %}selected{% endif %}>Associate</option>
+        <option value="Bachelor's"
+          {% if profile.highest_education == "Bachelor's" %}selected{% endif %}>Bachelor's</option>
+        <option value="Master's"
+          {% if profile.highest_education == "Master's" %}selected{% endif %}>Master's</option>
+        <option value="Doctorate"
+          {% if profile.highest_education == "Doctorate" %}selected{% endif %}>Doctorate</option>
+      </select>
+    </label>
+    <label>Graduation month
+      <span class="hint">e.g. December</span>
+      <input type="text" name="graduation_month"
+             value="{{ profile.graduation_month or '' }}">
+    </label>
+    <label>Graduation year
+      <span class="hint">e.g. 2025</span>
+      <input type="text" name="graduation_year"
+             value="{{ profile.graduation_year or '' }}">
+    </label>
+    <label>GPA
+      <input type="text" name="gpa"
+             value="{{ profile.gpa or '' }}">
+    </label>
+    <label>Years of experience
+      <input type="text" name="years_experience"
+             value="{{ profile.years_experience or '' }}">
+    </label>
+    <label>Current employer
+      <input type="text" name="current_employer"
+             value="{{ profile.current_employer or '' }}">
+    </label>
+    <label>Current title
+      <input type="text" name="current_title"
+             value="{{ profile.current_title or '' }}">
+    </label>
+  </div>
+
+  <h2>Preferences</h2>
+  <div class="grid-2">
+    <label>Desired salary
+      <input type="text" name="desired_salary"
+             value="{{ profile.desired_salary or '' }}">
+    </label>
+    <label>Earliest start date
+      <input type="text" name="earliest_start_date"
+             value="{{ profile.earliest_start_date or '' }}">
+    </label>
+    <label>Notice period
+      <span class="hint">e.g. 2 weeks</span>
+      <input type="text" name="notice_period"
+             value="{{ profile.notice_period or '' }}">
+    </label>
+    <label>Willing to relocate?
+      <select name="willing_to_relocate">
+        <option value=""
+          {% if profile.willing_to_relocate == "" %}selected{% endif %}>—</option>
+        <option value="yes"
+          {% if profile.willing_to_relocate == "yes" %}selected{% endif %}>Yes</option>
+        <option value="no"
+          {% if profile.willing_to_relocate == "no" %}selected{% endif %}>No</option>
+      </select>
+    </label>
+    <label>Remote preference
+      <select name="remote_preference">
+        <option value=""
+          {% if profile.remote_preference == "" %}selected{% endif %}>—</option>
+        <option value="Remote"
+          {% if profile.remote_preference == "Remote" %}selected{% endif %}>Remote</option>
+        <option value="Hybrid"
+          {% if profile.remote_preference == "Hybrid" %}selected{% endif %}>Hybrid</option>
+        <option value="On-site"
+          {% if profile.remote_preference == "On-site" %}selected{% endif %}>On-site</option>
+        <option value="No preference"
+          {% if profile.remote_preference == "No preference" %}selected{% endif %}>No preference</option>
+      </select>
+    </label>
+    <label>Willing to travel?
+      <select name="willing_to_travel">
+        <option value=""
+          {% if profile.willing_to_travel == "" %}selected{% endif %}>—</option>
+        <option value="yes"
+          {% if profile.willing_to_travel == "yes" %}selected{% endif %}>Yes</option>
+        <option value="no"
+          {% if profile.willing_to_travel == "no" %}selected{% endif %}>No</option>
+      </select>
+    </label>
+    <label>GitHub URL
+      <input type="text" name="github_url"
+             value="{{ profile.github_url or '' }}">
+    </label>
+    <label>Other link
+      <input type="text" name="other_url"
+             value="{{ profile.other_url or '' }}">
+    </label>
+    <label>How did you hear about us? (default)
+      <span class="hint">e.g. Company website, LinkedIn</span>
+      <input type="text" name="how_heard_default"
+             value="{{ profile.how_heard_default or '' }}">
+    </label>
+  </div>
+
+  <h2>Voluntary self-identification</h2>
+  <p class="muted">Entirely optional, stored only on this machine, and never
+    sent to any AI. Apply Assist uses these <em>only</em> to select the
+    matching option when a form asks — it will never infer them from your
+    name or resume. Leave any of them blank and the question is left for you;
+    choose &ldquo;Prefer not to say&rdquo; and it selects that option.</p>
+  <div class="grid-2">
+    <label>Gender
+      <select name="selfid_gender">
+        <option value=""
+          {% if profile.selfid_gender == "" %}selected{% endif %}>—</option>
+        <option value="Man"
+          {% if profile.selfid_gender == "Man" %}selected{% endif %}>Man</option>
+        <option value="Woman"
+          {% if profile.selfid_gender == "Woman" %}selected{% endif %}>Woman</option>
+        <option value="Non-binary"
+          {% if profile.selfid_gender == "Non-binary" %}selected{% endif %}>Non-binary</option>
+        <option value="Prefer not to say"
+          {% if profile.selfid_gender == "Prefer not to say" %}selected{% endif %}>Prefer not to say</option>
+      </select>
+    </label>
+    <label>Race / ethnicity
+      <select name="selfid_race">
+        <option value=""
+          {% if profile.selfid_race == "" %}selected{% endif %}>—</option>
+        <option value="Hispanic or Latino"
+          {% if profile.selfid_race == "Hispanic or Latino" %}selected{% endif %}>Hispanic or Latino</option>
+        <option value="White"
+          {% if profile.selfid_race == "White" %}selected{% endif %}>White</option>
+        <option value="Black or African American"
+          {% if profile.selfid_race == "Black or African American" %}selected{% endif %}>Black or African American</option>
+        <option value="Asian"
+          {% if profile.selfid_race == "Asian" %}selected{% endif %}>Asian</option>
+        <option value="Native Hawaiian or Other Pacific Islander"
+          {% if profile.selfid_race == "Native Hawaiian or Other Pacific Islander" %}selected{% endif %}>Native Hawaiian or Other Pacific Islander</option>
+        <option value="American Indian or Alaska Native"
+          {% if profile.selfid_race == "American Indian or Alaska Native" %}selected{% endif %}>American Indian or Alaska Native</option>
+        <option value="Two or more races"
+          {% if profile.selfid_race == "Two or more races" %}selected{% endif %}>Two or more races</option>
+        <option value="Prefer not to say"
+          {% if profile.selfid_race == "Prefer not to say" %}selected{% endif %}>Prefer not to say</option>
+      </select>
+    </label>
+    <label>Veteran status
+      <select name="selfid_veteran">
+        <option value=""
+          {% if profile.selfid_veteran == "" %}selected{% endif %}>—</option>
+        <option value="Protected veteran"
+          {% if profile.selfid_veteran == "Protected veteran" %}selected{% endif %}>Protected veteran</option>
+        <option value="Not a protected veteran"
+          {% if profile.selfid_veteran == "Not a protected veteran" %}selected{% endif %}>Not a protected veteran</option>
+        <option value="Prefer not to say"
+          {% if profile.selfid_veteran == "Prefer not to say" %}selected{% endif %}>Prefer not to say</option>
+      </select>
+    </label>
+    <label>Disability status
+      <select name="selfid_disability">
+        <option value=""
+          {% if profile.selfid_disability == "" %}selected{% endif %}>—</option>
+        <option value="Yes"
+          {% if profile.selfid_disability == "Yes" %}selected{% endif %}>Yes</option>
+        <option value="No"
+          {% if profile.selfid_disability == "No" %}selected{% endif %}>No</option>
+        <option value="Prefer not to say"
+          {% if profile.selfid_disability == "Prefer not to say" %}selected{% endif %}>Prefer not to say</option>
+      </select>
+    </label>
+    <label>Sexual orientation
+      <select name="selfid_orientation">
+        <option value=""
+          {% if profile.selfid_orientation == "" %}selected{% endif %}>—</option>
+        <option value="Straight"
+          {% if profile.selfid_orientation == "Straight" %}selected{% endif %}>Straight</option>
+        <option value="Gay"
+          {% if profile.selfid_orientation == "Gay" %}selected{% endif %}>Gay</option>
+        <option value="Lesbian"
+          {% if profile.selfid_orientation == "Lesbian" %}selected{% endif %}>Lesbian</option>
+        <option value="Bisexual"
+          {% if profile.selfid_orientation == "Bisexual" %}selected{% endif %}>Bisexual</option>
+        <option value="Prefer not to say"
+          {% if profile.selfid_orientation == "Prefer not to say" %}selected{% endif %}>Prefer not to say</option>
+      </select>
+    </label>
+  </div>
+
+  {% include "partials/profile_answer_bank.html" %}
 
     <h2>Resume &amp; job search</h2>
 

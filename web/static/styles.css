@@ -537,3 +537,16 @@ td.barcell { min-width: 120px; }
 .barcell .fill.ok { background: var(--ok); }
 .barcell .n { font-family: var(--mono); font-size: var(--fs-sm); color: var(--ink);
   min-width: 2ch; text-align: right; }
+
+/* 017 (FR-009): Apply Assist controls stay reachable at any form size. A
+   91-field application with a long review list used to push Stop past the
+   bottom of the page. */
+.autofill-controls {
+  position: sticky;
+  top: 0;
+  z-index: 5;
+  padding: 0.5rem 0;
+  margin-bottom: 0.25rem;
+  background: var(--bg, #fff);
+  border-bottom: 1px solid var(--border, #e3e3e3);
+}
