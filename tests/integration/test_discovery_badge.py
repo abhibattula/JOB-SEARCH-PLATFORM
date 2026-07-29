@@ -223,6 +223,14 @@ class TestDiscoveryOutOfTheWay:
     def test_dismiss_and_collapse(self, context, app_server, fixture_server):
         assert _wait_connected()
         page = _open_and_wait_badge(context, f"{fixture_server}/linkedin_jobs_view.html")
+        # 018: the companion RESTS collapsed, so clicking collapse and then
+        # waiting for data-je-collapsed="1" would pass without the click doing
+        # anything. Expand first, so the collapse is a real transition.
+        page.evaluate(
+            "() => document.getElementById('je-companion-host')"
+            ".shadowRoot.getElementById('pill').click()")
+        page.wait_for_selector('#je-companion-host[data-je-collapsed="0"]',
+                               timeout=5000)
         # collapse
         page.evaluate(
             "() => document.getElementById('je-companion-host')"
