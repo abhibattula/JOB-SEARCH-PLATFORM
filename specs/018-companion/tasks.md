@@ -174,13 +174,13 @@ app stops navigating away.
 
 - [x] T082 [P] Retire the string-presence badge guards in `tests/test_extension_assets.py::TestBadgeLauncher017`, keeping only negative invariants (no `.click(` on page elements, no `innerHTML` for answers); note in the docstring that interaction coverage now lives in `tests/integration/test_companion_widget.py`
 - [x] T083 [P] Assert zero submit clicks across every fixture in the browser suite (carry forward the 016/017 guard onto the new fixtures)
-- [ ] T084 [P] Work through `checklists/companion.md` and tick every box, fixing what fails
+- [x] T084 [P] Work through `checklists/companion.md` and tick every box, fixing what fails
 - [x] T085 [P] Update `docs/USER_MANUAL.md`: the companion replaces the two-widget flow; the pill, the groups, Insert / Show me, on-page Stop, keyboard shortcuts
 - [x] T086 [P] Update `README.md`'s Apply Assist section for the extension-first flow
 - [x] T087 [P] Add `WHATS_NEW["1.8.0"]` naming the four fixed defects in plain language
 - [x] T088 Bump the version to `1.8.0` everywhere `packaging/check_version.py` checks — including `extension/manifest.json` and `packaging/windows.iss` (edit byte-safely: that file is not UTF-8 clean)
-- [ ] T089 Run the full battery twice: `python -m pytest -q` ×2
-- [ ] T090 Run `python -m pytest -m browser -q` and the offline-model gates
+- [x] T089 Run the full battery twice: `python -m pytest -q` ×2
+- [x] T090 Run `python -m pytest -m browser -q` and the offline-model gates
 - [ ] T091 Run the frozen smoke (`packaging/smoke_test.py`) with `JOBS_AI_SUBPROCESS` default on
 - [ ] T092 Manual end-to-end per `quickstart.md` §5 against a real Greenhouse posting **and** its bare `…/application` URL
 - [ ] T093 Tag `v1.8.0`, wait for the release build, and verify **both** installers by magic bytes and SHA-256 against the release body

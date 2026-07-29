@@ -373,12 +373,18 @@ class TestPanelAndHighlights016:
     reporting and Fill again; drafted/needs-you fields carry a visible
     highlight cleared by the user's own edit."""
 
-    def test_panel_has_fill_again_and_attention(self):
+    def test_panel_has_fill_again_and_surfaces_what_needs_you(self):
         """018: these live in panel.js now — overlay.js was folded into the
-        one merged companion."""
+        one merged companion.
+
+        016 sent an `attention` list of up to five bare field LABELS. That is
+        gone: the needs-you GROUP carries the same fields with their full
+        question, the reason in plain language, and a box to answer them, so
+        a list of labels beside it would be strictly redundant."""
         js = (EXT / "content" / "panel.js").read_text(encoding="utf-8")
         assert "Fill again" in js
-        assert "attention" in js
+        assert "needs_you" in js
+        assert "Needs you" in js
         assert "onFillAgain" in js
         assert "notice" in js
 

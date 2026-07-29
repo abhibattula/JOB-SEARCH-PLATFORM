@@ -68,7 +68,7 @@
 
 - [x] Full battery passes twice
 - [x] `-m browser` passes
-- [ ] Offline-model gates pass
+- [x] Offline-model gates pass
 - [ ] Frozen smoke passes with `JOBS_AI_SUBPROCESS` default on
 - [x] Version is consistent everywhere `check_version.py` looks, `windows.iss` included
 - [x] USER_MANUAL, README and `WHATS_NEW["1.8.0"]` updated

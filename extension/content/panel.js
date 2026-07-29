@@ -45,7 +45,10 @@ window.jePanel = (function () {
     score: null,
     saved: false,
     counts: { seen: 0, filled: 0, needs_you: 0, drafts: 0 },
-    attention: [],
+    // 016 sent `attention` — up to five bare LABELS of fields needing the
+    // applicant. 018's needs-you group carries the same fields with their
+    // full question, the reason, and a box to answer them, so the label list
+    // is strictly redundant and is no longer stored or rendered.
     remaining: 0,
     currentJobId: null,
     answers: [],
@@ -362,7 +365,6 @@ window.jePanel = (function () {
       needs_you: summary.needs_you || 0,
       drafts: summary.drafts || 0,
     };
-    state.attention = summary.attention || [];
     // 018 (FR-032): session context, so Stop and Next can live here.
     state.remaining = summary.remaining || 0;
     state.currentJobId = summary.current_job_id || null;

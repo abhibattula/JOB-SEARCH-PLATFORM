@@ -985,8 +985,6 @@ class TestInsertAndShowMe:
                     const insert = Array.from(el.querySelectorAll(".sm"))
                         .find(b => b.textContent === "Insert" && !b.hidden);
                     const a = el.querySelector(".a");
-                    const field = document.querySelector(
-                        '[data-je-idx="' + (el.dataset.jeIdx || "") + '"]');
                     if (!insert || !a || !a.textContent) { continue; }
                     const target = Array.from(
                         document.querySelectorAll("[data-je-idx]"))
