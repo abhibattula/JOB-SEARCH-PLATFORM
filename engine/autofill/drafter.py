@@ -402,6 +402,19 @@ def answers_for_page(job_id: int, limit: int = 60) -> list[dict]:
     return items
 
 
+def records_for_job(job_id: int) -> dict[str, dict]:
+    """018 (US3): every drafter record for one job, keyed by its question.
+
+    Feeds `page_answers.build`, which needs to know WHY a field was skipped —
+    a refusal, an exhausted question or a draft still in flight all read very
+    differently to the applicant. The drafter stays the authority on that;
+    it is simply no longer the only source of the feed.
+    """
+    with _lock:
+        return {rec["question"]: dict(rec)
+                for key, rec in _records.items() if key[0] == int(job_id)}
+
+
 def get(job_id: int, question: str) -> dict | None:
     with _lock:
         rec = _records.get(_key(job_id, question))

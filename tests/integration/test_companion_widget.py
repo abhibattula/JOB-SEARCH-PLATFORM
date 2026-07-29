@@ -55,6 +55,24 @@ class _Handler(http.server.SimpleHTTPRequestHandler):
         pass
 
 
+@pytest.fixture(autouse=True)
+def _isolated_companion_session():
+    """`ext_backend` keeps the companion session in module-level globals — one
+    session per app, by design. The conftest already resets
+    `browser_controller` for the same reason; this covers the other half.
+
+    Without it, `_wait_connected` is satisfied by the PREVIOUS test's socket
+    (its heartbeat is still inside the freshness window), so a test proceeds
+    to click before its own browser has paired, and the session it asks for
+    never starts. That reads as a product bug and is not one.
+    """
+    from engine.autofill import ext_backend
+
+    ext_backend.reset_for_tests()
+    yield
+    ext_backend.reset_for_tests()
+
+
 @pytest.fixture(scope="module")
 def fixture_server():
     handler = partial(_Handler, directory=str(FIXTURES))
@@ -206,12 +224,44 @@ def _on_screen(g):
 
 
 def _shadow_text(page):
+    """The card's visible text — NOT `shadowRoot.textContent`, which also
+    returns the whole stylesheet and makes any assertion on it meaningless."""
     return page.evaluate(
         """(ids) => {
             const id = ids.find(i => document.getElementById(i));
             const h = document.getElementById(id);
-            return (h && h.shadowRoot) ? h.shadowRoot.textContent : "";
+            if (!h || !h.shadowRoot) { return ""; }
+            const card = h.shadowRoot.getElementById("card");
+            const pill = h.shadowRoot.getElementById("pill");
+            return ((card ? card.textContent : "") + " " +
+                    (pill ? pill.textContent : ""));
         }""", list(HOST_IDS))
+
+
+def _panel_notice(page):
+    return page.evaluate(
+        """(ids) => {
+            const id = ids.find(i => document.getElementById(i));
+            const h = document.getElementById(id);
+            if (!h || !h.shadowRoot) { return "<no host>"; }
+            const n = h.shadowRoot.getElementById("notice");
+            const p = h.shadowRoot.getElementById("primary");
+            return JSON.stringify({
+                notice: n ? n.textContent : "",
+                primary: p ? p.textContent : "",
+                disabled: p ? p.disabled : null,
+                session: h.dataset.jeSession,
+                detection: h.dataset.jeDetection,
+            });
+        }""", list(HOST_IDS))
+
+
+def _app_state():
+    from engine.autofill import browser_controller as bc
+
+    with bc._lock:
+        return (f"running={bc._state.running} backend={bc._state.backend} "
+                f"job_ids={bc._state.job_ids}")
 
 
 def _click(page, control_ids):
@@ -773,6 +823,259 @@ class TestPrimaryActionStateMachine:
                 f"{session}/{detection}: label {got['label']!r} does not "
                 f"contain {fragment!r}")
             assert got["disabled"] is (session == "starting")
+
+
+# --------------------------------------------------------------------------
+# US3 — Every answer, readable, insertable, correctable
+# --------------------------------------------------------------------------
+
+def _answer_rows(page):
+    """Every rendered answer row, with the state the panel is showing."""
+    return page.evaluate(
+        """(ids) => {
+            const id = ids.find(i => document.getElementById(i));
+            const root = document.getElementById(id).shadowRoot;
+            return Array.from(root.querySelectorAll(".qa")).map(el => ({
+                key: el.dataset.jeKey || "",
+                state: el.dataset.jeState || "",
+                group: (el.closest("[data-je-group]") || {}).dataset
+                    ? el.closest("[data-je-group]").dataset.jeGroup : "",
+                question: (el.querySelector(".q") || {}).textContent || "",
+                answer: (el.querySelector(".a") || {}).textContent || "",
+                buttons: Array.from(el.querySelectorAll(".sm"))
+                    .filter(b => !b.hidden)
+                    .map(b => b.textContent),
+                askable: !(el.querySelector(".ask") || {hidden: true}).hidden,
+            }));
+        }""", list(HOST_IDS))
+
+
+def _expand_all_groups(page):
+    page.evaluate(
+        """(ids) => {
+            const id = ids.find(i => document.getElementById(i));
+            const root = document.getElementById(id).shadowRoot;
+            root.querySelectorAll(".grph").forEach(h => {
+                if (h.getAttribute("aria-expanded") !== "true") { h.click(); }
+            });
+        }""", list(HOST_IDS))
+
+
+def _wait_for_feed_to_settle(page, quiet_for=3.0, timeout=40.0):
+    """Wait until the answer count stops moving.
+
+    Fields are decided incrementally — a fill goes out the moment it is
+    decided, and the drafter answers slowly — so the first payload carries
+    only part of the form. Asserting on `jeAnswers > 0` catches the feed
+    mid-flight and makes every assertion about its contents a coin toss.
+    """
+    deadline = time.time() + timeout
+    last, stable_since = -1, time.time()
+    while time.time() < deadline:
+        now = int(_dataset(page).get("jeAnswers") or 0)
+        if now != last:
+            last, stable_since = now, time.time()
+        elif now > 0 and time.time() - stable_since >= quiet_for:
+            return now
+        time.sleep(0.4)
+    return last
+
+
+def _fill_the_bare_form(context, fixture_server):
+    """Start an ad-hoc fill on the metadata-less application fixture and wait
+    until the companion has answers to show."""
+    assert _wait_connected(), "the companion never paired with the app"
+    page = _open_and_wait_companion(
+        context, f"{fixture_server}/bare_application.html")
+    # A disabled button swallows .click() silently, so wait for the primary
+    # action to actually be live before pressing it.
+    page.wait_for_function(
+        """([ids, controls]) => {
+            const id = ids.find(i => document.getElementById(i));
+            if (!id) { return false; }
+            const root = document.getElementById(id).shadowRoot;
+            for (const c of controls) {
+                const el = root.getElementById(c);
+                if (el) { return !el.disabled; }
+            }
+            return false;
+        }""", arg=[list(HOST_IDS), list(PRIMARY_IDS)], timeout=20000)
+    _click(page, PRIMARY_IDS)
+    assert _wait_for_session() is not None, (
+        f"no fill session started. panel={_panel_notice(page)} "
+        f"app={_app_state()}")
+    page.wait_for_function(
+        "(ids) => ids.some(id => { const h = document.getElementById(id);"
+        " return h && Number(h.dataset.jeAnswers || 0) > 0; })",
+        arg=list(HOST_IDS), timeout=30000)
+    _wait_for_feed_to_settle(page)
+    _expand_all_groups(page)
+    return page
+
+
+class TestEveryAnswerIsOnThePage:
+    def test_profile_filled_fields_are_listed(self, context, app_server,
+                                              fixture_server):
+        """R5: v1.7.0 listed ONLY questions the AI drafter touched. Name and
+        email were filled on the page and absent from the panel, so the
+        review surface could not be used to review the application."""
+        page = _fill_the_bare_form(context, fixture_server)
+        rows = _answer_rows(page)
+        questions = " | ".join(r["question"] for r in rows)
+        assert "First Name" in questions, (
+            f"profile-filled fields missing from the panel: {questions}")
+        assert any(r["group"] == "profile" for r in rows)
+
+    def test_answers_are_grouped_with_counts(self, context, app_server,
+                                             fixture_server):
+        page = _fill_the_bare_form(context, fixture_server)
+        groups = page.evaluate(
+            """(ids) => {
+                const id = ids.find(i => document.getElementById(i));
+                const root = document.getElementById(id).shadowRoot;
+                return Array.from(root.querySelectorAll("[data-je-group]"))
+                    .filter(s => !s.hidden)
+                    .map(s => ({
+                        group: s.dataset.jeGroup,
+                        label: s.querySelector(".grph").textContent,
+                    }));
+            }""", list(HOST_IDS))
+        assert groups, "no answer groups rendered"
+        for g in groups:
+            assert "(" in g["label"], f"group {g['group']} shows no count"
+        # needs-you always renders before the rest
+        ids_in_order = [g["group"] for g in groups]
+        if "needs_you" in ids_in_order:
+            assert ids_in_order.index("needs_you") == 0
+
+    def test_every_answer_offers_copy_and_insert(self, context, app_server,
+                                                 fixture_server):
+        """R4: Insert and Show me are gated on `je_idx`, which the feed never
+        carried — so through all of v1.7.0 only Copy ever rendered."""
+        page = _fill_the_bare_form(context, fixture_server)
+        answered = [r for r in _answer_rows(page) if r["answer"]]
+        assert answered, "no answered rows to check"
+        for row in answered:
+            assert "Copy" in row["buttons"], row
+            assert "Insert" in row["buttons"], (
+                f"Insert never rendered for {row['question']!r} — the feed "
+                "carries no field id")
+            assert "Show me" in row["buttons"], row
+
+
+class TestInsertAndShowMe:
+    def test_insert_fills_exactly_one_field(self, context, app_server,
+                                            fixture_server):
+        """FR-023: Insert writes to the ONE field the applicant chose, and
+        touches nothing else on the page."""
+        page = _fill_the_bare_form(context, fixture_server)
+        # a sentinel in a neighbouring field must survive untouched
+        page.evaluate(
+            "() => { document.getElementById('school').value = 'SENTINEL'; }")
+
+        # Take a row from the profile group: those carry short, exact values
+        # (a name, an email), so "did this land in that field" is unambiguous.
+        chosen = page.evaluate(
+            """(ids) => {
+                const id = ids.find(i => document.getElementById(i));
+                const root = document.getElementById(id).shadowRoot;
+                const group = root.querySelector('[data-je-group="profile"]');
+                if (!group) { return null; }
+                for (const el of group.querySelectorAll(".qa")) {
+                    const insert = Array.from(el.querySelectorAll(".sm"))
+                        .find(b => b.textContent === "Insert" && !b.hidden);
+                    const a = el.querySelector(".a");
+                    const field = document.querySelector(
+                        '[data-je-idx="' + (el.dataset.jeIdx || "") + '"]');
+                    if (!insert || !a || !a.textContent) { continue; }
+                    const target = Array.from(
+                        document.querySelectorAll("[data-je-idx]"))
+                        .find(f => f.value === a.textContent);
+                    if (!target) { continue; }
+                    target.value = "";
+                    insert.click();
+                    return {answer: a.textContent,
+                            idx: target.getAttribute("data-je-idx")};
+                }
+                return null;
+            }""", list(HOST_IDS))
+        if not chosen:
+            pytest.skip("no profile-filled row to insert on this run")
+
+        page.wait_for_function(
+            "(c) => { const el = document.querySelector("
+            "'[data-je-idx=\"' + c.idx + '\"]'); "
+            "return el && el.value === c.answer; }",
+            arg=chosen, timeout=10000)
+        assert page.eval_on_selector(
+            "#school", "el => el.value") == "SENTINEL"
+
+    def test_show_me_scrolls_the_field_into_view(self, context, app_server,
+                                                 fixture_server):
+        page = _fill_the_bare_form(context, fixture_server)
+        page.set_viewport_size({"width": 1000, "height": 400})
+        page.evaluate("() => window.scrollTo(0, 0)")
+        moved = page.evaluate(
+            """(ids) => {
+                const id = ids.find(i => document.getElementById(i));
+                const root = document.getElementById(id).shadowRoot;
+                const before = window.scrollY;
+                const rows = Array.from(root.querySelectorAll(".qa"));
+                const last = rows[rows.length - 1];
+                const jump = last && Array.from(last.querySelectorAll(".sm"))
+                    .find(b => b.textContent === "Show me" && !b.hidden);
+                if (!jump) { return null; }
+                jump.click();
+                return before;
+            }""", list(HOST_IDS))
+        if moved is None:
+            pytest.skip("no jumpable row on this fixture run")
+        time.sleep(1.5)
+        assert page.evaluate("() => window.scrollY") != moved
+
+
+class TestTypingIsNeverDestroyed:
+    """R6: `setAnswers` did `list.textContent = ""` and rebuilt every row,
+    while the app pushed a new payload on EVERY scan — a MutationObserver plus
+    a 2 s safety poll. A half-typed answer was wiped before Enter could be
+    pressed, which made 017's ask-once capture close to unusable."""
+
+    def test_typed_text_and_focus_survive_several_scans(self, context,
+                                                        app_server,
+                                                        fixture_server):
+        page = _fill_the_bare_form(context, fixture_server)
+        typed = page.evaluate(
+            """(ids) => {
+                const id = ids.find(i => document.getElementById(i));
+                const root = document.getElementById(id).shadowRoot;
+                const input = Array.from(root.querySelectorAll(".ask"))
+                    .find(i => !i.hidden && !i.disabled);
+                if (!input) { return null; }
+                input.focus();
+                input.value = "May 1st 2027";
+                return true;
+            }""", list(HOST_IDS))
+        if not typed:
+            pytest.skip("no needs-you row on this fixture run")
+
+        # three scan cycles: the safety poll is 2 s
+        time.sleep(7)
+
+        after = page.evaluate(
+            """(ids) => {
+                const id = ids.find(i => document.getElementById(i));
+                const root = document.getElementById(id).shadowRoot;
+                const input = Array.from(root.querySelectorAll(".ask"))
+                    .find(i => i.value === "May 1st 2027");
+                return {
+                    present: !!input,
+                    value: input ? input.value : "",
+                    focused: !!input && root.activeElement === input,
+                };
+            }""", list(HOST_IDS))
+        assert after["present"], "the input the applicant was typing into was destroyed"
+        assert after["value"] == "May 1st 2027"
+        assert after["focused"], "focus was stolen by a re-render"
 
 
 class TestCompanionStillTouchesNothing:

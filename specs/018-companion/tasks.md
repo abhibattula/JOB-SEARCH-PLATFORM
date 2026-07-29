@@ -107,32 +107,32 @@ typed text survives three scan cycles.
 
 ### Tests first (RED)
 
-- [ ] T042 [P] [US3] Create `tests/test_page_answers.py`: `build()` groups a skip-with-needs-you reason as `needs_you`, an `ai_draft` decision as `draft`, and any other filled decision as `profile`; ordering is needs-you → draft → profile, document order within a group
-- [ ] T043 [P] [US3] In `tests/test_page_answers.py`, assert every item carries `key` and `je_idx`, and that a field decided as `secret` is excluded entirely (FR-037)
-- [ ] T044 [P] [US3] In `tests/test_page_answers.py`, assert the digest is stable for identical input, differs when any rendered field changes, and is order-sensitive
-- [ ] T045 [P] [US3] In `tests/test_ext_backend.py`, assert the `answers` payload for a job includes a field filled from the profile (not only drafter records) — must FAIL today (research R5)
-- [ ] T046 [P] [US3] In `tests/test_ext_backend.py`, assert a second identical `fields` message pushes **no** `answers` message (FR-027)
-- [ ] T047 [P] [US3] In `tests/test_ext_backend.py`, assert `answers` IS re-sent after `answer_question`, after `fill_again`, and on session start even when the digest is unchanged
-- [ ] T048 [P] [US3] Browser test: after a fill on `practice_apply.html`, every rendered answer row exposes Copy, and rows with a `je_idx` also expose Insert and Show me — must FAIL today (research R4)
-- [ ] T049 [P] [US3] Browser test: clicking Insert places the answer in exactly that field, and a sentinel value in a neighbouring field is unchanged
-- [ ] T050 [P] [US3] Browser test: clicking Show me scrolls the field into view (its rect enters the viewport)
-- [ ] T051 [P] [US3] Browser test: type 12 characters into a needs-you input, wait through ≥3 scan cycles (>6 s), assert the value and `shadowRoot.activeElement` are unchanged — must FAIL today (research R6)
-- [ ] T052 [P] [US3] Browser test: submitting a typed answer fills that field on the next scan with exactly the typed text, and the app stores it with source `user`
-- [ ] T053 [P] [US3] Browser test: groups render with counts, needs-you expanded and the other two collapsed, and each header toggles
-- [ ] T054 [P] [US3] In `tests/test_extension_assets.py`, extend the 017 no-`innerHTML` guard to the new renderer in `panel.js`
+- [x] T042 [P] [US3] Create `tests/test_page_answers.py`: `build()` groups a skip-with-needs-you reason as `needs_you`, an `ai_draft` decision as `draft`, and any other filled decision as `profile`; ordering is needs-you → draft → profile, document order within a group
+- [x] T043 [P] [US3] In `tests/test_page_answers.py`, assert every item carries `key` and `je_idx`, and that a field decided as `secret` is excluded entirely (FR-037)
+- [x] T044 [P] [US3] In `tests/test_page_answers.py`, assert the digest is stable for identical input, differs when any rendered field changes, and is order-sensitive
+- [x] T045 [P] [US3] In `tests/test_ext_backend.py`, assert the `answers` payload for a job includes a field filled from the profile (not only drafter records) — must FAIL today (research R5)
+- [x] T046 [P] [US3] In `tests/test_ext_backend.py`, assert a second identical `fields` message pushes **no** `answers` message (FR-027)
+- [x] T047 [P] [US3] In `tests/test_ext_backend.py`, assert `answers` IS re-sent after `answer_question`, after `fill_again`, and on session start even when the digest is unchanged
+- [x] T048 [P] [US3] Browser test: after a fill on `practice_apply.html`, every rendered answer row exposes Copy, and rows with a `je_idx` also expose Insert and Show me — must FAIL today (research R4)
+- [x] T049 [P] [US3] Browser test: clicking Insert places the answer in exactly that field, and a sentinel value in a neighbouring field is unchanged
+- [x] T050 [P] [US3] Browser test: clicking Show me scrolls the field into view (its rect enters the viewport)
+- [x] T051 [P] [US3] Browser test: type 12 characters into a needs-you input, wait through ≥3 scan cycles (>6 s), assert the value and `shadowRoot.activeElement` are unchanged — must FAIL today (research R6)
+- [x] T052 [P] [US3] Browser test: submitting a typed answer fills that field on the next scan with exactly the typed text, and the app stores it with source `user`
+- [x] T053 [P] [US3] Browser test: groups render with counts, needs-you expanded and the other two collapsed, and each header toggles
+- [x] T054 [P] [US3] In `tests/test_extension_assets.py`, extend the 017 no-`innerHTML` guard to the new renderer in `panel.js`
 
 ### Implementation (GREEN)
 
-- [ ] T055 [US3] Create `engine/autofill/page_answers.py` — pure: `build(decisions, drafter_records)`, `group_for(...)`, `digest(items)`, `PAGE_ANSWER_GROUPS`. No I/O, no `web/` import
-- [ ] T056 [US3] In `engine/autofill/ext_backend.py`, accumulate each field decision during `_handle_fields` (keyed by `field_core.key(raw)`, carrying `raw["je_idx"]`) and hand the accumulation to `page_answers.build`
-- [ ] T057 [US3] Replace the `drafter.answers_for_page(job_id)` call in `_handle_fields` with the assembled index, merging drafter records for questions the drafter owns
-- [ ] T058 [US3] Add per-tab digest tracking in `ext_backend` and skip the `answers` send when unchanged; force a send on session start, `fill_again`, and `answer_question`
-- [ ] T059 [US3] Extend the `answers` outbound payload with `key`, `je_idx` and `group` per `contracts/bridge-protocol-additions.md` §1, keeping `question`/`answer`/`state`/`reason`/`askable` unchanged
-- [ ] T060 [US3] Implement grouped, collapsible answer rendering in `extension/content/panel.js` with per-group counts and the default expansion rules
-- [ ] T061 [US3] Implement keyed reconciliation in `panel.js`: match rows by `key`, patch in place, create only new keys, remove only vanished keys
-- [ ] T062 [US3] Never touch a row containing `root.activeElement` — using the **shadow root's** `activeElement`, since `document.activeElement` returns the host when focus is inside an open shadow root (research R6)
-- [ ] T063 [US3] Render Copy always, and Insert / Show me whenever `je_idx` is present; keep answer text going in via `textContent`
-- [ ] T064 [US3] Keep the truncation notice wired to the `truncated` flag (FR-029)
+- [x] T055 [US3] Create `engine/autofill/page_answers.py` — pure: `build(decisions, drafter_records)`, `group_for(...)`, `digest(items)`, `PAGE_ANSWER_GROUPS`. No I/O, no `web/` import
+- [x] T056 [US3] In `engine/autofill/ext_backend.py`, accumulate each field decision during `_handle_fields` (keyed by `field_core.key(raw)`, carrying `raw["je_idx"]`) and hand the accumulation to `page_answers.build`
+- [x] T057 [US3] Replace the `drafter.answers_for_page(job_id)` call in `_handle_fields` with the assembled index, merging drafter records for questions the drafter owns
+- [x] T058 [US3] Add per-tab digest tracking in `ext_backend` and skip the `answers` send when unchanged; force a send on session start, `fill_again`, and `answer_question`
+- [x] T059 [US3] Extend the `answers` outbound payload with `key`, `je_idx` and `group` per `contracts/bridge-protocol-additions.md` §1, keeping `question`/`answer`/`state`/`reason`/`askable` unchanged
+- [x] T060 [US3] Implement grouped, collapsible answer rendering in `extension/content/panel.js` with per-group counts and the default expansion rules
+- [x] T061 [US3] Implement keyed reconciliation in `panel.js`: match rows by `key`, patch in place, create only new keys, remove only vanished keys
+- [x] T062 [US3] Never touch a row containing `root.activeElement` — using the **shadow root's** `activeElement`, since `document.activeElement` returns the host when focus is inside an open shadow root (research R6)
+- [x] T063 [US3] Render Copy always, and Insert / Show me whenever `je_idx` is present; keep answer text going in via `textContent`
+- [x] T064 [US3] Keep the truncation notice wired to the `truncated` flag (FR-029)
 
 **Checkpoint**: the panel is a complete, usable review surface.
 

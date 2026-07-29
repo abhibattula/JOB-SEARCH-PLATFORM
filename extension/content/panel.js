@@ -167,6 +167,31 @@ window.jePanel = (function () {
       border-radius:6px;color:#d29922;font-size:12px}
     .foot{padding:8px 11px;border-top:1px solid #30363d;color:#8b949e;
       font-size:11px;flex:none;background:#0d1117}
+    .muted{color:#8b949e;font-size:12px}
+    /* answer groups */
+    .grp{margin-top:9px;border-top:1px solid #21262d;padding-top:7px}
+    .grph{width:100%;text-align:left;background:none;border:0;cursor:pointer;
+      color:#8b949e;font:600 11px system-ui;text-transform:uppercase;
+      letter-spacing:.04em;padding:3px 0}
+    .grph:hover{color:#e6edf3}
+    .grph[aria-expanded="true"]{color:#e6edf3}
+    .grpn{color:#8b949e;font-weight:600}
+    .grpb{margin-top:5px}
+    .qa{margin:0 0 9px;padding-bottom:7px;border-bottom:1px solid #21262d}
+    .qa:last-child{border-bottom:0;margin-bottom:0}
+    .q{font-size:12px;color:#c9d1d9;margin-bottom:3px}
+    .a{font-size:12px;color:#e6edf3;white-space:pre-wrap;word-break:break-word}
+    .a.drafted{color:#a371f7}
+    .a.muted{color:#8b949e}
+    .acts{display:flex;gap:6px;margin-top:5px}
+    .sm{padding:3px 8px;font:11px system-ui;background:#21262d;color:#e6edf3;
+      border:1px solid #30363d;border-radius:5px;cursor:pointer}
+    .sm:hover{background:#30363d}
+    .why{font-size:11px;color:#d29922;margin-top:3px}
+    .ask{width:100%;margin-top:4px;padding:5px 7px;font:12px system-ui;
+      background:#0d1117;color:#e6edf3;border:1px solid #30363d;
+      border-radius:5px}
+    .ask:disabled{opacity:.6}
     :focus-visible{outline:2px solid #58a6ff;outline-offset:2px}
     @media (prefers-reduced-motion: reduce){*{transition:none!important}}
   `;
@@ -453,113 +478,224 @@ window.jePanel = (function () {
     d.jeSponsor = s ? (s.sponsorKey || "unknown") : "";
   }
 
-  // ---------- answers (017 behaviour; US3 replaces this renderer) ----------
+  // ---------- answers ----------
+  //
+  // 018 (US3). Two things were wrong with the 017 renderer.
+  //
+  // It listed only what the AI drafter had touched, because the feed came out
+  // of `drafter._records`. Everything filled from the profile or the answer
+  // bank -- name, email, phone, location, work authorization -- was invisible
+  // here, so the surface meant for reviewing an application showed a fraction
+  // of it. The feed now carries every decided field, grouped.
+  //
+  // And it rebuilt EVERY row on every scan (`list.textContent = ""` then
+  // recreate), while the app pushed a new payload every ~2 seconds. The input
+  // an applicant was typing into was destroyed under their fingers before
+  // they could press Enter. Rows are now matched by key and patched in place,
+  // and a row holding the focus is not touched at all.
+
+  const GROUPS = [
+    { id: "needs_you", label: "Needs you", icon: "\u26a0", open: true },
+    { id: "draft", label: "AI drafts \u2014 review", icon: "\u270e", open: false },
+    { id: "profile", label: "From your profile", icon: "\u2713", open: false },
+  ];
+
+  const rows = new Map();      // key -> row refs
+  const groupEls = new Map();  // group id -> {section, header, body, count}
+  const groupOpen = {};        // group id -> the applicant's choice
+  GROUPS.forEach(function (g) { groupOpen[g.id] = g.open; });
+
+  function ensureGroups() {
+    if (groupEls.size) { return; }
+    GROUPS.forEach(function (g) {
+      const section = document.createElement("div");
+      section.className = "grp";
+      section.dataset.jeGroup = g.id;
+
+      const header = document.createElement("button");
+      header.className = "grph";
+      header.type = "button";
+      header.setAttribute("aria-expanded", String(groupOpen[g.id]));
+      header.addEventListener("click", function () {
+        groupOpen[g.id] = !groupOpen[g.id];
+        paintGroups();
+      });
+
+      const count = document.createElement("span");
+      count.className = "grpn";
+      header.appendChild(document.createTextNode(g.icon + " " + g.label + " "));
+      header.appendChild(count);
+
+      const body = document.createElement("div");
+      body.className = "grpb";
+
+      section.appendChild(header);
+      section.appendChild(body);
+      els.answers.appendChild(section);
+      groupEls.set(g.id, { section: section, header: header, body: body,
+                           count: count });
+    });
+  }
+
+  function paintGroups() {
+    GROUPS.forEach(function (g) {
+      const refs = groupEls.get(g.id);
+      if (!refs) { return; }
+      let n = 0;
+      state.answers.forEach(function (i) { if (i.group === g.id) { n += 1; } });
+      refs.section.hidden = n === 0;
+      refs.count.textContent = "(" + n + ")";
+      refs.header.setAttribute("aria-expanded", String(groupOpen[g.id]));
+      refs.body.hidden = !groupOpen[g.id];
+    });
+  }
+
+  // FR-026: the applicant's typing outranks any update. `activeElement` is
+  // read off the SHADOW ROOT -- `document.activeElement` returns the HOST
+  // element when focus is inside an open shadow root, so checking the
+  // document would never match and this guard would never fire.
+  function holdsFocus(node) {
+    const active = root && root.activeElement;
+    return !!(active && node.contains(active));
+  }
 
   function setAnswers(items, truncated) {
     build();
     if (!host) { return; }
     state.answers = items || [];
     state.truncated = !!truncated;
-    renderAnswers();
+    reconcile();
     paint();
   }
 
-  function renderAnswers() {
-    const box = els.answers;
-    box.textContent = "";
-    if (!state.answers.length) { return; }
-    const head = document.createElement("h4");
-    head.textContent = "Answers";
-    head.style.cssText = "margin:10px 0 6px;font-size:11px;color:#8b949e;" +
-      "text-transform:uppercase;letter-spacing:.04em";
-    box.appendChild(head);
+  function reconcile() {
+    ensureGroups();
+    const seen = new Set();
     state.answers.forEach(function (item) {
-      box.appendChild(answerRow(item));
+      const key = item.key || item.question || "";
+      if (!key) { return; }
+      seen.add(key);
+      let row = rows.get(key);
+      if (!row) {
+        row = createRow(item);
+        rows.set(key, row);
+      }
+      const refs = groupEls.get(item.group);
+      // appendChild also REORDERS an existing child, which keeps the rows in
+      // feed order without ever detaching and recreating them.
+      if (refs) { refs.body.appendChild(row.wrap); }
+      if (!holdsFocus(row.wrap)) { patchRow(row, item); }
     });
-    if (state.truncated) {
-      const more = document.createElement("div");
-      more.style.cssText = "color:#8b949e;font-size:12px";
-      more.textContent = "Not every answer fits here — the app's Apply " +
-        "Assist page has the full list.";
-      box.appendChild(more);
-    }
+    rows.forEach(function (row, key) {
+      if (seen.has(key)) { return; }
+      if (holdsFocus(row.wrap)) { return; }  // still being answered
+      if (row.wrap.parentNode) { row.wrap.parentNode.removeChild(row.wrap); }
+      rows.delete(key);
+    });
+    paintGroups();
+    renderTruncation();
   }
 
-  function answerRow(item) {
+  function createRow(item) {
     const wrap = document.createElement("div");
-    wrap.style.cssText = "margin:0 0 10px;padding-bottom:8px;" +
-      "border-bottom:1px solid #21262d";
-    wrap.dataset.jeState = item.state || "";
+    wrap.className = "qa";
 
     const q = document.createElement("div");
-    q.style.cssText = "font-size:12px;color:#c9d1d9;margin-bottom:3px";
-    q.textContent = item.question || "";
+    q.className = "q";
     wrap.appendChild(q);
 
-    if (item.answer) {
-      const a = document.createElement("div");
-      a.style.cssText = "font-size:12px;white-space:pre-wrap;" +
-        "word-break:break-word;color:" +
-        (item.state === "drafted" ? "#a371f7" : "#e6edf3");
-      a.textContent = item.answer;
-      wrap.appendChild(a);
-      wrap.appendChild(rowActions(item));
-    } else if (item.state === "drafting") {
-      const a = document.createElement("div");
-      a.style.cssText = "font-size:12px;color:#8b949e";
-      a.textContent = "drafting…";
-      wrap.appendChild(a);
-    }
+    const a = document.createElement("div");
+    a.className = "a";
+    wrap.appendChild(a);
 
-    if (item.askable) {
-      const why = document.createElement("div");
-      why.style.cssText = "font-size:11px;color:#d29922;margin-top:2px";
-      why.textContent = reasonText(item.reason);
-      wrap.appendChild(why);
-
-      const input = document.createElement("input");
-      input.type = "text";
-      input.placeholder = "Your answer — saved for next time";
-      input.style.cssText = "width:100%;margin-top:4px;padding:4px 6px;" +
-        "font:12px system-ui;background:#0d1117;color:#e6edf3;" +
-        "border:1px solid #30363d;border-radius:5px";
-      input.addEventListener("keydown", function (evt) {
-        if (evt.key !== "Enter") { return; }
-        const typed = input.value.trim();
-        if (!typed || !handlers.answer) { return; }
-        handlers.answer(item.question, typed, item.je_idx || "");
-        input.disabled = true;
-        why.textContent = "Saved — it fills on the next scan.";
-      });
-      wrap.appendChild(input);
-    }
-    return wrap;
-  }
-
-  function rowActions(item) {
     const acts = document.createElement("div");
-    acts.style.cssText = "display:flex;gap:6px;margin-top:5px";
-    acts.appendChild(smallButton("Copy", function (btn) {
-      navigator.clipboard.writeText(item.answer).then(
+    acts.className = "acts";
+    const copy = smallButton("Copy", function (btn) {
+      navigator.clipboard.writeText(row.item.answer).then(
         function () { btn.textContent = "Copied"; },
         function () { btn.textContent = "Copy failed"; });
-    }));
-    if (item.je_idx) {
-      acts.appendChild(smallButton("Insert", function () {
-        if (handlers.insert) { handlers.insert(item.je_idx, item.answer); }
-      }));
-      acts.appendChild(smallButton("Show me", function () {
-        if (handlers.jump) { handlers.jump(item.je_idx); }
-      }));
+    });
+    const insert = smallButton("Insert", function () {
+      if (handlers.insert && row.item.je_idx) {
+        handlers.insert(row.item.je_idx, row.item.answer);
+      }
+    });
+    const jump = smallButton("Show me", function () {
+      if (handlers.jump && row.item.je_idx) { handlers.jump(row.item.je_idx); }
+    });
+    acts.appendChild(copy);
+    acts.appendChild(insert);
+    acts.appendChild(jump);
+    wrap.appendChild(acts);
+
+    const why = document.createElement("div");
+    why.className = "why";
+    wrap.appendChild(why);
+
+    const input = document.createElement("input");
+    input.type = "text";
+    input.className = "ask";
+    input.placeholder = "Your answer \u2014 saved for next time";
+    input.addEventListener("keydown", function (evt) {
+      if (evt.key !== "Enter") { return; }
+      const typed = input.value.trim();
+      if (!typed || !handlers.answer) { return; }
+      handlers.answer(row.item.question, typed, row.item.je_idx || "");
+      input.disabled = true;
+      why.textContent = "Saved \u2014 it fills on the next scan.";
+    });
+    wrap.appendChild(input);
+
+    const row = { wrap: wrap, q: q, a: a, acts: acts, insert: insert,
+                  jump: jump, why: why, input: input, item: item };
+    return row;
+  }
+
+  function patchRow(row, item) {
+    row.item = item;
+    row.wrap.dataset.jeState = item.state || "";
+    row.wrap.dataset.jeKey = item.key || "";
+    if (row.q.textContent !== item.question) {
+      row.q.textContent = item.question || "";
     }
-    return acts;
+
+    const drafting = item.state === "drafting";
+    const text = item.answer || (drafting ? "drafting\u2026" : "");
+    if (row.a.textContent !== text) { row.a.textContent = text; }
+    row.a.className = "a" + (item.state === "drafted" ? " drafted" : "") +
+      (drafting ? " muted" : "");
+    row.a.hidden = !text;
+
+    // Copy is always available; Insert and Show me need a field to act on.
+    // Through v1.7.0 neither ever rendered, because the feed carried no
+    // je_idx at all and both were gated on it.
+    row.acts.hidden = !item.answer;
+    row.insert.hidden = !item.je_idx;
+    row.jump.hidden = !item.je_idx;
+
+    row.why.hidden = !item.askable;
+    row.input.hidden = !item.askable;
+    if (item.askable && !row.input.disabled) {
+      row.why.textContent = reasonText(item.reason);
+    }
+  }
+
+  function renderTruncation() {
+    if (!els.more) {
+      els.more = document.createElement("div");
+      els.more.className = "muted";
+      els.more.textContent = "Not every answer fits here \u2014 the app's " +
+        "Apply Assist page has the full list.";
+      els.answers.appendChild(els.more);
+    }
+    els.more.hidden = !state.truncated;
   }
 
   function smallButton(label, fn) {
     const b = document.createElement("button");
+    b.type = "button";
+    b.className = "sm";
     b.textContent = label;
-    b.style.cssText = "padding:3px 8px;font:11px system-ui;background:#21262d;" +
-      "color:#e6edf3;border:1px solid #30363d;border-radius:5px;cursor:pointer";
     b.addEventListener("click", function () { fn(b); });
     return b;
   }
@@ -567,15 +703,21 @@ window.jePanel = (function () {
   function reasonText(reason) {
     switch (reason) {
       case "binding_commitment":
-        return "This one commits you to something — your call, not ours.";
+        return "This one commits you to something \u2014 your call, not ours.";
       case "never_generated":
       case "cannot_answer":
+      case "sensitive":
         return "Only you know this one.";
       case "profile_fact_missing":
         return "Add it to your profile and it fills automatically next time.";
       case "no_valid_option":
       case "not_an_option_label":
         return "No option here matched your stored answer.";
+      case "wrong_shape":
+        return "Your stored answer does not fit this kind of field.";
+      case "attempts_exhausted":
+      case "job_budget_exhausted":
+        return "We could not answer this one \u2014 over to you.";
       default:
         return "Needs you.";
     }
