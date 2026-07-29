@@ -145,8 +145,8 @@ per story.
 
 - [ ] T060 [US6] [P] RED: in `tests/test_ext_protocol.py` and `tests/test_ext_backend.py`, assert the `answers` message shape from contracts/bridge-protocol-additions.md §1, that credentials never appear in it, and that truncation is disclosed (FR-049)
 - [ ] T061 [US6] GREEN: add a full-text accessor beside `drafter.list_for_job` and emit `answers` from `engine/autofill/ext_backend.py`
-- [ ] T062 [US6] [P] RED: assert a `rescan` round-trip triggers exactly one immediate scan and mutates no drafter state
-- [ ] T063 [US6] GREEN: implement the `rescan` case in `extension/background/service-worker.js` and the handler in `extension/content/main.js`
+- [x] T062 [US6] [P] RED: assert a `rescan` round-trip triggers exactly one immediate scan and mutates no drafter state
+- [x] T063 [US6] GREEN: implement the `rescan` case in `extension/background/service-worker.js` and the handler in `extension/content/main.js`
 - [ ] T064 [US6] Panel rewrite in `extension/content/overlay.js`: open shadow root with `dataset` mirrors, answers list with Copy and Insert, needs-you jump-to-field, retained Fill again and the "you click apply / submit" line; update the static guards in `tests/test_extension_assets.py`
 - [ ] T065 [US6] [P] RED: assert a panel-captured answer is stored with `source = 'user'`, fills its field, and auto-fills the same question on a later job without a generator call (SC-010)
 - [ ] T066 [US6] GREEN: implement the `answer_question` inbound message in `engine/autofill/ext_protocol.py` and `engine/autofill/ext_backend.py`, the capture input in `extension/content/overlay.js`, and the bank write
@@ -158,8 +158,8 @@ per story.
 
 ## Phase 9: US7 — Apply with Apply Assist (Priority: P7)
 
-- [ ] T068 [US7] [P] RED: in `tests/test_routes_autofill.py`, assert a single-job start saves the job if needed and starts a session without the queue page
-- [ ] T069 [US7] GREEN: add the primary "Apply with Apply Assist" action to `web/templates/job_detail.html` and the feed row actions in `web/templates/partials/feed_table.html`
+- [x] T068 [US7] [P] RED: in `tests/test_routes_autofill.py`, assert a single-job start saves the job if needed and starts a session without the queue page
+- [x] T069 [US7] GREEN: add the primary "Apply with Apply Assist" action to `web/templates/job_detail.html` and the feed row actions in `web/templates/partials/feed_table.html`
 - [ ] T070 [US7] [P] RED: in `tests/test_ext_backend.py`, assert `apply_here` upserts the posting and starts a NON-ad-hoc watch on that tab (so the apply-opener arms)
 - [ ] T071 [US7] GREEN: implement the `apply_here` inbound message and the badge button in `extension/content/discovery.js`, keeping the read-only guard intact
 - [ ] T072 [US7] R23: pin the in-app draft-review surface's actual data source with a test, then converge it on the same feed the page uses, in `web/templates/partials/autofill_status.html` and `web/routes_autofill.py`

@@ -44,6 +44,26 @@ def preflight():
     return _last_preflight
 
 
+@router.post("/apply/{job_id}")
+def apply_with_assist(job_id: int):
+    """017 (FR-040): start Apply Assist for ONE job, from that job.
+
+    Until now the only way in was the Apply Assist page, which lists only
+    jobs that are already saved AND passed the entry-level filter — so a job
+    you were looking at could not be filled without a detour. Saves the job
+    first (a job you are applying to is a job you saved) and then starts the
+    normal single-job queue.
+    """
+    from engine import db
+
+    job = db.get_job(job_id)
+    if job is None:
+        raise HTTPException(status_code=404, detail="unknown job")
+    if job.get("status") not in ("saved", "applied"):
+        db.set_status(job_id, "saved")
+    return start_queue(QueueRequest(job_ids=[job_id]))
+
+
 @router.post("/queue")
 def start_queue(body: QueueRequest):
     global _last_preflight

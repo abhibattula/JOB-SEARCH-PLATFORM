@@ -38,6 +38,15 @@ state.onMessage = (msg) => {
       break;
     case "save_result": toContent(msg.tab_id, { ...msg, type: "save_result" }, 0);
       break;
+    // 017 (C12): the app has sent `rescan` from three call sites since 016,
+    // but nothing ever handled it — it fell through to `default:` and every
+    // draft-ready push and Fill again waited on the 2 s safety poll instead.
+    // Broadcast to every watched tab's top frame; the content script decides.
+    case "rescan":
+      watched.forEach((_entry, tabId) => {
+        toContent(tabId, { type: "rescan", reason: msg.reason || "" }, 0);
+      });
+      break;
     // 016 (T010): app-side refusals (e.g. busy) are STORED so the popup can
     // show them — this used to hit `default:` and vanish (RC4).
     case "error":

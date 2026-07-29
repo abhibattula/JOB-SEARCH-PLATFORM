@@ -14,7 +14,15 @@
         · via <span class="data">{{ job.source }}</span></p>
     </div>
     <div class="job-actions">
-      <a class="apply" href="{{ job.url }}" target="_blank" rel="noopener"
+      {# 017 (FR-040): start Apply Assist from the job itself. The only way
+         in used to be the Apply Assist page, which lists just saved +
+         entry-level jobs — so the job you were reading could not be filled
+         without a detour. #}
+      <button type="button" class="apply" id="apply-with-assist"
+              title="Opens this application in your browser and fills what it can — you review and submit">
+        Apply with Apply Assist
+      </button>
+      <a class="ghost" href="{{ job.url }}" target="_blank" rel="noopener"
          title="Opens in your system browser">Open posting ↗</a>
       <button type="button" class="ghost" onclick="copyText('{{ job.url }}')"
               title="Copy the apply link"
@@ -156,4 +164,35 @@
     </aside>
   </div>
 </article>
+<script>
+  // 017 (FR-040): one action — save the job if needed, start a single-job
+  // Apply Assist session, then hand over to the live status page.
+  (function () {
+    const btn = document.getElementById("apply-with-assist");
+    if (!btn) { return; }
+    btn.addEventListener("click", async () => {
+      btn.disabled = true;
+      const original = btn.textContent;
+      btn.textContent = "Starting…";
+      try {
+        const resp = await fetch("/api/autofill/apply/{{ job.id }}",
+                                 {method: "POST"});
+        const body = await resp.json();
+        if (!resp.ok || body.started === false) {
+          btn.textContent = original;
+          btn.disabled = false;
+          alert(body.detail || body.error
+                || "Couldn't start Apply Assist. Open Apply Assist for details.");
+          return;
+        }
+        window.location.href = "/autofill";
+      } catch (e) {
+        btn.textContent = original;
+        btn.disabled = false;
+        alert("Couldn't start Apply Assist: " + e.message);
+      }
+    });
+  })();
+</script>
+
 {% endblock %}

@@ -765,3 +765,73 @@ class TestControlsAlwaysReachable017:
         """A swap that re-anchors the scroll makes a long page unusable."""
         body = client.get("/autofill").text
         assert 'hx-swap="innerHTML show:none"' in body
+
+
+class TestApplyWithAssist017:
+    """017-T068 (FR-040): start Apply Assist for one job, from that job.
+
+    The only entry point used to be the Apply Assist page, which lists only
+    jobs that are already saved AND passed the entry-level filter — so the
+    job you were reading could not be filled without a detour.
+    """
+
+    def test_it_starts_a_single_job_session(self, client, monkeypatch):
+        from engine.autofill import browser_controller
+
+        started = {}
+
+        def fake_start(job_ids):
+            started["ids"] = job_ids
+            return {"job_id": job_ids[0]}
+
+        monkeypatch.setattr(browser_controller, "start_queue", fake_start)
+        monkeypatch.setattr(browser_controller, "preflight",
+                            lambda: {"ok": True, "channel": "chrome",
+                                     "error": None})
+        job_id = seed_job("https://x.example/apply-with-assist")
+
+        resp = client.post(f"/api/autofill/apply/{job_id}")
+
+        assert resp.status_code == 200
+        assert resp.json()["started"] is True
+        assert started["ids"] == [job_id]
+
+    def test_it_saves_the_job_first(self, client, monkeypatch):
+        from engine import db
+        from engine.autofill import browser_controller
+
+        monkeypatch.setattr(browser_controller, "start_queue",
+                            lambda ids: {"job_id": ids[0]})
+        monkeypatch.setattr(browser_controller, "preflight",
+                            lambda: {"ok": True, "channel": "chrome",
+                                     "error": None})
+        job_id = seed_job("https://x.example/apply-saves")
+
+        client.post(f"/api/autofill/apply/{job_id}")
+
+        assert db.get_job(job_id)["status"] == "saved"
+
+    def test_an_applied_job_is_not_reset_to_saved(self, client, monkeypatch):
+        from engine import db
+        from engine.autofill import browser_controller
+
+        monkeypatch.setattr(browser_controller, "start_queue",
+                            lambda ids: {"job_id": ids[0]})
+        monkeypatch.setattr(browser_controller, "preflight",
+                            lambda: {"ok": True, "channel": "chrome",
+                                     "error": None})
+        job_id = seed_job("https://x.example/apply-already-applied")
+        db.set_status(job_id, "applied")
+
+        client.post(f"/api/autofill/apply/{job_id}")
+
+        assert db.get_job(job_id)["status"] == "applied"
+
+    def test_an_unknown_job_is_404(self, client):
+        assert client.post("/api/autofill/apply/999999").status_code == 404
+
+    def test_the_job_page_offers_the_action(self, client):
+        job_id = seed_job("https://x.example/apply-button")
+        body = client.get(f"/jobs/{job_id}").text
+        assert 'id="apply-with-assist"' in body
+        assert f"/api/autofill/apply/{job_id}" in body

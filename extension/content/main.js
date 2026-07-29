@@ -136,6 +136,12 @@
         // Chrome already delivered this to the right frame via sendMessage)
         onFill(message);
         break;
+      // 017 (C12, FR-037): a background draft landed, or the applicant asked
+      // for a re-scan. Scan NOW instead of waiting for the 2 s poll. It only
+      // re-reads the page — it never resets any app-side state.
+      case "rescan":
+        scan();
+        break;
       case "overlay_state":
         if (isTop && window.jeOverlay) { window.jeOverlay.update(message.summary); }
         // 016 (T017): highlight the fields the human must answer

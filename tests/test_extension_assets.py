@@ -428,3 +428,29 @@ class TestResumeTransport017:
     def test_the_real_filename_is_used(self):
         source = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
         assert "item.filename" in source
+
+
+class TestRescanHandled017:
+    """017-T062 (C12, FR-037): `rescan` was a dead protocol slot.
+
+    The app has sent it from three call sites since 016 — draft-ready pushes,
+    the panel's Fill again, and POST /api/autofill/rescan — and nothing ever
+    handled it, so every one of them waited on the 2-second safety poll.
+    """
+
+    def test_the_service_worker_handles_it(self):
+        source = (EXT / "background" / "service-worker.js").read_text(
+            encoding="utf-8")
+        assert 'case "rescan":' in source
+
+    def test_the_content_script_handles_it(self):
+        source = (EXT / "content" / "main.js").read_text(encoding="utf-8")
+        assert 'case "rescan":' in source
+
+    def test_it_only_rescans_and_touches_no_state(self):
+        source = (EXT / "content" / "main.js").read_text(encoding="utf-8")
+        body = source[source.index('case "rescan":'):]
+        body = body[:body.index("break;")]
+        assert "scan()" in body
+        for forbidden in ("teardown", "adhoc =", "startWatch"):
+            assert forbidden not in body, forbidden
