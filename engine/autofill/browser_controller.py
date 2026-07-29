@@ -304,19 +304,50 @@ def _mark_interrupted() -> None:
         _playwright = None
 
 
+def _was_tailored(job_id: int) -> bool:
+    """Whether the applicant actually ran Tailor for this job."""
+    from .. import db
+
+    try:
+        job = db.get_job(job_id) or {}
+    except Exception:  # noqa: BLE001 — a missing row is not an error here
+        return False
+    return bool((job.get("tailor_json") or "").strip())
+
+
 def _resume_file_for_job(job_id: int, profile: dict) -> str | None:
-    """The job's tailored PDF when available and the preference (default
-    on) allows it; otherwise the stored original upload."""
+    """017 (D6, FR-032): the tailored document ONLY when tailoring was
+    actually performed for this job; otherwise the applicant's own upload.
+
+    `tailored_resume_path` renders from the resume-builder sections whether or
+    not the job was ever tailored, so the previous rule sent an
+    app-generated PDF to every application. On the 2026-07-28 run the file
+    attached was `6532.pdf` — a rendering — on a job the applicant had not
+    tailored. Their uploaded PDF is the document they chose to represent
+    them, formatting and all.
+    """
     from .. import settings
 
-    if settings.get("AUTOFILL_USE_TAILORED_PDF") != "0":
+    if settings.get("AUTOFILL_USE_TAILORED_PDF") != "0" and _was_tailored(job_id):
         try:
             from .. import resume_pdf
 
             return str(resume_pdf.tailored_resume_path(job_id))
         except Exception:
             log.debug("tailored PDF unavailable — using original resume", exc_info=True)
-    return profile.get("resume_file_path") or None
+    stored = profile.get("resume_file_path") or None
+    if stored:
+        return stored
+    # No upload on file: fall back to a rendering rather than attaching
+    # nothing, since an application without a resume is rejected outright.
+    if settings.get("AUTOFILL_USE_TAILORED_PDF") != "0":
+        try:
+            from .. import resume_pdf
+
+            return str(resume_pdf.tailored_resume_path(job_id))
+        except Exception:
+            log.debug("no resume available for job %s", job_id, exc_info=True)
+    return None
 
 
 def _domain_for_job(job_id: int) -> str | None:

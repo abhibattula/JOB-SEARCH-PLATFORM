@@ -444,8 +444,18 @@ def _handle_fields(msg) -> None:
         item: dict = {"je_idx": raw["je_idx"], "flag": None}
         if decision.kind == "file":
             token = issue_file_token(str(decision.value))
+            # 017 (FR-031): send the real name and the expected type so the
+            # upload arrives as the applicant's own file and the companion
+            # can verify what it fetched before attaching it.
+            import mimetypes
+            import os
+
+            path = str(decision.value)
+            filename = os.path.basename(path.replace("\\", "/")) or "resume.pdf"
+            mime = mimetypes.guess_type(filename)[0] or "application/pdf"
             item.update(kind="file", value="",
-                        file_url=f"/api/bridge/file/{token}")
+                        file_url=f"/api/bridge/file/{token}",
+                        filename=filename, mime=mime)
         elif decision.secret:
             item.update(kind="secret", value=str(decision.value))
         elif decision.kind == "select":

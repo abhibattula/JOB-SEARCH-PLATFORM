@@ -213,6 +213,13 @@ class FillItem(_Strict):
     value: str = ""
     option_label: str | None = None
     file_url: str | None = None
+    # 017 (FR-031, additive — PROTOCOL_V stays 1): the file's REAL name and
+    # expected type. attachFile used to read a `data-je-filename` attribute
+    # that nothing ever wrote, so every upload arrived as "resume.pdf"; and
+    # with no expected type there was nothing to verify the bytes against.
+    # Older companions ignore both fields.
+    filename: str | None = None
+    mime: str | None = None
     # 016: "needs_you" marks an unfilled field for the on-page highlight.
     flag: Literal["ai_draft", "needs_you"] | None = None
 

@@ -129,12 +129,12 @@ per story.
 
 ## Phase 7: US5 — Attach the real résumé (Priority: P5)
 
-- [ ] T053 [US5] [P] RED: in `tests/test_extension_assets.py`, assert `filler.js` no longer calls `fetch` directly and that a non-PDF or empty body results in no attachment; assert the service worker resolves the path against `http://127.0.0.1:<port>`
-- [ ] T054 [US5] GREEN: implement the `fetch_file` message in `extension/background/service-worker.js` and rewrite `attachFile` in `extension/content/filler.js` to build the `File` from the returned bytes after verification
-- [ ] T055 [US5] [P] RED: in `tests/test_ext_protocol.py`, assert `filename`/`mime` are additive and that a payload without them still parses
-- [ ] T056 [US5] GREEN: add the fields to `FillItem` in `engine/autofill/ext_protocol.py` and populate them in `engine/autofill/ext_backend.py`
-- [ ] T057 [US5] [P] RED: in `tests/test_browser_controller.py`, assert the tailored PDF is chosen only when the job carries a non-empty `tailor_json`, and the uploaded résumé otherwise
-- [ ] T058 [US5] GREEN: change `_resume_file_for_job` in `engine/autofill/browser_controller.py` accordingly
+- [x] T053 [US5] [P] RED: in `tests/test_extension_assets.py`, assert `filler.js` no longer calls `fetch` directly and that a non-PDF or empty body results in no attachment; assert the service worker resolves the path against `http://127.0.0.1:<port>`
+- [x] T054 [US5] GREEN: implement the `fetch_file` message in `extension/background/service-worker.js` and rewrite `attachFile` in `extension/content/filler.js` to build the `File` from the returned bytes after verification
+- [x] T055 [US5] [P] RED: in `tests/test_ext_protocol.py`, assert `filename`/`mime` are additive and that a payload without them still parses
+- [x] T056 [US5] GREEN: add the fields to `FillItem` in `engine/autofill/ext_protocol.py` and populate them in `engine/autofill/ext_backend.py`
+- [x] T057 [US5] [P] RED: in `tests/test_browser_controller.py`, assert the tailored PDF is chosen only when the job carries a non-empty `tailor_json`, and the uploaded résumé otherwise
+- [x] T058 [US5] GREEN: change `_resume_file_for_job` in `engine/autofill/browser_controller.py` accordingly
 - [ ] T059 [US5] A `cover_letter` file input receives a rendered, cached cover-letter PDF (reusing `resume_pdf.render_cover_letter`) or needs-you — never drafted prose; test in `tests/test_browser_controller.py`
 
 **Checkpoint**: what goes out is what the applicant chose.

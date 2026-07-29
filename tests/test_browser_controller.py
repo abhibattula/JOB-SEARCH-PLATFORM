@@ -570,14 +570,23 @@ class TestResumeFileSelection:
     tailored-PDF preference, toggle, fallback — lives in
     _resume_file_for_job; the attach mechanics live in test_watcher.py."""
 
-    def test_tailored_pdf_preferred_when_available(self, tmp_db, monkeypatch):
-        from engine import resume_pdf
+    def test_tailored_pdf_preferred_when_the_job_was_tailored(
+            self, tmp_db, monkeypatch):
+        """017 (D6): narrowed from "whenever a rendering is available" to
+        "when the applicant actually ran Tailor for this job". The renderer
+        produces a PDF from the resume-builder sections either way, so the
+        old rule sent an app-generated document to every application."""
+        from engine import db as edb, resume_pdf
 
+        job_id = seed_job("https://x.example/tailored-pref")
+        edb.set_tailor(job_id, '{"summary_line": "x"}')
         monkeypatch.setattr(
-            resume_pdf, "tailored_resume_path", lambda job_id: "C:/t/tailored-7.pdf"
+            resume_pdf, "tailored_resume_path",
+            lambda jid: f"C:/t/tailored-{jid}.pdf"
         )
-        path = bc._resume_file_for_job(7, {"resume_file_path": "C:/r/original.pdf"})
-        assert path == "C:/t/tailored-7.pdf"
+        path = bc._resume_file_for_job(
+            job_id, {"resume_file_path": "C:/r/original.pdf"})
+        assert path == f"C:/t/tailored-{job_id}.pdf"
 
     def test_toggle_off_uses_original_upload(self, tmp_db, monkeypatch):
         from engine import db as edb
@@ -802,3 +811,63 @@ class TestSnapshotBrowser015:
         snapshot = bc.queue_snapshot()
         assert snapshot["extension"]["browser"] == "chrome"
         ext_backend.reset_for_tests()
+
+
+class TestResumeChoice017:
+    """017-T057 (D6, FR-032): the tailored document goes out ONLY when the
+    applicant actually tailored that job.
+
+    tailored_resume_path renders from the resume-builder sections regardless,
+    so the old rule attached an app-generated PDF to every application. On
+    the 2026-07-28 run the attached file was `6532.pdf` — a rendering — on a
+    job that had never been tailored.
+    """
+
+    def _job(self, tailored: bool):
+        from engine import db
+
+        job_id = seed_job("https://x.example/tailor-choice")
+        if tailored:
+            db.set_tailor(job_id, '{"summary_line": "x"}')
+        return job_id
+
+    def test_an_untailored_job_gets_the_uploaded_resume(self, tmp_db):
+        job_id = self._job(tailored=False)
+        chosen = bc._resume_file_for_job(
+            job_id, {"resume_file_path": "C:/resumes/Abhinav_Battula.pdf"})
+        assert chosen == "C:/resumes/Abhinav_Battula.pdf"
+
+    def test_a_tailored_job_gets_the_tailored_document(self, tmp_db,
+                                                      monkeypatch):
+        from engine import resume_pdf
+
+        monkeypatch.setattr(resume_pdf, "tailored_resume_path",
+                            lambda job_id: f"/data/tailored/{job_id}.pdf")
+        job_id = self._job(tailored=True)
+        chosen = bc._resume_file_for_job(
+            job_id, {"resume_file_path": "C:/resumes/Abhinav_Battula.pdf"})
+        assert chosen == f"/data/tailored/{job_id}.pdf"
+
+    def test_with_no_upload_a_rendering_is_better_than_nothing(
+            self, tmp_db, monkeypatch):
+        """An application with no resume attached is rejected outright."""
+        from engine import resume_pdf
+
+        monkeypatch.setattr(resume_pdf, "tailored_resume_path",
+                            lambda job_id: f"/data/tailored/{job_id}.pdf")
+        job_id = self._job(tailored=False)
+        assert bc._resume_file_for_job(job_id, {}) == \
+            f"/data/tailored/{job_id}.pdf"
+
+    def test_the_setting_still_disables_the_rendering_entirely(
+            self, tmp_db, monkeypatch):
+        from engine import settings
+
+        monkeypatch.setattr(settings, "get",
+                            lambda key, default=None:
+                            "0" if key == "AUTOFILL_USE_TAILORED_PDF"
+                            else default)
+        job_id = self._job(tailored=True)
+        assert bc._resume_file_for_job(
+            job_id, {"resume_file_path": "C:/r.pdf"}) == "C:/r.pdf"
+        assert bc._resume_file_for_job(job_id, {}) is None

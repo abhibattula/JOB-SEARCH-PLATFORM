@@ -386,3 +386,45 @@ class TestPanelAndHighlights016:
         js = (EXT / "content" / "main.js").read_text(encoding="utf-8")
         assert '"fill_again"' in js
         assert "needs_you_idx" in js
+
+
+class TestResumeTransport017:
+    """017-T053 (C9, FR-029/FR-030): the resume is fetched through the
+    service worker and verified before it is attached.
+
+    The content script used to fetch the app's RELATIVE url directly, so it
+    resolved against the job board. Greenhouse answers unknown paths with its
+    SPA's HTML and status 200 — meaning a File named resume.pdf containing an
+    HTML page was attached and reported as filled.
+    """
+
+    def test_the_content_script_no_longer_fetches_the_file_itself(self):
+        source = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
+        attach = source[source.index("async function attachFile"):]
+        attach = attach[:attach.index("\n  }")]
+        assert "fetch(" not in attach, \
+            "attachFile must go through the service worker, not fetch directly"
+        assert "_je_file" in attach
+
+    def test_the_service_worker_resolves_against_loopback(self):
+        source = (EXT / "background" / "service-worker.js").read_text(
+            encoding="utf-8")
+        assert "_je_file" in source
+        assert 'http://127.0.0.1:' in source
+        assert "readPairing" in source
+
+    def test_the_bytes_are_verified_before_attaching(self):
+        source = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
+        assert "looksLikeExpectedDocument" in source
+        # "%PDF" magic bytes — an HTML error body fails this check
+        for byte in ("0x25", "0x50", "0x44", "0x46"):
+            assert byte in source, byte
+
+    def test_the_dead_filename_attribute_lookup_is_gone(self):
+        source = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
+        assert "data-je-filename" not in source, \
+            "nothing ever wrote this attribute; the name now arrives on the item"
+
+    def test_the_real_filename_is_used(self):
+        source = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
+        assert "item.filename" in source
