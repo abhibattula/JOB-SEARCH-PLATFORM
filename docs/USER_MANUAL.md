@@ -415,6 +415,25 @@ there is no separate "update the model" step.
 
 ### 11.2 Apply Assist
 
+Since **v1.8.0 the companion in your browser is the surface you work in**, not
+the app. Wherever you are:
+
+- On a **job posting**, a small pill appears in the corner of the window with
+  your match score. Click it → **Apply with Apply Assist**.
+- On a **bare application form** (a Greenhouse `…/application` URL with no job
+  details), the same pill appears offering **Fill this page**.
+- From a **job in the app**, the **Apply with Apply Assist** button starts the
+  session and leaves you on the job.
+- `Alt+J` opens or closes the companion; `Alt+Shift+J` fills the current page.
+
+Once it is filling, the card holds everything: how many fields were filled,
+what needs you, every answer (grouped, with **Copy** / **Insert** / **Show
+me**), a box to answer anything it declined, and **Stop** / **Fill again** /
+**Next job**. A whole application needs no switching back to the app. The
+**Apply Assist** page remains the full record of a run.
+
+The rest of this section describes that page and the queue behind it.
+
 Once you've shortlisted jobs (marked **Saved**), the **Apply Assist** page
 lets the app do the repetitive part of applying:
 
@@ -628,6 +647,65 @@ UNKNOWN badges everywhere = run `python cli.py load-sponsorship`.
 - The old "Enable Apply Assist"/Chromium-download flow, the one-shot
   "couldn't read this page" dead end, and the silent identity auto-fill
   are all gone.
+
+## 22. What changed in v1.8.0 (The Companion)
+
+v1.7.0 fixed *what* Apply Assist writes. You could not use almost any of it,
+because the surface it renders into was unreachable. v1.8.0 is about the thing
+you actually look at while applying.
+
+**You can see it now.** The floating widget had been rendering at the very
+bottom of the page — thousands of pixels below the fold on a normal job
+posting — on every page, since v1.0.0. One line of inline CSS reset the
+positioning it had just set. It is now pinned to the corner of your browser
+window and stays pinned, even on sites whose own stylesheets fight it.
+
+**"Apply with Apply Assist" on a posting works.** That button was dead from
+the day it shipped: clicking it did nothing whatsoever, and no error appeared,
+because its handler read a value that was never set.
+
+**One companion, not two.** The match-score badge and the fill panel are a
+single card. It rests as a small pill showing whatever matters right now — the
+match score while you are reading, `filled/seen` while it is working, a
+warning count when something needs you — and opens when you click it. It opens
+by itself when a fill starts and when the first question needs an answer, so
+you never miss an action, and it never grows past your screen.
+
+**It appears on bare application pages.** Open a Greenhouse `…/application`
+URL directly and there used to be nothing on screen at all — the widget needed
+job details that those pages do not carry. Now the companion shows up wherever
+there is an application form and offers **Fill this page**. (It stays away
+from ordinary pages: a search box, a newsletter signup and a login do not
+count.)
+
+**Every answer is on the page, grouped.** *Needs you* first and open, then
+*AI drafts* to review, then *From your profile* — the ordinary fields like
+name, email and work authorization, which the old panel never showed at all.
+Each answer offers **Copy**, **Insert** (into that one field) and **Show me**.
+Insert and Show me never rendered before; the panel had no idea which field
+an answer belonged to.
+
+**Typing is no longer destroyed.** The panel used to rebuild every row about
+twice a second, wiping a half-typed answer before you could press Enter. Rows
+are now updated in place, and the one you are typing in is never touched.
+
+**A whole application without switching to the app.** **Stop**, **Fill
+again** and **Next job** are on the page, and app-side messages ("another
+session is running") appear there too instead of hiding in the toolbar popup.
+Starting Apply Assist from a job in the app no longer navigates you away from
+the job you were reading.
+
+**Keyboard.** `Alt+J` opens or closes the companion; `Alt+Shift+J` fills the
+current page. Rebind either at `chrome://extensions/shortcuts`.
+
+Nothing about *what* it answers changed: the refusal contract, the
+never-invented facts, the answer-shape rules and the binding-acknowledgement
+split from v1.7.0 are all exactly as they were. Still $0, still private, still
+never auto-submits — you click every apply, login and submit yourself.
+
+> **After upgrading, reload the companion** at `chrome://extensions` (the ↻ on
+> the Job Engine Companion card). The app and the companion ship as one
+> version and the check is exact.
 
 ## 21. What changed in v1.7.0 (The Truthful Fill)
 

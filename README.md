@@ -66,6 +66,15 @@ entirely on your machine for $0.
   back to CPU when there's no GPU; NVIDIA users can unlock full GPU with one
   `pip install` of a CUDA `llama-cpp-python` wheel (the installer stays the CPU
   build, same size).
+- **The companion — one card, in your browser (v1.8)**: a small pill in the
+  corner of the window, showing your match score while you read and
+  `filled/seen` while it works. Click it and you get everything in one place:
+  the sponsorship grade, one primary action (**Apply with Apply Assist** on a
+  posting, **Fill this page** on a bare application form, **Stop** while it
+  runs), and every answer grouped as *needs you* → *AI drafts* → *from your
+  profile*, each with **Copy**, **Insert** and **Show me**. Answer a declined
+  question right there and it fills immediately and is remembered. A whole
+  application takes no switching back to the app. `Alt+J` opens it.
 - **Apply Assist — truthful by design (v1.0, rebuilt in v1.6, made truthful
   in v1.7)**: it answers from what *you* told it, or it leaves the question for
   you. Anything it cannot ground in your profile or resume — whether you
@@ -105,8 +114,9 @@ entirely on your machine for $0.
   click the actual submit/login button yourself; the app never does.**
   Saved logins autofill from your OS's own credential store (never this
   app's database) the same way — filled, never auto-submitted.
-- **Discovery badge — score any job you browse (v1.2)**: with the companion
-  connected, a small badge appears on any job posting you visit — LinkedIn,
+- **Discovery badge — score any job you browse (v1.2, merged into the
+  companion in v1.8)**: with the companion connected, the card appears on any
+  job posting you visit — LinkedIn,
   Indeed, Greenhouse/Lever/Ashby, or a company career page — showing your
   **match score** against your resume and the company's **H-1B sponsorship**
   flag (the same A–F grade / cap-exempt signal the feed uses, "unknown" when
@@ -205,15 +215,19 @@ the app now surfaces that mismatch with a one-click fix), and the on-device
 AI can no longer freeze or crash the app (every model call is serialized and
 time-budgeted).
 
-**Using it:** click **Test Apply Assist** on the Apply Assist page to watch
-it fill a bundled practice application with your own data, or just browse to
-any real posting and click the companion's **"Fill this page"** button. For
-open-ended questions ("Why this company?") it drafts an answer from your
-resume and flags it for your review — you always edit/confirm and click
-*Submit* yourself. And once the companion is connected, just **browse** any job
-posting — the **Discovery badge** pops up with your match score and the
-company's sponsorship flag, with one click to **Save to Job Engine**. Full
-walkthrough in [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
+**Using it (v1.8):** browse to any job posting. A pill appears in the corner of
+the window with your match score and the company's sponsorship flag; click it
+for the full card, then **Apply with Apply Assist**. On a bare application URL
+the same pill offers **Fill this page**. Everything happens there: the answers
+it wrote, the ones it declined and why, **Copy** / **Insert** / **Show me** per
+answer, and **Stop**. For open-ended questions ("Why this company?") it drafts
+from your resume and flags it for your review — you always edit or confirm, and
+you click *Submit* yourself, always. Prefer to rehearse first? **Test Apply
+Assist** on the Apply Assist page fills a bundled practice application with
+your own data. Full walkthrough in [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
+
+> Upgrading? Reload the companion once at `chrome://extensions` (the ↻ on the
+> Job Engine Companion card) — the app and the companion ship as one version.
 
 > The extension loads *unpacked* (developer mode) rather than from the Chrome
 > Web Store, so Chrome may show a "Disable developer mode extensions?" nag on

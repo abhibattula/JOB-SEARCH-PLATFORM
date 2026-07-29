@@ -545,9 +545,20 @@ class TestBadgeLauncher017:
     def badge(self):
         return (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
 
-    def test_it_offers_apply_with_apply_assist(self):
-        assert "Apply with Apply Assist" in self.badge()
-        assert "apply_here" in self.badge()
+    # RETIRED in 018 — `test_it_offers_apply_with_apply_assist` asserted
+    #
+    #     assert "Apply with Apply Assist" in self.badge()
+    #     assert "apply_here" in self.badge()
+    #
+    # By the end of 018 the label had moved into panel.js and the only
+    # occurrence of that phrase left in discovery.js was inside a COMMENT
+    # explaining the bug. The assertion still passed. That is the whole
+    # failure mode in one line: it was measuring the presence of a string,
+    # never the existence of a working control.
+    #
+    # Replaced by TestPrimaryActionWorks in
+    # tests/integration/test_companion_widget.py, which clicks the button in
+    # a real browser and asserts the app started a session.
 
     def test_it_opens_the_existing_panel_rather_than_a_second_widget(self):
         """018: one widget at last — discovery renders through window.jePanel

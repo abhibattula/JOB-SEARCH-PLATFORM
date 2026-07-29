@@ -1147,9 +1147,23 @@ class TestCompanionStillTouchesNothing:
 
     def test_nothing_is_ever_submitted(self, context, app_server,
                                        fixture_server):
+        """The standing invariant, on every fixture that has a submit
+        control: the applicant performs every submit, always."""
+        assert _wait_connected()
+        page = _fill_the_bare_form(context, fixture_server)
+        assert page.evaluate("() => window.__pageSubmitted") in (None, False)
+
+    def test_nothing_is_submitted_in_a_sub_frame_either(self, context,
+                                                        app_server,
+                                                        fixture_server):
         assert _wait_connected()
         page = _open_and_wait_companion(
-            context, f"{fixture_server}/bare_application.html")
+            context, f"{fixture_server}/framed_application.html")
         _click(page, PRIMARY_IDS)
-        time.sleep(4)
+        time.sleep(5)
         assert page.evaluate("() => window.__pageSubmitted") in (None, False)
+        assert page.evaluate(
+            """() => {
+                const doc = document.getElementById('embedded').contentDocument;
+                return doc ? doc.defaultView.__pageSubmitted : false;
+            }""") in (None, False)
