@@ -377,6 +377,24 @@ def _value_for_tag(tag: str, raw: dict, profile: dict, job_id: int):
     if tag == "resume_upload":
         return _resume_file_for_job(job_id, profile)
 
+    # 017 (FR-033): a cover-letter UPLOAD needs a file, not prose. This used
+    # to fall through to the drafter and hand set_input_files a paragraph.
+    if tag == "cover_letter" and (raw.get("type") or "") == "file":
+        try:
+            from .. import resume_pdf
+
+            return str(resume_pdf.cover_letter_path(job_id))
+        except Exception:
+            # No cover letter for this job yet — the applicant attaches one
+            # themselves rather than us inventing a document.
+            log.debug("no cover-letter file for job %s", job_id, exc_info=True)
+            from . import drafter as _d
+
+            question = (raw.get("label_text") or raw.get("placeholder")
+                        or raw.get("aria_label") or "Cover letter")
+            _d.mark_needs_you(job_id, question, "profile_fact_missing")
+            return None
+
     # 017 (R12, FR-020): one resolver for every question the applicant has
     # already answered on their profile — consulted BEFORE the answer bank so
     # a corrected profile immediately overrides a stale learned answer. It
@@ -547,6 +565,10 @@ def current_job() -> dict | None:
         # 016 (FR-019): the passive activity log replaces the blocking
         # pending gate — drafting/drafted/needs-you per question.
         "activity": drafter.list_for_job(job_id),
+        # 017 (FR-047): the SAME answers the on-page panel shows. The panel
+        # is companion-only, so without this the assistant-window fallback
+        # would leave the applicant with no way to read or answer them.
+        "answers": drafter.answers_for_page(job_id),
     }
 
 

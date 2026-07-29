@@ -6,6 +6,8 @@ queue logic is tested in isolation, and the fill-application logic is
 tested against a fake page/element that would raise if `.click()` were
 ever called.
 """
+import time
+
 import pytest
 
 from engine import db
@@ -871,3 +873,53 @@ class TestResumeChoice017:
         assert bc._resume_file_for_job(
             job_id, {"resume_file_path": "C:/r.pdf"}) == "C:/r.pdf"
         assert bc._resume_file_for_job(job_id, {}) is None
+
+
+class TestCoverLetterUpload017:
+    """017-T059 (FR-033): a cover-letter UPLOAD gets a rendered document.
+
+    It used to fall through to the drafter, so set_input_files was handed a
+    paragraph of prose as if it were a path.
+    """
+
+    def _file_field(self):
+        return {"tag": "input", "type": "file", "name": "cover_letter",
+                "id": "cover_letter", "label_text": "Cover letter",
+                "placeholder": "", "aria_label": "", "autocomplete": ""}
+
+    def test_a_rendered_pdf_is_attached(self, tmp_db, monkeypatch):
+        from engine import db, resume_pdf
+
+        job_id = seed_job("https://x.example/cover-letter-upload")
+        db.set_tailor(job_id, '{"cover_letter": "Dear team, ..."}')
+        monkeypatch.setattr(resume_pdf, "cover_letter_path",
+                            lambda jid: f"/data/tailored/{jid}-cover-letter.pdf")
+
+        value = bc._value_for_tag("cover_letter", self._file_field(), {},
+                                  job_id=job_id)
+        assert value == f"/data/tailored/{job_id}-cover-letter.pdf"
+
+    def test_without_one_the_applicant_attaches_it_themselves(self, tmp_db):
+        from engine.autofill import drafter
+
+        job_id = seed_job("https://x.example/cover-letter-none")
+        value = bc._value_for_tag("cover_letter", self._file_field(), {},
+                                  job_id=job_id)
+        assert value is None
+        record = drafter.get(job_id, "Cover letter")
+        assert record and record["state"] == "failed"
+
+    def test_a_cover_letter_TEXTAREA_is_unaffected(self, tmp_db, monkeypatch):
+        """Only the FILE variant changes — prose still drafts for a textarea."""
+        from engine.autofill import drafter
+
+        drafter.set_generator_for_tests(lambda q, c, p: "Dear team, ...")
+        job_id = seed_job("https://x.example/cover-letter-textarea")
+        field = dict(self._file_field(), tag="textarea", type="textarea")
+        # first pass schedules the draft and returns None
+        assert bc._value_for_tag("cover_letter", field, {}, job_id=job_id) is None
+        deadline = time.monotonic() + 5
+        while time.monotonic() < deadline and \
+                drafter.answer_for(job_id, "Cover letter") is None:
+            time.sleep(0.01)
+        assert drafter.answer_for(job_id, "Cover letter") == "Dear team, ..."

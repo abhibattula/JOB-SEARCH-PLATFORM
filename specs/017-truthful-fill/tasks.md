@@ -135,7 +135,7 @@ per story.
 - [x] T056 [US5] GREEN: add the fields to `FillItem` in `engine/autofill/ext_protocol.py` and populate them in `engine/autofill/ext_backend.py`
 - [x] T057 [US5] [P] RED: in `tests/test_browser_controller.py`, assert the tailored PDF is chosen only when the job carries a non-empty `tailor_json`, and the uploaded résumé otherwise
 - [x] T058 [US5] GREEN: change `_resume_file_for_job` in `engine/autofill/browser_controller.py` accordingly
-- [ ] T059 [US5] A `cover_letter` file input receives a rendered, cached cover-letter PDF (reusing `resume_pdf.render_cover_letter`) or needs-you — never drafted prose; test in `tests/test_browser_controller.py`
+- [x] T059 [US5] A `cover_letter` file input receives a rendered, cached cover-letter PDF (reusing `resume_pdf.render_cover_letter`) or needs-you — never drafted prose; test in `tests/test_browser_controller.py`
 
 **Checkpoint**: what goes out is what the applicant chose.
 
@@ -150,7 +150,7 @@ per story.
 - [x] T064 [US6] Panel rewrite in `extension/content/overlay.js`: open shadow root with `dataset` mirrors, answers list with Copy and Insert, needs-you jump-to-field, retained Fill again and the "you click apply / submit" line; update the static guards in `tests/test_extension_assets.py`
 - [x] T065 [US6] [P] RED: assert a panel-captured answer is stored with `source = 'user'`, fills its field, and auto-fills the same question on a later job without a generator call (SC-010)
 - [x] T066 [US6] GREEN: implement the `answer_question` inbound message in `engine/autofill/ext_protocol.py` and `engine/autofill/ext_backend.py`, the capture input in `extension/content/overlay.js`, and the bank write
-- [ ] T067 [US6] FR-047: the assistant-window fallback surfaces the same answers, refusals and capture inputs in `web/templates/partials/autofill_status.html`; test in `tests/test_web.py`
+- [x] T067 [US6] FR-047: the assistant-window fallback surfaces the same answers, refusals and capture inputs in `web/templates/partials/autofill_status.html`; test in `tests/test_web.py`
 
 **Checkpoint**: the applicant can see, copy and correct everything on the page.
 

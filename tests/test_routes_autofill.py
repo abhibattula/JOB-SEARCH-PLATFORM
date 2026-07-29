@@ -835,3 +835,52 @@ class TestApplyWithAssist017:
         body = client.get(f"/jobs/{job_id}").text
         assert 'id="apply-with-assist"' in body
         assert f"/api/autofill/apply/{job_id}" in body
+
+
+class TestFallbackAnswerParity017:
+    """017-T067 (FR-047): the on-page panel is companion-only, so the app
+    view must show the same answers — and offer the same capture — when the
+    fill runs in the assistant window."""
+
+    def _session(self, monkeypatch, answers):
+        from engine.autofill import browser_controller
+
+        monkeypatch.setattr(
+            browser_controller, "current_job",
+            lambda: {"job_id": 1, "remaining": 0, "fell_back": True,
+                     "activity": [], "answers": answers})
+
+    def test_full_answer_text_is_shown(self, client, monkeypatch):
+        long_answer = "Because " + "x" * 300
+        self._session(monkeypatch, [
+            {"question": "Why this company?", "answer": long_answer,
+             "state": "drafted", "reason": None, "askable": False}])
+        body = client.get("/partials/autofill/status").text
+        assert long_answer in body
+
+    def test_a_refused_question_offers_a_capture_input(self, client,
+                                                       monkeypatch):
+        self._session(monkeypatch, [
+            {"question": "Do you have any offer deadlines?", "answer": "",
+             "state": "refused", "reason": "never_generated",
+             "askable": True}])
+        body = client.get("/partials/autofill/status").text
+        assert "Do you have any offer deadlines?" in body
+        assert "answer-capture" in body
+        assert "Only you know this one" in body
+
+    def test_a_binding_commitment_says_why(self, client, monkeypatch):
+        self._session(monkeypatch, [
+            {"question": "I acknowledge this role is my top preference",
+             "answer": "", "state": "refused",
+             "reason": "binding_commitment", "askable": True}])
+        body = client.get("/partials/autofill/status").text
+        assert "your call, not ours" in body
+
+    def test_a_drafted_answer_is_not_askable(self, client, monkeypatch):
+        self._session(monkeypatch, [
+            {"question": "What is your GPA?", "answer": "3.2",
+             "state": "drafted", "reason": None, "askable": False}])
+        body = client.get("/partials/autofill/status").text
+        assert "3.2" in body
+        assert "answer-capture" not in body

@@ -215,6 +215,62 @@
     any corrections, and click the site's own submit button yourself. When
     you're done (or want to skip this one), click below.</p>
 
+  {# 017 (FR-047): the SAME answers the on-page panel shows. That panel is
+     companion-only, so without this the assistant-window fallback leaves the
+     applicant with no way to read them — or to answer the ones we declined. #}
+  {% if current.answers %}
+  <div class="answers-review" id="answers-review">
+    <h3>Answers on this application</h3>
+    <ul class="answer-list">
+      {% for item in current.answers %}
+      <li class="answer-item" data-state="{{ item.state }}">
+        <p class="q">{{ item.question }}</p>
+        {% if item.answer %}
+        <p class="a copy-block" onclick="copyText(this.innerText)"
+           title="Click to copy">{{ item.answer }}</p>
+        {% elif item.state == 'drafting' %}
+        <p class="a muted">drafting…</p>
+        {% endif %}
+        {% if item.askable %}
+        <p class="muted why">
+          {%- if item.reason == 'binding_commitment' -%}
+          This one commits you to something — your call, not ours.
+          {%- elif item.reason in ('never_generated', 'cannot_answer') -%}
+          Only you know this one.
+          {%- elif item.reason == 'profile_fact_missing' -%}
+          Add it to your <a href="/profile">profile</a> and it fills next time.
+          {%- else -%}
+          No option here matched your stored answer.
+          {%- endif -%}
+        </p>
+        <form class="answer-capture" data-question="{{ item.question }}"
+              onsubmit="return captureAnswer(event, this)">
+          <input type="text" name="answer" placeholder="Your answer — saved for next time">
+          <button type="submit">Save</button>
+        </form>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    <script>
+      async function captureAnswer(evt, form) {
+        evt.preventDefault();
+        const answer = form.answer.value.trim();
+        if (!answer) { return false; }
+        form.querySelector("button").disabled = true;
+        await fetch('/api/autofill/answers/confirm', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({question_raw: form.dataset.question,
+                                answer: answer}),
+        });
+        htmx.trigger('#autofill-queue', 'load');
+        return false;
+      }
+    </script>
+  </div>
+  {% endif %}
+
   {% if current.activity %}
   <div class="autofill-activity" id="autofill-activity-log">
     <p><strong>Question activity</strong> <span class="muted">— everything
