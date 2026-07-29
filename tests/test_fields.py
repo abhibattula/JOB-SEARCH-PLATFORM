@@ -72,15 +72,25 @@ class TestLegallySensitiveTagsWinOverGenericCatchAlls:
             label_text="Do you require sponsorship to work in this role?"
         )) == "sponsorship_requirement"
 
-    def test_eeo_disclosure_disability(self):
-        assert fields.classify(field(
-            label_text="Do you have a disability? (Voluntary Self-Identification)"
-        )) == "eeo_disclosure"
+    # 017 (R15): the single coarse eeo_disclosure tag was split into real
+    # per-question tags so each can be answered from the value the applicant
+    # stored. The property that matters here is unchanged and still asserted:
+    # these questions are never AI-answered.
+    def test_disability_is_self_identification(self):
+        from engine.autofill import drafter
 
-    def test_eeo_disclosure_veteran_status(self):
-        assert fields.classify(field(
-            label_text="Veteran Status"
-        )) == "eeo_disclosure"
+        tag = fields.classify(field(
+            label_text="Do you have a disability? (Voluntary Self-Identification)"
+        ))
+        assert tag == "selfid_disability"
+        assert tag in drafter.NEVER_GENERATED_TAGS
+
+    def test_veteran_status_is_self_identification(self):
+        from engine.autofill import drafter
+
+        tag = fields.classify(field(label_text="Veteran Status"))
+        assert tag == "selfid_veteran"
+        assert tag in drafter.NEVER_GENERATED_TAGS
 
     def test_eeo_disclosure_not_confused_with_generic_yes_no(self):
         # A generic yes/no question that is NOT legally sensitive must not
@@ -184,7 +194,7 @@ class TestMatchOption:
 def raw_attr_field(**overrides):
     """A descriptor the way real ATS forms present it: NO label/placeholder/
     aria — only raw name/id attributes (the exact shape that silently never
-    classified before 009: \s* does not match underscores)."""
+    classified before 009: plain \s* does not match underscores)."""
     field = {"tag": "input", "type": "text", "name": "", "id": "",
              "label_text": "", "placeholder": "", "aria_label": "",
              "autocomplete": ""}
@@ -405,3 +415,110 @@ class TestLocationAndLibraryTags017:
         assert fields.is_binding_acknowledgement(
             "I certify that all information I have provided is accurate."
         ) is False
+
+
+class TestCanonicalOptionMatching017:
+    """017-T047 (FR-024/FR-025): stored values reach forms that word their
+    options differently — without loosening the passes that decide
+    work-authorization dropdowns."""
+
+    GENDER = ["Man", "Woman", "Non-binary", "I don't wish to answer"]
+    GENDER_ALT = ["Male", "Female", "Decline to self-identify"]
+
+    def test_stored_male_selects_man(self):
+        assert fields.match_option("Male", self.GENDER, "selfid_gender") == \
+            "Man"
+
+    def test_stored_man_selects_male(self):
+        assert fields.match_option("Man", self.GENDER_ALT,
+                                   "selfid_gender") == "Male"
+
+    def test_stored_straight_selects_heterosexual(self):
+        options = ["Heterosexual", "Gay", "Lesbian", "Bisexual"]
+        assert fields.match_option("Straight", options,
+                                   "selfid_orientation") == "Heterosexual"
+
+    def test_prefer_not_to_say_finds_the_decline_option(self):
+        assert fields.match_option("Prefer not to say", self.GENDER,
+                                   "selfid_gender") == "I don't wish to answer"
+        assert fields.match_option("Prefer not to say", self.GENDER_ALT,
+                                   "selfid_gender") == "Decline to self-identify"
+
+    def test_it_never_crosses_to_the_wrong_option(self):
+        assert fields.match_option("Male", ["Woman", "Non-binary"],
+                                   "selfid_gender") is None
+
+    def test_without_a_tag_the_old_behaviour_is_unchanged(self):
+        """Callers that pass no tag must see exactly the previous result."""
+        assert fields.match_option("Male", self.GENDER) is None
+
+    def test_work_authorization_matching_is_not_loosened(self):
+        """FR-025: a wrong authorization answer is worse than a blank one."""
+        options = ["Yes, I am authorized to work in the US",
+                   "No, I require sponsorship"]
+        assert fields.match_option("Yes", options, "work_authorization") == \
+            "Yes, I am authorized to work in the US"
+        for loose in ("authorized", "eligible", "citizen"):
+            assert fields.match_option(loose, options,
+                                       "work_authorization") is None, loose
+
+    def test_a_literal_match_still_wins_over_the_canonical_pass(self):
+        options = ["Man", "Male"]
+        assert fields.match_option("Male", options, "selfid_gender") == "Male"
+
+    def test_education_level_abbreviations(self):
+        options = ["High School", "Bachelor's Degree", "Master's Degree",
+                   "Doctorate"]
+        assert fields.match_option("MS", options, "highest_education") == \
+            "Master's Degree"
+
+    def test_pronoun_wording(self):
+        options = ["She/her/hers", "He/him/his", "They/them/theirs"]
+        assert fields.match_option("He/him", options, "pronouns") == \
+            "He/him/his"
+
+
+class TestSelfIdentificationTags017:
+    """017-T049 (R15, D1): self-identification questions get real tags so
+    they can be answered from what the applicant stored — never generated."""
+
+    CASES = [
+        ("How would you describe your gender identity? (mark all that apply)",
+         "selfid_gender"),
+        ("Gender", "selfid_gender"),
+        ("What is your gender?", "selfid_gender"),
+        ("How would you describe your racial/ethnic background?",
+         "selfid_race"),
+        ("Race / Ethnicity", "selfid_race"),
+        ("Are you a veteran or active member of the United States Armed "
+         "Forces?", "selfid_veteran"),
+        ("Do you have a disability or chronic condition (physical, visual, "
+         "auditory, cognitive, mental, emotional, or other) that "
+         "substantially limits one or more of your major life activities?",
+         "selfid_disability"),
+        ("How would you describe your sexual orientation? (mark all that "
+         "apply)", "selfid_orientation"),
+        ("Do you identify as transgender?", "selfid_orientation"),
+        ("We care about addressing everyone correctly. Add your personal "
+         "pronouns below to share with the hiring team.", "pronouns"),
+    ]
+
+    @pytest.mark.parametrize("label,expected", CASES)
+    def test_classified(self, label, expected):
+        assert fields.classify(field(label_text=label)) == expected
+
+    def test_a_bare_gender_label_no_longer_reaches_the_drafter(self):
+        """_EEO_RE demanded the words "gender identity", so a plain "Gender"
+        select fell through to free_text_unknown and WAS AI-answerable."""
+        assert fields.classify(field(label_text="Gender")) != \
+            "free_text_unknown"
+
+    def test_the_eeo_catch_all_still_works_for_unrecognised_wording(self):
+        assert fields.classify(
+            field(label_text="EEO information")) == "eeo_disclosure"
+
+    def test_every_self_id_tag_is_never_generated(self):
+        from engine.autofill import drafter
+
+        for _label, tag in self.CASES:
+            assert tag in drafter.NEVER_GENERATED_TAGS, tag

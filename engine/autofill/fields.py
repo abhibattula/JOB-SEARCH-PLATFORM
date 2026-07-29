@@ -42,6 +42,23 @@ _EEO_RE = re.compile(
     r"disabilit\w*|veteran|race\b|ethnicit\w*|gender\s*identity|\beeo\b|equal\s*employment",
     re.IGNORECASE,
 )
+# 017 (R15, D1): voluntary self-identification gets REAL producer tags, so it
+# can be answered from what the applicant stored instead of being refused
+# wholesale. Two live defects also required the split: a bare "Gender" label
+# never matched _EEO_RE (which demands "gender identity") and therefore
+# reached the drafter, and criminal_history/references sat on the denylist
+# with no producer at all. Answered from stored values ONLY — never
+# generated, never inferred from a name, pronouns, or a resume.
+_SELFID_GENDER_RE = re.compile(r"\bgender\b|\bsex\b(?!ual)", re.IGNORECASE)
+_SELFID_RACE_RE = re.compile(
+    r"\brace\b|\bracial\b|ethnicit\w*|\bethnic\b", re.IGNORECASE)
+_SELFID_VETERAN_RE = re.compile(
+    r"\bveteran\b|armed\s+forces|\bmilitary\s+service\b", re.IGNORECASE)
+_SELFID_DISABILITY_RE = re.compile(
+    r"disabilit\w*|chronic\s+condition", re.IGNORECASE)
+_SELFID_ORIENTATION_RE = re.compile(
+    r"sexual\s+orientation|\btransgender\b|\blgbt", re.IGNORECASE)
+_PRONOUNS_RE = re.compile(r"\bpronouns?\b", re.IGNORECASE)
 # 009 (FR-005): word separators are [\s_-]* — real ATS markup carries raw
 # attributes like first_name / first-name / firstname, which plain \s*
 # never matched (root cause A7: fills silently depended on visible labels).
@@ -269,6 +286,18 @@ def classify(field: FieldDescriptor) -> str:
         return "work_authorization"
     if _SPONSORSHIP_RE.search(text):
         return "sponsorship_requirement"
+    if _PRONOUNS_RE.search(text):
+        return "pronouns"
+    if _SELFID_ORIENTATION_RE.search(text):
+        return "selfid_orientation"
+    if _SELFID_DISABILITY_RE.search(text):
+        return "selfid_disability"
+    if _SELFID_VETERAN_RE.search(text):
+        return "selfid_veteran"
+    if _SELFID_RACE_RE.search(text):
+        return "selfid_race"
+    if _SELFID_GENDER_RE.search(text):
+        return "selfid_gender"
     if _EEO_RE.search(text):
         return "eeo_disclosure"
 
@@ -406,10 +435,19 @@ def classify(field: FieldDescriptor) -> str:
 OPTION_MATCH_CONFIDENCE = 87
 
 
-def match_option(answer: str, options: list[str]) -> str | None:
+def match_option(answer: str, options: list[str],
+                 tag: str | None = None) -> str | None:
     """Pick the option whose text best matches a confirmed answer, or None
     when no option matches confidently (the field is then left untouched
-    and reported unfilled — never guessed)."""
+    and reported unfilled — never guessed).
+
+    017 (R14, FR-024): `tag` enables a fourth, CANONICAL pass. The first
+    three passes cannot bridge vocabulary — "Male" vs "Man" scores ~57 and
+    "Y" vs "Yes" scores 50 — so a stored self-identification never matched a
+    form that worded its options differently. The canonical pass compares
+    exact canonical forms, so it adds no fuzziness to the passes that decide
+    work-authorization dropdowns (FR-025).
+    """
     from rapidfuzz import fuzz
 
     normalized_answer = (answer or "").strip().casefold()
@@ -437,4 +475,18 @@ def match_option(answer: str, options: list[str]) -> str | None:
             best_option, best_score = option, score
     if best_score >= OPTION_MATCH_CONFIDENCE:
         return best_option
+
+    # 017: canonical pass — map both sides into the tag's vocabulary family
+    # and compare exactly. Runs last so it can never override a closer
+    # literal match, and only when the tag HAS a family (open-ended and
+    # identity questions fall through untouched).
+    from . import vocab
+
+    family = vocab.family_for_tag(tag)
+    if family:
+        wanted = vocab.canonical(family, answer)
+        if wanted:
+            for option, _text in normalized:
+                if vocab.canonical(family, option) == wanted:
+                    return option
     return None

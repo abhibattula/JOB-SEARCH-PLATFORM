@@ -116,10 +116,10 @@ per story.
 
 ## Phase 6: US4 — Say it the way the form says it (Priority: P4)
 
-- [ ] T047 [US4] [P] RED: in `tests/test_fields.py`, assert `match_option` selects `Man` for a stored `Male`, `Heterosexual` for `Straight`, and a decline option for `Prefer not to say` — and that work-authorization matching strictness is unchanged
-- [ ] T048 [US4] GREEN: add the canonical fourth pass and the optional `tag` parameter to `fields.match_option`
-- [ ] T049 [US4] [P] RED: assert a bare "Gender" label classifies as `selfid_gender` (not `free_text_unknown`), that `criminal_history` and `references` now have producers, that stored self-ID fills, and that blank stays blank
-- [ ] T050 [US4] GREEN: split `_EEO_RE` into the self-ID producer tags and add the missing producers in `engine/autofill/fields.py`; resolve them in `profile_answers.py`; keep them all in the never-generated set
+- [x] T047 [US4] [P] RED: in `tests/test_fields.py`, assert `match_option` selects `Man` for a stored `Male`, `Heterosexual` for `Straight`, and a decline option for `Prefer not to say` — and that work-authorization matching strictness is unchanged
+- [x] T048 [US4] GREEN: add the canonical fourth pass and the optional `tag` parameter to `fields.match_option`
+- [x] T049 [US4] [P] RED: assert a bare "Gender" label classifies as `selfid_gender` (not `free_text_unknown`), that `criminal_history` and `references` now have producers, that stored self-ID fills, and that blank stays blank
+- [x] T050 [US4] GREEN: split `_EEO_RE` into the self-ID producer tags and add the missing producers in `engine/autofill/fields.py`; resolve them in `profile_answers.py`; keep them all in the never-generated set
 - [x] T051 [US4] [P] RED: assert routine acknowledgements resolve from the library and the Akuna exclusivity acknowledgement is never answered by any path
 - [x] T052 [US4] GREEN: implement the `acknowledgement` tag and its binding/routine sub-classification in `engine/autofill/fields.py`
 

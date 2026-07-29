@@ -275,7 +275,7 @@ def decide(ats: str | None, descriptor: dict, handled: dict, get_value) -> Decis
     # member. Anything unmatched settles no_match (epoch-retryable).
     if (descriptor.get("type") or "") == "radio_group":
         options = descriptor.get("options") or []
-        matched = fields_mod.match_option(str(value), options) if options else None
+        matched = fields_mod.match_option(str(value), options, tag) if options else None
         if matched is None:
             return Decision("settle", tag=tag, outcome="no_match")
         return Decision("fill", tag=tag, kind="radio", value=matched,
@@ -290,7 +290,7 @@ def decide(ats: str | None, descriptor: dict, handled: dict, get_value) -> Decis
     # mis-fill it and no version gate is needed.
     if (descriptor.get("type") or "") == "checkbox_group":
         options = descriptor.get("options") or []
-        matched = fields_mod.match_option(str(value), options) if options \
+        matched = fields_mod.match_option(str(value), options, tag) if options \
             else None
         if matched is None:
             return Decision("settle", tag=tag, outcome="no_match")
@@ -309,7 +309,7 @@ def decide(ats: str | None, descriptor: dict, handled: dict, get_value) -> Decis
     if widget == "custom_combobox" or descriptor.get("options"):
         options = descriptor.get("options")
         if options:
-            matched = fields_mod.match_option(str(value), options)
+            matched = fields_mod.match_option(str(value), options, tag)
             if matched is None:
                 return Decision("settle", tag=tag, outcome="no_match")
             label = matched
