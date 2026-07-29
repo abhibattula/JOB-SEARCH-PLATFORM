@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Job Engine Companion",
-  "version": "1.7.0",
+  "version": "1.8.0",
   "description": "Fills job applications in your own browser, driven by your local Job Engine app. Never clicks, never submits — you always do that.",
   "minimum_chrome_version": "116",
   "permissions": ["storage", "tabs", "alarms"],
@@ -19,23 +19,26 @@
         "content/click_guard.js",
         "content/scanner.js",
         "content/filler.js",
-        "content/overlay.js",
+        "content/panel.js",
+        "content/discovery.js",
         "content/opener.js",
         "content/main.js"
-      ]
-    },
-    {
-      "matches": ["<all_urls>"],
-      "all_frames": true,
-      "run_at": "document_idle",
-      "js": [
-        "content/discovery.js"
       ]
     }
   ],
   "action": {
     "default_popup": "popup/popup.html",
     "default_title": "Job Engine Companion"
+  },
+  "commands": {
+    "toggle-companion": {
+      "suggested_key": { "default": "Alt+J" },
+      "description": "Show or hide the Job Engine companion"
+    },
+    "fill-this-page": {
+      "suggested_key": { "default": "Alt+Shift+J" },
+      "description": "Fill the application on this page"
+    }
   },
   "web_accessible_resources": []
 }

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Apply — Quantitative Developer</title>
+  <!--
+    018 (T002) — the fixture that reproduces R7.
+
+    This is what a real ATS application URL looks like once you are past the
+    posting: a form, and NOTHING a job-posting detector can use. No
+    schema.org JSON-LD, no LinkedIn classes, no Indeed test-ids. Greenhouse's
+    `…/application` pages routinely look like this.
+
+    Through v1.7.0 the applicant got no widget at all here — the badge needs
+    posting metadata, and the fill panel only appears once a session is
+    ALREADY running. So on the page where the companion is most needed there
+    was nothing on screen. This fixture pins FR-005: the read-only form probe
+    must be enough to render the companion, with "Fill this page" as its
+    primary action.
+  -->
+  <style>
+    body { font: 15px system-ui, sans-serif; margin: 40px auto; max-width: 640px; }
+    label { display: block; margin: 14px 0 4px; font-weight: 600; }
+    input, select, textarea { width: 100%; padding: 8px; box-sizing: border-box; }
+  </style>
+</head>
+<body>
+  <h1>Application</h1>
+
+  <form id="application">
+    <label for="first_name">First Name *</label>
+    <input id="first_name" name="first_name" type="text" required>
+
+    <label for="last_name">Last Name *</label>
+    <input id="last_name" name="last_name" type="text" required>
+
+    <label for="email">Email *</label>
+    <input id="email" name="email" type="email" required>
+
+    <label for="phone">Phone</label>
+    <input id="phone" name="phone" type="tel">
+
+    <label for="resume">Resume/CV *</label>
+    <input id="resume" name="resume" type="file" accept=".pdf,.doc,.docx">
+
+    <label for="work_auth">Are you authorized to work in the United States?</label>
+    <select id="work_auth" name="work_auth">
+      <option value="">Select...</option>
+      <option>Yes</option>
+      <option>No</option>
+    </select>
+
+    <label for="school">School</label>
+    <input id="school" name="school" type="text">
+
+    <label for="why">Why do you want to work here?</label>
+    <textarea id="why" name="why" rows="4"></textarea>
+
+    <!-- The companion must never click this. -->
+    <button id="submit-btn" type="button"
+            onclick="window.__pageSubmitted = true">Submit Application</button>
+  </form>
+</body>
+</html>

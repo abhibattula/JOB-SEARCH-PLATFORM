@@ -151,10 +151,17 @@ class TestDiscoveryBadge012:
         assert "linkedin" in src.lower()
         assert "indeed" in src.lower()
 
-    def test_uses_shadow_dom(self):
+    def test_it_renders_through_the_one_companion_widget(self):
+        """018 (D1): discovery kept every bit of its detection and scoring
+        logic but no longer owns a host — the shadow root moved to panel.js,
+        so the match score and the fill progress share ONE card instead of
+        two disconnected widgets in two corners."""
         src = self.DISCOVERY.read_text(encoding="utf-8")
-        assert "attachShadow" in src
-        assert "je-discovery-badge-host" in src
+        assert "window.jePanel" in src
+        assert "attachShadow" not in src, "discovery must not own a host"
+        panel = (EXT / "content" / "panel.js").read_text(encoding="utf-8")
+        assert "attachShadow" in panel
+        assert "je-companion-host" in panel
 
     def test_is_read_only_on_the_page(self):
         """The discovery script must never click/type-into/submit a PAGE
@@ -172,12 +179,10 @@ class TestDiscoveryBadge012:
         # no writing values into page inputs / dispatching input/change events
         assert ".value =" not in code and ".value=" not in code
         assert "dispatchEvent" not in code
-        # the ONLY DOM insertion is our own host (appendChild of `host`)
-        import re as _re
-        appends = _re.findall(r"\.appendChild\(([^)]*)\)", code)
-        assert appends and all("host" in a for a in appends), (
-            f"discovery appends something other than its own host: {appends}"
-        )
+        # 018: discovery inserts nothing at all now — rendering is the
+        # panel's job, and the panel only ever appends its own host.
+        assert ".appendChild(" not in code, (
+            "discovery must not insert anything into the page")
 
     def test_top_frame_guard(self):
         src = self.DISCOVERY.read_text(encoding="utf-8")
@@ -368,12 +373,20 @@ class TestPanelAndHighlights016:
     reporting and Fill again; drafted/needs-you fields carry a visible
     highlight cleared by the user's own edit."""
 
-    def test_overlay_panel_has_fill_again_and_attention(self):
-        js = (EXT / "content" / "overlay.js").read_text(encoding="utf-8")
+    def test_panel_has_fill_again_and_surfaces_what_needs_you(self):
+        """018: these live in panel.js now — overlay.js was folded into the
+        one merged companion.
+
+        016 sent an `attention` list of up to five bare field LABELS. That is
+        gone: the needs-you GROUP carries the same fields with their full
+        question, the reason in plain language, and a box to answer them, so
+        a list of labels beside it would be strictly redundant."""
+        js = (EXT / "content" / "panel.js").read_text(encoding="utf-8")
         assert "Fill again" in js
-        assert "attention" in js
+        assert "needs_you" in js
+        assert "Needs you" in js
         assert "onFillAgain" in js
-        assert "note" in js
+        assert "notice" in js
 
     def test_filler_annotates_flags_and_clears_on_edit(self):
         js = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
@@ -466,7 +479,8 @@ class TestPanelIsTheReviewSurface017:
     """
 
     def panel(self):
-        return (EXT / "content" / "overlay.js").read_text(encoding="utf-8")
+        # 018: the review surface moved into the merged companion widget.
+        return (EXT / "content" / "panel.js").read_text(encoding="utf-8")
 
     def test_the_shadow_root_is_open_so_the_e2e_can_assert_it(self):
         assert 'attachShadow({ mode: "open" })' in self.panel()
@@ -496,10 +510,18 @@ class TestPanelIsTheReviewSurface017:
 
     def test_answer_text_is_never_injected_as_html(self):
         """Answers come from a model and from form labels — they go in as
-        textContent, never innerHTML."""
+        textContent, never innerHTML.
+
+        018: the panel does use innerHTML exactly once, to stamp out its own
+        static shell (a literal in this file, no interpolated data). Every
+        renderer that touches question or answer text must be clear of it, so
+        this asserts against the rendering half specifically AND caps the
+        total number of innerHTML uses at that one shell."""
         source = self.panel()
-        body = source[source.index("function renderRow"):]
+        body = source[source.index("function setAnswers"):]
         assert ".innerHTML" not in body
+        assert source.count(".innerHTML") == 1, (
+            "the only innerHTML in the panel may be its own static shell")
 
     def test_the_content_script_relays_the_capture_and_the_feed(self):
         source = (EXT / "content" / "main.js").read_text(encoding="utf-8")
@@ -514,18 +536,41 @@ class TestPanelIsTheReviewSurface017:
 
 class TestBadgeLauncher017:
     """017-T070 (D4, FR-038/FR-039): the badge that already shows a match
-    score becomes the launcher — one floating widget, not two."""
+    score becomes the launcher — one floating widget, not two.
+
+    018 WARNING — do not add interaction assertions here. Every test in this
+    class is a string-presence check on a source file, and the whole set of
+    them passed for the entire life of v1.7.0 while the button they describe
+    was DEAD: `onApply` read `current.posting`, a key detection never sets, so
+    it returned before sending anything. Proof that a control WORKS lives in
+    `tests/integration/test_companion_widget.py`, where it is clicked in a real
+    browser. What survives here is only what source inspection genuinely
+    proves: that a page-mutating primitive is ABSENT.
+    """
 
     def badge(self):
         return (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
 
-    def test_it_offers_apply_with_apply_assist(self):
-        assert "Apply with Apply Assist" in self.badge()
-        assert "apply_here" in self.badge()
+    # RETIRED in 018 — `test_it_offers_apply_with_apply_assist` asserted
+    #
+    #     assert "Apply with Apply Assist" in self.badge()
+    #     assert "apply_here" in self.badge()
+    #
+    # By the end of 018 the label had moved into panel.js and the only
+    # occurrence of that phrase left in discovery.js was inside a COMMENT
+    # explaining the bug. The assertion still passed. That is the whole
+    # failure mode in one line: it was measuring the presence of a string,
+    # never the existence of a working control.
+    #
+    # Replaced by TestPrimaryActionWorks in
+    # tests/integration/test_companion_widget.py, which clicks the button in
+    # a real browser and asserts the app started a session.
 
     def test_it_opens_the_existing_panel_rather_than_a_second_widget(self):
+        """018: one widget at last — discovery renders through window.jePanel
+        instead of owning a badge alongside the fill panel."""
         source = self.badge()
-        assert "window.jeOverlay" in source
+        assert "window.jePanel" in source
 
     def test_it_still_mutates_nothing_on_the_page(self):
         """The 012 read-only guarantee is unchanged: the badge sends
@@ -534,3 +579,142 @@ class TestBadgeLauncher017:
         assert ".click(" not in source
         assert ".submit(" not in source
         assert "dispatchEvent" not in source
+
+
+class TestPinnedToViewport018:
+    """018 (R1): both widgets rendered at the BOTTOM of the document, not in
+    the corner of the viewport, from v1.0.0 through v1.7.0.
+
+    `host.style.cssText = "position:fixed;…;all:initial;"` — `all` is a
+    shorthand for EVERY CSS property, declared last, so it reset `position`
+    to `static`, `inset` to `auto` and `display` to `inline`. Appended as the
+    last child of <body>, a static host renders at the end of the document
+    flow. On the 5000px test fixture the badge measured y=5181.
+
+    The real proof is the computed-style assertion in the browser suite. This
+    guards the ORDERING that caused it, which source inspection can see and a
+    future editor could silently reintroduce.
+    """
+
+    WIDGETS = ("panel.js",)
+
+    def test_there_is_exactly_one_widget_module(self):
+        """018 (D1): overlay.js was folded into panel.js. Two modules meant
+        two hosts, two shadow roots and no shared state — the badge could not
+        see the fill progress and the panel could not see the match score."""
+        assert not (EXT / "content" / "overlay.js").exists(), (
+            "overlay.js is back — the companion must stay a single widget")
+        manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))
+        js = [j for cs in manifest["content_scripts"] for j in cs["js"]]
+        assert "content/panel.js" in js
+        assert "content/overlay.js" not in js
+        # panel.js must load before the scripts that drive it
+        assert js.index("content/panel.js") < js.index("content/discovery.js")
+        assert js.index("content/panel.js") < js.index("content/main.js")
+
+    def _source(self, name):
+        return (EXT / "content" / name).read_text(encoding="utf-8")
+
+    def test_all_initial_is_never_declared_after_position(self):
+        for name in self.WIDGETS:
+            src = self._source(name)
+            for line in src.splitlines():
+                code = line.split("//")[0]
+                if "all:initial" not in code.replace(" ", ""):
+                    continue
+                flat = code.replace(" ", "")
+                assert "position:fixed" not in flat, (
+                    f"{name}: `all:initial` shares a declaration block with "
+                    "`position:fixed` — as a shorthand for every property it "
+                    "resets whichever of them comes first. Reset first, then "
+                    "position.")
+
+    def test_positioning_is_important(self):
+        """A plain inline declaration sits in the author-NORMAL cascade layer
+        and loses to a page rule like `div { position: static !important }`.
+        Only an inline !important declaration wins."""
+        for name in self.WIDGETS:
+            src = self._source(name)
+            assert '"position", "fixed", "important"' in src, (
+                f"{name}: position must be set with !important")
+            assert '"z-index"' in src and '"important"' in src
+
+
+class TestReadOnlyFormProbe018:
+    """018 (R7, FR-005): the companion appears on a bare ATS application page.
+
+    The signal must NOT be `serialize()`. That function stamps — `stamp()`
+    writes data-je-idx onto every field and `docToken()` writes data-je-doc
+    onto <html> — so using it merely to decide whether to render a widget
+    would mutate every page the applicant browses, before they asked for
+    anything. That would break the read-only guarantee the discovery path has
+    held since 012.
+    """
+
+    def scanner(self):
+        return (EXT / "content" / "scanner.js").read_text(encoding="utf-8")
+
+    def test_probe_is_exported(self):
+        src = self.scanner()
+        assert "function probe(" in src
+        assert "looksLikeApplicationForm" in src
+        assert "probe," in src or "probe }" in src or "probe, " in src
+
+    def test_probe_stamps_nothing(self):
+        """The body of probe() must not call the two mutating helpers."""
+        src = self.scanner()
+        start = src.index("function probe(")
+        body = src[start:src.index("\n  }", start)]
+        assert "stamp(" not in body, "probe() must not stamp the page"
+        assert "docToken(" not in body, "probe() must not write a doc token"
+        assert "describe(" not in body, "probe() must not build descriptors"
+
+    def test_credential_forms_are_excluded(self):
+        """A login form is not an application, and we never fill credentials.
+        Excluding the password field alone is not enough — `username` would
+        survive and, with an ordinary newsletter box, reach the threshold."""
+        src = self.scanner()
+        assert "inCredentialForm" in src
+        assert "input[type=password]" in src
+
+
+class TestSessionControlAssets018:
+    """018 US4 (FR-030/FR-032/FR-035): the applicant never has to switch to
+    the app mid-application."""
+
+    def test_the_panel_offers_stop_and_next(self):
+        panel = (EXT / "content" / "panel.js").read_text(encoding="utf-8")
+        assert '"stop"' in panel
+        assert 'id="next"' in panel
+
+    def test_discovery_sends_session_control(self):
+        src = (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
+        assert "session_control" in src
+
+    def test_keyboard_commands_are_declared_and_handled(self):
+        manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))
+        commands = manifest.get("commands") or {}
+        assert "toggle-companion" in commands
+        assert "fill-this-page" in commands
+        for name, spec in commands.items():
+            assert spec.get("description"), f"{name} has no description"
+        sw = (EXT / "background" / "service-worker.js").read_text(
+            encoding="utf-8")
+        assert "chrome.commands.onCommand" in sw
+        content = (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
+        assert "toggle_companion" in content
+        assert "fill_this_page" in content
+
+    def test_commands_need_no_new_permission(self):
+        """`commands` is not a permission — the companion's reach is
+        unchanged, which is the whole point of the 012 guarantee."""
+        manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))
+        assert set(manifest["permissions"]) == {"storage", "tabs", "alarms"}
+        assert manifest["host_permissions"] == ["http://127.0.0.1/*"]
+
+    def test_app_errors_reach_the_page(self):
+        sw = (EXT / "background" / "service-worker.js").read_text(
+            encoding="utf-8")
+        assert "app_error" in sw
+        content = (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
+        assert "app_error" in content

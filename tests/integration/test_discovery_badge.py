@@ -1,6 +1,12 @@
 """012 (Discovery Copilot) — the REAL extension driven end-to-end
 (@pytest.mark.browser).
 
+018: the badge and the fill panel merged into ONE companion widget, so every
+assertion here now runs against `je-companion-host`. The behaviour under test
+is unchanged — detection, scoring, save, dedup, collapse, dismiss and the
+read-only guarantee all still belong to discovery.js; only the host it renders
+into moved.
+
 Loads the actual unpacked extension into a real Chromium, points its
 pairing.json at a live in-process FastAPI app (real WebSocket bridge), browses
 the discovery fixture pages, and asserts the badge renders the right score +
@@ -139,14 +145,14 @@ def _wait_connected(timeout=15):
 def _open_and_wait_badge(context, url, timeout=15):
     page = context.new_page()
     page.goto(url)
-    page.wait_for_selector("#je-discovery-badge-host[data-je-score]",
+    page.wait_for_selector("#je-companion-host[data-je-score]",
                            timeout=timeout * 1000)
     return page
 
 
 def _dataset(page):
     return page.eval_on_selector(
-        "#je-discovery-badge-host",
+        "#je-companion-host",
         "el => ({...el.dataset})")
 
 
@@ -180,13 +186,13 @@ class TestDiscoveryBadgeRenders:
         page = context.new_page()
         page.set_content("<html><body><h1>Just a blog post</h1></body></html>")
         time.sleep(3)
-        assert page.query_selector("#je-discovery-badge-host") is None
+        assert page.query_selector("#je-companion-host") is None
 
 
 class TestDiscoverySave:
     def _save(self, page):
         page.evaluate(
-            "() => document.getElementById('je-discovery-badge-host')"
+            "() => document.getElementById('je-companion-host')"
             ".shadowRoot.getElementById('save').click()")
 
     def test_save_persists_and_dedups(self, context, app_server, fixture_server):
@@ -196,7 +202,7 @@ class TestDiscoverySave:
         url = f"{fixture_server}/jsonld_jobposting.html"
         page = _open_and_wait_badge(context, url)
         self._save(page)
-        page.wait_for_selector('#je-discovery-badge-host[data-je-saved="1"]',
+        page.wait_for_selector('#je-companion-host[data-je-saved="1"]',
                                timeout=10000)
         job = db.get_job_by_url(url)
         assert job is not None
@@ -205,7 +211,7 @@ class TestDiscoverySave:
 
         # reopen the same posting → badge opens already-saved, no duplicate
         page2 = _open_and_wait_badge(context, url)
-        page2.wait_for_selector('#je-discovery-badge-host[data-je-saved="1"]',
+        page2.wait_for_selector('#je-companion-host[data-je-saved="1"]',
                                 timeout=10000)
         with db._conn() as conn:
             n = conn.execute("SELECT COUNT(*) c FROM jobs WHERE url=?",
@@ -219,16 +225,16 @@ class TestDiscoveryOutOfTheWay:
         page = _open_and_wait_badge(context, f"{fixture_server}/linkedin_jobs_view.html")
         # collapse
         page.evaluate(
-            "() => document.getElementById('je-discovery-badge-host')"
+            "() => document.getElementById('je-companion-host')"
             ".shadowRoot.getElementById('collapse').click()")
-        page.wait_for_selector('#je-discovery-badge-host[data-je-collapsed="1"]',
+        page.wait_for_selector('#je-companion-host[data-je-collapsed="1"]',
                                timeout=5000)
         # dismiss removes the badge
         page.evaluate(
-            "() => document.getElementById('je-discovery-badge-host')"
+            "() => document.getElementById('je-companion-host')"
             ".shadowRoot.getElementById('dismiss').click()")
         page.wait_for_function(
-            "() => !document.getElementById('je-discovery-badge-host')",
+            "() => !document.getElementById('je-companion-host')",
             timeout=5000)
 
     def test_page_is_never_touched(self, context, app_server, fixture_server):

@@ -190,6 +190,21 @@ class ApplyHere(_Strict):
     description: str = ""
 
 
+class SessionControl(_Strict):
+    """018 (FR-030/FR-032): stop or advance the fill queue FROM THE PAGE.
+
+    Confers no new capability whatsoever — `stop` and `next` are exactly what
+    `POST /api/autofill/stop` and `/next` already do, and the app's own Apply
+    Assist page has offered both since 007. This only removes the tab switch:
+    stopping a run used to mean leaving the application you were filling.
+
+    Nothing here submits, logs in, or advances a wizard on the page. `next`
+    moves the APP's queue to the next job.
+    """
+    tab_id: int
+    action: str  # "stop" | "next"
+
+
 _INBOUND: dict[str, type[_Strict]] = {
     "hello": Hello,
     "tab_opened": TabOpened,
@@ -205,6 +220,7 @@ _INBOUND: dict[str, type[_Strict]] = {
     "fill_again": FillAgain,
     "answer_question": AnswerQuestion,
     "apply_here": ApplyHere,
+    "session_control": SessionControl,
 }
 
 

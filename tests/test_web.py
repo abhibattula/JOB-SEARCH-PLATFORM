@@ -404,3 +404,42 @@ class TestPracticeFixture017:
         body = client.get("/practice/apply").text
         assert "only practice" in body
         assert "/practice/submit-log" in body
+
+
+class TestJobDetailStartsInPlace018:
+    """018 (FR-034): starting Apply Assist from a job used to redirect to
+    /autofill, which threw the applicant out of the job they were reading and
+    into the app — then they had to switch to the browser anyway, where the
+    filling actually happens."""
+
+    def _page(self, tmp_db):
+        from fastapi.testclient import TestClient
+
+        from engine import db
+        from web.main import create_app
+
+        db.upsert_job({
+            "title": "Verification Engineer", "company": "Aurora",
+            "url": "https://boards.greenhouse.io/aurora/jobs/1",
+            "source": "greenhouse", "location": "Austin, TX",
+            "is_remote": False, "description": "d", "posted_date": None,
+        })
+        with db._conn() as conn:
+            job_id = conn.execute("SELECT id FROM jobs").fetchone()["id"]
+        return TestClient(create_app()).get(f"/jobs/{job_id}").text
+
+    def test_it_does_not_navigate_to_the_apply_assist_page(self, tmp_db):
+        """A LINK to Apply Assist is fine and stays in the nav — what must be
+        gone is the automatic redirect after a successful start."""
+        html = self._page(tmp_db)
+        for redirect in ("window.location.href = \"/autofill\"",
+                         "window.location.href='/autofill'",
+                         "location.href = \"/autofill\"",
+                         "location.replace(\"/autofill\")"):
+            assert redirect not in html, f"still redirects: {redirect}"
+
+    def test_it_reports_status_in_place(self, tmp_db):
+        html = self._page(tmp_db)
+        assert 'id="assist-status"' in html
+        assert "/api/autofill/apply/" in html
+        assert "Switch to your browser" in html

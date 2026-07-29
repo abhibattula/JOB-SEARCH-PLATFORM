@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Apply — Platform Engineer</title>
+  <!--
+    018 (T030) — the sub-frame guard.
+
+    Content scripts run in ALL frames (`all_frames: true`), because a
+    cross-origin iframe has to fill its own document. The COMPANION, though, is
+    a single top-frame widget: if every frame mounted one, a page with three
+    embedded form sections would sprout three floating cards.
+
+    This page has a real application form of its own AND an iframe containing
+    another one. Exactly one companion must exist: in the top frame, none in
+    the iframe.
+  -->
+  <style>
+    body { font: 15px system-ui, sans-serif; margin: 40px auto; max-width: 680px; }
+    label { display: block; margin: 12px 0 4px; font-weight: 600; }
+    input, textarea { width: 100%; padding: 8px; box-sizing: border-box; }
+    iframe { width: 100%; height: 320px; margin-top: 24px; border: 1px solid #ccc; }
+  </style>
+</head>
+<body>
+  <h1>Application</h1>
+  <form id="top-application">
+    <label for="t_first">First Name *</label>
+    <input id="t_first" name="first_name" type="text" required>
+
+    <label for="t_last">Last Name *</label>
+    <input id="t_last" name="last_name" type="text" required>
+
+    <label for="t_email">Email *</label>
+    <input id="t_email" name="email" type="email" required>
+
+    <label for="t_why">Why this role?</label>
+    <textarea id="t_why" name="why" rows="3"></textarea>
+  </form>
+
+  <h2>Additional details (embedded)</h2>
+  <iframe id="embedded" src="bare_application.html" title="Embedded section"></iframe>
+</body>
+</html>

@@ -171,6 +171,23 @@ _inflight: dict[tuple, tuple] = {}
 INFLIGHT_TTL_S = 20.0
 # per-frame seen counts for the watched tab (overlay + activity aggregation)
 _frame_seen: dict[int, int] = {}
+
+# 018 (US3): the page-answer index — every decision this session made, keyed by
+# the stable ledger key, in the order the fields were first seen. This is what
+# lets the on-page companion show the WHOLE application rather than only the
+# questions the AI drafter touched, and it is where `je_idx` finally travels
+# with the answer so Insert and Show me can exist.
+_page_entries: dict[int, dict[str, dict]] = {}
+# The digest of the last `answers` payload pushed per tab. An unchanged scan
+# sends nothing at all (FR-027) — this payload used to go out every ~2s and
+# every push rebuilt the panel, destroying half-typed answers.
+_answers_digest: dict[int, str] = {}
+# Tabs whose next scan must push regardless of the digest: the applicant just
+# did something and deserves to see it land.
+_answers_force: set[int] = set()
+# A wizard accumulates fields across steps; this bounds the index so a long
+# multi-page application cannot grow it without limit.
+MAX_PAGE_ENTRIES = 200
 # detected submissions awaiting user confirmation (FR-020; consumed by the
 # next-actions surface — never advances status by itself)
 _pending_submissions: list[dict] = []
@@ -286,6 +303,8 @@ def handle_message(msg) -> None:
         _handle_answer_question(msg)
     elif isinstance(msg, ext_protocol.ApplyHere):
         _handle_apply_here(msg)
+    elif isinstance(msg, ext_protocol.SessionControl):
+        _handle_session_control(msg)
     # Pong: heartbeat only (touch() above)
 
 
@@ -322,7 +341,52 @@ def _handle_answer_question(msg) -> None:
                          if (v[0] if isinstance(v, tuple) else v)
                          != "skipped_existing"]:
                 del ledger[lkey]
+    # 018 (FR-027): the digest must not suppress the one push that shows their
+    # typed answer landing.
+    with _lock:
+        _answers_force.add(msg.tab_id)
     send(_outbound("rescan", reason="user_rescan"))
+
+
+def _handle_session_control(msg) -> None:
+    """018 (FR-030/FR-032): Stop and Next, from the page.
+
+    Both already existed — this is the same `stop_queue()` / `advance()` the
+    app's own Apply Assist page calls. What changes is that stopping a run no
+    longer means abandoning the application you are filling to go and find the
+    app window. Nothing here touches the page.
+    """
+    from . import browser_controller as bc
+
+    with _lock:
+        if msg.tab_id != _watch["tab_id"]:
+            return
+    action = (msg.action or "").strip().lower()
+    if action == "stop":
+        bc.stop_queue()
+        send(_outbound("overlay_state", tab_id=msg.tab_id, summary={
+            "seen": 0, "filled": 0, "needs_you": 0, "drafts": 0,
+            "needs_you_idx": [], "attention": [], "session": "stopped",
+            "message": "stopped — nothing was submitted",
+        }))
+        return
+    if action == "next":
+        try:
+            current = bc.advance()
+        except Exception as exc:  # noqa: BLE001 — surface, never crash
+            log.warning("session_control next failed", exc_info=True)
+            send(_outbound("error", code="advance_failed",
+                           message=str(exc)[:200]))
+            return
+        if current is None:
+            send(_outbound("overlay_state", tab_id=msg.tab_id, summary={
+                "seen": 0, "filled": 0, "needs_you": 0, "drafts": 0,
+                "needs_you_idx": [], "attention": [], "session": "done",
+                "message": "that was the last one",
+            }))
+        return
+    send(_outbound("error", code="bad_action",
+                   message=f"unknown session action: {action[:40]}"))
 
 
 def _handle_fill_again(msg) -> None:
@@ -345,6 +409,8 @@ def _handle_fill_again(msg) -> None:
                      != "skipped_existing"]:
             del ledger[lkey]
     drafter.reset_backoff_for_job(job_id)
+    with _lock:
+        _answers_force.add(msg.tab_id)
     send(_outbound("rescan", reason="fill_again"))
 
 
@@ -377,6 +443,7 @@ def _handle_tab_opened(msg) -> None:
         _watch.update(tab_id=msg.tab_id, job_id=job_id)
         _inflight.clear()
         _frame_seen.clear()
+        _start_answer_feed(msg.tab_id, job_id)
     send(_outbound("watch_start", tab_id=msg.tab_id, job_id=job_id))
 
 
@@ -448,6 +515,48 @@ def _handle_fields(msg) -> None:
     # single-descriptor classifier can see.
     raws = [desc.as_watcher_dict() for desc in msg.descriptors]
     name_overrides = field_core.name_layout(raws, ats)
+
+    def question_of(descriptor: dict) -> str:
+        return (descriptor.get("label_text") or descriptor.get("placeholder")
+                or descriptor.get("aria_label") or "")
+
+    def note_answer(descriptor: dict, *, action: str, answer: str = "",
+                    tag: str = "", ai_draft: bool = False,
+                    secret: bool = False) -> None:
+        """018 (FR-019): remember this decision for the on-page feed.
+
+        Recorded HERE, inside the decision loop, because this is the only
+        place that sees every field AND already holds its `je_idx`. Reading it
+        back out of the drafter (as v1.7.0 did) can only ever show the
+        questions the drafter touched.
+        """
+        question = question_of(descriptor)
+        if not question:
+            return
+        index = _page_entries.setdefault(job_id, {})
+        key = field_core.key(descriptor)
+        if key not in index and len(index) >= MAX_PAGE_ENTRIES:
+            return
+        # A field we filled stays in the feed once it is filled. On the NEXT
+        # scan that field is no longer empty, so `decide` returns "skip" —
+        # and blindly overwriting the record with that skip made every
+        # successfully filled field vanish from the panel a second or two
+        # after it appeared. What the applicant needs to review is precisely
+        # the value we put there, so an answerless skip never displaces it.
+        previous = index.get(key)
+        if action == "skip" and previous and previous.get("answer"):
+            return
+        index[key] = {
+            "key": key,
+            "je_idx": descriptor.get("je_idx") or "",
+            "question": question,
+            "answer": answer,
+            "action": action,
+            "ai_draft": ai_draft,
+            "secret": secret,
+            "tag": tag,
+        }
+
     for raw in raws:
         override = name_overrides.get(raw.get("je_idx"))
         if override:
@@ -458,6 +567,11 @@ def _handle_fields(msg) -> None:
             if info is not None:
                 if time.monotonic() - info[-1] <= INFLIGHT_TTL_S:
                     seen += 1
+                    # Already dispatched this scan — keep it in the feed with
+                    # the value we sent, so a field in flight does not blink
+                    # out of the panel and back in.
+                    note_answer(raw, action="fill", answer=info[2],
+                                tag=info[1], ai_draft=info[3])
                     continue
                 del _inflight[fkey]  # lost fill_result — re-decide (T007)
         decision = field_core.decide(ats, raw, ledger, get_value)
@@ -466,9 +580,9 @@ def _handle_fields(msg) -> None:
         seen += 1
         lkey = field_core.key(raw)
         if decision.action == "skip":
-            question = (raw.get("label_text") or raw.get("placeholder")
-                        or raw.get("aria_label") or "")
+            question = question_of(raw)
             if question:
+                note_answer(raw, action="skip", tag=decision.tag)
                 record = drafter.get(job_id, question)
                 if record and record["state"] == "failed" and \
                         record["reason"] in drafter._NEEDS_YOU_REASONS:
@@ -536,6 +650,9 @@ def _handle_fields(msg) -> None:
             item.update(kind="text", value=str(decision.value))
         if decision.ai_draft:
             item["flag"] = "ai_draft"
+        note_answer(raw, action="fill", answer=decision.preview,
+                    tag=decision.tag, ai_draft=decision.ai_draft,
+                    secret=decision.secret)
         with _lock:
             _inflight[fkey] = (raw, decision.tag, decision.preview,
                                decision.ai_draft, time.monotonic())
@@ -569,29 +686,69 @@ def _handle_fields(msg) -> None:
             1 for e in bc._state.fill_reports.get(job_id, [])
             if e.get("ai_draft") and e["outcome"] == "filled"
         )
+    # 018 (FR-032): the companion also gets the session context it needs to
+    # offer Stop and Next without a trip to the app.
+    with bc._lock:
+        remaining = max(0, len(bc._state.job_ids) - bc._state.index - 1)
+        running = bc._state.running
     send(_outbound("overlay_state", tab_id=msg.tab_id, summary={
         "seen": total_seen, "filled": filled_total, "drafts": draft_count,
         "needs_you": len(needs_you_idx),
         "needs_you_idx": needs_you_idx,
         "attention": needs_you_labels[:5],
         "message": "you click the actual apply/submit",
+        "session": "filling" if running else "done",
+        "current_job_id": job_id if job_id and job_id > 0 else None,
+        "remaining": remaining,
     }))
 
-    # 017 (FR-034): the FULL answer text goes to the page, including the
-    # questions we refused. Before this the page only ever received a count
-    # ("N AI draft(s) — review in the app"), so an answer that was drafted
-    # but not filled could not be read at all without leaving the tab.
+    # 017 (FR-034) / 018 (FR-019, FR-020, FR-027): the FULL answer text goes
+    # to the page — now for EVERY field the app decided about, not only the
+    # ones the AI drafter touched, and each carrying the `je_idx` that makes
+    # Insert and Show me possible.
     job_id = _watch["job_id"]
     if job_id is not None:
-        items = drafter.answers_for_page(job_id)
-        truncated = False
-        # Stay well inside MAX_MESSAGE_BYTES on a very large form; the app's
-        # own view stays complete either way (FR-049).
-        while len(items) > 1 and len(str(items)) > 400_000:
-            items.pop()
-            truncated = True
-        send(_outbound("answers", tab_id=msg.tab_id, job_id=job_id,
-                       items=items, truncated=truncated))
+        _push_answers(msg.tab_id, job_id)
+
+
+def _start_answer_feed(tab_id: int, job_id: int) -> None:
+    """A new session begins with an empty index and no digest history, so its
+    first scan always reaches the page. Caller holds `_lock`."""
+    _page_entries.pop(job_id, None)
+    _answers_digest.pop(tab_id, None)
+    _answers_force.add(tab_id)
+
+
+def _push_answers(tab_id: int, job_id: int) -> None:
+    """Send the page-answer feed — but only when it actually changed.
+
+    v1.7.0 pushed this on every scan: with a 2 s safety poll that is a payload
+    of up to 400 KB every two seconds, and each one made the panel rebuild
+    every row from scratch, which is what destroyed a half-typed answer before
+    the applicant could press Enter.
+    """
+    from . import drafter, page_answers
+
+    with _lock:
+        entries = list((_page_entries.get(job_id) or {}).values())
+        forced = tab_id in _answers_force
+        _answers_force.discard(tab_id)
+    items = page_answers.build(entries, drafter.records_for_job(job_id))
+    truncated = False
+    # Stay well inside MAX_MESSAGE_BYTES on a very large form; the app's own
+    # view stays complete either way (FR-029).
+    while len(items) > 1 and len(str(items)) > 400_000:
+        items.pop()
+        truncated = True
+    fingerprint = page_answers.digest(items)
+    with _lock:
+        unchanged = _answers_digest.get(tab_id) == fingerprint
+        if unchanged and not forced:
+            return
+        _answers_digest[tab_id] = fingerprint
+    send(_outbound("answers", tab_id=tab_id, job_id=job_id,
+                   items=items, truncated=truncated,
+                   counts=page_answers.counts(items)))
 
 
 def _handle_fill_result(msg) -> None:
@@ -709,6 +866,7 @@ def _handle_fill_here(msg) -> None:
         _watch.update(tab_id=msg.tab_id, job_id=ADHOC_JOB_ID)
         _inflight.clear()
         _frame_seen.clear()
+        _start_answer_feed(msg.tab_id, ADHOC_JOB_ID)
     send(_outbound("watch_start", tab_id=msg.tab_id, job_id=ADHOC_JOB_ID))
 
 
@@ -831,6 +989,7 @@ def _handle_apply_here(msg) -> None:
     with _lock:
         _watch["tab_id"] = msg.tab_id
         _watch["job_id"] = job_id
+        _start_answer_feed(msg.tab_id, job_id)
     send(_outbound("watch_start", tab_id=msg.tab_id, job_id=job_id))
 
 
@@ -845,4 +1004,7 @@ def reset_for_tests() -> None:
         _inflight.clear()
         _frame_seen.clear()
         _pending_submissions.clear()
+        _page_entries.clear()
+        _answers_digest.clear()
+        _answers_force.clear()
         _counters.update(dropped_fields=0, scan_errors=0)

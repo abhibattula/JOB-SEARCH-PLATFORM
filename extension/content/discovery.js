@@ -22,7 +22,14 @@
 
   let current = null;       // last detected posting {title,company,description,location}
   let dismissedFor = null;  // href the user dismissed the badge for
-  let host = null, root = null, els = {}, collapsed = false;
+  // 018 (D1): no host of its own — rendering belongs to window.jePanel.
+  // 018 (R7): what this page is. `posting` comes from job metadata, `form`
+  // from the read-only field probe. Either one is enough to show the widget —
+  // through v1.7.0 only the first was, so a bare ATS application page (which
+  // routinely carries no metadata at all) showed nothing.
+  let detection = "none";   // none | form | posting | posting+form
+  let formFields = 0;
+  let startTimer = null;    // outcome watchdog for the primary action
 
   // ---------- detection (read-only) ----------
 
@@ -137,9 +144,25 @@
 
   // ---------- bridge ----------
 
+  // 018 (FR-006): an orphaned frame tears down instead of throwing on every
+  // tick. When the extension is reloaded or updated, this content script's
+  // context is invalidated and every sendMessage throws — the old code
+  // swallowed that and kept polling forever behind a widget whose controls
+  // could no longer reach the app. Take the widget down; a fresh content
+  // script is already running in its place.
+  let orphaned = false;
+
   function toApp(payload) {
+    if (orphaned) { return; }
     try { chrome.runtime.sendMessage({ _je: true, payload }); }
-    catch (_e) { /* extension reloaded — orphaned frame */ }
+    catch (_e) { teardown(); }
+  }
+
+  function teardown() {
+    orphaned = true;
+    clearInterval(pollTimer);
+    clearTimeout(startTimer);
+    if (window.jePanel) { window.jePanel.hide(); }
   }
 
   // 016 (T009, R5): score ONCE per page state — but cache only when a
@@ -152,17 +175,34 @@
   const RETRY_MS = 7500;
 
   function requestScore() {
-    const p = detect();
-    if (!p) { removeBadge(); current = null; scoredFor = null; return; }
-    current = { ...p, url: location.href };
-    if (dismissedFor === location.href) { return; }
+    if (!current) { return; }
     if (scoredFor === location.href) { return; }  // result cached — done
     if (Date.now() - lastRequestAt < RETRY_MS) { return; }  // one in flight
     lastRequestAt = Date.now();
     toApp({
-      type: "score_request", url: current.url, title: p.title,
-      company: p.company, description: (p.description || "").slice(0, DESC_MAX),
+      type: "score_request", url: current.url, title: current.title,
+      company: current.company,
+      description: (current.description || "").slice(0, DESC_MAX),
     });
+  }
+
+  // 018 (R7): read-only page classification. `detect()` reads metadata the
+  // applicant is already looking at; `probe()` counts form fields without
+  // stamping anything. Neither sends anything anywhere — the result decides
+  // local rendering only.
+  function classify() {
+    const p = detect();
+    current = p ? { ...p, url: location.href } : null;
+    let form = null;
+    try {
+      form = window.jeScanner ? window.jeScanner.probe() : null;
+    } catch (_e) { form = null; }
+    const hasForm = !!(form && window.jeScanner
+                       && window.jeScanner.looksLikeApplicationForm(form));
+    formFields = form ? form.fields : 0;
+    detection = current ? (hasForm ? "posting+form" : "posting")
+      : (hasForm ? "form" : "none");
+    return detection;
   }
 
   function requestSave() {
@@ -175,164 +215,134 @@
     });
   }
 
-  // ---------- badge (our own DOM only) ----------
-
-  function build() {
-    if (host) { return; }
-    host = document.createElement("div");
-    host.id = "je-discovery-badge-host";
-    host.style.cssText = "position:fixed;z-index:2147483646;right:16px;" +
-      "bottom:16px;all:initial;";
-    // open root: CSS is still fully isolated by shadow DOM; open lets the
-    // integration test drive the Save button (a closed root is unreachable).
-    root = host.attachShadow({ mode: "open" });
-    root.innerHTML = `
-      <style>
-        *{box-sizing:border-box}
-        .card{font:13px/1.4 system-ui,-apple-system,sans-serif;width:264px;
-          background:#0d1117;color:#e6edf3;border:1px solid #30363d;
-          border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.45);overflow:hidden}
-        .hd{display:flex;align-items:center;gap:8px;padding:9px 11px;
-          background:#161b22;border-bottom:1px solid #30363d}
-        .hd .tag{font-weight:700;letter-spacing:.2px}
-        .hd .sp{flex:1}
-        .icon{cursor:pointer;color:#8b949e;font-size:14px;line-height:1;
-          padding:2px 4px;border-radius:4px;user-select:none}
-        .icon:hover{background:#21262d;color:#e6edf3}
-        .bd{padding:11px}
-        .co{color:#8b949e;font-size:12px;white-space:nowrap;overflow:hidden;
-          text-overflow:ellipsis}
-        .ti{font-weight:600;margin:1px 0 9px;white-space:nowrap;overflow:hidden;
-          text-overflow:ellipsis}
-        .row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
-        .score{width:46px;height:46px;border-radius:50%;display:flex;
-          align-items:center;justify-content:center;font-weight:700;font-size:16px;
-          border:2px solid #30363d;flex:none}
-        .score.strong{color:#3fb950;border-color:#238636}
-        .score.good{color:#d29922;border-color:#9e6a03}
-        .score.fair{color:#8b949e}
-        .score.none{font-size:11px;font-weight:600;color:#8b949e}
-        .meta{min-width:0}
-        .band{font-weight:600;text-transform:capitalize}
-        .band.strong{color:#3fb950}.band.good{color:#d29922}.band.fair{color:#8b949e}
-        .pill{display:inline-block;margin-top:2px;padding:1px 7px;border-radius:999px;
-          font-size:11px;font-weight:600;background:#21262d;color:#8b949e}
-        .pill.grade{background:#132a17;color:#3fb950}
-        .pill.exempt{background:#132033;color:#58a6ff}
-        button.save{width:100%;padding:8px;border:0;border-radius:8px;
-          background:#238636;color:#fff;font-weight:600;font-size:13px;cursor:pointer}
-        button.save:hover{background:#2ea043}
-        button.save[disabled]{background:#21262d;color:#8b949e;cursor:default}
-        .note{color:#8b949e;font-size:11px;margin-top:7px}
-        .collapsed .bd{display:none}
-        .collapsed .card{width:auto}
-      </style>
-      <div class="card" id="card">
-        <div class="hd">
-          <span class="tag">Job Engine</span><span class="sp"></span>
-          <span class="icon" id="collapse" title="Collapse">▁</span>
-          <span class="icon" id="dismiss" title="Dismiss">✕</span>
-        </div>
-        <div class="bd">
-          <div class="co" id="co"></div>
-          <div class="ti" id="ti"></div>
-          <div class="row">
-            <div class="score" id="score">–</div>
-            <div class="meta">
-              <div class="band" id="band"></div>
-              <span class="pill" id="sponsor">H-1B: unknown</span>
-            </div>
-          </div>
-          <button class="save" id="apply">Apply with Apply Assist</button>
-          <button class="save ghost" id="save">Save to Job Engine</button>
-          <div class="note" id="note" style="display:none"></div>
-        </div>
-      </div>`;
-    els = {
-      card: root.getElementById("card"), co: root.getElementById("co"),
-      ti: root.getElementById("ti"), score: root.getElementById("score"),
-      band: root.getElementById("band"), sponsor: root.getElementById("sponsor"),
-      save: root.getElementById("save"), note: root.getElementById("note"),
-      apply: root.getElementById("apply"),
-    };
-    root.getElementById("dismiss").addEventListener("click", onDismiss);
-    root.getElementById("collapse").addEventListener("click", onCollapse);
-    els.save.addEventListener("click", onSave);
-    els.apply.addEventListener("click", onApply);
-    (document.body || document.documentElement).appendChild(host);
-  }
+  // ---------- rendering: delegated to the ONE companion widget ----------
+  //
+  // 018 (D1): this script no longer owns a host. It kept all of its detection
+  // and scoring logic — that part was never the problem — and now feeds
+  // window.jePanel, so the match score and the fill progress share one card
+  // instead of sitting in two disconnected widgets in two corners.
 
   function removeBadge() {
-    if (host) { host.remove(); host = null; root = null; els = {}; collapsed = false; }
+    if (window.jePanel) { window.jePanel.hide(); }
+  }
+
+  // FR-005: render on ANY qualifying page — a scored posting, a bare
+  // application form, or both. The score block appears once a score exists;
+  // the primary action's label follows what we actually found.
+  function render() {
+    if (dismissedFor === location.href || !window.jePanel) { return; }
+    window.jePanel.setPosting(current);
+    window.jePanel.setDetection(detection, formFields);
   }
 
   function renderScore(r) {
-    if (dismissedFor === location.href) { return; }
-    build();
-    els.co.textContent = current ? (current.company || "—") : "";
-    els.ti.textContent = current ? current.title : "";
-    // host dataset mirrors state in the light DOM (assertable; not a page mutation)
-    host.dataset.jeCompany = current ? (current.company || "") : "";
-
-    if (r.needs_resume) {
-      els.score.className = "score none";
-      els.score.textContent = "—";
-      els.band.textContent = "";
-      els.note.style.display = "block";
-      els.note.textContent = "Add your resume in Job Engine to see your match.";
-      host.dataset.jeScore = "";
-      host.dataset.jeBand = "none";
-    } else {
-      const band = r.band || "fair";
-      els.score.className = "score " + band;
-      els.score.textContent = String(Math.round(r.match_score));
-      els.band.className = "band " + band;
-      els.band.textContent = band + " match";
-      els.note.style.display = "none";
-      host.dataset.jeScore = String(Math.round(r.match_score));
-      host.dataset.jeBand = band;
+    if (dismissedFor === location.href || !window.jePanel) { return; }
+    render();
+    let sponsorText = "H-1B: unknown", sponsorClass = "chip";
+    if (r.sponsor_grade) {
+      sponsorText = "H-1B sponsor: " + r.sponsor_grade;
+      sponsorClass = "chip grade";
+    } else if (r.cap_exempt) {
+      sponsorText = "Cap-exempt likely";
+      sponsorClass = "chip exempt";
     }
-
-    let sp = "H-1B: unknown", cls = "pill";
-    if (r.sponsor_grade) { sp = "H-1B sponsor: " + r.sponsor_grade; cls = "pill grade"; }
-    else if (r.cap_exempt) { sp = "Cap-exempt likely"; cls = "pill exempt"; }
-    els.sponsor.textContent = sp;
-    els.sponsor.className = cls;
-    host.dataset.jeSponsor = r.sponsor_grade || (r.cap_exempt ? "cap-exempt" : "unknown");
-
+    window.jePanel.setScore({
+      score: r.needs_resume ? null : Math.round(r.match_score),
+      band: r.band || "fair",
+      needs_resume: !!r.needs_resume,
+      sponsorText: sponsorText,
+      sponsorClass: sponsorClass,
+      sponsorKey: r.sponsor_grade || (r.cap_exempt ? "cap-exempt" : "unknown"),
+    });
+    if (r.needs_resume) {
+      window.jePanel.notice("Add your resume in Job Engine to see your match.");
+    }
     setSaved(!!r.already_saved);
   }
 
   function setSaved(saved) {
-    if (!els.save) { return; }
-    els.save.disabled = saved;
-    els.save.textContent = saved ? "Saved ✓" : "Save to Job Engine";
-    if (host) { host.dataset.jeSaved = saved ? "1" : "0"; }
+    if (window.jePanel) { window.jePanel.setSaved(saved); }
   }
 
-  function onSave() { if (els.save && !els.save.disabled) { requestSave(); } }
-
-  // 017 (FR-038/FR-039): start Apply Assist for the posting being viewed.
-  // This sends a MESSAGE to the local app and opens our own panel — it
-  // clicks nothing on the page and mutates nothing, exactly as the badge
-  // has always behaved.
-  function onApply() {
-    const p = current && current.posting;
-    if (!p || !els.apply || els.apply.disabled) { return; }
-    els.apply.disabled = true;
-    els.apply.textContent = "Starting…";
-    toApp({ type: "apply_here", url: current.url, title: p.title || "",
-            company: p.company || "",
-            description: (p.description || "").slice(0, DESC_MAX) });
-    // Both content scripts share one isolated world, so the fill panel is
-    // directly reachable — no second floating widget, per D4.
-    if (window.jeOverlay && window.jeOverlay.show) { window.jeOverlay.show(); }
+  // 017 (FR-038/FR-039) / 018 (R2): start Apply Assist for whatever this page
+  // is. Sends a MESSAGE to the local app — it clicks nothing on the page and
+  // mutates nothing, exactly as the badge has always behaved.
+  //
+  // 018: the apply action was a DEAD BUTTON for the whole of v1.7.0. It began
+  //
+  //     const p = current && current.posting;
+  //     if (!p) { return; }
+  //
+  // but `requestScore` sets `current = { ...p, url }` — keys title, company,
+  // description, location, url. There is no `posting` key, so `p` was always
+  // undefined and the handler returned before sending anything. The applicant
+  // clicked "Apply with Apply Assist" and nothing whatsoever happened. It
+  // passed CI because the only coverage was `assert "apply_here" in source`.
+  function onAction(action) {
+    if (action === "apply" && current) {
+      startSession({ type: "apply_here", url: current.url,
+                     title: current.title || "", company: current.company || "",
+                     description: (current.description || "").slice(0, DESC_MAX) });
+    } else if (action === "fill_here") {
+      // No posting to record — fill the page the applicant is already on.
+      startSession({ type: "fill_here", url: location.href,
+                     title: document.title || "" });
+    } else if (action === "stop") {
+      // 018 (FR-030): stopping a run no longer means abandoning the
+      // application you are filling to go and find the app window.
+      toApp({ type: "session_control", action: "stop" });
+      window.jePanel.setSession("stopped");
+      window.jePanel.notice("Stopped. Nothing was submitted.");
+    } else if (action === "next") {
+      toApp({ type: "session_control", action: "next" });
+      window.jePanel.notice("Moving to the next job…");
+    } else if (action === "fill_again") {
+      // 016 (T016) kept working: main.js registers the handler, we route the
+      // click to it so there is still only one primary action on screen.
+      if (window.jeFillAgainHandler) { window.jeFillAgainHandler(); }
+      else { toApp({ type: "fill_again" }); }
+    }
   }
-  function onDismiss() { dismissedFor = location.href; removeBadge(); }
-  function onCollapse() {
-    collapsed = !collapsed;
-    if (els.card) { els.card.classList.toggle("collapsed", collapsed); }
-    if (host) { host.dataset.jeCollapsed = collapsed ? "1" : "0"; }
+
+  function startSession(payload) {
+    window.jePanel.setSession("starting");
+    window.jePanel.notice("");
+    toApp(payload);
+    armOutcome();
+  }
+
+  // 018 (FR-010): a control must never appear to have done nothing. The app
+  // may refuse (a session is already running) or be unreachable; either way
+  // the primary action comes back and says why, rather than sitting on
+  // "Starting…" forever.
+  function armOutcome() {
+    clearTimeout(startTimer);
+    startTimer = setTimeout(function () {
+      startTimer = null;
+      window.jePanel.setSession("idle");
+      window.jePanel.notice(
+        "Couldn't start — open Job Engine and check Apply Assist.");
+    }, 8000);
+  }
+
+  function onSessionStarted() {
+    clearTimeout(startTimer);
+    startTimer = null;
+    window.jePanel.setSession("filling");
+  }
+
+  function onAppError(message) {
+    clearTimeout(startTimer);
+    startTimer = null;
+    window.jePanel.setSession("idle");
+    window.jePanel.notice(
+      message || "The app refused that — check Job Engine.");
+  }
+
+  if (window.jePanel) {
+    window.jePanel.onAction(onAction);
+    window.jePanel.onSave(requestSave);
+    window.jePanel.onDismiss(function () { dismissedFor = location.href; });
   }
 
   // ---------- messages from the app (via the SW) ----------
@@ -344,23 +354,45 @@
       renderScore(m);
     }
     else if (m.type === "save_result") { setSaved(true); }
+    // 018 (FR-010): the app confirmed the session — the primary action's
+    // watchdog stands down.
+    else if (m.type === "watch") { onSessionStarted(); }
+    else if (m.type === "unwatch") { window.jePanel.setSession("done"); }
+    // 018 (FR-033): an app-side refusal reaches the page, not just the popup.
+    else if (m.type === "app_error") { onAppError(m.message || m.code); }
+    // 018 (FR-035): keyboard shortcuts, handled where the widget lives.
+    else if (m.type === "toggle_companion") { window.jePanel.toggle(); }
+    else if (m.type === "fill_this_page") {
+      if (detection !== "none") { onAction(current ? "apply" : "fill_here"); }
+    }
   });
 
   // ---------- lifecycle: detect on load + in-place (SPA) navigation ----------
 
   let lastHref = location.href;
+  let pollTimer = null;
   function tick() {
+    if (orphaned) { return; }
     if (location.href !== lastHref) {   // SPA nav → new posting, reset dismiss
       lastHref = location.href;
       dismissedFor = null;
       scoredFor = null;                 // 016: new page state → new score
       lastRequestAt = 0;
+      // A new posting is a new session context — a finished fill on the
+      // previous page must not leave "Fill again" pointing at this one.
+      if (window.jePanel) { window.jePanel.setSession("idle"); }
       removeBadge();
     }
-    requestScore();
+    // 018: classify FIRST, then decide. A page with no posting metadata but a
+    // real application form now qualifies — that is the Greenhouse
+    // `…/application` case where the applicant previously saw nothing at all.
+    if (classify() === "none") { scoredFor = null; removeBadge(); return; }
+    if (dismissedFor === location.href) { return; }
+    if (current) { requestScore(); }
+    render();
   }
-  setInterval(tick, POLL_MS);
+  pollTimer = setInterval(tick, POLL_MS);
   // first pass after the page settles
-  if (document.readyState === "complete") { requestScore(); }
-  else { window.addEventListener("load", requestScore, { once: true }); }
+  if (document.readyState === "complete") { tick(); }
+  else { window.addEventListener("load", tick, { once: true }); }
 })();

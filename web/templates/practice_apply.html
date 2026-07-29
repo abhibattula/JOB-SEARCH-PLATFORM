@@ -200,10 +200,41 @@
   <script>
     // 016 (T022): self-report the DOM state for the E2E (extension-opened
     // tabs have no Playwright handle). Local page, same origin, harmless.
+    // 018 (T004): the companion's own state, read through its OPEN shadow
+    // root. The typing fields exist to prove R6 — through v1.7.0 the panel
+    // rebuilt every row on every ~2s scan, so a half-typed needs-you answer
+    // was destroyed before it could be saved. The E2E types, waits out
+    // several scan cycles, and asserts BOTH the value and the focus survived.
+    function companionHost() {
+      return document.getElementById('je-companion-host')
+        || document.getElementById('je-companion-overlay-host');
+    }
+    function companionProbe() {
+      var out = { host: '', answers: 0, input_value: '', input_focused: false,
+                  groups: '' };
+      var host = companionHost();
+      if (!host || !host.shadowRoot) { return out; }
+      out.host = host.id;
+      out.answers = Number(host.dataset.jeAnswers || 0);
+      var root = host.shadowRoot;
+      var input = root.querySelector('.qa input, [data-je-ask] input');
+      if (input) {
+        out.input_value = input.value || '';
+        // activeElement on the SHADOW ROOT — document.activeElement returns
+        // the host element when focus is inside an open shadow root.
+        out.input_focused = root.activeElement === input;
+      }
+      out.groups = Array.prototype.map.call(
+        root.querySelectorAll('[data-je-group]'),
+        function (el) { return el.getAttribute('data-je-group'); }).join(',');
+      return out;
+    }
+
     setInterval(function () {
       try {
         var sponsorNo = document.querySelector('input[name=sponsorship][value=No]');
         var eeo = document.getElementById('eeo_gender');
+        var companion = companionProbe();
         fetch('/practice/fixture-state', {
           method: 'POST', headers: {'Content-Type': 'application/json'},
           body: JSON.stringify({
@@ -212,7 +243,13 @@
             sponsorship_no: !!(sponsorNo && sponsorNo.checked),
             eeo_value: (eeo || {}).value || '',
             eeo_flag: (eeo && eeo.dataset.jeFlag) || '',
-            panel: !!document.getElementById('je-companion-overlay-host'),
+            panel: !!companionHost(),
+            // 018 (T004): companion state, for the R6 typing proof
+            companion_host: companion.host,
+            companion_answers: companion.answers,
+            companion_input_value: companion.input_value,
+            companion_input_focused: companion.input_focused,
+            companion_groups: companion.groups,
             // 017: the defects from the live Akuna run, observable.
             resume_filename: ((document.getElementById('resume') || {}).files
                               || [{}])[0] ? document.getElementById('resume').files[0].name : '',

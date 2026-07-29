@@ -949,3 +949,172 @@ class TestApplyHere017:
 
         errors = [p for p in sent if p.get("type") == "error"]
         assert errors and "no browser" in errors[0]["message"]
+
+
+class TestAnswersFeed018:
+    """018 US3 (FR-019/FR-020/FR-027): what reaches the page.
+
+    Through v1.7.0 the `answers` payload came from `drafter.answers_for_page`,
+    which reads `drafter._records` — only questions routed to the AI drafter.
+    Every field resolved from the profile or the answer bank was invisible on
+    the page, and no entry carried a `je_idx`, so the panel's Insert and Show
+    me buttons never rendered at all.
+    """
+
+    def _answers(self, sent):
+        return [m for m in sent if m["type"] == "answers"]
+
+    def test_a_profile_filled_field_reaches_the_page(self, queue, sent):
+        open_the_tab(queue, sent)
+        sent.clear()
+        ext_backend.handle_message(fields_msg(descriptors=[descriptor()]))
+        feed = self._answers(sent)
+        assert feed, "no answers payload was sent at all"
+        items = feed[-1]["items"]
+        questions = [i["question"] for i in items]
+        assert "First name" in questions, (
+            f"a profile-filled field is missing from the feed: {questions}")
+        first = next(i for i in items if i["question"] == "First name")
+        assert first["answer"] == "Abhinav"
+        assert first["group"] == "profile"
+
+    def test_every_item_carries_the_field_it_belongs_to(self, queue, sent):
+        """R4: without this the panel cannot offer Insert or Show me."""
+        open_the_tab(queue, sent)
+        sent.clear()
+        ext_backend.handle_message(fields_msg(descriptors=[descriptor()]))
+        items = self._answers(sent)[-1]["items"]
+        assert items
+        assert all("je_idx" in i for i in items)
+        first = next(i for i in items if i["question"] == "First name")
+        assert first["je_idx"] == "1"
+        assert first["key"]
+
+    def test_an_unchanged_scan_pushes_nothing(self, queue, sent):
+        """FR-027: this payload used to go out on EVERY scan — up to 400 KB
+        every two seconds — and every push rebuilt the panel, which is what
+        destroyed half-typed answers."""
+        open_the_tab(queue, sent)
+        sent.clear()
+        msg = fields_msg(descriptors=[descriptor()])
+        ext_backend.handle_message(msg)
+        assert len(self._answers(sent)) == 1
+        sent.clear()
+        ext_backend.handle_message(fields_msg(descriptors=[descriptor()]))
+        assert self._answers(sent) == [], (
+            "an identical scan pushed the answer feed again")
+
+    def test_a_changed_answer_does_push(self, queue, sent):
+        open_the_tab(queue, sent)
+        sent.clear()
+        ext_backend.handle_message(fields_msg(descriptors=[descriptor()]))
+        sent.clear()
+        ext_backend.handle_message(fields_msg(descriptors=[
+            descriptor(),
+            descriptor(je_idx="2", name="email", id="email",
+                       label_text="Email"),
+        ]))
+        assert self._answers(sent), "a new field did not reach the page"
+
+    def test_a_secret_never_reaches_the_page(self, queue, sent):
+        """FR-037: fill-and-forget. It goes into the field and is never
+        rendered, logged or sent back."""
+        open_the_tab(queue, sent)
+        sent.clear()
+        ext_backend.handle_message(fields_msg(descriptors=[
+            descriptor(je_idx="9", name="password", id="password",
+                       type="password", label_text="Password"),
+        ]))
+        for message in self._answers(sent):
+            for item in message["items"]:
+                assert "password" not in (item["question"] or "").lower() or \
+                    item["answer"] == ""
+
+    def test_the_feed_is_resent_after_the_applicant_answers(self, queue, sent):
+        """The digest must not suppress the one push that proves their typed
+        answer landed."""
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(descriptors=[descriptor()]))
+        sent.clear()
+        ext_backend.handle_message(ext_protocol.AnswerQuestion(
+            tab_id=40, je_idx="3", question="When does it expire?",
+            answer="2027-05-01"))
+        ext_backend.handle_message(fields_msg(descriptors=[descriptor()]))
+        assert self._answers(sent), (
+            "the feed stayed suppressed after a captured answer")
+
+    def test_a_filled_field_stays_in_the_feed_after_it_is_filled(self, queue,
+                                                                 sent):
+        """The scan AFTER a successful fill sees a non-empty field and
+        decides "skip". Recording that skip over the fill made every filled
+        field vanish from the panel a second after it appeared — the profile
+        group emptied itself while the applicant watched."""
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(descriptors=[descriptor()]))
+        sent.clear()
+        # the same field, now carrying the value we just put in it
+        ext_backend.handle_message(fields_msg(descriptors=[
+            descriptor(value="Abhinav"),
+        ]))
+        ext_backend.handle_message(ext_protocol.AnswerQuestion(
+            tab_id=40, je_idx="1", question="ping", answer="pong"))
+        ext_backend.handle_message(fields_msg(descriptors=[
+            descriptor(value="Abhinav"),
+        ]))
+        feed = [m for m in sent if m["type"] == "answers"]
+        assert feed, "no answers payload after the field was filled"
+        questions = [i["question"] for i in feed[-1]["items"]]
+        assert "First name" in questions, (
+            f"the filled field dropped out of the feed: {questions}")
+
+
+class TestSessionControl018:
+    """018 (FR-030/FR-032): Stop and Next from the page. No new capability —
+    the same functions the app's own Apply Assist page already calls."""
+
+    def test_stop_stops_the_queue(self, queue, sent):
+        open_the_tab(queue, sent)
+        assert bc._state.running
+        ext_backend.handle_message(ext_protocol.SessionControl(
+            tab_id=40, action="stop"))
+        assert not bc._state.running
+
+    def test_it_ignores_a_control_for_another_tab(self, queue, sent):
+        """The same guard fill_again and answer_question already apply: a
+        message must be about the tab we are actually watching."""
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(ext_protocol.SessionControl(
+            tab_id=999, action="stop"))
+        assert bc._state.running
+
+    def test_next_advances_the_queue(self, queue, sent):
+        open_the_tab(queue, sent)
+        called = []
+        original = bc.advance
+        try:
+            bc.advance = lambda: called.append(True) or None
+            ext_backend.handle_message(ext_protocol.SessionControl(
+                tab_id=40, action="next"))
+        finally:
+            bc.advance = original
+        assert called == [True]
+
+    def test_an_unknown_action_is_refused_not_obeyed(self, queue, sent):
+        open_the_tab(queue, sent)
+        sent.clear()
+        ext_backend.handle_message(ext_protocol.SessionControl(
+            tab_id=40, action="submit"))
+        assert bc._state.running, "an unknown action must change nothing"
+        errors = [m for m in sent if m["type"] == "error"]
+        assert errors and errors[0]["code"] == "bad_action"
+
+    def test_the_overlay_summary_carries_session_context(self, queue, sent):
+        """FR-032: which job, and how many remain — so the companion can
+        offer Next without the applicant opening the app."""
+        open_the_tab(queue, sent)
+        sent.clear()
+        ext_backend.handle_message(fields_msg(descriptors=[descriptor()]))
+        overlay = next(m for m in sent if m["type"] == "overlay_state")
+        assert overlay["summary"]["session"] == "filling"
+        assert overlay["summary"]["current_job_id"] == queue
+        assert overlay["summary"]["remaining"] == 0

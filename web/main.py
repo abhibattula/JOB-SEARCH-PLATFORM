@@ -123,6 +123,33 @@ templates.env.globals["current_theme"] = _current_theme
 # 008 (FR-032): plain-language changelog behind the What's New overlay —
 # keyed by APP_VERSION, shown once per version.
 WHATS_NEW: dict[str, list[str]] = {
+    "1.8.0": [
+        "The companion is finally where you can see it. It had been rendering "
+        "at the very bottom of the page — off screen on every job posting — "
+        "since v1.0.0. It now sits pinned in the corner of your browser "
+        "window and stays there.",
+        "“Apply with Apply Assist” on a posting actually works. The "
+        "button had been dead since it shipped: clicking it did nothing at "
+        "all.",
+        "One companion instead of two. The match score, the sponsorship "
+        "grade, the fill progress and every answer now live in a single card "
+        "that rests as a small pill and opens when you click it — or on "
+        "its own when a fill starts or a question needs you.",
+        "It shows up on bare application pages too. On a Greenhouse "
+        "“/application” URL with no job details, there used to be "
+        "nothing on screen; now the companion appears and offers to fill it.",
+        "Every answer is on the page, grouped: what needs you first, then AI "
+        "drafts to review, then the ordinary fields filled from your profile. "
+        "Copy any of them, insert one into its field, or jump to it.",
+        "Typing an answer no longer gets wiped. The panel used to rebuild "
+        "itself every couple of seconds and destroy what you were typing "
+        "mid-word.",
+        "Stop, Fill again and Next job are on the page, so a whole "
+        "application needs no switching back to the app. Alt+J opens the "
+        "companion; Alt+Shift+J fills the current page.",
+        "Starting Apply Assist from a job no longer navigates you away from "
+        "the job you were reading.",
+    ],
     "1.7.0": [
         "Apply Assist no longer invents answers. If a question can't be "
         "answered from your profile or resume — whether you applied here "

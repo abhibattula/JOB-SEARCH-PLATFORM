@@ -68,7 +68,8 @@ function render(resp) {
     return;
   }
   reason.textContent = d.ok
-    ? "Fills happen in this browser — you still click every submit."
+    ? "Fills happen in this browser — you still click every submit. "
+      + "The companion appears on the page itself (Alt+J)."
     : d.text;
 }
 
@@ -86,8 +87,11 @@ document.getElementById("fill-here").addEventListener("click", async () => {
   await chrome.runtime.sendMessage({ type: "fill_here!" });
   // 016 (T010): stay open — a busy/refused outcome arrives moments later
   // and must be readable (instant close is how it vanished before).
+  // 018: the companion on the page is the real surface now; point at it
+  // rather than leaving the applicant watching this popup.
   document.getElementById("reason").textContent =
-    "Fill requested — watch the page.";
+    "Filling — the Job Engine companion on the page shows every answer, "
+    + "and Stop.";
   setTimeout(refresh, 1200);
 });
 
