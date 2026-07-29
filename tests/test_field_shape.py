@@ -232,3 +232,45 @@ def test_ok_results_carry_no_reason():
     ok, reason = field_core.value_fits(descriptor(), "Arlington, TX")
     assert ok is True
     assert reason == ""
+
+
+class TestProperNounsAreNotProse017:
+    """017 regression, caught by the Workday E2E: the option-label word
+    budget exists to stop generated PROSE reaching a dropdown. A proper noun
+    is not prose — "University of Texas at Austin" is five words and a
+    perfectly good typeahead value, and rejecting it silently stopped a
+    school field from filling at all."""
+
+    TYPEAHEAD = dict(widget="typeahead", options=[])
+
+    def test_a_long_school_name_fits(self):
+        ok, reason = field_core.value_fits(
+            descriptor(**self.TYPEAHEAD), "University of Texas at Austin",
+            "school")
+        assert ok is True, reason
+
+    def test_a_long_location_fits(self):
+        ok, _ = field_core.value_fits(
+            descriptor(**self.TYPEAHEAD),
+            "New York City Metropolitan Area", "location_full")
+        assert ok is True
+
+    def test_an_employer_name_fits(self):
+        ok, _ = field_core.value_fits(
+            descriptor(**self.TYPEAHEAD),
+            "Akuna Capital Trading LLC", "current_employer")
+        assert ok is True
+
+    def test_prose_is_still_refused_for_the_same_tags(self):
+        ok, reason = field_core.value_fits(
+            descriptor(**self.TYPEAHEAD),
+            "I attended the University of Texas at Austin, graduating in "
+            "December 2025 with a Master's in Computer Engineering.",
+            "school")
+        assert (ok, reason) == (False, "not_an_option_label")
+
+    def test_an_untagged_field_keeps_the_tight_budget(self):
+        ok, reason = field_core.value_fits(
+            descriptor(**self.TYPEAHEAD),
+            "Currently pursuing a Master's in Computer Engineering")
+        assert (ok, reason) == (False, "not_an_option_label")

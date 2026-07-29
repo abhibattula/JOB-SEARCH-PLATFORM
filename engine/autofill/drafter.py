@@ -137,7 +137,8 @@ def _validate(answer: str | None, descriptor_ctx: dict):
     # widget flag of its own — escaped it entirely and received paragraphs.
     from . import field_core as _core
 
-    fits, fit_reason = _core.value_fits(descriptor_ctx, answer)
+    fits, fit_reason = _core.value_fits(descriptor_ctx, answer,
+                                        descriptor_ctx.get("tag"))
     if not fits:
         return False, None, fit_reason
     maxlength = descriptor_ctx.get("maxlength")

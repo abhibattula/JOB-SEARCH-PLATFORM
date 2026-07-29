@@ -302,10 +302,20 @@ def test_serializer_parity_same_logical_fields():
     assert group["label_text"] == "Will you require sponsorship?"
     assert group["options"] == ["Yes", "No"]
     assert len(group["members"]) == 2
-    checkboxes = [d for d in via_scanner if d["type"] == "checkbox"]
-    assert len(checkboxes) == 2  # never merged
-    assert all("Which days can you work?" in d["label_text"]
-               for d in checkboxes)
+    # 017 (C8): a checkbox set sharing one group question is now ONE logical
+    # field, reversing 016's deliberate "never merged". On the live Akuna form
+    # the pronoun group was five separate essay questions and each received
+    # its own paragraph. Multi-select is preserved — `options` lists every
+    # member and the app emits one ordinary kind:"checkbox" fill per member it
+    # wants ticked, so no new wire kind and no version gate.
+    checkbox_groups = [d for d in via_scanner if d["type"] == "checkbox_group"]
+    assert len(checkbox_groups) == 1
+    days = checkbox_groups[0]
+    assert days["label_text"] == "Which days can you work?"
+    assert len(days["members"]) == 2
+    assert days["options"] == [m["label"] for m in days["members"]]
+    # the group's je_idx is the FIRST member's — a stable ledger key
+    assert days["je_idx"] == days["members"][0]["je_idx"]
     named = {d["name"]: d for d in via_scanner}
     assert named["first_name"]["required"] is True
     assert named["notice"]["maxlength"] == 10

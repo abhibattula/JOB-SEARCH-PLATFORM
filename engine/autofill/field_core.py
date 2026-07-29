@@ -92,16 +92,28 @@ def is_choice_control(descriptor: dict) -> bool:
     return bool(descriptor.get("options"))
 
 
-def _looks_like_an_option_label(text: str) -> bool:
+# Tags whose answer is a PROPER NOUN, not a phrase the model composed:
+# "University of Texas at Austin" is five words and entirely legitimate. The
+# word budget exists to stop generated prose, so it must not apply to these.
+_PROPER_NOUN_TAGS = {
+    "school", "current_employer", "current_title", "how_heard",
+    "location_city", "location_state", "location_country", "location_full",
+    "location_address1", "location_address2", "highest_education", "degree",
+}
+
+
+def _looks_like_an_option_label(text: str, tag: str | None = None) -> bool:
     stripped = text.strip()
     if len(stripped) > _MAX_OPTION_CHARS:
         return False
     if _SENTENCE_PUNCT.search(stripped):
         return False
+    if tag in _PROPER_NOUN_TAGS:
+        return True  # length and punctuation already bound it
     return len(stripped.split()) <= _MAX_OPTION_WORDS
 
 
-def value_fits(descriptor: dict, value) -> tuple[bool, str]:
+def value_fits(descriptor: dict, value, tag: str | None = None) -> tuple[bool, str]:
     """Whether `value` may be written to `descriptor`.
 
     Returns (True, "") or (False, reason) where reason is one of
@@ -130,7 +142,7 @@ def value_fits(descriptor: dict, value) -> tuple[bool, str]:
             return True, ""
         # Options unknown until the widget opens — the answer must look like
         # a label the filler can match on the page.
-        if not _looks_like_an_option_label(text):
+        if not _looks_like_an_option_label(text, tag):
             return False, "not_an_option_label"
         return True, ""
 
@@ -260,7 +272,7 @@ def decide(ats: str | None, descriptor: dict, handled: dict, get_value) -> Decis
     # leaves the field untouched and epoch-retryable, so a later, correctly
     # shaped answer still gets its chance — the field is never given a value
     # of the wrong shape just because one was available.
-    fits, fit_reason = value_fits(descriptor, value)
+    fits, fit_reason = value_fits(descriptor, value, tag)
     if not fits:
         if fit_reason == "empty":
             return Decision("skip")
