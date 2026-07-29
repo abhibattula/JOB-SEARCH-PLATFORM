@@ -1066,3 +1066,55 @@ class TestAnswersFeed018:
         questions = [i["question"] for i in feed[-1]["items"]]
         assert "First name" in questions, (
             f"the filled field dropped out of the feed: {questions}")
+
+
+class TestSessionControl018:
+    """018 (FR-030/FR-032): Stop and Next from the page. No new capability —
+    the same functions the app's own Apply Assist page already calls."""
+
+    def test_stop_stops_the_queue(self, queue, sent):
+        open_the_tab(queue, sent)
+        assert bc._state.running
+        ext_backend.handle_message(ext_protocol.SessionControl(
+            tab_id=40, action="stop"))
+        assert not bc._state.running
+
+    def test_it_ignores_a_control_for_another_tab(self, queue, sent):
+        """The same guard fill_again and answer_question already apply: a
+        message must be about the tab we are actually watching."""
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(ext_protocol.SessionControl(
+            tab_id=999, action="stop"))
+        assert bc._state.running
+
+    def test_next_advances_the_queue(self, queue, sent):
+        open_the_tab(queue, sent)
+        called = []
+        original = bc.advance
+        try:
+            bc.advance = lambda: called.append(True) or None
+            ext_backend.handle_message(ext_protocol.SessionControl(
+                tab_id=40, action="next"))
+        finally:
+            bc.advance = original
+        assert called == [True]
+
+    def test_an_unknown_action_is_refused_not_obeyed(self, queue, sent):
+        open_the_tab(queue, sent)
+        sent.clear()
+        ext_backend.handle_message(ext_protocol.SessionControl(
+            tab_id=40, action="submit"))
+        assert bc._state.running, "an unknown action must change nothing"
+        errors = [m for m in sent if m["type"] == "error"]
+        assert errors and errors[0]["code"] == "bad_action"
+
+    def test_the_overlay_summary_carries_session_context(self, queue, sent):
+        """FR-032: which job, and how many remain — so the companion can
+        offer Next without the applicant opening the app."""
+        open_the_tab(queue, sent)
+        sent.clear()
+        ext_backend.handle_message(fields_msg(descriptors=[descriptor()]))
+        overlay = next(m for m in sent if m["type"] == "overlay_state")
+        assert overlay["summary"]["session"] == "filling"
+        assert overlay["summary"]["current_job_id"] == queue
+        assert overlay["summary"]["remaining"] == 0

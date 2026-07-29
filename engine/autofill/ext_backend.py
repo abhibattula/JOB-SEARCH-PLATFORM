@@ -303,6 +303,8 @@ def handle_message(msg) -> None:
         _handle_answer_question(msg)
     elif isinstance(msg, ext_protocol.ApplyHere):
         _handle_apply_here(msg)
+    elif isinstance(msg, ext_protocol.SessionControl):
+        _handle_session_control(msg)
     # Pong: heartbeat only (touch() above)
 
 
@@ -344,6 +346,47 @@ def _handle_answer_question(msg) -> None:
     with _lock:
         _answers_force.add(msg.tab_id)
     send(_outbound("rescan", reason="user_rescan"))
+
+
+def _handle_session_control(msg) -> None:
+    """018 (FR-030/FR-032): Stop and Next, from the page.
+
+    Both already existed — this is the same `stop_queue()` / `advance()` the
+    app's own Apply Assist page calls. What changes is that stopping a run no
+    longer means abandoning the application you are filling to go and find the
+    app window. Nothing here touches the page.
+    """
+    from . import browser_controller as bc
+
+    with _lock:
+        if msg.tab_id != _watch["tab_id"]:
+            return
+    action = (msg.action or "").strip().lower()
+    if action == "stop":
+        bc.stop_queue()
+        send(_outbound("overlay_state", tab_id=msg.tab_id, summary={
+            "seen": 0, "filled": 0, "needs_you": 0, "drafts": 0,
+            "needs_you_idx": [], "attention": [], "session": "stopped",
+            "message": "stopped — nothing was submitted",
+        }))
+        return
+    if action == "next":
+        try:
+            current = bc.advance()
+        except Exception as exc:  # noqa: BLE001 — surface, never crash
+            log.warning("session_control next failed", exc_info=True)
+            send(_outbound("error", code="advance_failed",
+                           message=str(exc)[:200]))
+            return
+        if current is None:
+            send(_outbound("overlay_state", tab_id=msg.tab_id, summary={
+                "seen": 0, "filled": 0, "needs_you": 0, "drafts": 0,
+                "needs_you_idx": [], "attention": [], "session": "done",
+                "message": "that was the last one",
+            }))
+        return
+    send(_outbound("error", code="bad_action",
+                   message=f"unknown session action: {action[:40]}"))
 
 
 def _handle_fill_again(msg) -> None:
@@ -643,12 +686,20 @@ def _handle_fields(msg) -> None:
             1 for e in bc._state.fill_reports.get(job_id, [])
             if e.get("ai_draft") and e["outcome"] == "filled"
         )
+    # 018 (FR-032): the companion also gets the session context it needs to
+    # offer Stop and Next without a trip to the app.
+    with bc._lock:
+        remaining = max(0, len(bc._state.job_ids) - bc._state.index - 1)
+        running = bc._state.running
     send(_outbound("overlay_state", tab_id=msg.tab_id, summary={
         "seen": total_seen, "filled": filled_total, "drafts": draft_count,
         "needs_you": len(needs_you_idx),
         "needs_you_idx": needs_you_idx,
         "attention": needs_you_labels[:5],
         "message": "you click the actual apply/submit",
+        "session": "filling" if running else "done",
+        "current_job_id": job_id if job_id and job_id > 0 else None,
+        "remaining": remaining,
     }))
 
     # 017 (FR-034) / 018 (FR-019, FR-020, FR-027): the FULL answer text goes

@@ -22,6 +22,10 @@
               title="Opens this application in your browser and fills what it can — you review and submit">
         Apply with Apply Assist
       </button>
+      {# 018 (FR-034): status appears HERE. Starting a fill used to redirect
+         to /autofill, which threw you out of the job you were reading and
+         into the app — then you had to switch to the browser anyway. #}
+      <span id="assist-status" class="data" role="status" hidden></span>
       <a class="ghost" href="{{ job.url }}" target="_blank" rel="noopener"
          title="Opens in your system browser">Open posting ↗</a>
       <button type="button" class="ghost" onclick="copyText('{{ job.url }}')"
@@ -165,15 +169,32 @@
   </div>
 </article>
 <script>
-  // 017 (FR-040): one action — save the job if needed, start a single-job
-  // Apply Assist session, then hand over to the live status page.
+  // 017 (FR-040) / 018 (FR-034): one action — save the job if needed and
+  // start a single-job Apply Assist session.
+  //
+  // 018: this used to finish by redirecting the window to the Apply Assist
+  // page, which navigated away from the job you were reading and into the
+  // app, only for you to switch straight back to the browser where the
+  // filling actually happens. The session now starts in place and reports
+  // here; the companion in the browser tab is where the work is, and the
+  // Apply Assist page remains linked in the nav for the full record.
   (function () {
     const btn = document.getElementById("apply-with-assist");
+    const status = document.getElementById("assist-status");
     if (!btn) { return; }
+
+    function say(text, isError) {
+      if (!status) { return; }
+      status.hidden = !text;
+      status.textContent = text || "";
+      status.classList.toggle("error", !!isError);
+    }
+
     btn.addEventListener("click", async () => {
       btn.disabled = true;
       const original = btn.textContent;
       btn.textContent = "Starting…";
+      say("");
       try {
         const resp = await fetch("/api/autofill/apply/{{ job.id }}",
                                  {method: "POST"});
@@ -181,15 +202,17 @@
         if (!resp.ok || body.started === false) {
           btn.textContent = original;
           btn.disabled = false;
-          alert(body.detail || body.error
-                || "Couldn't start Apply Assist. Open Apply Assist for details.");
+          say(body.detail || body.error
+              || "Couldn't start Apply Assist.", true);
           return;
         }
-        window.location.href = "/autofill";
+        btn.textContent = "Filling in your browser";
+        say("Switch to your browser — the companion is filling this "
+            + "application. Full record on the Apply Assist page.");
       } catch (e) {
         btn.textContent = original;
         btn.disabled = false;
-        alert("Couldn't start Apply Assist: " + e.message);
+        say("Couldn't start Apply Assist: " + e.message, true);
       }
     });
   })();

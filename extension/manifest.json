@@ -30,5 +30,15 @@
     "default_popup": "popup/popup.html",
     "default_title": "Job Engine Companion"
   },
+  "commands": {
+    "toggle-companion": {
+      "suggested_key": { "default": "Alt+J" },
+      "description": "Show or hide the Job Engine companion"
+    },
+    "fill-this-page": {
+      "suggested_key": { "default": "Alt+Shift+J" },
+      "description": "Fill the application on this page"
+    }
+  },
   "web_accessible_resources": []
 }

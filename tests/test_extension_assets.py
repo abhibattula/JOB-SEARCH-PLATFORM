@@ -659,3 +659,45 @@ class TestReadOnlyFormProbe018:
         src = self.scanner()
         assert "inCredentialForm" in src
         assert "input[type=password]" in src
+
+
+class TestSessionControlAssets018:
+    """018 US4 (FR-030/FR-032/FR-035): the applicant never has to switch to
+    the app mid-application."""
+
+    def test_the_panel_offers_stop_and_next(self):
+        panel = (EXT / "content" / "panel.js").read_text(encoding="utf-8")
+        assert '"stop"' in panel
+        assert 'id="next"' in panel
+
+    def test_discovery_sends_session_control(self):
+        src = (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
+        assert "session_control" in src
+
+    def test_keyboard_commands_are_declared_and_handled(self):
+        manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))
+        commands = manifest.get("commands") or {}
+        assert "toggle-companion" in commands
+        assert "fill-this-page" in commands
+        for name, spec in commands.items():
+            assert spec.get("description"), f"{name} has no description"
+        sw = (EXT / "background" / "service-worker.js").read_text(
+            encoding="utf-8")
+        assert "chrome.commands.onCommand" in sw
+        content = (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
+        assert "toggle_companion" in content
+        assert "fill_this_page" in content
+
+    def test_commands_need_no_new_permission(self):
+        """`commands` is not a permission — the companion's reach is
+        unchanged, which is the whole point of the 012 guarantee."""
+        manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))
+        assert set(manifest["permissions"]) == {"storage", "tabs", "alarms"}
+        assert manifest["host_permissions"] == ["http://127.0.0.1/*"]
+
+    def test_app_errors_reach_the_page(self):
+        sw = (EXT / "background" / "service-worker.js").read_text(
+            encoding="utf-8")
+        assert "app_error" in sw
+        content = (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
+        assert "app_error" in content

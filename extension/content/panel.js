@@ -46,6 +46,8 @@ window.jePanel = (function () {
     saved: false,
     counts: { seen: 0, filled: 0, needs_you: 0, drafts: 0 },
     attention: [],
+    remaining: 0,
+    currentJobId: null,
     answers: [],
     truncated: false,
     notice: "",
@@ -224,6 +226,7 @@ window.jePanel = (function () {
         </div>
         <div class="formnote" id="formnote" hidden></div>
         <button class="act" id="primary">Fill this page</button>
+        <button class="act ghost" id="next" hidden>Next job</button>
         <button class="act ghost" id="save" hidden>Save to Job Engine</button>
         <div class="prog" id="prog" hidden>
           <span>Filled <b id="p-filled">0</b></span>
@@ -258,6 +261,7 @@ window.jePanel = (function () {
       sponsor: root.getElementById("sponsor"),
       formnote: root.getElementById("formnote"),
       primary: root.getElementById("primary"),
+      next: root.getElementById("next"),
       save: root.getElementById("save"),
       prog: root.getElementById("prog"),
       pFilled: root.getElementById("p-filled"),
@@ -277,6 +281,9 @@ window.jePanel = (function () {
       "click", function () { setCollapsed(true); });
     root.getElementById("dismiss").addEventListener("click", onDismiss);
     els.primary.addEventListener("click", onPrimary);
+    els.next.addEventListener("click", function () {
+      if (handlers.action) { handlers.action("next"); }
+    });
     els.save.addEventListener("click", function () {
       if (handlers.save) { handlers.save(); }
     });
@@ -356,6 +363,9 @@ window.jePanel = (function () {
       drafts: summary.drafts || 0,
     };
     state.attention = summary.attention || [];
+    // 018 (FR-032): session context, so Stop and Next can live here.
+    state.remaining = summary.remaining || 0;
+    state.currentJobId = summary.current_job_id || null;
     if (summary.session) { state.session = summary.session; }
     else if (state.session === "idle" || state.session === "starting") {
       state.session = "filling";
@@ -444,6 +454,10 @@ window.jePanel = (function () {
     els.save.hidden = !hasPosting;
     els.save.disabled = state.saved;
     els.save.textContent = state.saved ? "Saved ✓" : "Save to Job Engine";
+
+    // 018 (FR-032): a queue can be advanced without opening the app.
+    els.next.hidden = state.remaining <= 0;
+    els.next.textContent = "Next job (" + state.remaining + " left)";
 
     // progress
     els.prog.hidden = state.counts.seen === 0;
@@ -740,6 +754,11 @@ window.jePanel = (function () {
     setAnswers, notice: setNotice,
     // lifecycle
     show, hide, isMounted: function () { return !!host; },
+    // FR-035: the keyboard shortcut's target
+    toggle: function () {
+      if (!host) { build(); return; }
+      setCollapsed(!state.collapsed);
+    },
     // handler registration
     onAction: function (fn) { handlers.action = fn; },
     onSave: function (fn) { handlers.save = fn; },

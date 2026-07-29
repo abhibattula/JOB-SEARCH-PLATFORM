@@ -287,6 +287,15 @@
       // No posting to record — fill the page the applicant is already on.
       startSession({ type: "fill_here", url: location.href,
                      title: document.title || "" });
+    } else if (action === "stop") {
+      // 018 (FR-030): stopping a run no longer means abandoning the
+      // application you are filling to go and find the app window.
+      toApp({ type: "session_control", action: "stop" });
+      window.jePanel.setSession("stopped");
+      window.jePanel.notice("Stopped. Nothing was submitted.");
+    } else if (action === "next") {
+      toApp({ type: "session_control", action: "next" });
+      window.jePanel.notice("Moving to the next job…");
     } else if (action === "fill_again") {
       // 016 (T016) kept working: main.js registers the handler, we route the
       // click to it so there is still only one primary action on screen.
@@ -351,6 +360,11 @@
     else if (m.type === "unwatch") { window.jePanel.setSession("done"); }
     // 018 (FR-033): an app-side refusal reaches the page, not just the popup.
     else if (m.type === "app_error") { onAppError(m.message || m.code); }
+    // 018 (FR-035): keyboard shortcuts, handled where the widget lives.
+    else if (m.type === "toggle_companion") { window.jePanel.toggle(); }
+    else if (m.type === "fill_this_page") {
+      if (detection !== "none") { onAction(current ? "apply" : "fill_here"); }
+    }
   });
 
   // ---------- lifecycle: detect on load + in-place (SPA) navigation ----------

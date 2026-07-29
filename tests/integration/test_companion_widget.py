@@ -1078,6 +1078,61 @@ class TestTypingIsNeverDestroyed:
         assert after["focused"], "focus was stolen by a re-render"
 
 
+# --------------------------------------------------------------------------
+# US4 — Full control without switching to the app
+# --------------------------------------------------------------------------
+
+class TestSessionControlFromThePage:
+    """FR-030/FR-033: 017 put a sticky Stop on the APP's page. Stopping a run
+    still meant leaving the application you were filling to go and find the
+    app window — which is exactly the to-and-fro this feature removes."""
+
+    def test_stop_actually_stops_the_queue(self, context, app_server,
+                                           fixture_server):
+        from engine.autofill import browser_controller as bc
+
+        page = _fill_the_bare_form(context, fixture_server)
+        assert bc.current_job() is not None
+
+        label = _primary_label(page)
+        assert "stop" in label.lower(), (
+            f"the primary action should be Stop while filling, got {label!r}")
+        _click(page, PRIMARY_IDS)
+
+        deadline = time.time() + 15
+        while time.time() < deadline:
+            if bc.current_job() is None:
+                break
+            time.sleep(0.3)
+        assert bc.current_job() is None, "Stop did not stop the app's queue"
+
+    def test_an_app_refusal_is_shown_on_the_page(self, context, app_server,
+                                                 fixture_server):
+        """FR-033: the refusal used to be stored for the toolbar popup only —
+        a surface the applicant has no reason to open."""
+        assert _wait_connected()
+        first = _fill_the_bare_form(context, fixture_server)
+        assert first is not None
+
+        second = _open_and_wait_companion(
+            context, f"{fixture_server}/bare_application.html")
+        _click(second, PRIMARY_IDS)
+        deadline = time.time() + 15
+        notice = ""
+        while time.time() < deadline:
+            notice = second.evaluate(
+                """(ids) => {
+                    const id = ids.find(i => document.getElementById(i));
+                    const n = document.getElementById(id).shadowRoot
+                        .getElementById("notice");
+                    return n && !n.hidden ? n.textContent : "";
+                }""", list(HOST_IDS))
+            if notice:
+                break
+            time.sleep(0.4)
+        assert notice, "the app's refusal never reached the page"
+
+
 class TestCompanionStillTouchesNothing:
     """The standing safety invariant, re-proved on the new fixtures."""
 

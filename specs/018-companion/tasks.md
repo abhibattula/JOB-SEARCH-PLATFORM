@@ -145,26 +145,26 @@ app stops navigating away.
 
 ### Tests first (RED)
 
-- [ ] T065 [P] [US4] In `tests/test_ext_protocol.py`, assert `SessionControl` validates `{tab_id, action}` for `stop` and `next`, rejects an unknown action, and that `PROTOCOL_V` is still `1`
-- [ ] T066 [P] [US4] In `tests/test_ext_protocol.py`, assert a 017-era `answers`/`overlay_state` payload still validates with the new optional fields absent
-- [ ] T067 [P] [US4] In `tests/test_ext_backend.py`, assert `session_control{stop}` calls `browser_controller.stop_queue()` only when `tab_id` matches the watched tab, and `{next}` calls `advance()`
-- [ ] T068 [P] [US4] Browser test: with a session running, clicking Stop in the companion leaves `GET /api/autofill/status` reporting `queue_active` false
-- [ ] T069 [P] [US4] Browser test: an app-side `error` message (start a second session while one runs) appears in the companion's notice line (FR-033)
-- [ ] T070 [P] [US4] In `tests/test_web.py`, assert `web/templates/job_detail.html` does not navigate to `/autofill` on success and renders status in place
-- [ ] T071 [P] [US4] In `tests/test_extension_assets.py`, assert `extension/manifest.json` declares both `commands` with suggested keys and that the service worker registers `chrome.commands.onCommand`
+- [x] T065 [P] [US4] In `tests/test_ext_protocol.py`, assert `SessionControl` validates `{tab_id, action}` for `stop` and `next`, rejects an unknown action, and that `PROTOCOL_V` is still `1`
+- [x] T066 [P] [US4] In `tests/test_ext_protocol.py`, assert a 017-era `answers`/`overlay_state` payload still validates with the new optional fields absent
+- [x] T067 [P] [US4] In `tests/test_ext_backend.py`, assert `session_control{stop}` calls `browser_controller.stop_queue()` only when `tab_id` matches the watched tab, and `{next}` calls `advance()`
+- [x] T068 [P] [US4] Browser test: with a session running, clicking Stop in the companion leaves `GET /api/autofill/status` reporting `queue_active` false
+- [x] T069 [P] [US4] Browser test: an app-side `error` message (start a second session while one runs) appears in the companion's notice line (FR-033)
+- [x] T070 [P] [US4] In `tests/test_web.py`, assert `web/templates/job_detail.html` does not navigate to `/autofill` on success and renders status in place
+- [x] T071 [P] [US4] In `tests/test_extension_assets.py`, assert `extension/manifest.json` declares both `commands` with suggested keys and that the service worker registers `chrome.commands.onCommand`
 
 ### Implementation (GREEN)
 
-- [ ] T072 [US4] Add the `SessionControl` model to `engine/autofill/ext_protocol.py` and register it in `_INBOUND`
-- [ ] T073 [US4] Add `_handle_session_control` to `engine/autofill/ext_backend.py`, dispatching in `handle_message`, guarded on the watched tab, delegating to `browser_controller.stop_queue()` / `advance()`
-- [ ] T074 [US4] Add optional `session`, `current_job_id` and `remaining` to the `overlay_state.summary` payload in `ext_backend._handle_fields`
-- [ ] T075 [US4] Forward `error` messages to the watched tab's top frame in `extension/background/service-worker.js`, in addition to today's `storage.session` mirror for the popup
-- [ ] T076 [US4] Wire Stop / Fill again / Next in `extension/content/panel.js` to `session_control` and the existing `fill_again`, and render current job + remaining
-- [ ] T077 [US4] Add the `commands` block to `extension/manifest.json` — toggle companion (`Alt+J`), fill current page (`Alt+Shift+J`)
-- [ ] T078 [US4] Handle `chrome.commands.onCommand` in `extension/background/service-worker.js`, messaging the active tab's top frame
-- [ ] T079 [US4] Handle the two command messages in `extension/content/main.js` (toggle the panel; run a fill on this page)
-- [ ] T080 [US4] Rewrite the `job_detail.html` success path to render status in place, with a link to the Apply Assist page instead of a redirect
-- [ ] T081 [US4] Update `extension/popup/popup.js` so "Fill this page" reflects the companion's state rather than duplicating it
+- [x] T072 [US4] Add the `SessionControl` model to `engine/autofill/ext_protocol.py` and register it in `_INBOUND`
+- [x] T073 [US4] Add `_handle_session_control` to `engine/autofill/ext_backend.py`, dispatching in `handle_message`, guarded on the watched tab, delegating to `browser_controller.stop_queue()` / `advance()`
+- [x] T074 [US4] Add optional `session`, `current_job_id` and `remaining` to the `overlay_state.summary` payload in `ext_backend._handle_fields`
+- [x] T075 [US4] Forward `error` messages to the watched tab's top frame in `extension/background/service-worker.js`, in addition to today's `storage.session` mirror for the popup
+- [x] T076 [US4] Wire Stop / Fill again / Next in `extension/content/panel.js` to `session_control` and the existing `fill_again`, and render current job + remaining
+- [x] T077 [US4] Add the `commands` block to `extension/manifest.json` — toggle companion (`Alt+J`), fill current page (`Alt+Shift+J`)
+- [x] T078 [US4] Handle `chrome.commands.onCommand` in `extension/background/service-worker.js`, messaging the active tab's top frame
+- [x] T079 [US4] Handle the two command messages in `extension/content/main.js` (toggle the panel; run a fill on this page)
+- [x] T080 [US4] Rewrite the `job_detail.html` success path to render status in place, with a link to the Apply Assist page instead of a redirect
+- [x] T081 [US4] Update `extension/popup/popup.js` so "Fill this page" reflects the companion's state rather than duplicating it
 
 **Checkpoint**: a full application needs zero switches to the app.
 

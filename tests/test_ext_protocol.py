@@ -252,3 +252,80 @@ class TestHelloBrowser015:
             "secret": "s3", "version": "1.5.0", "browser": "edge",
         }))
         assert msg.browser == "edge"
+
+
+class TestSessionControl018:
+    """018 (FR-030/FR-032/FR-036): Stop and Next from the page.
+
+    Additive: PROTOCOL_V stays 1, so a companion older than the app simply
+    never sends this, and an app older than the companion rejects it through
+    the existing protocol-reject path rather than crashing.
+    """
+
+    def test_stop_and_next_validate(self):
+        for action in ("stop", "next"):
+            msg = proto.parse_inbound(json.dumps({
+                "v": 1, "type": "session_control", "seq": 1,
+                "tab_id": 7, "action": action,
+            }))
+            assert isinstance(msg, proto.SessionControl)
+            assert msg.action == action
+            assert msg.tab_id == 7
+
+    def test_an_unknown_field_is_ignored_not_fatal(self):
+        """`extra="ignore"` is the forward-compatibility mechanism: a
+        companion NEWER than the app must not be rejected wholesale for
+        sending a field this version has never heard of. The extra field is
+        dropped, and it cannot smuggle in behaviour — `submit` here is not a
+        thing this message can do."""
+        msg = proto.parse_inbound(json.dumps({
+            "v": 1, "type": "session_control", "seq": 1,
+            "tab_id": 7, "action": "stop", "submit": True,
+        }))
+        assert msg.action == "stop"
+        assert not hasattr(msg, "submit")
+
+    def test_a_missing_required_field_is_rejected(self):
+        with pytest.raises(proto.ProtocolError):
+            proto.parse_inbound(json.dumps({
+                "v": 1, "type": "session_control", "seq": 1, "tab_id": 7,
+            }))
+
+    def test_an_unknown_action_is_refused_with_a_reason(self):
+        """Not a schema error on purpose: the refusal has to reach the
+        applicant's screen (FR-010), and a protocol reject is silent to the
+        page."""
+        from engine.autofill import ext_backend
+
+        sent = []
+        ext_backend.register(sent.append, lambda code: None, "1.0.0")
+        with ext_backend._lock:
+            ext_backend._watch["tab_id"] = 7
+        try:
+            ext_backend.handle_message(proto.SessionControl(
+                tab_id=7, action="submit_the_application"))
+        finally:
+            ext_backend.reset_for_tests()
+        errors = [m for m in sent if m.get("type") == "error"]
+        assert errors and errors[0]["code"] == "bad_action"
+
+    def test_protocol_version_is_unchanged(self):
+        assert proto.PROTOCOL_V == 1
+
+    def test_a_017_era_overlay_state_still_builds(self):
+        """The new optional summary fields are additive — the old shape must
+        still be valid, or an older companion breaks on upgrade."""
+        payload = proto.outbound("overlay_state", tab_id=1, summary={
+            "seen": 3, "filled": 2, "needs_you": 1, "drafts": 0,
+            "needs_you_idx": ["4"], "attention": ["Why us?"],
+            "message": "you click the actual apply/submit",
+        })
+        assert payload["type"] == "overlay_state"
+        assert payload["summary"]["seen"] == 3
+
+    def test_a_017_era_answers_payload_still_builds(self):
+        payload = proto.outbound("answers", tab_id=1, job_id=2, items=[
+            {"question": "Q", "answer": "A", "state": "drafted",
+             "reason": None, "askable": False},
+        ], truncated=False)
+        assert payload["items"][0]["question"] == "Q"

@@ -178,6 +178,23 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   return false;
 });
 
+// 018 (FR-035): keyboard shortcuts. Chrome drops a suggested key that clashes
+// with one of its own rather than refusing to load the extension, and both are
+// rebindable at chrome://extensions/shortcuts — so a clash degrades to
+// "unbound", never to a broken companion. Everything here is also reachable
+// with the mouse.
+chrome.commands.onCommand.addListener((command) => {
+  chrome.tabs.query({ active: true, currentWindow: true }).then((tabs) => {
+    const tab = tabs[0];
+    if (!tab) { return; }
+    if (command === "toggle-companion") {
+      toContent(tab.id, { type: "toggle_companion" }, 0);
+    } else if (command === "fill-this-page") {
+      toContent(tab.id, { type: "fill_this_page" }, 0);
+    }
+  }).catch(() => {});
+});
+
 // Also re-arm on install/browser start so the alarm exists even if this
 // worker never ran otherwise.
 chrome.runtime.onInstalled.addListener(() => { armWatchdog(); connect(); });
