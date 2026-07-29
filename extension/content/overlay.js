@@ -32,8 +32,16 @@ window.jeOverlay = (function () {
     if (host) { return; }
     host = document.createElement("div");
     host.id = "je-companion-overlay-host";
-    host.style.cssText = "position:fixed;z-index:2147483647;top:16px;" +
-      "right:16px;all:initial;";
+    // 018 (R1): reset FIRST, then pin — see the note in discovery.js.
+    // `all` is a shorthand for every property; declared last it reset the
+    // `position:fixed` before it, so this panel rendered at the bottom of the
+    // document instead of the corner of the viewport. `!important` defends
+    // against page rules like `div { position: static !important }`.
+    host.style.cssText = "all:initial";
+    host.style.setProperty("position", "fixed", "important");
+    host.style.setProperty("inset", "16px 16px auto auto", "important");
+    host.style.setProperty("z-index", "2147483647", "important");
+    host.style.setProperty("display", "block", "important");
     root = host.attachShadow({ mode: "open" });
     root.innerHTML = `
       <style>
@@ -112,7 +120,9 @@ window.jeOverlay = (function () {
 
   function show() {
     build();
-    host.style.display = "block";
+    // setProperty(..., "important") — a plain `style.display = "block"` drops
+    // the !important flag set in build() and hands the page's CSS a way back in.
+    host.style.setProperty("display", "block", "important");
   }
 
   function hide() {

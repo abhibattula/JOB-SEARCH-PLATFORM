@@ -53,12 +53,27 @@ state.onMessage = (msg) => {
       break;
     // 016 (T010): app-side refusals (e.g. busy) are STORED so the popup can
     // show them — this used to hit `default:` and vanish (RC4).
-    case "error":
+    // 018 (FR-033): they also go to the page. The applicant clicked a control
+    // in the companion; the answer belongs where they clicked, not behind a
+    // toolbar popup they have no reason to open.
+    case "error": {
       chrome.storage.session.set({
         lastError: { code: msg.code || "", message: msg.message || "",
                      at: Date.now() },
       }).catch(() => {});
+      const toPage = { type: "app_error", code: msg.code || "",
+                       message: msg.message || "" };
+      if (msg.tab_id) {
+        toContent(msg.tab_id, toPage, 0);
+      } else {
+        // No tab on the refusal — deliver to the tab the applicant is looking
+        // at, which is the one they just clicked in.
+        chrome.tabs.query({ active: true, currentWindow: true })
+          .then((tabs) => { if (tabs[0]) { toContent(tabs[0].id, toPage, 0); } })
+          .catch(() => {});
+      }
       break;
+    }
     default: break;
   }
 };

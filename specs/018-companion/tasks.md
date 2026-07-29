@@ -13,17 +13,17 @@ sole coverage for a control (FR-039).
 
 ## Phase 1: Setup — fixtures the tests need
 
-- [ ] T001 [P] Create the hostile-CSS discovery fixture at `tests/fixtures/discovery_pages/hostile_css.html`: valid JSON-LD `JobPosting`, a 5000 px-tall body, and a stylesheet declaring `div { position: static !important; z-index: 0 !important; }` plus a high-`z-index` sticky page header
-- [ ] T002 [P] Create the metadata-less application fixture at `tests/fixtures/discovery_pages/bare_application.html`: a realistic ATS application form (name, email, phone, résumé file input, two selects, a textarea) with **no** JSON-LD and no LinkedIn/Indeed markers
-- [ ] T003 [P] Create the probe-negative fixture at `tests/fixtures/discovery_pages/search_only.html`: an ordinary page whose only inputs are a search box and a newsletter email field — the companion must NOT appear
-- [ ] T004 [P] Extend `web/templates/practice_apply.html` with a question the app will decline (so a needs-you row exists to type into) and a `window.__jeTyping` beacon recording focus/value at each scan
+- [x] T001 [P] Create the hostile-CSS discovery fixture at `tests/fixtures/discovery_pages/hostile_css.html`: valid JSON-LD `JobPosting`, a 5000 px-tall body, and a stylesheet declaring `div { position: static !important; z-index: 0 !important; }` plus a high-`z-index` sticky page header
+- [x] T002 [P] Create the metadata-less application fixture at `tests/fixtures/discovery_pages/bare_application.html`: a realistic ATS application form (name, email, phone, résumé file input, two selects, a textarea) with **no** JSON-LD and no LinkedIn/Indeed markers
+- [x] T003 [P] Create the probe-negative fixture at `tests/fixtures/discovery_pages/search_only.html`: an ordinary page whose only inputs are a search box and a newsletter email field — the companion must NOT appear
+- [x] T004 [P] Extend `web/templates/practice_apply.html` with a question the app will decline (so a needs-you row exists to type into) and a `window.__jeTyping` beacon recording focus/value at each scan
 
 ---
 
 ## Phase 2: Foundational — blocking prerequisites
 
-- [ ] T005 Merge the two `content_scripts` entries in `extension/manifest.json` into one, ordered `click_guard.js, scanner.js, filler.js, panel.js, discovery.js, opener.js, main.js`, so load order is explicit rather than dependent on cross-entry injection order (research R8)
-- [ ] T006 Add `tests/integration/test_companion_widget.py` with the harness scaffolding copied from `tests/integration/test_discovery_badge.py` (`fixture_server`, `app_server`, real unpacked extension, `pairing.json` pointed at the live app), plus a `companion_host(page)` helper and a `shadow_click(page, control_id)` helper wrapping the `document.getElementById(host).shadowRoot.getElementById(id).click()` pattern
+- [x] T005 Merge the two `content_scripts` entries in `extension/manifest.json` into one, ordered `click_guard.js, scanner.js, filler.js, panel.js, discovery.js, opener.js, main.js`, so load order is explicit rather than dependent on cross-entry injection order (research R8)
+- [x] T006 Add `tests/integration/test_companion_widget.py` with the harness scaffolding copied from `tests/integration/test_discovery_badge.py` (`fixture_server`, `app_server`, real unpacked extension, `pairing.json` pointed at the live app), plus a `companion_host(page)` helper and a `shadow_click(page, control_id)` helper wrapping the `document.getElementById(host).shadowRoot.getElementById(id).click()` pattern
 
 ---
 
@@ -36,25 +36,25 @@ and sits on screen; clicking the primary action makes the app start a session.
 
 ### Tests first (RED)
 
-- [ ] T007 [P] [US1] In `tests/integration/test_companion_widget.py`, assert on `hostile_css.html` that the companion host computes `position === "fixed"`, has a non-`auto` inset, and its `getBoundingClientRect()` intersects the viewport without scrolling — must FAIL against today's `all:initial` ordering
-- [ ] T008 [P] [US1] Assert the host is still on screen after `window.scrollTo(0, document.body.scrollHeight)` on the same 5000 px fixture
-- [ ] T009 [P] [US1] Assert clicking the primary action on a scored posting causes the app to record the job and start a watched session (poll `GET /api/autofill/status` for `queue_active` and a positive `current_job_id`) — must FAIL against the dead `current.posting` handler
-- [ ] T010 [P] [US1] Assert the companion appears on `bare_application.html` with the primary action labelled "Fill this page", and that clicking it starts an ad-hoc session (`current_job_id == -2`)
-- [ ] T011 [P] [US1] Assert **no** companion host exists on `search_only.html` after the poll interval — the probe heuristic must not fire on ordinary pages
-- [ ] T012 [P] [US1] In `tests/test_extension_assets.py`, assert `jeScanner.probe` exists and that the `probe` function body contains neither `stamp(` nor `docToken(` — the probe must not mutate the page (research R7)
-- [ ] T013 [P] [US1] Browser test: after the companion has rendered on `bare_application.html`, assert the document contains **no** `[data-je-idx]` and `<html>` has no `data-je-doc` — proving detection stamped nothing
-- [ ] T014 [P] [US1] Browser test: when the app refuses the primary action (start a session, then click the primary action from a second tab), the companion shows the refusal text and re-enables its button — no silent no-op (FR-010)
+- [x] T007 [P] [US1] In `tests/integration/test_companion_widget.py`, assert on `hostile_css.html` that the companion host computes `position === "fixed"`, has a non-`auto` inset, and its `getBoundingClientRect()` intersects the viewport without scrolling — must FAIL against today's `all:initial` ordering
+- [x] T008 [P] [US1] Assert the host is still on screen after `window.scrollTo(0, document.body.scrollHeight)` on the same 5000 px fixture
+- [x] T009 [P] [US1] Assert clicking the primary action on a scored posting causes the app to record the job and start a watched session (poll `GET /api/autofill/status` for `queue_active` and a positive `current_job_id`) — must FAIL against the dead `current.posting` handler
+- [x] T010 [P] [US1] Assert the companion appears on `bare_application.html` with the primary action labelled "Fill this page", and that clicking it starts an ad-hoc session (`current_job_id == -2`)
+- [x] T011 [P] [US1] Assert **no** companion host exists on `search_only.html` after the poll interval — the probe heuristic must not fire on ordinary pages
+- [x] T012 [P] [US1] In `tests/test_extension_assets.py`, assert `jeScanner.probe` exists and that the `probe` function body contains neither `stamp(` nor `docToken(` — the probe must not mutate the page (research R7)
+- [x] T013 [P] [US1] Browser test: after the companion has rendered on `bare_application.html`, assert the document contains **no** `[data-je-idx]` and `<html>` has no `data-je-doc` — proving detection stamped nothing
+- [x] T014 [P] [US1] Browser test: when the app refuses the primary action (start a session, then click the primary action from a second tab), the companion shows the refusal text and re-enables its button — no silent no-op (FR-010)
 
 ### Implementation (GREEN)
 
-- [ ] T015 [US1] Fix host positioning in `extension/content/discovery.js`: set `host.style.cssText = "all:initial"` **first**, then `setProperty` for `position: fixed`, `inset`, `z-index`, `display: block`, each with `"important"` (research R1)
-- [ ] T016 [US1] Apply the identical positioning fix in `extension/content/overlay.js`
-- [ ] T017 [US1] Fix `onApply()` in `extension/content/discovery.js` to read `current` directly instead of the non-existent `current.posting` (research R2)
-- [ ] T018 [US1] Add `probe()` to `extension/content/scanner.js` — read-only, calling neither `stamp()` nor `docToken()` — returning `{fields, hasFile, hasEmail}` over the existing `FIELD_SELECTOR`, excluding `type=search` and fields whose `name`/`id` matches `^(q|s|search|query|keyword)`
-- [ ] T019 [US1] Export `probe` from the `window.jeScanner` return object in `extension/content/scanner.js`
-- [ ] T020 [US1] In `extension/content/discovery.js`, add the form-detection tick using `jeScanner.probe()` with the heuristic `fields >= 3 || (hasFile && fields >= 1) || (hasEmail && fields >= 3)`, producing `detection ∈ none|form|posting|posting+form`
-- [ ] T021 [US1] Render the companion when `detection != "none"` even with no posting metadata, with "Fill this page" as the primary action sending the existing `fill_here` message
-- [ ] T022 [US1] Report every primary-action outcome: disable → act → on success reflect the new session state, on refusal/failure restore the label and show the reason line
+- [x] T015 [US1] Fix host positioning in `extension/content/discovery.js`: set `host.style.cssText = "all:initial"` **first**, then `setProperty` for `position: fixed`, `inset`, `z-index`, `display: block`, each with `"important"` (research R1)
+- [x] T016 [US1] Apply the identical positioning fix in `extension/content/overlay.js`
+- [x] T017 [US1] Fix `onApply()` in `extension/content/discovery.js` to read `current` directly instead of the non-existent `current.posting` (research R2)
+- [x] T018 [US1] Add `probe()` to `extension/content/scanner.js` — read-only, calling neither `stamp()` nor `docToken()` — returning `{fields, hasFile, hasEmail}` over the existing `FIELD_SELECTOR`, excluding `type=search` and fields whose `name`/`id` matches `^(q|s|search|query|keyword)`
+- [x] T019 [US1] Export `probe` from the `window.jeScanner` return object in `extension/content/scanner.js`
+- [x] T020 [US1] In `extension/content/discovery.js`, add the form-detection tick using `jeScanner.probe()` with the heuristic `fields >= 3 || (hasFile && fields >= 1) || (hasEmail && fields >= 3)`, producing `detection ∈ none|form|posting|posting+form`
+- [x] T021 [US1] Render the companion when `detection != "none"` even with no posting metadata, with "Fill this page" as the primary action sending the existing `fill_here` message
+- [x] T022 [US1] Report every primary-action outcome: disable → act → on success reflect the new session state, on refusal/failure restore the label and show the reason line
 
 **Checkpoint**: T007–T014 green. The companion is visible and its primary action
 works, on both a posting and a bare application form.

@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Engineering Blog — Aurora Semiconductors</title>
+  <!--
+    018 (T003) — the probe's negative control.
+
+    Making the companion appear "wherever there is a form" (FR-005) is only
+    safe if the heuristic is conservative. An ordinary page carries a search
+    box, a newsletter signup, a cookie choice and a login — none of which is a
+    job application, and a widget on every one of them would be worse than the
+    bug it fixes.
+
+    Under the heuristic this page must score BELOW the bar:
+      - the search input is excluded by type and by name
+      - the login form is excluded WHOLE, because it contains a password —
+        a credential form is not an application, and we never fill credentials
+      - that leaves the newsletter email and a consent checkbox: two fields,
+        only ONE of them text-ish, and the rule needs at least two
+
+    Note the username field: dropping the password input alone would still
+    leave `username` + newsletter email = two text-ish fields and three
+    controls, which would trip the rule. Excluding the whole password-bearing
+    form is what makes this page safe — this fixture is the reason for it.
+  -->
+  <style>body { font: 15px system-ui, sans-serif; margin: 40px; }</style>
+</head>
+<body>
+  <h1>Engineering Blog</h1>
+
+  <form id="site-search">
+    <input id="q" name="q" type="search" placeholder="Search the blog">
+  </form>
+
+  <form id="newsletter">
+    <label for="news-email">Get the newsletter</label>
+    <input id="news-email" name="email" type="email">
+    <label><input type="checkbox" name="consent"> I agree to the terms</label>
+  </form>
+
+  <form id="login">
+    <label for="user">Username</label>
+    <input id="user" name="username" type="text">
+    <label for="pw">Password</label>
+    <input id="pw" name="password" type="password">
+  </form>
+
+  <article><p>A post about silicon verification.</p></article>
+</body>
+</html>

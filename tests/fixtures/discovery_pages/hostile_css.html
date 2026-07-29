@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>Design Verification Engineer — Aurora Semiconductors</title>
+  <!--
+    018 (T001) — the fixture that reproduces R1.
+
+    Two things about this page break a naively-styled floating widget:
+
+    1. The body is 5000px tall. A host appended to <body> with
+       `position: static` renders at the END of the document flow, i.e. ~5000px
+       down, which is exactly what the applicant reported: "the extension is
+       going to bottom of the page where i cannot see".
+
+    2. The stylesheet forces `position: static !important` and
+       `z-index: 0 !important` on every div. An inline style WITHOUT
+       `!important` sits in the author-normal cascade layer and loses to this.
+       Only an inline declaration marked `!important` wins.
+
+    Together they prove FR-001/FR-002: the companion must be pinned to the
+    viewport and stay pinned against a hostile page.
+  -->
+  <script type="application/ld+json">
+  {
+    "@context": "https://schema.org/",
+    "@type": "JobPosting",
+    "title": "Design Verification Engineer",
+    "description": "<p>Silicon verification. Requires <b>python</b>, <b>verilog</b>, systemverilog and UVM. FPGA prototyping a plus.</p>",
+    "hiringOrganization": { "@type": "Organization", "name": "Aurora Semiconductors" },
+    "jobLocation": { "@type": "Place", "address": { "@type": "PostalAddress", "addressLocality": "Austin", "addressRegion": "TX" } }
+  }
+  </script>
+  <style>
+    /* The hostile part. A page that does this is not hypothetical — reset
+       stylesheets and CSS-in-JS layers ship rules this broad. */
+    div { position: static !important; z-index: 0 !important; }
+
+    body { margin: 0; font: 15px system-ui, sans-serif; }
+    /* A tall document, so "bottom of the page" is far off screen. */
+    .filler { height: 5000px; background: linear-gradient(#fff, #eee); }
+    /* A sticky page chrome that competes for the top-right corner and
+       stacking order. */
+    header.site {
+      position: sticky; top: 0; z-index: 2147483000;
+      background: #111; color: #fff; padding: 12px 16px;
+    }
+  </style>
+</head>
+<body>
+  <header class="site">Aurora Semiconductors — Careers</header>
+  <h1>Design Verification Engineer</h1>
+  <p>Austin, TX</p>
+  <div class="filler">
+    <p>Long job description body. The companion must remain visible in the
+      viewport corner at every scroll position on this page.</p>
+  </div>
+  <!-- read-only sentinels: the companion must never click or type into these. -->
+  <button id="sentinel-btn" onclick="window.__pageClicked = true">Apply</button>
+  <input id="sentinel-input" value="">
+</body>
+</html>

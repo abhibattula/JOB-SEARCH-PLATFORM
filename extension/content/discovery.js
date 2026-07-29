@@ -23,6 +23,13 @@
   let current = null;       // last detected posting {title,company,description,location}
   let dismissedFor = null;  // href the user dismissed the badge for
   let host = null, root = null, els = {}, collapsed = false;
+  // 018 (R7): what this page is. `posting` comes from job metadata, `form`
+  // from the read-only field probe. Either one is enough to show the widget —
+  // through v1.7.0 only the first was, so a bare ATS application page (which
+  // routinely carries no metadata at all) showed nothing.
+  let detection = "none";   // none | form | posting | posting+form
+  let formFields = 0;
+  let startTimer = null;    // outcome watchdog for the primary action
 
   // ---------- detection (read-only) ----------
 
@@ -152,17 +159,34 @@
   const RETRY_MS = 7500;
 
   function requestScore() {
-    const p = detect();
-    if (!p) { removeBadge(); current = null; scoredFor = null; return; }
-    current = { ...p, url: location.href };
-    if (dismissedFor === location.href) { return; }
+    if (!current) { return; }
     if (scoredFor === location.href) { return; }  // result cached — done
     if (Date.now() - lastRequestAt < RETRY_MS) { return; }  // one in flight
     lastRequestAt = Date.now();
     toApp({
-      type: "score_request", url: current.url, title: p.title,
-      company: p.company, description: (p.description || "").slice(0, DESC_MAX),
+      type: "score_request", url: current.url, title: current.title,
+      company: current.company,
+      description: (current.description || "").slice(0, DESC_MAX),
     });
+  }
+
+  // 018 (R7): read-only page classification. `detect()` reads metadata the
+  // applicant is already looking at; `probe()` counts form fields without
+  // stamping anything. Neither sends anything anywhere — the result decides
+  // local rendering only.
+  function classify() {
+    const p = detect();
+    current = p ? { ...p, url: location.href } : null;
+    let form = null;
+    try {
+      form = window.jeScanner ? window.jeScanner.probe() : null;
+    } catch (_e) { form = null; }
+    const hasForm = !!(form && window.jeScanner
+                       && window.jeScanner.looksLikeApplicationForm(form));
+    formFields = form ? form.fields : 0;
+    detection = current ? (hasForm ? "posting+form" : "posting")
+      : (hasForm ? "form" : "none");
+    return detection;
   }
 
   function requestSave() {
@@ -177,12 +201,37 @@
 
   // ---------- badge (our own DOM only) ----------
 
+  // 018 (R1): pin the host to the VIEWPORT — and keep it pinned.
+  //
+  // Every version since v1.0.0 did this:
+  //
+  //   host.style.cssText = "position:fixed;…;bottom:16px;all:initial;"
+  //
+  // `all` is a shorthand for EVERY CSS property, and it was declared LAST, so
+  // it reset `position` straight back to `static`, `inset` to `auto`,
+  // `z-index` to `auto` and `display` to `inline`. The host is appended as the
+  // last child of <body>, so a static host renders at the END of the document
+  // flow — the bottom of the page. Measured on the 5000px test fixture, the
+  // badge sat at y=5181. That is the whole of "the extension is going to
+  // bottom of the page where i cannot see".
+  //
+  // So: reset FIRST, then position. And position with `!important`, because a
+  // plain inline declaration sits in the author-normal cascade layer and loses
+  // to a page rule like `div { position: static !important }` — which the
+  // hostile-CSS fixture ships precisely because real reset stylesheets do.
+  function pinToViewport(el, zIndex) {
+    el.style.cssText = "all:initial";
+    el.style.setProperty("position", "fixed", "important");
+    el.style.setProperty("inset", "auto 16px 16px auto", "important");
+    el.style.setProperty("z-index", zIndex, "important");
+    el.style.setProperty("display", "block", "important");
+  }
+
   function build() {
     if (host) { return; }
     host = document.createElement("div");
     host.id = "je-discovery-badge-host";
-    host.style.cssText = "position:fixed;z-index:2147483646;right:16px;" +
-      "bottom:16px;all:initial;";
+    pinToViewport(host, "2147483646");
     // open root: CSS is still fully isolated by shadow DOM; open lets the
     // integration test drive the Save button (a closed root is unreachable).
     root = host.attachShadow({ mode: "open" });
@@ -224,6 +273,7 @@
         button.save:hover{background:#2ea043}
         button.save[disabled]{background:#21262d;color:#8b949e;cursor:default}
         .note{color:#8b949e;font-size:11px;margin-top:7px}
+        .formnote{color:#8b949e;font-size:12px;margin-bottom:9px}
         .collapsed .bd{display:none}
         .collapsed .card{width:auto}
       </style>
@@ -236,13 +286,14 @@
         <div class="bd">
           <div class="co" id="co"></div>
           <div class="ti" id="ti"></div>
-          <div class="row">
+          <div class="row" id="scorerow">
             <div class="score" id="score">–</div>
             <div class="meta">
               <div class="band" id="band"></div>
               <span class="pill" id="sponsor">H-1B: unknown</span>
             </div>
           </div>
+          <div class="formnote" id="formnote" style="display:none"></div>
           <button class="save" id="apply">Apply with Apply Assist</button>
           <button class="save ghost" id="save">Save to Job Engine</button>
           <div class="note" id="note" style="display:none"></div>
@@ -254,6 +305,8 @@
       band: root.getElementById("band"), sponsor: root.getElementById("sponsor"),
       save: root.getElementById("save"), note: root.getElementById("note"),
       apply: root.getElementById("apply"),
+      scorerow: root.getElementById("scorerow"),
+      formnote: root.getElementById("formnote"),
     };
     root.getElementById("dismiss").addEventListener("click", onDismiss);
     root.getElementById("collapse").addEventListener("click", onCollapse);
@@ -266,13 +319,40 @@
     if (host) { host.remove(); host = null; root = null; els = {}; collapsed = false; }
   }
 
-  function renderScore(r) {
+  // 018 (FR-005): render on ANY qualifying page — a scored posting, a bare
+  // application form, or both. The score block only appears once a score
+  // exists; the primary action's label follows what we actually found.
+  function render() {
     if (dismissedFor === location.href) { return; }
     build();
     els.co.textContent = current ? (current.company || "—") : "";
-    els.ti.textContent = current ? current.title : "";
-    // host dataset mirrors state in the light DOM (assertable; not a page mutation)
+    els.ti.textContent = current ? current.title : (document.title || "");
     host.dataset.jeCompany = current ? (current.company || "") : "";
+    host.dataset.jeDetection = detection;
+
+    const posting = !!current;
+    // Nothing to save when there is no posting to identify.
+    els.save.style.display = posting ? "" : "none";
+    els.scorerow.style.display = (posting && scoredFor === location.href)
+      ? "" : "none";
+    if (!posting) {
+      els.formnote.textContent = "Application form found — " + formFields +
+        " field" + (formFields === 1 ? "" : "s") + ".";
+      els.formnote.style.display = "";
+    } else {
+      els.formnote.style.display = "none";
+    }
+    if (!els.apply.disabled) { els.apply.textContent = primaryLabel(); }
+  }
+
+  function primaryLabel() {
+    return current ? "Apply with Apply Assist" : "Fill this page";
+  }
+
+  function renderScore(r) {
+    if (dismissedFor === location.href) { return; }
+    render();
+    els.scorerow.style.display = "";
 
     if (r.needs_resume) {
       els.score.className = "score none";
@@ -312,21 +392,80 @@
 
   function onSave() { if (els.save && !els.save.disabled) { requestSave(); } }
 
-  // 017 (FR-038/FR-039): start Apply Assist for the posting being viewed.
-  // This sends a MESSAGE to the local app and opens our own panel — it
-  // clicks nothing on the page and mutates nothing, exactly as the badge
-  // has always behaved.
+  // 017 (FR-038/FR-039) / 018 (R2): start Apply Assist for whatever this page
+  // is. Sends a MESSAGE to the local app and opens our own panel — it clicks
+  // nothing on the page and mutates nothing, exactly as the badge has always
+  // behaved.
+  //
+  // 018: this was a DEAD BUTTON for the whole of v1.7.0. It opened with
+  //
+  //     const p = current && current.posting;
+  //     if (!p) { return; }
+  //
+  // but `requestScore` sets `current = { ...p, url }` — keys title, company,
+  // description, location, url. There is no `posting` key, so `p` was always
+  // undefined and the handler returned before sending anything. The applicant
+  // clicked "Apply with Apply Assist" and nothing whatsoever happened. It
+  // passed CI because the only coverage was `assert "apply_here" in source`.
   function onApply() {
-    const p = current && current.posting;
-    if (!p || !els.apply || els.apply.disabled) { return; }
+    if (!els.apply || els.apply.disabled) { return; }
+    const restore = primaryLabel();
     els.apply.disabled = true;
     els.apply.textContent = "Starting…";
-    toApp({ type: "apply_here", url: current.url, title: p.title || "",
-            company: p.company || "",
-            description: (p.description || "").slice(0, DESC_MAX) });
+    showNote("");
+    if (current) {
+      toApp({ type: "apply_here", url: current.url, title: current.title || "",
+              company: current.company || "",
+              description: (current.description || "").slice(0, DESC_MAX) });
+    } else {
+      // No posting to record — fill the page the applicant is already on.
+      toApp({ type: "fill_here", url: location.href,
+              title: document.title || "" });
+    }
+    armOutcome(restore);
     // Both content scripts share one isolated world, so the fill panel is
     // directly reachable — no second floating widget, per D4.
     if (window.jeOverlay && window.jeOverlay.show) { window.jeOverlay.show(); }
+  }
+
+  // 018 (FR-010): a control must never appear to have done nothing. The app
+  // may refuse (a session is already running) or be unreachable; either way
+  // the button comes back and says why, rather than sitting on "Starting…".
+  function armOutcome(restoreLabel) {
+    clearTimeout(startTimer);
+    startTimer = setTimeout(function () {
+      startTimer = null;
+      if (!els.apply) { return; }
+      els.apply.disabled = false;
+      els.apply.textContent = restoreLabel;
+      showNote("Couldn't start — open Job Engine and check Apply Assist.");
+    }, 8000);
+  }
+
+  function onSessionStarted() {
+    clearTimeout(startTimer);
+    startTimer = null;
+    if (host) { host.dataset.jeSession = "filling"; }
+    if (els.apply) {
+      els.apply.disabled = true;
+      els.apply.textContent = "Filling…";
+    }
+  }
+
+  function onAppError(message) {
+    clearTimeout(startTimer);
+    startTimer = null;
+    if (els.apply) {
+      els.apply.disabled = false;
+      els.apply.textContent = primaryLabel();
+    }
+    showNote(message || "The app refused that — check Job Engine.");
+  }
+
+  function showNote(text) {
+    if (!els.note) { return; }
+    els.note.textContent = text || "";
+    els.note.style.display = text ? "block" : "none";
   }
   function onDismiss() { dismissedFor = location.href; removeBadge(); }
   function onCollapse() {
@@ -344,6 +483,18 @@
       renderScore(m);
     }
     else if (m.type === "save_result") { setSaved(true); }
+    // 018 (FR-010): the app confirmed the session — the primary action's
+    // watchdog stands down.
+    else if (m.type === "watch") { onSessionStarted(); }
+    else if (m.type === "unwatch") {
+      if (host) { host.dataset.jeSession = "idle"; }
+      if (els.apply) {
+        els.apply.disabled = false;
+        els.apply.textContent = primaryLabel();
+      }
+    }
+    // 018 (FR-033): an app-side refusal reaches the page, not just the popup.
+    else if (m.type === "app_error") { onAppError(m.message || m.code); }
   });
 
   // ---------- lifecycle: detect on load + in-place (SPA) navigation ----------
@@ -357,10 +508,16 @@
       lastRequestAt = 0;
       removeBadge();
     }
-    requestScore();
+    // 018: classify FIRST, then decide. A page with no posting metadata but a
+    // real application form now qualifies — that is the Greenhouse
+    // `…/application` case where the applicant previously saw nothing at all.
+    if (classify() === "none") { scoredFor = null; removeBadge(); return; }
+    if (dismissedFor === location.href) { return; }
+    if (current) { requestScore(); }
+    render();
   }
   setInterval(tick, POLL_MS);
   // first pass after the page settles
-  if (document.readyState === "complete") { requestScore(); }
-  else { window.addEventListener("load", requestScore, { once: true }); }
+  if (document.readyState === "complete") { tick(); }
+  else { window.addEventListener("load", tick, { once: true }); }
 })();

@@ -211,12 +211,25 @@ function probe() {  // read-only: no stamp(), no docToken()
 ```
 
 **Heuristic** (deliberately conservative — a false positive puts a widget on
-every page with a search box):
+every page with a search box). Exclusions, in order:
 
-- ignore `type=search`, and fields whose `name`/`id` matches
-  `^(q|s|search|query|keyword)`;
-- a form is present when **≥3** visible qualifying fields exist, **or** a file
-  input plus ≥1 text field, **or** an email input plus ≥2 other fields.
+1. **Drop every field inside a form that contains a visible password input.**
+   A credential form is not an application, and we never fill credentials.
+   This exclusion is load-bearing: dropping the password field *alone* still
+   leaves `username` in the count, which — together with a newsletter email —
+   reaches three controls and two text-ish fields on an entirely ordinary page.
+2. Drop `type=search` and `type=password`.
+3. Drop fields whose `name`/`id` matches `^(q|s|search|query|keyword)$`.
+
+Then, over what remains:
+
+- `fields` = count; `textish` = count of `text|email|tel|url|number|""` inputs
+  and `textarea`s; `hasFile` = a visible `input[type=file]` is present.
+- **A form is present when `textish >= 2 && (fields >= 3 || (hasFile && fields >= 2))`.**
+
+Verified against the three fixtures: `bare_application.html` → 8 fields /
+6 text-ish → yes; `search_only.html` → 2 fields / 1 text-ish → no;
+`hostile_css.html` → 1 field → no (it is detected as a *posting*, not a form).
 
 Posting metadata, when present, still adds the score header; the two signals are
 independent inputs to one widget.

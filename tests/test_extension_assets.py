@@ -514,7 +514,17 @@ class TestPanelIsTheReviewSurface017:
 
 class TestBadgeLauncher017:
     """017-T070 (D4, FR-038/FR-039): the badge that already shows a match
-    score becomes the launcher — one floating widget, not two."""
+    score becomes the launcher — one floating widget, not two.
+
+    018 WARNING — do not add interaction assertions here. Every test in this
+    class is a string-presence check on a source file, and the whole set of
+    them passed for the entire life of v1.7.0 while the button they describe
+    was DEAD: `onApply` read `current.posting`, a key detection never sets, so
+    it returned before sending anything. Proof that a control WORKS lives in
+    `tests/integration/test_companion_widget.py`, where it is clicked in a real
+    browser. What survives here is only what source inspection genuinely
+    proves: that a page-mutating primitive is ABSENT.
+    """
 
     def badge(self):
         return (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
@@ -534,3 +544,86 @@ class TestBadgeLauncher017:
         assert ".click(" not in source
         assert ".submit(" not in source
         assert "dispatchEvent" not in source
+
+
+class TestPinnedToViewport018:
+    """018 (R1): both widgets rendered at the BOTTOM of the document, not in
+    the corner of the viewport, from v1.0.0 through v1.7.0.
+
+    `host.style.cssText = "position:fixed;…;all:initial;"` — `all` is a
+    shorthand for EVERY CSS property, declared last, so it reset `position`
+    to `static`, `inset` to `auto` and `display` to `inline`. Appended as the
+    last child of <body>, a static host renders at the end of the document
+    flow. On the 5000px test fixture the badge measured y=5181.
+
+    The real proof is the computed-style assertion in the browser suite. This
+    guards the ORDERING that caused it, which source inspection can see and a
+    future editor could silently reintroduce.
+    """
+
+    WIDGETS = ("discovery.js", "overlay.js")
+
+    def _source(self, name):
+        return (EXT / "content" / name).read_text(encoding="utf-8")
+
+    def test_all_initial_is_never_declared_after_position(self):
+        for name in self.WIDGETS:
+            src = self._source(name)
+            for line in src.splitlines():
+                code = line.split("//")[0]
+                if "all:initial" not in code.replace(" ", ""):
+                    continue
+                flat = code.replace(" ", "")
+                assert "position:fixed" not in flat, (
+                    f"{name}: `all:initial` shares a declaration block with "
+                    "`position:fixed` — as a shorthand for every property it "
+                    "resets whichever of them comes first. Reset first, then "
+                    "position.")
+
+    def test_positioning_is_important(self):
+        """A plain inline declaration sits in the author-NORMAL cascade layer
+        and loses to a page rule like `div { position: static !important }`.
+        Only an inline !important declaration wins."""
+        for name in self.WIDGETS:
+            src = self._source(name)
+            assert '"position", "fixed", "important"' in src, (
+                f"{name}: position must be set with !important")
+            assert '"z-index"' in src and '"important"' in src
+
+
+class TestReadOnlyFormProbe018:
+    """018 (R7, FR-005): the companion appears on a bare ATS application page.
+
+    The signal must NOT be `serialize()`. That function stamps — `stamp()`
+    writes data-je-idx onto every field and `docToken()` writes data-je-doc
+    onto <html> — so using it merely to decide whether to render a widget
+    would mutate every page the applicant browses, before they asked for
+    anything. That would break the read-only guarantee the discovery path has
+    held since 012.
+    """
+
+    def scanner(self):
+        return (EXT / "content" / "scanner.js").read_text(encoding="utf-8")
+
+    def test_probe_is_exported(self):
+        src = self.scanner()
+        assert "function probe(" in src
+        assert "looksLikeApplicationForm" in src
+        assert "probe," in src or "probe }" in src or "probe, " in src
+
+    def test_probe_stamps_nothing(self):
+        """The body of probe() must not call the two mutating helpers."""
+        src = self.scanner()
+        start = src.index("function probe(")
+        body = src[start:src.index("\n  }", start)]
+        assert "stamp(" not in body, "probe() must not stamp the page"
+        assert "docToken(" not in body, "probe() must not write a doc token"
+        assert "describe(" not in body, "probe() must not build descriptors"
+
+    def test_credential_forms_are_excluded(self):
+        """A login form is not an application, and we never fill credentials.
+        Excluding the password field alone is not enough — `username` would
+        survive and, with an ordinary newsletter box, reach the threshold."""
+        src = self.scanner()
+        assert "inCredentialForm" in src
+        assert "input[type=password]" in src

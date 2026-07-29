@@ -257,5 +257,62 @@ window.jeScanner = (function () {
     return document.querySelector(`[data-je-idx="${jeIdx}"]`);
   }
 
-  return { serialize, elementByIdx, docToken };
+  // 018 (R7, FR-005): a READ-ONLY answer to "does this page have an
+  // application form on it?".
+  //
+  // It must NOT be `serialize()`. That function stamps: `stamp()` writes
+  // data-je-idx onto every field and `docToken()` writes data-je-doc onto
+  // <html>. Calling it merely to decide whether to render a widget would
+  // mutate every page the applicant browses, before they have asked for
+  // anything — breaking the read-only guarantee the discovery path has held
+  // since 012. So this walks the same selector and counts, and touches
+  // nothing.
+  //
+  // The heuristic is deliberately conservative: a false positive puts a
+  // widget on every page with a search box, which is worse than the bug it
+  // fixes. Exclusions, in order:
+  //   1. every field inside a form containing a password — a credential form
+  //      is not an application, and we never fill credentials. This one is
+  //      load-bearing: dropping the password field alone still leaves
+  //      `username`, which together with a newsletter email reaches three
+  //      controls on an entirely ordinary page.
+  //   2. type=search and type=password
+  //   3. name/id that looks like a site search box
+  const _SEARCHY_NAME = /^(q|s|search|query|keyword)$/i;
+  const _TEXTISH = ["text", "email", "tel", "url", "number", ""];
+
+  function inCredentialForm(el) {
+    const form = el.closest && el.closest("form");
+    return !!(form && form.querySelector("input[type=password]"));
+  }
+
+  function probe() {
+    const els = document.querySelectorAll(FIELD_SELECTOR);
+    let fields = 0, textish = 0, hasFile = false;
+    Array.prototype.forEach.call(els, function (el) {
+      const type = (el.type || "").toLowerCase();
+      if (!(el.offsetParent || type === "file")) { return; }   // not visible
+      if (type === "search" || type === "password") { return; }
+      if (_SEARCHY_NAME.test(el.name || "") ||
+          _SEARCHY_NAME.test(el.id || "")) { return; }
+      if (inCredentialForm(el)) { return; }
+      fields += 1;
+      if (type === "file") { hasFile = true; }
+      const tag = el.tagName.toLowerCase();
+      if (tag === "textarea" || (tag === "input" && _TEXTISH.indexOf(type) !== -1)) {
+        textish += 1;
+      }
+    });
+    return { fields: fields, textish: textish, hasFile: hasFile };
+  }
+
+  // A form worth offering to fill. Two text-ish fields is the floor: it keeps
+  // a newsletter box plus a cookie checkbox below the bar while admitting a
+  // minimal name/email/resume application.
+  function looksLikeApplicationForm(p) {
+    if (!p || p.textish < 2) { return false; }
+    return p.fields >= 3 || (p.hasFile && p.fields >= 2);
+  }
+
+  return { serialize, elementByIdx, docToken, probe, looksLikeApplicationForm };
 })();
