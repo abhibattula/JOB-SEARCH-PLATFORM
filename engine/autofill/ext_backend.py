@@ -282,7 +282,45 @@ def handle_message(msg) -> None:
         _handle_scan_error(msg)
     elif isinstance(msg, ext_protocol.FillAgain):
         _handle_fill_again(msg)
+    elif isinstance(msg, ext_protocol.AnswerQuestion):
+        _handle_answer_question(msg)
     # Pong: heartbeat only (touch() above)
+
+
+def _handle_answer_question(msg) -> None:
+    """017 (D7, FR-045/FR-046): the applicant answered, in the panel, a
+    question we declined to answer.
+
+    Stored as THEIR answer — source 'user', never 'ai' — so it fills this
+    field now, fills every future application that asks the same thing, and
+    survives a purge of model-written answers. Stored verbatim: the app does
+    not rewrite, expand or "improve" what they typed.
+    """
+    from . import answer_bank, browser_controller as bc, drafter
+
+    question = (msg.question or "").strip()
+    answer = (msg.answer or "").strip()
+    if not question or not answer:
+        return
+    with _lock:
+        if msg.tab_id != _watch["tab_id"]:
+            return
+        job_id = _watch["job_id"]
+    try:
+        answer_bank.save(question, answer)
+    except Exception:  # noqa: BLE001 — never lose the fill over a bank write
+        log.warning("answer capture failed to save", exc_info=True)
+    if job_id is not None:
+        # Drop the refusal record and re-open the field so the next scan
+        # fills it from the bank.
+        drafter.clear(job_id, question)
+        with bc._lock:
+            ledger = bc._state.handled.get(job_id) or {}
+            for lkey in [k for k, v in list(ledger.items())
+                         if (v[0] if isinstance(v, tuple) else v)
+                         != "skipped_existing"]:
+                del ledger[lkey]
+    send(_outbound("rescan", reason="user_rescan"))
 
 
 def _handle_fill_again(msg) -> None:
@@ -536,6 +574,22 @@ def _handle_fields(msg) -> None:
         "attention": needs_you_labels[:5],
         "message": "you click the actual apply/submit",
     }))
+
+    # 017 (FR-034): the FULL answer text goes to the page, including the
+    # questions we refused. Before this the page only ever received a count
+    # ("N AI draft(s) — review in the app"), so an answer that was drafted
+    # but not filled could not be read at all without leaving the tab.
+    job_id = _watch["job_id"]
+    if job_id is not None:
+        items = drafter.answers_for_page(job_id)
+        truncated = False
+        # Stay well inside MAX_MESSAGE_BYTES on a very large form; the app's
+        # own view stays complete either way (FR-049).
+        while len(items) > 1 and len(str(items)) > 400_000:
+            items.pop()
+            truncated = True
+        send(_outbound("answers", tab_id=msg.tab_id, job_id=job_id,
+                       items=items, truncated=truncated))
 
 
 def _handle_fill_result(msg) -> None:

@@ -367,6 +367,40 @@ def list_for_job(job_id: int, limit: int = 50) -> list[dict]:
     return entries
 
 
+def answers_for_page(job_id: int, limit: int = 60) -> list[dict]:
+    """017 (FR-034): the FULL answer text for every question of one job.
+
+    `list_for_job` truncates to a 120-character preview because it feeds an
+    activity log. The on-page panel has to show the whole answer — the point
+    is that the applicant can read and copy it — and it must include the
+    questions that were refused, which is where `askable` comes in: those are
+    the ones the panel offers an input for so they can be answered once and
+    remembered (D7).
+    """
+    with _lock:
+        records = [dict(rec) for key, rec in _records.items()
+                   if key[0] == int(job_id)]
+    records.sort(key=lambda rec: rec.get("at", 0.0), reverse=True)
+    items = []
+    for rec in records[:limit]:
+        reason = rec.get("reason")
+        if rec["state"] == "done":
+            state, askable = "drafted", False
+        elif rec["state"] == "failed" and reason in _NEEDS_YOU_REASONS:
+            state = "refused" if reason in _NEVER_RETRY_REASONS else "needs_you"
+            askable = True
+        else:
+            state, askable = "drafting", False
+        items.append({
+            "question": rec["question"],
+            "answer": rec.get("answer") or "",
+            "state": state,
+            "reason": reason,
+            "askable": askable,
+        })
+    return items
+
+
 def get(job_id: int, question: str) -> dict | None:
     with _lock:
         rec = _records.get(_key(job_id, question))

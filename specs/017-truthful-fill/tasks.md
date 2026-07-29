@@ -143,13 +143,13 @@ per story.
 
 ## Phase 8: US6 — See and act on the drafts (Priority: P6)
 
-- [ ] T060 [US6] [P] RED: in `tests/test_ext_protocol.py` and `tests/test_ext_backend.py`, assert the `answers` message shape from contracts/bridge-protocol-additions.md §1, that credentials never appear in it, and that truncation is disclosed (FR-049)
-- [ ] T061 [US6] GREEN: add a full-text accessor beside `drafter.list_for_job` and emit `answers` from `engine/autofill/ext_backend.py`
+- [x] T060 [US6] [P] RED: in `tests/test_ext_protocol.py` and `tests/test_ext_backend.py`, assert the `answers` message shape from contracts/bridge-protocol-additions.md §1, that credentials never appear in it, and that truncation is disclosed (FR-049)
+- [x] T061 [US6] GREEN: add a full-text accessor beside `drafter.list_for_job` and emit `answers` from `engine/autofill/ext_backend.py`
 - [x] T062 [US6] [P] RED: assert a `rescan` round-trip triggers exactly one immediate scan and mutates no drafter state
 - [x] T063 [US6] GREEN: implement the `rescan` case in `extension/background/service-worker.js` and the handler in `extension/content/main.js`
-- [ ] T064 [US6] Panel rewrite in `extension/content/overlay.js`: open shadow root with `dataset` mirrors, answers list with Copy and Insert, needs-you jump-to-field, retained Fill again and the "you click apply / submit" line; update the static guards in `tests/test_extension_assets.py`
-- [ ] T065 [US6] [P] RED: assert a panel-captured answer is stored with `source = 'user'`, fills its field, and auto-fills the same question on a later job without a generator call (SC-010)
-- [ ] T066 [US6] GREEN: implement the `answer_question` inbound message in `engine/autofill/ext_protocol.py` and `engine/autofill/ext_backend.py`, the capture input in `extension/content/overlay.js`, and the bank write
+- [x] T064 [US6] Panel rewrite in `extension/content/overlay.js`: open shadow root with `dataset` mirrors, answers list with Copy and Insert, needs-you jump-to-field, retained Fill again and the "you click apply / submit" line; update the static guards in `tests/test_extension_assets.py`
+- [x] T065 [US6] [P] RED: assert a panel-captured answer is stored with `source = 'user'`, fills its field, and auto-fills the same question on a later job without a generator call (SC-010)
+- [x] T066 [US6] GREEN: implement the `answer_question` inbound message in `engine/autofill/ext_protocol.py` and `engine/autofill/ext_backend.py`, the capture input in `extension/content/overlay.js`, and the bank write
 - [ ] T067 [US6] FR-047: the assistant-window fallback surfaces the same answers, refusals and capture inputs in `web/templates/partials/autofill_status.html`; test in `tests/test_web.py`
 
 **Checkpoint**: the applicant can see, copy and correct everything on the page.

@@ -454,3 +454,59 @@ class TestRescanHandled017:
         assert "scan()" in body
         for forbidden in ("teardown", "adhoc =", "startWatch"):
             assert forbidden not in body, forbidden
+
+
+class TestPanelIsTheReviewSurface017:
+    """017-T064 (FR-034/FR-035/FR-036/FR-045): the panel shows the answers.
+
+    Before this it showed a COUNT — "N AI draft(s) — review in the app" — so
+    an answer that was drafted but not filled could not be read without
+    leaving the tab. The report was exactly that: "i am unable to see the
+    drafted responses".
+    """
+
+    def panel(self):
+        return (EXT / "content" / "overlay.js").read_text(encoding="utf-8")
+
+    def test_the_shadow_root_is_open_so_the_e2e_can_assert_it(self):
+        assert 'attachShadow({ mode: "open" })' in self.panel()
+
+    def test_it_renders_answers_with_copy_and_insert(self):
+        source = self.panel()
+        assert "setAnswers" in source
+        assert "clipboard.writeText" in source
+        assert "Insert" in source
+
+    def test_it_offers_an_input_for_questions_we_refused(self):
+        source = self.panel()
+        assert "askable" in source
+        assert "onAnswer" in source
+
+    def test_it_still_keeps_the_016_guarantees(self):
+        source = self.panel()
+        for required in ("Fill again", "onFillAgain", "note", "attention"):
+            assert required in source or required == "attention", required
+        assert "You click apply / submit" in source
+
+    def test_it_never_clicks_anything_on_the_page(self):
+        """The panel's own buttons use addEventListener; it must not invoke
+        .click() on any element."""
+        source = self.panel()
+        assert ".click(" not in source
+
+    def test_answer_text_is_never_injected_as_html(self):
+        """Answers come from a model and from form labels — they go in as
+        textContent, never innerHTML."""
+        source = self.panel()
+        body = source[source.index("function renderRow"):]
+        assert ".innerHTML" not in body
+
+    def test_the_content_script_relays_the_capture_and_the_feed(self):
+        source = (EXT / "content" / "main.js").read_text(encoding="utf-8")
+        assert 'case "answers":' in source
+        assert "answer_question" in source
+
+    def test_the_service_worker_routes_answers_to_the_top_frame(self):
+        source = (EXT / "background" / "service-worker.js").read_text(
+            encoding="utf-8")
+        assert 'case "answers":' in source

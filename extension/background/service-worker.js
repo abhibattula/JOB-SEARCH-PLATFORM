@@ -33,6 +33,10 @@ state.onMessage = (msg) => {
                            msg.frame_id); break;
     case "overlay_state": toContent(msg.tab_id, { type: "overlay_state",
                                                   summary: msg.summary }, 0); break;
+    // 017 (FR-034): full answer text for the panel — top frame only.
+    case "answers": toContent(msg.tab_id, { type: "answers",
+                                            items: msg.items,
+                                            truncated: msg.truncated }, 0); break;
     // 012 discovery: score/save replies go to the requesting tab's top frame.
     case "score_result": toContent(msg.tab_id, { ...msg, type: "score_result" }, 0);
       break;

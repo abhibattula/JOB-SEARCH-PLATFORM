@@ -811,3 +811,88 @@ class TestFillAgain016:
         ext_backend.handle_message(ext_protocol.FillAgain(tab_id=999))
         assert bc._state.handled[queue] == {("docA", "3"): "no_match"}
         assert not any(m["type"] == "rescan" for m in sent)
+
+
+class TestAnswerCapture017:
+    """017-T065 (D7, FR-045/FR-046): a question we refused becomes a question
+    the applicant answers ONCE.
+
+    Under the new refusal policy a real application leaves several questions
+    for the applicant. Capturing what they type — as THEIR answer — means the
+    manual effort decays across applications instead of repeating.
+    """
+
+    def _watching(self, tmp_db, monkeypatch, job_id=7):
+        sent = []
+        monkeypatch.setattr(ext_backend, "send", lambda payload: sent.append(payload))
+        with ext_backend._lock:
+            ext_backend._watch["tab_id"] = 11
+            ext_backend._watch["job_id"] = job_id
+        return sent
+
+    def test_the_answer_is_stored_as_the_applicants_own(self, tmp_db,
+                                                        monkeypatch):
+        from engine.autofill import answer_bank, ext_protocol
+
+        self._watching(tmp_db, monkeypatch)
+        ext_backend.handle_message(ext_protocol.AnswerQuestion(
+            tab_id=11, je_idx="31",
+            question="Have you ever applied to Akuna in the past?",
+            answer="No"))
+
+        row = answer_bank.lookup("Have you ever applied to Akuna in the past?")
+        assert row["answer"] == "No"
+        assert row["source"] == "user"
+
+    def test_it_survives_a_purge_of_model_written_answers(self, tmp_db,
+                                                          monkeypatch):
+        from engine.autofill import answer_bank, ext_protocol
+
+        self._watching(tmp_db, monkeypatch)
+        ext_backend.handle_message(ext_protocol.AnswerQuestion(
+            tab_id=11, question="Do you live in New York or California?",
+            answer="No"))
+
+        answer_bank.purge_model_written()
+
+        assert answer_bank.lookup(
+            "Do you live in New York or California?")["answer"] == "No"
+
+    def test_it_is_stored_verbatim(self, tmp_db, monkeypatch):
+        from engine.autofill import answer_bank, ext_protocol
+
+        self._watching(tmp_db, monkeypatch)
+        typed = "Yes — 2 weeks from the offer date"
+        ext_backend.handle_message(ext_protocol.AnswerQuestion(
+            tab_id=11, question="What is your notice period?", answer=typed))
+        assert answer_bank.lookup("What is your notice period?")["answer"] == \
+            typed
+
+    def test_the_refusal_is_cleared_and_a_rescan_requested(self, tmp_db,
+                                                           monkeypatch):
+        from engine.autofill import drafter, ext_protocol
+
+        sent = self._watching(tmp_db, monkeypatch)
+        drafter.mark_needs_you(7, "Any offer deadlines?", "never_generated")
+
+        ext_backend.handle_message(ext_protocol.AnswerQuestion(
+            tab_id=11, question="Any offer deadlines?", answer="No"))
+
+        assert drafter.get(7, "Any offer deadlines?") is None
+        assert any(p.get("type") == "rescan" for p in sent)
+
+    def test_an_empty_answer_is_ignored(self, tmp_db, monkeypatch):
+        from engine.autofill import answer_bank, ext_protocol
+
+        self._watching(tmp_db, monkeypatch)
+        ext_backend.handle_message(ext_protocol.AnswerQuestion(
+            tab_id=11, question="Any offer deadlines?", answer="   "))
+        assert answer_bank.lookup("Any offer deadlines?") is None
+
+    def test_a_message_from_another_tab_is_ignored(self, tmp_db, monkeypatch):
+        from engine.autofill import answer_bank, ext_protocol
+
+        self._watching(tmp_db, monkeypatch)
+        ext_backend.handle_message(ext_protocol.AnswerQuestion(
+            tab_id=999, question="Any offer deadlines?", answer="No"))
+        assert answer_bank.lookup("Any offer deadlines?") is None

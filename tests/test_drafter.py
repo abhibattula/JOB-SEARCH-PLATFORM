@@ -559,3 +559,54 @@ class TestOneQuestionAcrossDocuments017:
         assert wait_until(lambda: drafter.answer_for(52, question))
         # a second document asking the same question reads the same cache
         assert drafter.answer_for(52, question) == "Abhinav Battula"
+
+
+class TestAnswersForPage017:
+    """017-T060 (FR-034): the page gets the FULL answer text, including for
+    questions we refused — those are what the panel offers to capture."""
+
+    def test_full_text_is_not_truncated_to_the_activity_preview(self):
+        long_answer = "A" * 400
+        drafter.set_generator_for_tests(lambda q, c, p: long_answer)
+        drafter.ensure(61, "Why this company?", ctx(), PROFILE)
+        assert wait_until(lambda: drafter.answer_for(61, "Why this company?"))
+
+        page = drafter.answers_for_page(61)
+        assert page[0]["answer"] == long_answer
+        # the activity log still previews
+        assert len(drafter.list_for_job(61)[0]["answer_preview"]) == 120
+
+    def test_a_refusal_is_included_and_askable(self):
+        drafter.mark_needs_you(62, "Do you have any offer deadlines?",
+                               "never_generated")
+        item = drafter.answers_for_page(62)[0]
+        assert item["state"] == "refused"
+        assert item["askable"] is True
+        assert item["answer"] == ""
+
+    def test_a_drafted_answer_is_not_askable(self):
+        drafter.set_generator_for_tests(lambda q, c, p: "3.2")
+        drafter.ensure(63, "What is your GPA?", ctx(), PROFILE)
+        assert wait_until(lambda: drafter.answer_for(63, "What is your GPA?"))
+        item = drafter.answers_for_page(63)[0]
+        assert item["state"] == "drafted"
+        assert item["askable"] is False
+
+    def test_an_in_flight_draft_is_reported_as_drafting(self):
+        import threading
+
+        gate = threading.Event()
+        drafter.set_generator_for_tests(
+            lambda q, c, p: (gate.wait(2), "late")[1])
+        drafter.ensure(64, "Slow one?", ctx(), PROFILE)
+        try:
+            item = drafter.answers_for_page(64)[0]
+            assert item["state"] == "drafting"
+            assert item["askable"] is False
+        finally:
+            gate.set()
+
+    def test_it_is_scoped_to_one_job(self):
+        drafter.mark_needs_you(65, "A?", "never_generated")
+        drafter.mark_needs_you(66, "B?", "never_generated")
+        assert [i["question"] for i in drafter.answers_for_page(65)] == ["A?"]

@@ -89,6 +89,30 @@
           toApp({ type: "fill_again" });
         });
       }
+      // 017 (D7, FR-045): the applicant answered a question we declined to
+      // answer. It is stored as THEIR answer and fills on the next scan.
+      if (window.jeOverlay.onAnswer) {
+        window.jeOverlay.onAnswer(function (question, answer, jeIdx) {
+          toApp({ type: "answer_question", je_idx: jeIdx || "",
+                  question: question, answer: answer });
+        });
+      }
+      // 017 (FR-035): put ONE answer into the ONE field the applicant chose.
+      if (window.jeOverlay.onInsert) {
+        window.jeOverlay.onInsert(function (jeIdx, answer) {
+          window.jeFiller.apply([{ je_idx: jeIdx, kind: "text",
+                                   value: answer }]);
+        });
+      }
+      // 017 (FR-036): scroll to a field that needs them.
+      if (window.jeOverlay.onJump) {
+        window.jeOverlay.onJump(function (jeIdx) {
+          const el = window.jeScanner.elementByIdx(jeIdx);
+          if (el && el.scrollIntoView) {
+            el.scrollIntoView({ behavior: "smooth", block: "center" });
+          }
+        });
+      }
     }
     // Detect the user's own submission — never our doing (we never click).
     document.addEventListener("submit", onSubmit, true);
@@ -141,6 +165,13 @@
       // re-reads the page — it never resets any app-side state.
       case "rescan":
         scan();
+        break;
+      // 017 (FR-034): the full answer text for this job. The panel is where
+      // the applicant reads, copies and corrects them.
+      case "answers":
+        if (isTop && window.jeOverlay && window.jeOverlay.setAnswers) {
+          window.jeOverlay.setAnswers(message.items, message.truncated);
+        }
         break;
       case "overlay_state":
         if (isTop && window.jeOverlay) { window.jeOverlay.update(message.summary); }
