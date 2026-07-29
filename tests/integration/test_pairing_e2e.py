@@ -201,6 +201,27 @@ def test_human_pairing_path_connects_and_fills(app_server, tmp_path,
         assert state["eeo_flag"] == "needs_you", (
             "sensitive field missing its needs-you highlight")
         assert state["panel"] is True, "on-page panel not injected"
+
+        # 6. 017: every defect from the live Akuna run of 2026-07-28, dead on
+        #    a page that reproduces its shapes. Each of these was WRONG on
+        #    that run — not missing, wrong, which is worse on a real
+        #    application.
+        assert state["phonetic_name"] == "", (
+            "the name-pronunciation question received a value — on the live "
+            "run it got the applicant's phone number, because _PHONE_RE "
+            "matched 'phonetically'")
+        assert state["their_name"] == "", (
+            "'please list THEIR name' received a value — on the live run it "
+            "got the applicant's own name")
+        assert state["work_auth_expiry"] not in ("Yes", "No"), (
+            "a free-text question asking WHEN work authorization expires "
+            "received a yes/no token")
+        assert state["ack_typed"] == "", (
+            "text was typed into the acknowledgement dropdown's search box — "
+            "on the live run it received a multi-sentence paragraph")
+        assert state["ack_value"] == "", (
+            "a BINDING acknowledgement was answered automatically; agreeing "
+            "would withdraw the applicant from every other role at the firm")
         clicks = httpx.get(
             f"http://127.0.0.1:{port}/practice/submit-log",
             timeout=5).json()["clicks"]

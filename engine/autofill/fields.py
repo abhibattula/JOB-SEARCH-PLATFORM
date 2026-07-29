@@ -219,6 +219,8 @@ FACTUAL_HISTORY_TAGS = frozenset({
     "currently_employed", "criminal_history", "references",
     # a referrer's or reference's name is someone else's fact
     "third_party_name",
+    # only the applicant knows how their own name sounds
+    "name_pronunciation",
 })
 
 # 017 (C3): word-bounded. Without \b, "how your name is pronounced
@@ -245,6 +247,14 @@ _PREFERRED_NAME_RE = re.compile(
     re.IGNORECASE,
 )
 _MIDDLE_NAME_RE = re.compile(r"middle[\s_-]*(name|initial)", re.IGNORECASE)
+# 017: "please write out how your NAME is pronounced phonetically" is not a
+# name field. It contains "your name", so every name rule matched it — on the
+# live run it received the applicant's phone number (the phone regex had no
+# word boundary), and once that was fixed it received their first name
+# instead. Only the applicant knows how their name sounds; it is never
+# generated.
+_NAME_PRONUNCIATION_RE = re.compile(
+    r"pronounc\w*|phonetic\w*|how\s+.{0,20}say", re.IGNORECASE)
 
 _FIRST_NAME_RE = re.compile(r"first[\s_-]*name|given[\s_-]*name", re.IGNORECASE)
 _LAST_NAME_RE = re.compile(r"last[\s_-]*name|family[\s_-]*name|surname", re.IGNORECASE)
@@ -396,6 +406,8 @@ def classify(field: FieldDescriptor) -> str:
     # 017 (C4): name questions that are NOT about the applicant, and the two
     # name variants a bare \bname\b used to swallow. Checked before every
     # other name rule, including the autocomplete shortcuts.
+    if _NAME_PRONUNCIATION_RE.search(text):
+        return "name_pronunciation"
     if _THIRD_PARTY_NAME_RE.search(text):
         return "third_party_name"
     if _PREFERRED_NAME_RE.search(text):

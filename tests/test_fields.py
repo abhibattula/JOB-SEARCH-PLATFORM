@@ -522,3 +522,36 @@ class TestSelfIdentificationTags017:
 
         for _label, tag in self.CASES:
             assert tag in drafter.NEVER_GENERATED_TAGS, tag
+
+
+class TestNamePronunciation017:
+    """017: "how your name is pronounced phonetically" is not a name field.
+
+    It contains "your name", so every name rule matched it. On the live Akuna
+    run it received the applicant's phone number (the phone regex had no word
+    boundary); with that fixed it received their first name instead. Only the
+    applicant knows how their own name sounds.
+    """
+
+    LABEL = ("We care about addressing everyone correctly. To help us get it "
+             "right, please write out how your name is pronounced "
+             "phonetically to share with the hiring team.")
+
+    def test_it_is_not_a_name_field(self):
+        tag = fields.classify(field(label_text=self.LABEL))
+        assert tag not in ("first_name", "last_name", "full_name",
+                           "preferred_name")
+
+    def test_it_is_not_a_phone_field(self):
+        assert fields.classify(field(label_text=self.LABEL)) != "phone"
+
+    def test_it_is_never_generated(self):
+        from engine.autofill import drafter
+
+        tag = fields.classify(field(label_text=self.LABEL))
+        assert tag == "name_pronunciation"
+        assert tag in drafter.NEVER_GENERATED_TAGS
+
+    def test_ordinary_name_fields_are_unaffected(self):
+        assert fields.classify(field(label_text="First Name*")) == "first_name"
+        assert fields.classify(field(label_text="Full name")) == "full_name"
