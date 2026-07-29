@@ -168,7 +168,19 @@ def context(ext_dir, tmp_path):
 # helpers — every one of them drives the widget the way a person would
 # --------------------------------------------------------------------------
 
-def _wait_connected(timeout=15):
+def _wait_connected(timeout=90):
+    """Wait for THIS test's companion to pair.
+
+    Deliberately generous. `_isolated_companion_session` clears the session
+    before every test, so this is a real cold pairing every time: launch the
+    browser, load the unpacked extension, start the MV3 worker, read
+    pairing.json, open the socket, handshake. On a loaded CI runner that is
+    tens of seconds — the 15 s this started at failed the Windows job. It only
+    ever looked sufficient because, before the reset fixture existed, the
+    PREVIOUS test's socket was still inside the freshness window.
+
+    A timeout is a ceiling, not an assertion: raising it weakens nothing.
+    """
     from engine.autofill import ext_backend
 
     deadline = time.time() + timeout
@@ -189,7 +201,7 @@ def _host_id(page):
     return page.evaluate(_FIND_HOST_JS, list(HOST_IDS))
 
 
-def _open_and_wait_companion(context, url, timeout=20):
+def _open_and_wait_companion(context, url, timeout=45):
     page = context.new_page()
     page.goto(url)
     page.wait_for_function(
@@ -293,7 +305,7 @@ def _primary_label(page):
         }""", [list(HOST_IDS), list(PRIMARY_IDS)])
 
 
-def _wait_for_session(timeout=20):
+def _wait_for_session(timeout=45):
     """Poll the app's own queue state until a session is actually running."""
     from engine.autofill import browser_controller as bc
 
@@ -401,7 +413,7 @@ class TestPrimaryActionWorks:
         page.wait_for_function(
             "(ids) => ids.some(id => { const h = document.getElementById(id);"
             " return h && h.dataset.jeScore; })",
-            arg=list(HOST_IDS), timeout=20000)
+            arg=list(HOST_IDS), timeout=45000)
 
         _click(page, PRIMARY_IDS)
 
@@ -613,7 +625,7 @@ class TestOneCompanionNotTwo:
         page.wait_for_function(
             "(ids) => ids.some(id => { const h = document.getElementById(id);"
             " return h && h.dataset.jeScore; })",
-            arg=list(HOST_IDS), timeout=20000)
+            arg=list(HOST_IDS), timeout=45000)
         ds = _dataset(page)
         for key in ("jeScore", "jeBand", "jeCompany", "jeSponsor", "jeSaved",
                     "jeCollapsed", "jeSession", "jeDetection"):
@@ -652,7 +664,7 @@ class TestPillAndCard:
         page.wait_for_function(
             "(ids) => ids.some(id => { const h = document.getElementById(id);"
             " return h && h.dataset.jeScore; })",
-            arg=list(HOST_IDS), timeout=20000)
+            arg=list(HOST_IDS), timeout=45000)
         score = _dataset(page)["jeScore"]
         assert score and score in _pill_text(page)
 
@@ -666,7 +678,7 @@ class TestPillAndCard:
         page.wait_for_function(
             "(ids) => ids.some(id => { const h = document.getElementById(id);"
             " return h && Number(h.dataset.jeSeen || 0) > 0; })",
-            arg=list(HOST_IDS), timeout=25000)
+            arg=list(HOST_IDS), timeout=60000)
         ds = _dataset(page)
         assert "/" in _pill_text(page), (
             f"pill showed {_pill_text(page)!r}, expected filled/seen "
@@ -683,7 +695,7 @@ class TestPillAndCard:
         _click(page, PRIMARY_IDS)
         page.wait_for_function(
             "(ids) => ids.some(id => document.getElementById(id)"
-            ".dataset.jeCollapsed === '0')", arg=list(HOST_IDS), timeout=20000)
+            ".dataset.jeCollapsed === '0')", arg=list(HOST_IDS), timeout=45000)
 
     def test_the_card_stays_inside_a_short_viewport(self, context, app_server,
                                                     fixture_server):
@@ -884,7 +896,7 @@ def _expand_all_groups(page):
         }""", list(HOST_IDS))
 
 
-def _wait_for_feed_to_settle(page, quiet_for=3.0, timeout=40.0):
+def _wait_for_feed_to_settle(page, quiet_for=3.0, timeout=90.0):
     """Wait until the answer count stops moving.
 
     Fields are decided incrementally — a fill goes out the moment it is
@@ -930,7 +942,7 @@ def _fill_the_bare_form(context, fixture_server):
     page.wait_for_function(
         "(ids) => ids.some(id => { const h = document.getElementById(id);"
         " return h && Number(h.dataset.jeAnswers || 0) > 0; })",
-        arg=list(HOST_IDS), timeout=30000)
+        arg=list(HOST_IDS), timeout=60000)
     _wait_for_feed_to_settle(page)
     _expand_all_groups(page)
     return page
