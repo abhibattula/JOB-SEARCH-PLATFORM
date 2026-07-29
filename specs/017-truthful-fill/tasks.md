@@ -160,8 +160,8 @@ per story.
 
 - [x] T068 [US7] [P] RED: in `tests/test_routes_autofill.py`, assert a single-job start saves the job if needed and starts a session without the queue page
 - [x] T069 [US7] GREEN: add the primary "Apply with Apply Assist" action to `web/templates/job_detail.html` and the feed row actions in `web/templates/partials/feed_table.html`
-- [ ] T070 [US7] [P] RED: in `tests/test_ext_backend.py`, assert `apply_here` upserts the posting and starts a NON-ad-hoc watch on that tab (so the apply-opener arms)
-- [ ] T071 [US7] GREEN: implement the `apply_here` inbound message and the badge button in `extension/content/discovery.js`, keeping the read-only guard intact
+- [x] T070 [US7] [P] RED: in `tests/test_ext_backend.py`, assert `apply_here` upserts the posting and starts a NON-ad-hoc watch on that tab (so the apply-opener arms)
+- [x] T071 [US7] GREEN: implement the `apply_here` inbound message and the badge button in `extension/content/discovery.js`, keeping the read-only guard intact
 - [ ] T072 [US7] R23: pin the in-app draft-review surface's actual data source with a test, then converge it on the same feed the page uses, in `web/templates/partials/autofill_status.html` and `web/routes_autofill.py`
 
 ---

@@ -284,6 +284,8 @@ def handle_message(msg) -> None:
         _handle_fill_again(msg)
     elif isinstance(msg, ext_protocol.AnswerQuestion):
         _handle_answer_question(msg)
+    elif isinstance(msg, ext_protocol.ApplyHere):
+        _handle_apply_here(msg)
     # Pong: heartbeat only (touch() above)
 
 
@@ -788,6 +790,48 @@ def _handle_save_job(msg) -> None:
     already = status != "inserted"
     send(_outbound("save_result", tab_id=msg.tab_id, status=status,
                    job_id=job_id, already=already))
+
+
+def _handle_apply_here(msg) -> None:
+    """017 (FR-038): the floating badge's Apply with Apply Assist.
+
+    Saves the posting the applicant is looking at, then starts a watched
+    session on THAT tab with the real job id — a non-ad-hoc watch, so the
+    apply-opener is armed and the session is tied to a real job rather than
+    the -2 sentinel. It starts a fill session and nothing else: no control on
+    the page is clicked, here or anywhere in this path.
+    """
+    from .. import db
+
+    db.upsert_job({
+        "title": msg.title,
+        "company": msg.company,
+        "url": msg.url,
+        "description": (msg.description or "")[:_DISCOVERY_DESC_MAX],
+        "source": "manual",
+        "posted_date": None,
+    })
+    row = db.get_job_by_url(msg.url)
+    if row is None:
+        send(_outbound("error", code="unknown_job",
+                       message="Couldn't save this posting — open it from the app instead."))
+        return
+    job_id = row["id"]
+    if row.get("status") not in ("saved", "applied"):
+        db.set_status(job_id, "saved")
+
+    from . import browser_controller as bc
+
+    try:
+        bc.start_queue([job_id])
+    except Exception as exc:  # noqa: BLE001 — surface, never crash the bridge
+        log.warning("apply_here failed to start", exc_info=True)
+        send(_outbound("error", code="start_failed", message=str(exc)[:200]))
+        return
+    with _lock:
+        _watch["tab_id"] = msg.tab_id
+        _watch["job_id"] = job_id
+    send(_outbound("watch_start", tab_id=msg.tab_id, job_id=job_id))
 
 
 def reset_for_tests() -> None:

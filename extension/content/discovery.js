@@ -243,7 +243,8 @@
               <span class="pill" id="sponsor">H-1B: unknown</span>
             </div>
           </div>
-          <button class="save" id="save">Save to Job Engine</button>
+          <button class="save" id="apply">Apply with Apply Assist</button>
+          <button class="save ghost" id="save">Save to Job Engine</button>
           <div class="note" id="note" style="display:none"></div>
         </div>
       </div>`;
@@ -252,10 +253,12 @@
       ti: root.getElementById("ti"), score: root.getElementById("score"),
       band: root.getElementById("band"), sponsor: root.getElementById("sponsor"),
       save: root.getElementById("save"), note: root.getElementById("note"),
+      apply: root.getElementById("apply"),
     };
     root.getElementById("dismiss").addEventListener("click", onDismiss);
     root.getElementById("collapse").addEventListener("click", onCollapse);
     els.save.addEventListener("click", onSave);
+    els.apply.addEventListener("click", onApply);
     (document.body || document.documentElement).appendChild(host);
   }
 
@@ -308,6 +311,23 @@
   }
 
   function onSave() { if (els.save && !els.save.disabled) { requestSave(); } }
+
+  // 017 (FR-038/FR-039): start Apply Assist for the posting being viewed.
+  // This sends a MESSAGE to the local app and opens our own panel — it
+  // clicks nothing on the page and mutates nothing, exactly as the badge
+  // has always behaved.
+  function onApply() {
+    const p = current && current.posting;
+    if (!p || !els.apply || els.apply.disabled) { return; }
+    els.apply.disabled = true;
+    els.apply.textContent = "Starting…";
+    toApp({ type: "apply_here", url: current.url, title: p.title || "",
+            company: p.company || "",
+            description: (p.description || "").slice(0, DESC_MAX) });
+    // Both content scripts share one isolated world, so the fill panel is
+    // directly reachable — no second floating widget, per D4.
+    if (window.jeOverlay && window.jeOverlay.show) { window.jeOverlay.show(); }
+  }
   function onDismiss() { dismissedFor = location.href; removeBadge(); }
   function onCollapse() {
     collapsed = !collapsed;

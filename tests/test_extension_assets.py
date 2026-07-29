@@ -510,3 +510,27 @@ class TestPanelIsTheReviewSurface017:
         source = (EXT / "background" / "service-worker.js").read_text(
             encoding="utf-8")
         assert 'case "answers":' in source
+
+
+class TestBadgeLauncher017:
+    """017-T070 (D4, FR-038/FR-039): the badge that already shows a match
+    score becomes the launcher — one floating widget, not two."""
+
+    def badge(self):
+        return (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
+
+    def test_it_offers_apply_with_apply_assist(self):
+        assert "Apply with Apply Assist" in self.badge()
+        assert "apply_here" in self.badge()
+
+    def test_it_opens_the_existing_panel_rather_than_a_second_widget(self):
+        source = self.badge()
+        assert "window.jeOverlay" in source
+
+    def test_it_still_mutates_nothing_on_the_page(self):
+        """The 012 read-only guarantee is unchanged: the badge sends
+        messages and renders its own shadow DOM, and that is all."""
+        source = self.badge()
+        assert ".click(" not in source
+        assert ".submit(" not in source
+        assert "dispatchEvent" not in source

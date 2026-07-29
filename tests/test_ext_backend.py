@@ -896,3 +896,56 @@ class TestAnswerCapture017:
         ext_backend.handle_message(ext_protocol.AnswerQuestion(
             tab_id=999, question="Any offer deadlines?", answer="No"))
         assert answer_bank.lookup("Any offer deadlines?") is None
+
+
+class TestApplyHere017:
+    """017-T070 (FR-038): the badge's Apply with Apply Assist saves the
+    posting and starts a NON-ad-hoc watch on that tab, so the session is tied
+    to a real job and the apply-opener is armed."""
+
+    def test_it_saves_the_posting_and_watches_the_tab(self, tmp_db,
+                                                      monkeypatch):
+        from engine import db
+        from engine.autofill import browser_controller, ext_protocol
+
+        sent = []
+        monkeypatch.setattr(ext_backend, "send", lambda p: sent.append(p))
+        started = {}
+        monkeypatch.setattr(browser_controller, "start_queue",
+                            lambda ids: started.setdefault("ids", ids))
+
+        ext_backend.handle_message(ext_protocol.ApplyHere(
+            tab_id=21, url="https://job-boards.greenhouse.io/akuna/jobs/6532",
+            title="Software Engineer (Entry-Level) - C++",
+            company="Akuna Capital", description="desc"))
+
+        row = db.get_job_by_url(
+            "https://job-boards.greenhouse.io/akuna/jobs/6532")
+        assert row is not None
+        assert row["status"] == "saved"
+        assert started["ids"] == [row["id"]]
+
+        watch = [p for p in sent if p.get("type") == "watch_start"]
+        assert watch and watch[0]["tab_id"] == 21
+        # a REAL job id, not the -2 ad-hoc sentinel
+        assert watch[0]["job_id"] == row["id"]
+        assert watch[0]["job_id"] > 0
+
+    def test_a_failure_to_start_is_surfaced_not_swallowed(self, tmp_db,
+                                                          monkeypatch):
+        from engine.autofill import browser_controller, ext_protocol
+
+        sent = []
+        monkeypatch.setattr(ext_backend, "send", lambda p: sent.append(p))
+
+        def boom(_ids):
+            raise RuntimeError("no browser")
+
+        monkeypatch.setattr(browser_controller, "start_queue", boom)
+
+        ext_backend.handle_message(ext_protocol.ApplyHere(
+            tab_id=21, url="https://x.example/apply-here-fail", title="T",
+            company="C"))
+
+        errors = [p for p in sent if p.get("type") == "error"]
+        assert errors and "no browser" in errors[0]["message"]
