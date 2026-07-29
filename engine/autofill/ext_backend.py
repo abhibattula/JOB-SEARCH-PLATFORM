@@ -713,9 +713,16 @@ def _handle_fields(msg) -> None:
 
 def _start_answer_feed(tab_id: int, job_id: int) -> None:
     """A new session begins with an empty index and no digest history, so its
-    first scan always reaches the page. Caller holds `_lock`."""
-    _page_entries.pop(job_id, None)
-    _answers_digest.pop(tab_id, None)
+    first scan always reaches the page. Caller holds `_lock`.
+
+    Only one fill session is live at a time and this index is per-live-session
+    state, so every other job's entries are dropped here too — otherwise a long
+    app session filling fifty applications keeps fifty indexes alive for no one
+    to read.
+    """
+    _page_entries.clear()
+    _page_entries[job_id] = {}
+    _answers_digest.clear()
     _answers_force.add(tab_id)
 
 
