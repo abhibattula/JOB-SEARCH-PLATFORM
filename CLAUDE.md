@@ -19,5 +19,5 @@ shipped as v1.4.0; 015 Pairing Release shipped as v1.5.0; 016 Fill Release
 shipped as v1.6.0; 017 The Truthful Fill shipped as v1.7.0) keep their
 plan/spec/artifacts under `specs/0NN-*/` for reference.
 
-Project principles are governed by `.specify/memory/constitution.md` (v1.1.4).
+Project principles are governed by `.specify/memory/constitution.md` (v1.2.0).
 <!-- SPECKIT END -->

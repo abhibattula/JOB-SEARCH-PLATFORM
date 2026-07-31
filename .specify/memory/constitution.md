@@ -1,6 +1,33 @@
 <!--
 Sync Impact Report
 ==================
+Version change: 1.1.4 → 1.2.0 (2026-07-31)
+Modified sections:
+  - Principle I › base paragraph — the parenthetical Principle III constraint
+    now reads "the human always performs the final submit action"; sign-in
+    became automatable ONLY under the feature 019 clarification below. This
+    is the MINOR "materially expanded guidance" that justifies 1.2.0.
+  - Principle I › closing paragraph — appended a Principle III CLARIFICATION
+    (feature 019): the automation MAY perform PROGRESSION CLICKS — exactly
+    three kinds: (a) opening the application from a posting (extends the 016
+    opener to Apply controls that navigate), (b) advancing a wizard step
+    (Next/Continue/Save and continue) only when the step is complete and
+    nothing awaits the user, and (c) clicking Sign in only immediately after
+    the engine itself filled saved credentials into that exact frame.
+    Conditions are constitutional: allowlist-first, one-shot per rendered
+    step (doc token + control fingerprint), hard cap on consecutive
+    advances, ledger-recorded, mandatory pause into a "your turn" state on
+    needs-you/CAPTCHA/ambiguity. Still absolutely forbidden: final submit in
+    any phrasing, Create account/Register/Sign up, pay/checkout, any CAPTCHA
+    interaction, any click on automation-hostile domains (LinkedIn is
+    fill-only). Supersedes-in-part the 011/016 "never advances / never logs
+    in" phrasing; the 011 fill-path rule is otherwise unchanged.
+    Precedent: specs/005-apply-assist/spec.md FR-008 explicitly deferred
+    intra-form navigation "to a future phase" — feature 019 is that phase.
+Templates status: all compatible (verified — no template references the
+click/submit/login rules).
+
+Previous report (1.1.3 → 1.1.4, 2026-07-27):
 Version change: 1.1.3 → 1.1.4 (2026-07-27)
 Modified sections:
   - Principle I › closing paragraph — appended a Principle III CLARIFICATION
@@ -86,7 +113,8 @@ unless the plan is amended first. A bundled local LLM and app-driven browser
 automation (Playwright) are permitted as of the approved feature 005 plan, subject
 to the constraints in Principle II (no size veto beyond what that plan accepts) and
 Principle III (automation MUST NOT bypass bot protection or auto-submit on the
-user's behalf — the human always performs the final submit/login action).
+user's behalf — the human always performs the final submit action; sign-in is
+automatable only under the feature 019 clarification below).
 Clarification (feature 011): the automation MAY click a form field's own
 input widget to SET A VALUE (e.g. open a custom dropdown and choose an
 option, or pick a typeahead suggestion) — this is field-filling, the same
@@ -114,6 +142,30 @@ logs in, registers, creates an account, or pays; the human performs every
 final submit/login themselves. The feature 011 fill-path click rule is
 unchanged ("apply" remains denied during filling); form-opening is a
 separate, allowlisted, one-shot step.
+Clarification (feature 019): the automation MAY perform PROGRESSION CLICKS —
+clicks whose sole intent is to move the user's chosen application forward
+without submitting it. Exactly three kinds are permitted: (a) OPENING the
+application from a posting, extending the feature 016 opener to Apply
+controls that navigate to the application page rather than only revealing
+an embedded form; (b) ADVANCING a multi-step application wizard (Next /
+Continue / Save and continue) — but only after every visible required field
+on the step has been decided, no fill is in flight, and nothing awaits the
+user; and (c) SIGNING IN — clicking Sign in only immediately after the
+engine itself filled saved credentials into that exact frame (state-gated,
+never inferred from button text alone). Every progression click MUST be
+allowlist-first (per-ATS selectors before any generic fallback), one-shot
+per rendered step (keyed by document token plus control fingerprint),
+bounded by a hard cap of consecutive advances per job, recorded in the
+activity ledger, and MUST pause into an explicit "your turn" state on any
+needs-you item, CAPTCHA/bot check, or ambiguity. The automation MUST STILL
+NEVER click: a final submit in any phrasing ("Submit application", "Review
+and submit", or a bare Submit on a terminal step); Create account /
+Register / Sign up; pay or checkout controls; any CAPTCHA or bot-check
+widget; or anything on automation-hostile domains (LinkedIn is fill-only).
+The human always reads the completed application and performs the final
+submit themselves. This supersedes, in part, the feature 011 and 016
+phrasing that forbade advancing a wizard and logging in; both otherwise
+stand, and the feature 011 fill-path rule is unchanged.
 
 ### II. Zero-Subscription Cost
 
@@ -189,4 +241,4 @@ templates listed there. Plans and task lists MUST pass the Constitution Check ga
 deviations discovered during implementation MUST be either corrected or recorded in
 Complexity Tracking before the milestone is declared done.
 
-**Version**: 1.1.4 | **Ratified**: 2026-07-18 | **Last Amended**: 2026-07-27
+**Version**: 1.2.0 | **Ratified**: 2026-07-18 | **Last Amended**: 2026-07-31
