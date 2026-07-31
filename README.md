@@ -215,16 +215,22 @@ the app now surfaces that mismatch with a one-click fix), and the on-device
 AI can no longer freeze or crash the app (every model call is serialized and
 time-budgeted).
 
-**Using it (v1.8):** browse to any job posting. A pill appears in the corner of
+**Using it (v1.9):** browse to any job posting. A pill appears in the corner of
 the window with your match score and the company's sponsorship flag; click it
-for the full card, then **Apply with Apply Assist**. On a bare application URL
-the same pill offers **Fill this page**. Everything happens there: the answers
-it wrote, the ones it declined and why, **Copy** / **Insert** / **Show me** per
-answer, and **Stop**. For open-ended questions ("Why this company?") it drafts
-from your resume and flags it for your review — you always edit or confirm, and
-you click *Submit* yourself, always. Prefer to rehearse first? **Test Apply
-Assist** on the Apply Assist page fills a bundled practice application with
-your own data. Full walkthrough in [docs/USER_GUIDE.md](docs/USER_GUIDE.md).
+for the full card, then **Apply with Apply Assist** — in that same tab. From
+there it goes door to door: it presses the posting's *Apply*, signs you in
+with the login you saved (kept in Windows Credential Manager, never in this
+app's database), fills each step, and presses *Continue* between steps it has
+completely filled. It stops at the review page and hands it back to you.
+
+**It never presses the final Submit, never creates an account, and never
+touches a "prove you're human" check** — those are yours, and it pauses and
+says so. Anything it declined to answer waits there with the reason, and a box
+to answer it. Everything else is on the same card: the answers it wrote,
+**Copy** / **Insert** / **Show me** per answer, **Stop**, and a pause for the
+escort. Prefer to press every button yourself? Turn the escort off in
+Settings; filling works the same. Full walkthrough in
+[docs/USER_GUIDE.md](docs/USER_GUIDE.md).
 
 > Upgrading? Reload the companion once at `chrome://extensions` (the ↻ on the
 > Job Engine Companion card) — the app and the companion ship as one version.
@@ -311,7 +317,7 @@ spec/plan/tasks live under [specs/001-ai-job-engine/](specs/001-ai-job-engine/).
 - Scanned-image resumes (no text layer) are not supported.
 - **Apply Assist is an assistant, not an autopilot**: it may click a form
   field's own dropdown or suggestion to *set a value* (the same as typing),
-  but it never clicks Submit, Apply, Next/Continue, Save, or Log in — a hard
+  but it never clicks Submit, Create account, or pay — a hard
   denylist enforced by test in both fill paths — and it never automates
   intra-form page navigation (multi-step application wizards are advanced by
   you). Even

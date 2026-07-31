@@ -152,14 +152,14 @@ web/
     └── settings.html              # auto-sign-in consent copy, escort toggle
 
 tests/
-├── test_escort.py                 # NEW — predicate/cap/one-shot/attribution tables
+├── test_escort_journeys.py                 # NEW — predicate/cap/one-shot/attribution tables
 ├── test_secret_hygiene.py         # NEW — grep logs/DB/storage/feed/doctor for the test secret
 ├── test_click_guard.py            # FINAL_TERMS + own-name tables (updated consciously)
 ├── test_extension_assets.py       # advancer asset pins + parity; footer string update
 ├── test_ext_backend.py / test_ext_protocol.py / test_fields.py /
 │   test_field_core.py / test_adapters.py / test_credentials.py   # extended
 ├── integration/
-│   ├── test_escort.py             # NEW flagship browser suite
+│   ├── test_escort_journeys.py             # NEW flagship browser suite
 │   ├── test_companion_widget.py   # apply-here test strengthened (tab count + real fill)
 │   └── test_discovery_badge.py    # unchanged harness, reused
 └── fixtures/ats_pages/

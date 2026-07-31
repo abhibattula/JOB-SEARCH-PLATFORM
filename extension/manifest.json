@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "Job Engine Companion",
-  "version": "1.8.0",
+  "version": "1.9.0",
   "description": "Fills job applications in your own browser, driven by your local Job Engine app. Signs you in, fills every step, advances the wizard \u2014 and stops at the review page. You press the final Submit.",
   "minimum_chrome_version": "116",
   "permissions": [

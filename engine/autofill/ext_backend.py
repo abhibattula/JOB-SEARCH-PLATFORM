@@ -1359,6 +1359,10 @@ def reset_for_tests() -> None:
         _pending_submissions.clear()
         _progression_clicks.clear()
         _signin.clear()
+        # The doctor's tripwires belong to a session too — a count carried
+        # over from a previous one is a lie about this one.
+        for name in _counters:
+            _counters[name] = 0
         _quiet_since.clear()
         globals()["_escort"] = None
         _page_entries.clear()

@@ -208,7 +208,7 @@ crossed with zero manual clicks; without one, the widget offers the save form.
 - [x] T052 [US3] engine/credentials.py generate_password; ext_backend
       registration flow; page_answers.py no_saved_login + prompts —
       T051 green
-- [ ] T053 [US3] tests/test_secret_hygiene.py — instrumented full credential
+- [x] T053 [US3] tests/test_secret_hygiene.py — instrumented full credential
       browser run; self-check that the scanner detects a planted canary
       leak, then assert DB/logs/chrome.storage/feed/doctor/artifacts are
       clean of the test password
@@ -265,14 +265,14 @@ sign-in → two filled steps → parked at review with Submit provably unclicked
       is removed and the page progresses
 - [x] T064 [US4] scanner.js captcha_present detection; escort precedence —
       T063 green
-- [ ] T065 [P] [US4] Failing browser tests — panel states per
+- [x] T065 [P] [US4] Failing browser tests — panel states per
       contracts/escort-ui.md: ready_for_review park on review.html with the
       Submit sentinel PROVING no click; paused_cap at 12 on wizard_loop;
       needs-you pause expands the card and answering resumes; "Pause escort"
       stops advances while filling continues
-- [ ] T066 [US4] panel.js state rendering + session_control pause_escort —
+- [x] T066 [US4] panel.js state rendering + session_control pause_escort —
       T065 green
-- [x] T067 [US4] Flagship tests/integration/test_escort.py end-to-end:
+- [x] T067 [US4] Flagship tests/integration/test_escort_journeys.py end-to-end:
       posting → opener Apply click → login_wall (fake vault) → sign_in →
       step1 fills → next → step2 fills (Workday options + placeholder
       select) → next → parked at review; trail (incl. the opener's
@@ -299,10 +299,10 @@ sign-in → two filled steps → parked at review with Submit provably unclicked
       companion-ui.md footer line points at 019 contract;
       specs/005-apply-assist/spec.md FR-008 annotated superseded-in-part by
       constitution v1.2.0 (history preserved, not rewritten)
-- [ ] T072 [P] [US5] Docs: web/main.py WHATS_NEW["1.9.0"];
+- [x] T072 [P] [US5] Docs: web/main.py WHATS_NEW["1.9.0"];
       docs/USER_MANUAL.md (escort section + saved-logins consent);
       docs/USER_GUIDE.md; README.md ("Using it (v1.9)")
-- [ ] T073 [US5] Version bumps: engine/__init__.py APP_VERSION,
+- [x] T073 [US5] Version bumps: engine/__init__.py APP_VERSION,
       extension/manifest.json, packaging/windows.iss (byte-safe edit)
 - [ ] T074 [US5] Full battery ×2 (flake check) + `-m browser` + slow markers
 - [ ] T075 [US5] Frozen smoke (packaging/smoke_test.py) incl. keyring backend

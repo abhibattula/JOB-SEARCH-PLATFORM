@@ -17,7 +17,7 @@ real pages, real clicks, real effects).
 
 ## 2. Fixture pass (fast, local)
 
-`pytest -m browser tests/integration/test_escort.py` covers this, but to see
+`pytest -m browser tests/integration/test_escort_journeys.py` covers this, but to see
 it live: open each fixture from `tests/fixtures/ats_pages/` and confirm —
 - `login_wall.html`: widget appears in sign-in state (it must NOT be
   invisible); with no saved login it offers the inline save form.

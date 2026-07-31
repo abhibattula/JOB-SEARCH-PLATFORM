@@ -123,6 +123,36 @@ templates.env.globals["current_theme"] = _current_theme
 # 008 (FR-032): plain-language changelog behind the What's New overlay —
 # keyed by APP_VERSION, shown once per version.
 WHATS_NEW: dict[str, list[str]] = {
+    "1.9.0": [
+        "Apply Assist now takes you to the door. From a posting it presses "
+        "Apply, signs you in with your saved login, fills every step, and "
+        "presses Continue between steps it has completely filled — then "
+        "stops at the review page. You read it and press Submit. It never "
+        "presses Submit, never creates an account, and never touches a "
+        "“prove you're human” check.",
+        "Sign-in walls are no longer a dead end. The companion used to hide "
+        "on any page with a password box — the exact page you needed it on. "
+        "It now appears there, uses the login saved in Windows Credential "
+        "Manager, and offers to save one right on the page if you have none.",
+        "Creating an account is prepared for you: a strong password is "
+        "generated, filled into both boxes, and saved to your OS keychain "
+        "the moment it is used. You press Create account.",
+        "Five reasons real applications didn't fill are fixed. Questions "
+        "that label their field by reference (Workday and most modern "
+        "forms) were arriving blank; forms inside a shadow root were "
+        "invisible; Workday's dropdown rows matched nothing; a dropdown "
+        "showing “Select…” counted as already answered; and fields in a "
+        "floating dialog were treated as off-screen.",
+        "A stale companion can no longer hide. If the app updates and the "
+        "browser is still running the old extension, every surface says so "
+        "and tells you to press ↻ — instead of showing a green tick while "
+        "quietly dropping answers.",
+        "“Apply with Apply Assist” fills the tab you pressed it in. It used "
+        "to open a second copy of the posting and fill THAT, leaving the "
+        "tab you were looking at stuck on “filling”.",
+        "You can turn the escort off in Settings if you would rather press "
+        "every button yourself — filling works the same either way.",
+    ],
     "1.8.0": [
         "The companion is finally where you can see it. It had been rendering "
         "at the very bottom of the page — off screen on every job posting — "
