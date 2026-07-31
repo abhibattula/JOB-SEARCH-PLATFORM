@@ -322,15 +322,20 @@ def main() -> int:
             proc.terminate()
             print(f"FAIL: /settings is missing {what}")
             return 1
-    # 019: the credential vault must import INSIDE the frozen app — keyring
-    # cannot auto-detect its backend there, and a saved login that cannot be
-    # read is a sign-in that silently never happens.
-    from engine import credentials as _cred
-
-    generated = _cred.generate_password()
-    if len(generated) < 20:
+    # 019: the credential vault must work INSIDE the frozen app — keyring
+    # cannot auto-detect its backend there, and a login that cannot be read
+    # is a sign-in that silently never happens.
+    #
+    # Proven by the /settings fetch above, not by an import here: this
+    # harness is an ORDINARY python process launching the bundle as a
+    # subprocess, so anything it imports says nothing about what the bundle
+    # can do. (It cannot even import `engine` — the first version of this
+    # check failed exactly that way.) The settings route calls
+    # credentials.get_default() inside the frozen app; a 200 with the
+    # saved-logins section in it is the real evidence.
+    if "Saved logins" not in settings_html:
         proc.terminate()
-        print("FAIL: the frozen build cannot generate an account password")
+        print("FAIL: the frozen build could not render the credential vault")
         return 1
     next_actions = json.loads(
         urllib.request.urlopen(base + "/api/next-actions", timeout=30).read()
