@@ -24,9 +24,14 @@ state — never break, never silently lose work (guarded by
  "kind": "next", "status": "clicked",
  "selector_kind": "workday_bottom_next", "control_hash": "a1b2c3"}
 ```
+- `kind`: `open_apply` | `sign_in` | `next` — the report channel covers ALL
+  progression clicks. `open_apply` results are reported by the opener
+  (which remains the sole Apply-click owner); `sign_in`/`next` by the
+  advancer.
 - `status`: `clicked` | `not_found` | `refused`.
 - Every result (including refusals) lands in the Progression Click Record
-  trail. `refused` never retries the same (doc, control_hash).
+  trail. `refused` never retries the same (doc, control_hash). A `not_found`
+  on a complete step pauses the session to the human (FR-024).
 
 ### Extended: `fields` descriptors
 - `Descriptor.form_context`: `"login" | "registration" | ""` (default `""`).
@@ -37,9 +42,14 @@ state — never break, never silently lose work (guarded by
 ### `advance_step`
 ```json
 {"v": 1, "type": "advance_step", "tab_id": 12, "frame_id": 0,
- "kind": "open_apply"}
+ "kind": "next", "step_key": "d4t0k3n:f13lds"}
 ```
-- `kind`: `open_apply` | `sign_in` | `next`.
+- `kind`: `sign_in` | `next`. (`open_apply` is NOT an advance_step kind —
+  form-opening stays owned by the opener, per constitution v1.2.0's
+  "separate, allowlisted, one-shot step"; the opener reports its click via
+  `advance_result` so the trail is complete.)
+- `step_key` is engine-computed (doc token + fieldset hash); the advancer
+  refuses a second click for a step_key it has already acted on.
 - Routed to the EXACT frame (`chrome.tabs.sendMessage {frameId}`), same as
   fills. `sign_in` may only ever be issued for the frame whose credential
   fills the engine itself confirmed (`filled` / `prefilled_ok`).

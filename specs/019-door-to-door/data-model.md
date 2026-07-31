@@ -64,8 +64,8 @@ A focused user field blocks the `step complete` transition (typing wins).
 | `Descriptor.form_context` | ext/watcher → engine | `"login" \| "registration" \| ""` (default `""`) |
 | probe result additions | ext → engine | `kind:"login_wall"`, `captcha_present: bool` |
 | `credential_save` | ext → engine | `{tab_id, domain, email, password}` — payload redacted from all logging |
-| `advance_step` | engine → ext | `{tab_id, frame_id, kind}` |
-| `advance_result` | ext → engine | `{tab_id, frame_id, kind, status, selector_kind, control_hash}` |
+| `advance_step` | engine → ext | `{tab_id, frame_id, kind: sign_in\|next, step_key}` — open_apply is opener-owned, never an advance_step |
+| `advance_result` | ext → engine | `{tab_id, frame_id, kind: open_apply\|sign_in\|next, status, selector_kind, control_hash}` — opener reports open_apply here |
 | `overlay_state.summary.session` | engine → ext | gains the new state strings above |
 | ledger outcome | engine-internal | `prefilled_ok` (terminal, satisfies sign-in arming) |
 | needs-you reasons | engine → panel | `no_saved_login`, `version_mismatch` |
@@ -87,6 +87,12 @@ session state string, attribution verdict for a `submit_detected`.
 
 Constraints: no I/O, no imports from web/, fully table-testable
 (`tests/test_escort.py`).
+
+## Glossary note
+
+The spec's plain-language **"needs-attention"** is the same concept the
+code and these artifacts call **"needs-you"** (`needs_you` group/reasons in
+`page_answers`). One concept, two registers.
 
 ## Storage deltas
 

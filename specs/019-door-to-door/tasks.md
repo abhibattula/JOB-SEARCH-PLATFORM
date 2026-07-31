@@ -233,10 +233,12 @@ sign-in → two filled steps → parked at review with Submit provably unclicked
       wizard_loop.html (never-ending steps, for the cap), captcha_frame.html
       (stub recaptcha-style iframe)
 - [ ] T057 [P] [US4] Failing unit tables tests/test_escort.py — completeness
-      predicate truth table (required/in-flight/needs-you/focused/quiet);
-      one-shot per step_key; cap 12 ⇒ paused_cap; attribution-window
-      verdicts; state transitions incl. CAPTCHA-outranks-completeness;
-      LinkedIn / mismatch / setting-off gates never arm
+      predicate truth table (required/in-flight/needs-you/focused/quiet
+      ~2 s per research R19); one-shot per step_key; cap 12 ⇒ paused_cap;
+      `advance_result not_found` on a complete step ⇒ your-turn pause
+      (FR-024); attribution-window verdicts; state transitions incl.
+      CAPTCHA-outranks-completeness; LinkedIn / mismatch / setting-off gates
+      never arm
 - [ ] T058 [US4] engine/autofill/escort.py full module (pure logic, no I/O) —
       T057 green
 - [ ] T059 [P] [US4] Failing unit — ext_backend issues advance_step from the
@@ -254,8 +256,10 @@ sign-in → two filled steps → parked at review with Submit provably unclicked
       asset pin; LinkedIn domain refusal
 - [ ] T062 [US4] engine/autofill/adapters.py ADVANCE_ALLOWLIST;
       engine/autofill/click_guard.py + extension/content/click_guard.js
-      FINAL_TERMS; advancer.js open_apply + next kinds with generic fallback
-      and final-class refusal — T061 green
+      FINAL_TERMS; advancer.js `next` kind with generic fallback and
+      final-class refusal (open_apply stays OPENER-owned per analyze finding
+      A1 — opener reports its click via advance_result into the trail) —
+      T061 green
 - [ ] T063 [P] [US4] Failing browser test — captcha_frame: your_turn_captcha
       state shown, ZERO interactions with the frame, resume after the stub
       is removed and the page progresses
@@ -269,10 +273,13 @@ sign-in → two filled steps → parked at review with Submit provably unclicked
 - [ ] T066 [US4] panel.js state rendering + session_control pause_escort —
       T065 green
 - [ ] T067 [US4] Flagship tests/integration/test_escort.py end-to-end:
-      posting → open_apply → login_wall (fake vault) → sign_in → step1 fills
-      → next → step2 fills (Workday options + placeholder select) → next →
-      parked at review; trail visible in the Apply Assist record (test_web
-      assertion); _pending_submissions stays empty throughout
+      posting → opener Apply click → login_wall (fake vault) → sign_in →
+      step1 fills → next → step2 fills (Workday options + placeholder
+      select) → next → parked at review; trail (incl. the opener's
+      open_apply result) visible in the Apply Assist record (test_web
+      assertion); _pending_submissions stays empty throughout; plus a
+      linkedin-domain fixture leg asserting ZERO clicks while filling stays
+      active (FR-033 / US4-AS7)
 - [ ] T068 [US4] Settings `escort_enabled` toggle (web/templates/settings.html
       + engine setting) with browser assert: OFF ⇒ exactly v1.8.0 fill-only;
       worker-restart browser test: advance count survives (cap cannot reset)
