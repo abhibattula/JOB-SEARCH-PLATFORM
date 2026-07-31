@@ -310,7 +310,7 @@ sign-in → two filled steps → parked at review with Submit provably unclicked
 - [ ] T076 [US5] Manual quickstart.md §3-§5 against real Workday (account
       wall → escort → review STOP), real Greenhouse navigate-apply, and a
       LinkedIn zero-click control — user-assisted
-- [ ] T077 [US5] Tag v1.9.0; verify BOTH installers (magic bytes + SHA-256
+- [x] T077 [US5] Tag v1.9.0; verify BOTH installers (magic bytes + SHA-256
       vs release body); sync mirror branch; update auto-memory
 
 ---
