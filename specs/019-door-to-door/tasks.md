@@ -88,7 +88,7 @@ apply-here browser test asserts tab count unchanged + a field actually filled.
       (`adhoc:false` restored via persisted jobId)
 - [x] T017 [US1] extension/background/tabs.js persist jobId;
       service-worker.js adhoc recompute — T016 green
-- [ ] T018 [US1] Checkpoint: full unit battery + `-m browser` green; commit
+- [x] T018 [US1] Checkpoint: full unit battery + `-m browser` green; commit
 
 ---
 
