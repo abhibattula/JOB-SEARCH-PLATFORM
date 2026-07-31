@@ -345,7 +345,11 @@ class TestApplyOpener016:
     def test_opener_module_exists_with_bounds(self):
         js = (EXT / "content" / "opener.js").read_text(encoding="utf-8")
         assert "OPENERS" in js
-        assert "attemptedFor" in js          # one-shot per page state
+        # 019 (T038): the one-shot key became (doc token + control
+        # fingerprint). `attemptedFor = href` dead-locked the opener on an
+        # SPA wizard that keeps its address, and re-armed it on every
+        # in-page navigation elsewhere. Same guarantee, correct key.
+        assert "stepKey" in js and "attempted" in js
         assert 'type === "submit"' in js     # never a submit control
         assert "hasFillableForm" in js       # only when no form is open
 
@@ -365,7 +369,12 @@ class TestApplyOpener016:
         js = (EXT / "content" / "opener.js").read_text(encoding="utf-8")
         assert adapters.APPLY_OPENERS, "registry must not be empty"
         for ats, selector in adapters.APPLY_OPENERS.items():
-            assert selector in js, f"opener.js missing {ats} selector"
+            # Compare SELECTOR PARTS: a long allowlist is wrapped across
+            # string-concatenation lines in the JS, and a whole-string match
+            # would fail on formatting rather than on drift.
+            for part in [s.strip() for s in selector.split(",")]:
+                assert part in js, (
+                    f"opener.js missing {ats} selector {part}")
 
     def test_main_wires_opener_for_queue_watches_only(self):
         main = (EXT / "content" / "main.js").read_text(encoding="utf-8")
@@ -805,3 +814,74 @@ class TestSharedRulesParity019:
             body = scanner[start:start + 400]
             assert "document.querySelectorAll" not in body, (
                 f"{fn} still uses a flat query — shadow roots stay invisible")
+
+
+class TestAdvancerAssets019:
+    """019: the second click module. It follows the opener's shape — its own
+    allowlist mirrored from the engine, its own single guarded click site —
+    so filler.js's one-click pin stays exactly as it was."""
+
+    ADVANCER = EXT / "content" / "advancer.js"
+
+    def test_it_exists_and_loads_in_the_right_order(self):
+        assert self.ADVANCER.exists()
+        manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))
+        js = manifest["content_scripts"][0]["js"]
+        assert "content/advancer.js" in js
+        assert js.index("content/advancer.js") < js.index("content/main.js")
+        assert js.index("content/click_guard.js") < js.index("content/advancer.js")
+        assert js.index("content/scanner.js") < js.index("content/advancer.js")
+
+    def test_exactly_one_raw_click(self):
+        """The same guarantee filler.js carries: ONE click site, reachable
+        only after every refusal has been checked."""
+        import re as _re
+
+        code = "\n".join(line.split("//")[0]
+                          for line in self.ADVANCER.read_text(
+                              encoding="utf-8").splitlines())
+        clicks = _re.findall(r"\.click\s*\(", code)
+        assert len(clicks) == 1, f"expected one raw click; found {len(clicks)}"
+
+    def test_every_refusal_precedes_the_click(self):
+        code = self.ADVANCER.read_text(encoding="utf-8")
+        click_at = code.index(".click(")
+        for guard in ("isProgressionSafe", "finalClass", "captchaPresent",
+                      "NO_CLICK_HOSTS", "done.has"):
+            assert guard in code, f"advancer.js lost its {guard} refusal"
+            assert code.index(guard) < click_at, (
+                f"{guard} must be checked BEFORE the click")
+
+    def test_allowlist_mirrors_the_engine_registry(self):
+        from engine.autofill import adapters
+
+        js = self.ADVANCER.read_text(encoding="utf-8")
+        assert adapters.ADVANCE_ALLOWLIST, "registry must not be empty"
+        for ats, selector in adapters.ADVANCE_ALLOWLIST.items():
+            for part in [s.strip() for s in selector.split(",")]:
+                assert part in js, f"advancer.js missing {ats} selector {part}"
+
+    def test_final_terms_parity(self):
+        """A term the app refuses and the page permits is a submitted
+        application. The two lists must be identical."""
+        import re as _re
+
+        from engine.autofill import click_guard as py_guard
+
+        js = (EXT / "content" / "click_guard.js").read_text(encoding="utf-8")
+        block = _re.search(r"FINAL_TERMS = \[(.*?)\];", js, _re.DOTALL).group(1)
+        js_terms = _re.findall(r'"([^"]+)"', block)
+        assert set(js_terms) == set(py_guard.FINAL_TERMS), (
+            f"final-class drift — JS:{sorted(js_terms)} "
+            f"PY:{sorted(py_guard.FINAL_TERMS)}")
+
+    def test_the_panel_still_never_clicks_the_page(self):
+        """018's guarantee, unchanged: the widget renders and delegates."""
+        panel = (EXT / "content" / "panel.js").read_text(encoding="utf-8")
+        code = "\n".join(line.split("//")[0] for line in panel.splitlines())
+        assert ".click(" not in code
+
+    def test_the_scanner_still_never_clicks_the_page(self):
+        scanner = (EXT / "content" / "scanner.js").read_text(encoding="utf-8")
+        code = "\n".join(line.split("//")[0] for line in scanner.splitlines())
+        assert ".click(" not in code

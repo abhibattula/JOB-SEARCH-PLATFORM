@@ -576,3 +576,43 @@ class TestAutomationIdInHaystack019:
             "label_text": "Last Name", "placeholder": "", "aria_label": "",
             "automation_id": "legalNameSection_firstName",
         }) == "last_name"
+
+
+class TestCredentialFormClassification019:
+    """019 (T041/T042, FR-014/FR-020): login_email required a `form_context`
+    signal NO serializer ever produced and the bridge schema could not even
+    carry — so it was unreachable in production, and no username tag existed
+    at all."""
+
+    def _field(self, **over):
+        f = {"tag": "input", "type": "text", "name": "", "id": "",
+             "label_text": "", "placeholder": "", "aria_label": "",
+             "autocomplete": "", "form_context": ""}
+        f.update(over)
+        return f
+
+    def test_login_email_is_reachable(self):
+        assert fields.classify(self._field(
+            type="email", label_text="Email Address",
+            autocomplete="username", form_context="login")) == "login_email"
+
+    def test_login_username_is_recognised(self):
+        assert fields.classify(self._field(
+            label_text="Username", autocomplete="username",
+            form_context="login")) == "login_username"
+
+    def test_password_is_still_a_password(self):
+        assert fields.classify(self._field(
+            type="password", form_context="login")) == "login_password"
+
+    def test_an_ordinary_email_field_is_not_a_login(self):
+        """The applicant's contact email on an application form must never
+        be filled from the credential vault."""
+        assert fields.classify(self._field(
+            type="email", label_text="Email", autocomplete="email",
+            form_context="")) == "email"
+
+    def test_registration_password_is_tagged_for_signup(self):
+        assert fields.classify(self._field(
+            type="password", autocomplete="new-password",
+            form_context="registration")) == "signup_password"

@@ -292,7 +292,10 @@ def decide(ats: str | None, descriptor: dict, handled: dict, get_value) -> Decis
 
     value = get_value(tag, descriptor)
     if value is None:
-        return Decision("skip")
+        # 019: carry the tag. A caller that knows WHY it returned no value
+        # (no saved login for this domain) can only say so on the page if
+        # it can tell which field the skip belongs to.
+        return Decision("skip", tag=tag)
 
     # 017 (FR-012): the answer must fit the control. Settling `no_match`
     # leaves the field untouched and epoch-retryable, so a later, correctly

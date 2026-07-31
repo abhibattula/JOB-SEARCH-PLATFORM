@@ -29,6 +29,8 @@
   // routinely carries no metadata at all) showed nothing.
   let detection = "none";   // none | form | posting | posting+form
   let formFields = 0;
+  let wall = "";      // 019: "" | "login" | "registration"
+  let captcha = false;
   let startTimer = null;    // outcome watchdog for the primary action
 
   // ---------- detection (read-only) ----------
@@ -200,9 +202,14 @@
     const hasForm = !!(form && window.jeScanner
                        && window.jeScanner.looksLikeApplicationForm(form));
     formFields = form ? form.fields : 0;
+    // 019 (FR-014): a credential wall counts as something worth showing up
+    // for. It used to be the one page we deliberately hid on — which is
+    // exactly where the applicant concluded the companion did nothing.
+    wall = form ? (form.wall || "") : "";
+    captcha = !!(form && form.captcha);
     detection = current ? (hasForm ? "posting+form" : "posting")
       : (hasForm ? "form" : "none");
-    return detection;
+    return (detection === "none" && wall) ? "wall" : detection;
   }
 
   function requestSave() {
@@ -232,7 +239,7 @@
   function render() {
     if (dismissedFor === location.href || !window.jePanel) { return; }
     window.jePanel.setPosting(current);
-    window.jePanel.setDetection(detection, formFields);
+    window.jePanel.setDetection(detection, formFields, wall);
   }
 
   function renderScore(r) {
@@ -387,6 +394,8 @@
     // real application form now qualifies — that is the Greenhouse
     // `…/application` case where the applicant previously saw nothing at all.
     if (classify() === "none") { scoredFor = null; removeBadge(); return; }
+    // A wall alone is enough to render — there is no posting to score.
+    if (detection === "none" && wall) { render(); return; }
     if (dismissedFor === location.href) { return; }
     if (current) { requestScore(); }
     render();

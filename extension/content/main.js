@@ -104,6 +104,15 @@
                                    value: answer }]);
         });
       }
+      // 019 (FR-017): a login saved from the wall. It goes to the app,
+      // which is the only thing that ever touches the OS keychain — the
+      // secret is never stored, echoed or logged on this side.
+      if (window.jePanel && window.jePanel.onCredential) {
+        window.jePanel.onCredential(function (identifier, password) {
+          toApp({ type: "credential_save", domain: location.hostname,
+                  email: identifier, password: password });
+        });
+      }
       // 017 (FR-036): scroll to a field that needs them.
       if (window.jeOverlay.onJump) {
         window.jeOverlay.onJump(function (jeIdx) {
@@ -187,8 +196,27 @@
           window.jePanel.show();
         }
         break;
+      // 019 (FR-016): the app says the credentials it filled have landed
+      // and the one permitted sign-in click may go out. The engine decided
+      // this — the page never infers it from a button's text.
+      case "advance_step":
+        if (window.jeAdvancer) { window.jeAdvancer.perform(message); }
+        break;
+      // 019 (FR-017): the app saved the login; the wall gets another go.
+      case "credential_saved":
+        if (isTop && window.jePanel) {
+          window.jePanel.setCredentialNeeded(false);
+          window.jePanel.notice("Login saved. Signing you in…");
+        }
+        break;
       case "overlay_state":
         if (isTop && window.jeOverlay) { window.jeOverlay.update(message.summary); }
+        // 019 (FR-017): the app knows whether a saved login exists for this
+        // domain; the panel offers the inline save form only when it does not.
+        if (isTop && window.jePanel && message.summary
+            && window.jePanel.setCredentialNeeded) {
+          window.jePanel.setCredentialNeeded(!!message.summary.needs_login);
+        }
         // 016 (T017): highlight the fields the human must answer
         if (message.summary && message.summary.needs_you_idx
             && window.jeFiller.annotateNeedsYou) {

@@ -25,6 +25,27 @@ window.jeClickGuard = (function () {
     return (text || "").trim().toLowerCase().replace(/\s+/g, " ");
   }
 
+  // 019: the FINAL-class layer, mirrored from click_guard.py FINAL_TERMS
+  // (parity-tested). A wizard's Continue is clickable under constitution
+  // v1.2.0; the Submit at the end of it never is.
+  const FINAL_TERMS = [
+    "submit application", "submit my application", "review and submit",
+    "submit", "create account", "create an account", "register",
+    "sign up", "signup", "pay", "checkout", "place order",
+    "confirm and submit",
+  ];
+
+  function isProgressionSafe(name) {
+    const norm = normalize(name);
+    if (!norm) { return false; }  // unnamed is not identifiably safe
+    for (const term of FINAL_TERMS) {
+      const re = new RegExp("(?<![a-z])"
+        + term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&") + "(?![a-z])");
+      if (re.test(norm)) { return false; }
+    }
+    return true;
+  }
+
   function isDenylistedSignal(text, type, role) {
     if ((type || "").trim().toLowerCase() === "submit") { return true; }
     const norm = normalize(text);
@@ -104,5 +125,6 @@ window.jeClickGuard = (function () {
     return isDenylistedSignal(text, foldedType, ownRole);
   }
 
-  return { DENY_TERMS, isDenylisted, isDenylistedSignal, isWidgetOperable };
+  return { DENY_TERMS, FINAL_TERMS, isDenylisted, isDenylistedSignal,
+           isWidgetOperable, isProgressionSafe };
 })();

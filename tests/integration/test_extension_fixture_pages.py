@@ -428,3 +428,30 @@ class TestFillGaps019:
         assert _echoed("fx_city") == "Austin"
         # visibility:hidden is genuinely not on screen — never filled
         assert not any(e.get("name") == "fx_ghost" for e in _Handler.echoes)
+
+
+class TestGreenhouseNavigateApply019:
+    """019 (T037, FR-022): modern job-boards.greenhouse.io NAVIGATES to a
+    separate application page. The 016 opener selectors matched none of it,
+    and its one-shot key was the href — wrong the moment an SPA keeps the
+    address. Neither the click nor the fill happened."""
+
+    def test_apply_navigates_and_the_application_fills(
+            self, context, app_server, fixture_server):
+        assert _wait_connected(app_server["port"])
+        _seed_and_queue_full(fixture_server, "greenhouse_navigate_apply.html")
+        # the opener clicked Apply, the browser navigated, and the fields on
+        # the NEXT page filled — proven by real values, not by a source read
+        assert _echoed("job_application[first_name]") == "Abhinav"
+        assert _echoed("job_application[email]") == "abhi@example.com"
+
+    def test_the_final_submit_is_never_clicked(self, context, app_server,
+                                               fixture_server):
+        """SC-006. The application page's Submit echoes if anything clicks
+        it; the fill path must reach the page and stop."""
+        assert _wait_connected(app_server["port"])
+        _seed_and_queue_full(fixture_server, "greenhouse_navigate_apply.html")
+        assert _echoed("job_application[first_name]") == "Abhinav"
+        time.sleep(3.0)  # give a wrong click every chance to happen
+        assert not any(e.get("name") == "__gh_submitted"
+                       for e in _Handler.echoes)

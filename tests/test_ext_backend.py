@@ -1286,3 +1286,161 @@ class TestFileTokenRetry019:
         tok = ext_backend.issue_file_token("C:/resumes/abhinav.pdf")
         ext_backend.close_current()
         assert ext_backend.consume_file_token(tok) is None
+
+
+class TestCredentialFill019:
+    """019 (T045-T048, FR-015/FR-016/FR-019): the vault fills the wall, and
+    the Sign in click is armed by STATE — never by button text."""
+
+    LOGIN = dict(je_idx="1", tag="input", type="email", name="email",
+                 id="email", label_text="Email Address",
+                 autocomplete="username", form_context="login")
+    PASSWORD = dict(je_idx="2", tag="input", type="password", name="password",
+                    id="password", label_text="Password",
+                    autocomplete="current-password", form_context="login")
+
+    def _wall(self, tab_id=40, url="https://wd5.myworkdayjobs.com/en-US/login"):
+        return fields_msg(job_url=url, tab_id=tab_id, doc="wall1",
+                          descriptors=[descriptor(**self.LOGIN),
+                                       descriptor(**self.PASSWORD)])
+
+    def _vault(self, monkeypatch, saved=None):
+        from engine import credentials
+
+        monkeypatch.setattr(
+            credentials, "get",
+            lambda domain: saved or {"email": "me@example.com",
+                                     "password": "s3cret-Pa55!"})
+
+    def _matched_companion(self, sent):
+        """FR-035: the escort never arms across a version mismatch, and the
+        shared fixture registers "1.0.0" on purpose. An arming test has to
+        speak for a companion that actually matches."""
+        from engine import APP_VERSION
+
+        ext_backend.register(sent.append, lambda code: None, APP_VERSION)
+
+    def test_saved_login_fills_both_fields(self, queue, sent, monkeypatch):
+        self._vault(monkeypatch)
+        open_the_tab(queue, sent)
+        sent.clear()
+        ext_backend.handle_message(self._wall())
+        fills = [i for m in sent if m["type"] == "fill" for i in m["items"]]
+        kinds = {i["je_idx"]: i["kind"] for i in fills}
+        assert kinds.get("1") == "text"
+        assert kinds.get("2") == "secret"
+
+    def test_the_secret_never_reaches_the_page_feed(self, queue, sent,
+                                                    monkeypatch):
+        self._vault(monkeypatch)
+        open_the_tab(queue, sent)
+        sent.clear()
+        ext_backend.handle_message(self._wall())
+        blob = json.dumps([m for m in sent if m["type"] == "answers"])
+        assert "s3cret-Pa55!" not in blob
+
+    def test_sign_in_arms_only_after_the_engine_filled_both(
+            self, queue, sent, monkeypatch):
+        self._vault(monkeypatch)
+        open_the_tab(queue, sent)
+        self._matched_companion(sent)
+        ext_backend.handle_message(self._wall())
+        sent.clear()
+        # nothing yet: the fills have not reported back
+        assert not any(m["type"] == "advance_step" for m in sent)
+        ext_backend.handle_message(ext_protocol.FillResult(
+            tab_id=40, frame_id=0,
+            items=[{"je_idx": "1", "outcome": "filled"},
+                   {"je_idx": "2", "outcome": "filled"}]))
+        step = next(m for m in sent if m["type"] == "advance_step")
+        assert step["kind"] == "sign_in"
+        assert step["frame_id"] == 0
+
+    def test_sign_in_is_one_shot_per_document(self, queue, sent, monkeypatch):
+        self._vault(monkeypatch)
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(self._wall())
+        ext_backend.handle_message(ext_protocol.FillResult(
+            tab_id=40, frame_id=0,
+            items=[{"je_idx": "1", "outcome": "filled"},
+                   {"je_idx": "2", "outcome": "filled"}]))
+        sent.clear()
+        # a re-render of the SAME wall must not fire a second click
+        ext_backend.handle_message(self._wall())
+        ext_backend.handle_message(ext_protocol.FillResult(
+            tab_id=40, frame_id=0,
+            items=[{"je_idx": "1", "outcome": "filled"},
+                   {"je_idx": "2", "outcome": "filled"}]))
+        assert not any(m["type"] == "advance_step" for m in sent)
+
+    def test_a_chrome_prefilled_password_still_arms_sign_in(
+            self, queue, sent, monkeypatch):
+        """FR-019: the browser's own password manager got there first. That
+        is a satisfied credential, not a dead end."""
+        self._vault(monkeypatch)
+        open_the_tab(queue, sent)
+        self._matched_companion(sent)
+        sent.clear()
+        prefilled = fields_msg(
+            job_url="https://wd5.myworkdayjobs.com/en-US/login", tab_id=40,
+            doc="wall2",
+            descriptors=[descriptor(**dict(self.LOGIN, value="me@example.com")),
+                         descriptor(**dict(self.PASSWORD, value="already"))])
+        ext_backend.handle_message(prefilled)
+        step = next(m for m in sent if m["type"] == "advance_step")
+        assert step["kind"] == "sign_in"
+
+    def test_no_saved_login_is_visible_not_silent(self, queue, sent,
+                                                  monkeypatch):
+        """FR-017: this used to be a silent skip — the applicant never
+        learned why nothing happened."""
+        from engine import credentials
+
+        monkeypatch.setattr(credentials, "get", lambda domain: None)
+        open_the_tab(queue, sent)
+        sent.clear()
+        ext_backend.handle_message(self._wall())
+        answers = [m for m in sent if m["type"] == "answers"]
+        assert answers
+        entry = next(i for i in answers[-1]["items"]
+                     if "password" in i["question"].lower()
+                     or "email" in i["question"].lower())
+        assert entry["group"] == "needs_you"
+        assert entry["reason"] == "no_saved_login"
+        assert not any(m["type"] == "advance_step" for m in sent)
+
+
+class TestCredentialSave019:
+    """019 (T047-T048, FR-017/FR-018): a login saved from the page goes to
+    the vault and NOWHERE else."""
+
+    def test_it_saves_and_acknowledges_without_the_secret(self, queue, sent,
+                                                          monkeypatch):
+        saved = {}
+        from engine import credentials
+
+        monkeypatch.setattr(credentials, "save",
+                            lambda d, e, p: saved.update(domain=d, email=e,
+                                                         password=p))
+        open_the_tab(queue, sent)
+        sent.clear()
+        ext_backend.handle_message(ext_protocol.CredentialSave(
+            tab_id=40, domain="wd5.myworkdayjobs.com",
+            email="me@example.com", password="s3cret-Pa55!"))
+        assert saved["domain"] == "wd5.myworkdayjobs.com"
+        assert saved["password"] == "s3cret-Pa55!"
+        blob = json.dumps(sent)
+        assert "s3cret-Pa55!" not in blob
+        assert "me@example.com" not in blob
+
+    def test_saving_never_logs_the_secret(self, queue, sent, monkeypatch,
+                                          caplog):
+        from engine import credentials
+
+        monkeypatch.setattr(credentials, "save", lambda d, e, p: None)
+        open_the_tab(queue, sent)
+        with caplog.at_level(logging.DEBUG):
+            ext_backend.handle_message(ext_protocol.CredentialSave(
+                tab_id=40, domain="d.example", email="me@example.com",
+                password="s3cret-Pa55!"))
+        assert "s3cret-Pa55!" not in caplog.text

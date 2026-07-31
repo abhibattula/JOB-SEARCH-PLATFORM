@@ -34,11 +34,21 @@ window.jePanel = (function () {
   const handlers = {
     action: null, save: null, dismiss: null,
     answer: null, insert: null, jump: null,
+    // 019: (identifier, password) -> void — routed to the app, which is the
+    // only thing that ever touches the OS keychain.
+    credential: null,
   };
 
   const state = {
     collapsed: true,
     detection: "none",       // none | form | posting | posting+form
+    // 019: "" | "login" | "registration" — a credential wall is a state of
+    // its own, not a page to hide on.
+    wall: "",
+    // 019: the app told us there is no saved login for this domain, so the
+    // inline save form is the useful thing to show.
+    credentialNeeded: false,
+    // 019 adds: your_turn_captcha | ready_for_review | paused_cap
     session: "idle",         // idle | starting | filling | stopped | done
     formFields: 0,
     posting: null,
@@ -63,15 +73,38 @@ window.jePanel = (function () {
 
   // FR-007: exactly one primary action. Its label and meaning follow the
   // state, so there is never a row of buttons to choose between.
-  function primaryFor(session, detection) {
+  function primaryFor(session, detection, wall) {
     if (session === "starting") {
       return { action: "", label: "Starting…", disabled: true };
+    }
+    // 019 (FR-028): a bot check outranks everything. Nothing is clicked on
+    // or near it, and the session waits for the human.
+    if (session === "your_turn_captcha") {
+      return { action: "", label: "Waiting for you", disabled: true };
+    }
+    // 019 (FR-030): the door. Everything fillable is in; the Submit is the
+    // applicant's, and the button never offers to press it.
+    if (session === "ready_for_review") {
+      return { action: "", label: "Your turn to submit", disabled: true };
+    }
+    if (session === "paused_cap") {
+      return { action: "resume_escort", label: "Continue", disabled: false };
     }
     if (session === "filling") {
       return { action: "stop", label: "Stop", disabled: false };
     }
     if (session === "stopped" || session === "done") {
       return { action: "fill_again", label: "Fill again", disabled: false };
+    }
+    // 019 (FR-014): a credential wall. Signing in is the only useful thing
+    // to offer here — this page used to render nothing at all.
+    if (wall === "login") {
+      return { action: "fill_here", label: "Sign in with my saved login",
+               disabled: false };
+    }
+    if (wall === "registration") {
+      return { action: "fill_here", label: "Prepare my account details",
+               disabled: false };
     }
     if (detection === "posting" || detection === "posting+form") {
       return { action: "apply", label: "Apply with Apply Assist",
@@ -164,6 +197,15 @@ window.jePanel = (function () {
     button.act.danger{background:#9e2f24}
     button.act.danger:hover{background:#c03a2c}
     .formnote{color:#8b949e;font-size:12px;margin-bottom:9px}
+    .wallnote{color:#e6edf3;font-size:12px;margin-bottom:9px;
+      background:#161b22;border:1px solid #30363d;border-left:3px solid #58a6ff;
+      border-radius:6px;padding:8px 10px}
+    .loginform{display:flex;flex-direction:column;gap:6px;margin:8px 0}
+    .loginform input{font:13px system-ui,-apple-system,sans-serif;
+      background:#0d1117;color:#e6edf3;border:1px solid #30363d;
+      border-radius:6px;padding:7px 9px}
+    .loginform input:focus-visible{outline:2px solid #58a6ff;outline-offset:1px}
+    .credhint{color:#8b949e;font-size:11px;line-height:1.35}
     .prog{display:flex;gap:10px;font-size:12px;color:#8b949e;margin:8px 0 4px;
       flex-wrap:wrap}
     .prog b{color:#e6edf3;font-weight:600}
@@ -228,7 +270,24 @@ window.jePanel = (function () {
           </div>
         </div>
         <div class="formnote" id="formnote" hidden></div>
+        <div class="wallnote" id="wallnote" hidden></div>
         <button class="act" id="primary">Fill this page</button>
+        <!-- 019 (FR-017): saving a login used to mean leaving the wall,
+             finding the app, and finding Settings. The password goes
+             straight to the OS keychain and is cleared from this form the
+             moment it is sent. -->
+        <form class="loginform" id="loginform" hidden>
+          <input id="cred-id" type="text" autocomplete="off"
+                 placeholder="Email or username" aria-label="Email or username">
+          <input id="cred-pw" type="password" autocomplete="off"
+                 placeholder="Password" aria-label="Password">
+          <button class="act ghost" id="cred-save" type="submit">
+            Save this login
+          </button>
+          <div class="credhint">Stored in Windows Credential Manager /
+            macOS Keychain — never in the app's database, never shown again.
+          </div>
+        </form>
         <button class="act ghost" id="next" hidden>Next job</button>
         <button class="act ghost" id="save" hidden>Save to Job Engine</button>
         <div class="prog" id="prog" hidden>
@@ -263,6 +322,10 @@ window.jePanel = (function () {
       band: root.getElementById("band"),
       sponsor: root.getElementById("sponsor"),
       formnote: root.getElementById("formnote"),
+      wallnote: root.getElementById("wallnote"),
+      loginform: root.getElementById("loginform"),
+      credId: root.getElementById("cred-id"),
+      credPw: root.getElementById("cred-pw"),
       primary: root.getElementById("primary"),
       next: root.getElementById("next"),
       save: root.getElementById("save"),
@@ -290,6 +353,22 @@ window.jePanel = (function () {
     els.save.addEventListener("click", function () {
       if (handlers.save) { handlers.save(); }
     });
+    // 019 (FR-017/FR-018): the login goes to the app, which puts it in the
+    // OS keychain. The password is cleared from the DOM on the next line —
+    // it never sits in a form waiting to be read by anything else.
+    els.loginform.addEventListener("submit", function (e) {
+      e.preventDefault();
+      const identifier = els.credId.value.trim();
+      const password = els.credPw.value;
+      els.credPw.value = "";
+      if (!identifier || !password) {
+        setNotice("Enter both the email/username and the password.");
+        return;
+      }
+      if (handlers.credential) { handlers.credential(identifier, password); }
+      els.credId.value = "";
+      setNotice("Saved. Signing you in…");
+    });
     (document.body || document.documentElement).appendChild(host);
     paint();
     return true;
@@ -298,7 +377,7 @@ window.jePanel = (function () {
   // ---------- interaction ----------
 
   function onPrimary() {
-    const p = primaryFor(state.session, state.detection);
+    const p = primaryFor(state.session, state.detection, state.wall);
     if (p.disabled || !p.action) { return; }
     state.notice = "";
     if (handlers.action) { handlers.action(p.action); }
@@ -316,10 +395,14 @@ window.jePanel = (function () {
 
   // ---------- inbound state ----------
 
-  function setDetection(detection, formFields) {
+  function setDetection(detection, formFields, wall) {
     state.detection = detection || "none";
     state.formFields = formFields || 0;
-    if (state.detection !== "none") { build(); }
+    // 019 (FR-014): "" | "login" | "registration". A wall is reason enough
+    // to render the widget even when the page has no application form —
+    // it is the page the applicant most needed us on, and it showed nothing.
+    state.wall = wall || "";
+    if (state.detection !== "none" || state.wall) { build(); }
     paint();
   }
 
@@ -441,6 +524,21 @@ window.jePanel = (function () {
       els.sponsor.className = s.sponsorClass || "chip";
     }
 
+    // 019 (FR-014/FR-017): the credential wall. Either we have a saved
+    // login for this site (and are using it), or we ask for one here rather
+    // than sending the applicant to Settings mid-application.
+    els.wallnote.hidden = !state.wall;
+    els.loginform.hidden = !(state.wall && state.credentialNeeded);
+    if (state.wall) {
+      els.wallnote.textContent = state.wall === "registration"
+        ? "This site wants a new account. I'll fill it in with a strong "
+          + "password saved to your OS keychain — you press Create account."
+        : (state.credentialNeeded
+           ? "No saved login for " + (location.hostname || "this site")
+             + ". Save one and I'll sign you in."
+           : "Signing you in with your saved login.");
+    }
+
     // form-only note
     els.formnote.hidden = hasPosting || state.detection === "none";
     if (!els.formnote.hidden) {
@@ -449,7 +547,7 @@ window.jePanel = (function () {
     }
 
     // primary + save
-    const p = primaryFor(state.session, state.detection);
+    const p = primaryFor(state.session, state.detection, state.wall);
     els.primary.textContent = p.label;
     els.primary.disabled = p.disabled;
     els.primary.className = "act" + (p.action === "stop" ? " danger" : "");
@@ -482,6 +580,7 @@ window.jePanel = (function () {
     d.jeCollapsed = state.collapsed ? "1" : "0";
     d.jeSession = state.session;
     d.jeDetection = state.detection;
+    if (state.wall) { d.jeWall = state.wall; } else { delete d.jeWall; }
     d.jeSeen = String(state.counts.seen);
     d.jeFilled = String(state.counts.filled);
     d.jeNeedsYou = String(state.counts.needs_you);
@@ -770,6 +869,12 @@ window.jePanel = (function () {
     // rendering inputs
     setDetection, setPosting, setScore, setSaved, setSession, setCounts,
     setAnswers, notice: setNotice,
+    // 019 (FR-014/FR-017)
+    setCredentialNeeded: function (needed) {
+      state.credentialNeeded = !!needed;
+      if (needed) { build(); setCollapsed(false); }
+      paint();
+    },
     // lifecycle
     show, hide, isMounted: function () { return !!host; },
     // FR-035: the keyboard shortcut's target
@@ -784,6 +889,7 @@ window.jePanel = (function () {
     onAnswer: function (fn) { handlers.answer = fn; },
     onInsert: function (fn) { handlers.insert = fn; },
     onJump: function (fn) { handlers.jump = fn; },
+    onCredential: function (fn) { handlers.credential = fn; },
     // pure, exported for the state-machine test
     primaryFor,
   };

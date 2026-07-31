@@ -42,6 +42,45 @@ DENY_TERMS: tuple[str, ...] = (
 )
 
 
+# 019 (T062, constitution v1.2.0): the FINAL-class layer. DENY_TERMS keeps
+# protecting the fill path unchanged — it still refuses "next"/"continue"
+# there, because a filler has no business advancing anything. Progression
+# clicks are a separate, narrower permission, and these are the terms that
+# permission never extends to. A wizard's Continue is now clickable; the
+# Submit at the end of it is not, and never will be.
+FINAL_TERMS: tuple[str, ...] = (
+    "submit application",
+    "submit my application",
+    "review and submit",
+    "submit",
+    "create account",
+    "create an account",
+    "register",
+    "sign up",
+    "signup",
+    "pay",
+    "checkout",
+    "place order",
+    "confirm and submit",
+)
+
+
+def is_progression_safe(name: str = "") -> bool:
+    """True when a control may be clicked to move the application FORWARD.
+
+    False for anything that would submit it, create an account, or pay —
+    the three things the human always does themselves (constitution v1.2.0).
+    """
+    norm = _normalize(name)
+    if not norm:
+        # An unnamed control is not identifiable as safe; refuse it.
+        return False
+    for term in FINAL_TERMS:
+        if re.search(rf"(?<![a-z]){re.escape(term)}(?![a-z])", norm):
+            return False
+    return True
+
+
 def _normalize(text: str) -> str:
     # lowercase, collapse whitespace, strip non-alphanumeric edges so
     # "Continue »" / "  submit  " normalize cleanly

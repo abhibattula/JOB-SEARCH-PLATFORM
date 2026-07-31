@@ -44,6 +44,41 @@ def _setting_key(domain: str) -> str:
     return f"{_SETTING_PREFIX}{domain}"
 
 
+# 019 (T052, FR-021): the alphabet for a generated account password.
+# Ambiguous glyphs are excluded because the applicant may have to read one
+# back off a screen to a support agent or a phone — O/0, I/l/1, and quote
+# characters that shells and forms mangle.
+_PW_LOWER = "abcdefghijkmnopqrstuvwxyz"
+_PW_UPPER = "ABCDEFGHJKLMNPQRSTUVWXYZ"
+_PW_DIGITS = "23456789"
+_PW_SYMBOLS = "!@#$%^&*-_=+?"
+_PW_ALPHABET = _PW_LOWER + _PW_UPPER + _PW_DIGITS + _PW_SYMBOLS
+PASSWORD_LENGTH = 20
+
+
+def generate_password(length: int = PASSWORD_LENGTH) -> str:
+    """A strong password for an account the applicant is creating.
+
+    019 (FR-021): account creation is assisted, not automated — this fills
+    the form and is saved to the vault at fill time, and the human presses
+    Create account. Guaranteed to contain each class so a site's own
+    complexity rule cannot reject it.
+    """
+    import secrets
+
+    length = max(length, 12)
+    required = [secrets.choice(_PW_LOWER), secrets.choice(_PW_UPPER),
+                secrets.choice(_PW_DIGITS), secrets.choice(_PW_SYMBOLS)]
+    rest = [secrets.choice(_PW_ALPHABET) for _ in range(length - len(required))]
+    chars = required + rest
+    # Fisher-Yates via secrets so the guaranteed classes are not always at
+    # the front (some sites reject a leading symbol).
+    for i in range(len(chars) - 1, 0, -1):
+        j = secrets.randbelow(i + 1)
+        chars[i], chars[j] = chars[j], chars[i]
+    return "".join(chars)
+
+
 def save(domain: str, email: str, password: str) -> None:
     keyring.set_password(domain, email, password)
     db.set_setting(_setting_key(domain), email)

@@ -27,9 +27,30 @@ from .fields import FieldDescriptor
 # SINGLE SOURCE for the allowlist; extension/content/opener.js mirrors
 # these strings verbatim (asset-parity-tested). Never a submit control.
 APPLY_OPENERS = {
-    "greenhouse": "#apply_button, a[href='#application'], a[href*='#app']",
+    # 019 (T038, FR-022): modern job-boards.greenhouse.io does not reveal an
+    # embedded form — its Apply control NAVIGATES to a separate application
+    # page, and matches none of the 016 selectors. Both shapes are listed;
+    # the opener still refuses anything of type=submit or any form already
+    # holding typed values, so "navigates" never means "submits".
+    "greenhouse": ("#apply_button, a[href='#application'], a[href*='#app'], "
+                   "a.apply-button, a[href$='/application'], "
+                   "a[href*='/application?']"),
     "lever": "a.postings-btn[href*='/apply'], a[href$='/apply']",
     "ashby": "a[href*='/application'], button[data-testid*='apply']",
+}
+
+# 019 (T062, FR-024): allowlist-first progression controls, per ATS. The
+# advancer consults these before its conservative generic fallback, and a
+# final-class name refuses the click regardless of which one matched.
+# Mirrored in extension/content/advancer.js (asset-parity-tested).
+ADVANCE_ALLOWLIST = {
+    "workday": ("[data-automation-id='bottom-navigation-next-button'], "
+                "[data-automation-id='next'], "
+                "[data-automation-id='wd-CommandButton_uic_okButton']"),
+    "greenhouse": "#btn-next, button[data-source='save_and_continue']",
+    "lever": "button.template-btn-continue",
+    "ashby": "button[data-testid*='continue']",
+    "icims": "#quickApplyNextButton, .iCIMS_nextButton",
 }
 
 _HOSTS = {

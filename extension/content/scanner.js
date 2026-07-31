@@ -209,6 +209,8 @@ window.jeScanner = (function () {
                    el.getAttribute("aria-required") === "true"),
       focused: el === document.activeElement,
       visible: isVisible(el),
+      // 019 (FR-014): additive — old app versions ignore it.
+      form_context: formContext(el),
     };
   }
 
@@ -391,6 +393,41 @@ window.jeScanner = (function () {
     return !!(form && form.querySelector("input[type=password]"));
   }
 
+  // 019 (T044, FR-014): a credential wall is now a FIRST-CLASS state, not a
+  // page to hide on. The application-form counts still exclude credential
+  // fields (a login box plus a newsletter email is not an application), but
+  // the wall itself is reported so the companion can offer to sign in — the
+  // page where the applicant most needed it used to show nothing at all.
+  //
+  // 019 (FR-028): a bot check is reported the same way and always pauses to
+  // the human. Detection reads the frame's src attribute; nothing is ever
+  // clicked, focused, or read from inside it.
+  const _CAPTCHA_SRC = /recaptcha|hcaptcha|challenges\.cloudflare\.com|turnstile|funcaptcha|arkoselabs/i;
+
+  function captchaPresent() {
+    const frames = deepQueryAll("iframe");
+    for (let i = 0; i < frames.length; i += 1) {
+      const src = frames[i].getAttribute("src") || "";
+      if (_CAPTCHA_SRC.test(src)) { return true; }
+    }
+    return !!(document.querySelector(".g-recaptcha, .h-captcha, .cf-turnstile"));
+  }
+
+  function credentialWall() {
+    const passwords = deepQueryAll("input[type=password]").filter(isVisible);
+    if (!passwords.length) { return null; }
+    // Two password boxes (or an explicit new-password) means the applicant
+    // is CREATING the account, which is a different offer: we prepare the
+    // form, they press Create account.
+    const newPassword = passwords.some(function (el) {
+      return (el.getAttribute("autocomplete") || "") === "new-password";
+    });
+    return {
+      kind: passwords.length > 1 || newPassword ? "registration" : "login",
+      domain: location.hostname,
+    };
+  }
+
   function probe() {
     const els = deepQueryAll(FIELD_SELECTOR);
     let fields = 0, textish = 0, hasFile = false;
@@ -408,7 +445,10 @@ window.jeScanner = (function () {
         textish += 1;
       }
     });
-    return { fields: fields, textish: textish, hasFile: hasFile };
+    const wall = credentialWall();
+    return { fields: fields, textish: textish, hasFile: hasFile,
+             wall: wall ? wall.kind : "", domain: wall ? wall.domain : "",
+             captcha: captchaPresent() };
   }
 
   // A form worth offering to fill. Two text-ish fields is the floor: it keeps
@@ -419,6 +459,31 @@ window.jeScanner = (function () {
     return p.fields >= 3 || (p.hasFile && p.fields >= 2);
   }
 
+  // 019 (T042, FR-014): which kind of credential form this field sits in —
+  // the signal that finally makes login_email/login_username reachable. It
+  // is computed from the FORM the serializer can see, which is exactly why
+  // it has to live here and not in the classifier.
+  function formContext(el) {
+    const form = el.closest && el.closest("form");
+    const scope = form || document;
+    const passwords = (form
+      ? Array.prototype.slice.call(form.querySelectorAll("input[type=password]"))
+      : deepQueryAll("input[type=password]")).filter(isVisible);
+    if (!passwords.length) { return ""; }
+    const newPassword = passwords.some(function (p) {
+      return (p.getAttribute("autocomplete") || "") === "new-password";
+    });
+    if (passwords.length > 1 || newPassword) { return "registration"; }
+    const text = ((scope.innerText || scope.textContent || "")
+      .slice(0, 400)).toLowerCase();
+    if (/create (an )?account|sign up|register/.test(text)
+        && !/sign in|log in/.test(text)) {
+      return "registration";
+    }
+    return "login";
+  }
+
   return { serialize, elementByIdx, docToken, probe, looksLikeApplicationForm,
-           deepQueryAll, isVisible, isPlaceholderValue };
+           deepQueryAll, isVisible, isPlaceholderValue, formContext,
+           captchaPresent, credentialWall };
 })();

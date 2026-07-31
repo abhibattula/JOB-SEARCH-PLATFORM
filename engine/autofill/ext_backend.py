@@ -336,7 +336,41 @@ def handle_message(msg) -> None:
         _handle_apply_here(msg)
     elif isinstance(msg, ext_protocol.SessionControl):
         _handle_session_control(msg)
+    elif isinstance(msg, ext_protocol.AdvanceResult):
+        _handle_advance_result(msg)
+    elif isinstance(msg, ext_protocol.CredentialSave):
+        _handle_credential_save(msg)
     # Pong: heartbeat only (touch() above)
+
+
+# 019 (FR-031): every automated progression click, in order — the session's
+# activity trail. `open_apply` comes from the opener, `sign_in`/`next` from
+# the advancer; one shape for all three so the record is complete.
+_progression_clicks: list[dict] = []
+MAX_PROGRESSION_CLICKS = 200
+
+
+def progression_clicks() -> list[dict]:
+    with _lock:
+        return list(_progression_clicks)
+
+
+def _handle_advance_result(msg) -> None:
+    from . import browser_controller as bc
+
+    with _lock:
+        job_id = _watch["job_id"]
+        if len(_progression_clicks) < MAX_PROGRESSION_CLICKS:
+            _progression_clicks.append({
+                "kind": msg.kind,
+                "status": msg.status,
+                "selector_kind": msg.selector_kind,
+                "control_hash": msg.control_hash,
+                "job_id": job_id,
+                "at": bc._utcnow_iso(),
+            })
+    log.info("companion progression click: %s %s (%s)",
+             msg.kind, msg.status, msg.selector_kind)
 
 
 def _handle_answer_question(msg) -> None:
@@ -498,6 +532,85 @@ def _frame_domain(url: str) -> str | None:
     return urlparse(url).netloc or None
 
 
+# 019 (T046, FR-016): sign-in arming state, per (tab, frame, doc token).
+#   `pending`  — credential fills this engine issued, awaiting their result
+#   `armed`    — every one of them landed; the click may go out ONCE
+#   `fired`    — it went out; a re-render of the same document never repeats
+# The state is what makes the click legal under constitution v1.2.0: it is
+# permitted only "immediately after a credential fill the engine itself
+# issued for that exact frame", never inferred from a button's text.
+_CREDENTIAL_TAGS = ("login_email", "login_username", "login_password")
+_signin: dict[tuple, dict] = {}
+
+
+def _signin_key(tab_id: int, frame_id: int, doc: str) -> tuple:
+    return (tab_id, frame_id, doc)
+
+
+def _signin_note_issued(key: tuple, je_idx: str, *, satisfied: bool) -> None:
+    entry = _signin.setdefault(key, {"pending": set(), "landed": set(),
+                                     "fired": False})
+    if entry["fired"]:
+        return
+    entry["pending"].add(je_idx)
+    if satisfied:
+        entry["landed"].add(je_idx)
+
+
+def _signin_note_landed(tab_id: int, frame_id: int, je_idx: str) -> None:
+    for (t, f, _doc), entry in _signin.items():
+        if t == tab_id and f == frame_id and je_idx in entry["pending"]:
+            entry["landed"].add(je_idx)
+
+
+def _signin_ready(key: tuple) -> bool:
+    entry = _signin.get(key)
+    if not entry or entry["fired"]:
+        return False
+    # Both halves of a credential must have landed — clicking Sign in with
+    # only the email filled submits an empty login form.
+    return len(entry["pending"]) >= 2 and entry["landed"] >= entry["pending"]
+
+
+def _maybe_sign_in(tab_id: int, frame_id: int, doc: str) -> None:
+    """Fire the one permitted sign-in click for this rendered document."""
+    key = _signin_key(tab_id, frame_id, doc)
+    with _lock:
+        if not _signin_ready(key):
+            return
+        if not version_ok():
+            return  # FR-035: never arm across a version mismatch
+        _signin[key]["fired"] = True
+    send(_outbound("advance_step", tab_id=tab_id, frame_id=frame_id,
+                   kind="sign_in", step_key=f"{doc}::signin"))
+
+
+def _handle_credential_save(msg) -> None:
+    """019 (T048, FR-017): a login saved from the on-page panel.
+
+    The password goes to the OS keychain and nowhere else — not the ack, not
+    the log line, not the answers feed. Saving re-arms the wall so the
+    applicant does not have to hunt for a Retry button.
+    """
+    from .. import credentials
+
+    try:
+        credentials.save(msg.domain, msg.email, msg.password)
+    except Exception:  # noqa: BLE001 — surface, never crash the bridge
+        log.warning("credential save failed for %s", msg.domain, exc_info=True)
+        send(_outbound("error", code="credential_save_failed", tab_id=msg.tab_id,
+                       message="Couldn't save that login to your OS keychain."))
+        return
+    log.info("saved a login for %s", msg.domain)  # domain only, never the pair
+    with _lock:
+        # The wall gets one more chance now that a credential exists.
+        for key in [k for k in _signin if k[0] == msg.tab_id]:
+            _signin.pop(key, None)
+        _answers_force.add(msg.tab_id)
+    send(_outbound("credential_saved", tab_id=msg.tab_id, domain=msg.domain))
+    send(_outbound("rescan", reason="credential_saved"))
+
+
 def _handle_fields(msg) -> None:
     from . import adapters, browser_controller as bc, field_core
 
@@ -517,20 +630,49 @@ def _handle_fields(msg) -> None:
 
     frame_domain = _frame_domain(msg.url)
 
+    missing_login = {"seen": False}
+
     def get_value(tag, raw):
         # Credentials are gated by the SENDING FRAME's domain — the frame
         # is where the secret would land, and it may not be the job's own
         # host (Greenhouse iframes, SSO pages). Everything else reuses the
         # facade's value resolution unchanged.
-        if tag in ("login_email", "login_password"):
+        if tag in _CREDENTIAL_TAGS:
             from .. import credentials
 
             if not frame_domain:
                 return None
             saved = credentials.get(frame_domain)
             if not saved:
+                # 019 (FR-017): this used to be a silent skip — the wall sat
+                # there and the applicant never learned why.
+                missing_login["seen"] = True
                 return None
-            return saved["email"] if tag == "login_email" else saved["password"]
+            return (saved["password"] if tag == "login_password"
+                    else saved["email"])
+        # 019 (FR-021): an account the applicant is CREATING. A strong
+        # password is generated and saved to the vault at fill time, so the
+        # credential exists the moment the form holds it — the human still
+        # presses Create account.
+        if tag == "signup_password":
+            from .. import credentials
+
+            if not frame_domain:
+                return None
+            existing = credentials.get(frame_domain)
+            if existing and existing.get("password"):
+                return existing["password"]
+            email = (profile or {}).get("email") or ""
+            if not email:
+                return None
+            generated = credentials.generate_password()
+            try:
+                credentials.save(frame_domain, email, generated)
+            except Exception:  # noqa: BLE001 — never crash the fill
+                log.warning("could not save the generated login for %s",
+                            frame_domain, exc_info=True)
+                return None
+            return generated
         return bc._value_for_tag(tag, raw, profile, job_id)
 
     ats = adapters.ats_from_url(msg.url)
@@ -616,6 +758,15 @@ def _handle_fields(msg) -> None:
         lkey = field_core.key(raw)
         if decision.action == "skip":
             question = question_of(raw)
+            # 019 (FR-017): a credential field with no saved login is a
+            # question for the applicant, not a field to ignore.
+            if decision.tag in _CREDENTIAL_TAGS and missing_login["seen"]:
+                note_answer(raw, action="skip", tag=decision.tag,
+                            reason="no_saved_login")
+                needs_you_idx.append(raw["je_idx"])
+                needs_you_labels.append(
+                    question or f"Sign in to {frame_domain or 'this site'}")
+                continue
             if question:
                 note_answer(raw, action="skip", tag=decision.tag)
                 record = drafter.get(job_id, question)
@@ -625,6 +776,16 @@ def _handle_fields(msg) -> None:
                     needs_you_labels.append(question)
             continue
         if decision.action == "settle":
+            # 019 (FR-019): a credential the browser's own password manager
+            # already filled is SATISFIED, not a dead end. It counts toward
+            # arming sign-in exactly as one we filled ourselves would.
+            if (decision.tag in _CREDENTIAL_TAGS
+                    and decision.outcome == "skipped_existing"):
+                with _lock:
+                    _signin_note_issued(
+                        _signin_key(msg.tab_id, msg.frame_id,
+                                    raw.get("doc") or msg.doc),
+                        raw["je_idx"], satisfied=True)
             bc._record(job_id, raw, decision.tag, "", decision.outcome)
             with bc._lock:
                 ledger[lkey] = field_core.settle_entry(decision.outcome)
@@ -693,6 +854,13 @@ def _handle_fields(msg) -> None:
         with _lock:
             _inflight[fkey] = (raw, decision.tag, decision.preview,
                                decision.ai_draft, time.monotonic())
+            # 019 (FR-016): remember that WE issued this credential fill —
+            # the sign-in click is legal only because of that fact.
+            if decision.tag in _CREDENTIAL_TAGS:
+                _signin_note_issued(
+                    _signin_key(msg.tab_id, msg.frame_id,
+                                raw.get("doc") or msg.doc),
+                    raw["je_idx"], satisfied=False)
         # 016 (T005/R1): incremental dispatch — a decided fill goes out
         # IMMEDIATELY. Batching until the whole form was decided is what
         # withheld name/email fills behind slow decisions (RC1).
@@ -746,6 +914,13 @@ def _handle_fields(msg) -> None:
     job_id = _watch["job_id"]
     if job_id is not None:
         _push_answers(msg.tab_id, job_id)
+
+    # 019 (FR-016): a credential already satisfied by the browser's own
+    # password manager arms sign-in without any fill_result ever arriving.
+    # Keyed by the DESCRIPTOR's document token — the same identity the
+    # ledger uses, so the two halves of the state machine cannot disagree.
+    for doc in {r.get("doc") or msg.doc for r in raws}:
+        _maybe_sign_in(msg.tab_id, msg.frame_id, doc)
 
 
 def _start_answer_feed(tab_id: int, job_id: int) -> None:
@@ -805,6 +980,7 @@ def _handle_fill_result(msg) -> None:
     if job_id is None:
         return
     filled_now = 0
+    docs: set[str] = set()
     for item in msg.items:
         fkey = (msg.tab_id, msg.frame_id, item.je_idx)
         with _lock:
@@ -817,6 +993,11 @@ def _handle_fill_result(msg) -> None:
             bc._record(job_id, raw, tag, preview, "filled", ai_draft)
             with bc._lock:
                 bc._state.handled.setdefault(job_id, {})[lkey] = "filled"
+                # 019 (FR-016): this credential landed. When both halves
+                # have, the one permitted sign-in click is armed.
+                if tag in _CREDENTIAL_TAGS:
+                    _signin_note_landed(msg.tab_id, msg.frame_id, item.je_idx)
+                    docs.add(raw.get("doc") or "")
             filled_now += 1
         elif item.outcome == "needs_manual":
             bc._record(job_id, raw, tag, "", "needs_manual")
@@ -829,6 +1010,8 @@ def _handle_fill_result(msg) -> None:
             bc._state.activity["fields_filled"] = (
                 bc._state.activity.get("fields_filled", 0) + filled_now
             )
+    for doc in docs:
+        _maybe_sign_in(msg.tab_id, msg.frame_id, doc)
 
 
 def _handle_page_event(msg) -> None:
@@ -1062,6 +1245,8 @@ def reset_for_tests() -> None:
         _inflight.clear()
         _frame_seen.clear()
         _pending_submissions.clear()
+        _progression_clicks.clear()
+        _signin.clear()
         _page_entries.clear()
         _answers_digest.clear()
         _answers_force.clear()

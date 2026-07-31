@@ -137,3 +137,24 @@ class TestListDomains:
 
     def test_list_domains_empty_by_default(self, tmp_db, fake_keyring):
         assert credentials.list_domains() == []
+
+
+class TestGeneratedPassword019:
+    """019 (T051, FR-021): account creation needs a strong password the
+    applicant never has to invent — saved to the vault at fill time."""
+
+    def test_it_is_long_and_mixed(self):
+        pw = credentials.generate_password()
+        assert len(pw) >= 20
+        assert any(c.islower() for c in pw)
+        assert any(c.isupper() for c in pw)
+        assert any(c.isdigit() for c in pw)
+        assert any(not c.isalnum() for c in pw)
+
+    def test_it_avoids_ambiguous_glyphs(self):
+        """The applicant may have to read this back off a screen."""
+        for _ in range(20):
+            assert not (set(credentials.generate_password()) & set("O0Il1|`'\""))
+
+    def test_every_call_differs(self):
+        assert len({credentials.generate_password() for _ in range(25)}) == 25

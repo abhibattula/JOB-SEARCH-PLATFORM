@@ -83,6 +83,11 @@ export function relayFromContent(tabId, frameId, msg) {
   if (frameId !== undefined && msg.type === "fill_result") {
     withRoute.frame_id = frameId;
   }
+  // 019 (FR-031): a progression click reports the frame it acted in — the
+  // sign-in click is only ever valid in the frame the app itself filled.
+  if (frameId !== undefined && msg.type === "advance_result") {
+    withRoute.frame_id = frameId;
+  }
   send({ v: 1, seq: 0, ...withRoute });
 }
 

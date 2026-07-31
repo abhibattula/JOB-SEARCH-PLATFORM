@@ -14,9 +14,12 @@
 
 window.jeOpener = (function () {
   const OPENERS = [
-    // greenhouse
+    // greenhouse — 019: modern job-boards.greenhouse.io NAVIGATES to a
+    // separate application page instead of revealing an embedded form.
     { ats: "greenhouse",
-      selector: "#apply_button, a[href='#application'], a[href*='#app']" },
+      selector: "#apply_button, a[href='#application'], a[href*='#app'], "
+                + "a.apply-button, a[href$='/application'], "
+                + "a[href*='/application?']" },
     // lever
     { ats: "lever",
       selector: "a.postings-btn[href*='/apply'], a[href$='/apply']" },
@@ -25,19 +28,44 @@ window.jeOpener = (function () {
       selector: "a[href*='/application'], button[data-testid*='apply']" },
   ];
 
-  let attemptedFor = null; // one-shot per (document, href) — SPA navs re-arm
+  // 019 (T038): one-shot per RENDERED STEP, not per href. An SPA wizard
+  // keeps the same address while swapping the document's contents, so an
+  // href key either dead-locks the opener or lets it fire twice on the same
+  // control. The document token + the control's own fingerprint is the
+  // step; it is the same key shape the advancer uses.
+  const attempted = new Set();
+
+  function query(selector) {
+    return (window.jeScanner && window.jeScanner.deepQueryAll)
+      ? window.jeScanner.deepQueryAll(selector)
+      : Array.prototype.slice.call(document.querySelectorAll(selector));
+  }
+
+  function visible(el) {
+    return (window.jeScanner && window.jeScanner.isVisible)
+      ? window.jeScanner.isVisible(el)
+      : el.offsetParent !== null;
+  }
+
+  function stepKey(el) {
+    const doc = (document.documentElement.dataset || {}).jeDoc || location.href;
+    const name = (el.getAttribute("id") || "") + "|"
+      + (el.getAttribute("href") || "") + "|"
+      + (el.textContent || "").trim().slice(0, 40);
+    return doc + "::" + name;
+  }
 
   function hasFillableForm() {
-    const els = document.querySelectorAll(
-      "input:not([type=hidden]):not([type=submit]):not([type=button]), " +
-      "select, textarea");
-    return Array.from(els).some((el) => el.offsetParent !== null);
+    const els = query(
+      "input:not([type=hidden]):not([type=submit]):not([type=button]), "
+      + "select, textarea");
+    return els.some(visible);
   }
 
   function findOpener() {
     for (const entry of OPENERS) {
-      const el = document.querySelector(entry.selector);
-      if (el && el.offsetParent !== null) { return el; }
+      const el = query(entry.selector).find(visible);
+      if (el) { return el; }
     }
     return null;
   }
@@ -57,13 +85,24 @@ window.jeOpener = (function () {
 
   // Returns true when an opener was clicked (exactly once per page state).
   function maybeOpen(onOpened) {
-    const key = location.href;
-    if (attemptedFor === key) { return false; }
     if (hasFillableForm()) { return false; }
     const el = findOpener();
     if (!el || !structurallySafe(el)) { return false; }
-    attemptedFor = key;
+    const key = stepKey(el);
+    if (attempted.has(key)) { return false; }
+    attempted.add(key);
     el.click();
+    // 019 (FR-031): the click joins the session's activity trail. The
+    // opener owns open_apply (constitution v1.2.0 keeps form-opening a
+    // separate, allowlisted step) but reports through the same channel as
+    // every other progression click, so the trail is complete.
+    try {
+      chrome.runtime.sendMessage({ _je: true, payload: {
+        type: "advance_result", frame_id: 0, kind: "open_apply",
+        status: "clicked", selector_kind: "apply_opener",
+        control_hash: key.slice(-40),
+      } });
+    } catch (_e) { /* orphaned frame — the click still happened */ }
     if (onOpened) { try { onOpened(); } catch (_e) { /* overlay optional */ } }
     return true;
   }
