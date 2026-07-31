@@ -27,12 +27,12 @@ delivery, each story independently testable and shippable.
 
 ## Phase 2: Foundational (blocks all user stories)
 
-- [ ] T002 [P] Failing tests tests/test_ext_protocol.py::TestEscortProtocol019 +
+- [x] T002 [P] Failing tests tests/test_ext_protocol.py::TestEscortProtocol019 +
       ::TestCompat019 — additive `Descriptor.form_context` (default "");
       new `CredentialSave`, `AdvanceStep` (outbound, carries `step_key`),
       `AdvanceResult` (inbound) models; PROTOCOL_V still 1; v1.8-shaped
       messages still validate; unknown fields ignored
-- [ ] T003 engine/autofill/ext_protocol.py: implement the additive models and
+- [x] T003 engine/autofill/ext_protocol.py: implement the additive models and
       register them (inbound/outbound maps) — T002 green
 
 **Checkpoint**: protocol speaks 019 additively; nothing user-visible changed

@@ -70,6 +70,12 @@ class Descriptor(_Strict):
     # both; defaults keep their payloads valid.
     members: list[Member] = []
     required: bool = False
+    # 019 (T003, additive — PROTOCOL_V stays 1): which kind of credential
+    # form the field sits in, judged by the serializer that can see the form
+    # ("login": one password input; "registration": two / create-account
+    # context; "": an ordinary field). This is the signal that finally makes
+    # the login_email/login_username tags reachable in production.
+    form_context: Literal["login", "registration", ""] = ""
 
     def as_watcher_dict(self) -> dict:
         return self.model_dump()
@@ -205,6 +211,46 @@ class SessionControl(_Strict):
     action: str  # "stop" | "next"
 
 
+class CredentialSave(_Strict):
+    """019 (FR-017): a login saved from the on-page panel. The password goes
+    straight to the OS credential vault and nowhere else; repr masks BOTH the
+    secret and the email so no log formatter can leak either."""
+    tab_id: int
+    domain: str
+    email: str
+    password: str
+
+    def __repr__(self) -> str:  # pragma: no cover - exercised via tests
+        return (f"CredentialSave(tab_id={self.tab_id!r}, "
+                f"domain={self.domain!r}, email=•••, password=•••)")
+
+    __str__ = __repr__
+
+
+class AdvanceResult(_Strict):
+    """019 (FR-031): the report channel for EVERY progression click. The
+    advancer reports sign_in/next; the opener reports open_apply — one trail,
+    one shape. `refused` never retries the same (doc, control_hash)."""
+    tab_id: int
+    frame_id: int
+    kind: Literal["open_apply", "sign_in", "next"]
+    status: Literal["clicked", "not_found", "refused"]
+    selector_kind: str = ""
+    control_hash: str = ""
+
+
+class AdvanceStep(_Strict):
+    """019 (FR-016/FR-023): the ONLY click instruction the engine may issue.
+    `open_apply` is deliberately not a valid kind — form-opening stays the
+    opener's separate, allowlisted, one-shot job (constitution v1.2.0;
+    analyze finding A1). The advancer refuses a second click for a step_key
+    it has already acted on."""
+    tab_id: int
+    frame_id: int
+    kind: Literal["sign_in", "next"]
+    step_key: str
+
+
 _INBOUND: dict[str, type[_Strict]] = {
     "hello": Hello,
     "tab_opened": TabOpened,
@@ -221,6 +267,8 @@ _INBOUND: dict[str, type[_Strict]] = {
     "answer_question": AnswerQuestion,
     "apply_here": ApplyHere,
     "session_control": SessionControl,
+    "credential_save": CredentialSave,
+    "advance_result": AdvanceResult,
 }
 
 

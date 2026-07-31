@@ -329,3 +329,101 @@ class TestSessionControl018:
              "reason": None, "askable": False},
         ], truncated=False)
         assert payload["items"][0]["question"] == "Q"
+
+
+class TestEscortProtocol019:
+    """019 (T002): additive escort/credential messages — PROTOCOL_V stays 1."""
+
+    def test_protocol_v_still_1(self):
+        assert proto.PROTOCOL_V == 1
+
+    def test_descriptor_form_context_defaults_empty(self):
+        d = proto.Descriptor(**make_descriptor())
+        assert d.form_context == ""
+        d2 = proto.Descriptor(**make_descriptor(form_context="login"))
+        assert d2.form_context == "login"
+
+    def test_descriptor_form_context_reaches_watcher_dict(self):
+        d = proto.Descriptor(**make_descriptor(form_context="registration"))
+        assert d.as_watcher_dict()["form_context"] == "registration"
+
+    def test_credential_save_parses(self):
+        msg = proto.parse_inbound(envelope(
+            "credential_save", tab_id=7,
+            domain="company.wd5.myworkdayjobs.com",
+            email="user@example.com", password="hunter2-Sup3r!",
+        ))
+        assert isinstance(msg, proto.CredentialSave)
+        assert msg.domain == "company.wd5.myworkdayjobs.com"
+        assert msg.password == "hunter2-Sup3r!"
+
+    def test_credential_save_repr_masks_secret_and_email(self):
+        """The message model can never leak the credential through a log
+        formatter — repr/str carry neither the password nor the email."""
+        msg = proto.parse_inbound(envelope(
+            "credential_save", tab_id=7, domain="d.example",
+            email="user@example.com", password="hunter2-Sup3r!",
+        ))
+        for text in (repr(msg), str(msg)):
+            assert "hunter2" not in text
+            assert "user@example.com" not in text
+
+    def test_advance_result_parses_and_validates_status(self):
+        msg = proto.parse_inbound(envelope(
+            "advance_result", tab_id=7, frame_id=0, kind="next",
+            status="clicked", selector_kind="workday_bottom_next",
+            control_hash="a1b2c3",
+        ))
+        assert isinstance(msg, proto.AdvanceResult)
+        assert msg.status == "clicked"
+        with pytest.raises(proto.ProtocolError):
+            proto.parse_inbound(envelope(
+                "advance_result", tab_id=7, frame_id=0, kind="next",
+                status="detonated",
+            ))
+
+    def test_advance_result_reports_all_progression_kinds(self):
+        """The REPORT channel covers open_apply too (the opener reports its
+        click into the trail) even though advance_step can never issue it."""
+        for kind in ("open_apply", "sign_in", "next"):
+            msg = proto.parse_inbound(envelope(
+                "advance_result", tab_id=7, frame_id=0, kind=kind,
+                status="clicked",
+            ))
+            assert msg.kind == kind
+
+    def test_advance_step_kinds_exclude_open_apply(self):
+        """Analyze finding A1: form-opening is opener-owned. The engine can
+        arm sign_in and next — never open_apply."""
+        for kind in ("sign_in", "next"):
+            step = proto.AdvanceStep(tab_id=7, frame_id=0, kind=kind,
+                                     step_key="doc:fields")
+            assert step.kind == kind
+        with pytest.raises(Exception):
+            proto.AdvanceStep(tab_id=7, frame_id=0, kind="open_apply",
+                              step_key="doc:fields")
+
+
+class TestCompat019:
+    """A v1.8 companion's messages still validate byte-for-byte."""
+
+    def test_v18_fields_without_form_context_validates(self):
+        msg = proto.parse_inbound(envelope(
+            "fields", tab_id=5, frame_id=0, url="https://x.example/apply",
+            doc="abc123", descriptors=[make_descriptor()],
+        ))
+        assert msg.descriptors[0].form_context == ""
+
+    def test_v18_hello_validates(self):
+        msg = proto.parse_inbound(envelope(
+            "hello", secret="ab" * 32, version="1.8.0",
+        ))
+        assert isinstance(msg, proto.Hello)
+
+    def test_unknown_extra_fields_are_ignored_not_fatal(self):
+        msg = proto.parse_inbound(envelope(
+            "credential_save", tab_id=7, domain="d.example",
+            email="e@x.example", password="pw",
+            some_future_field="ignored",
+        ))
+        assert isinstance(msg, proto.CredentialSave)
