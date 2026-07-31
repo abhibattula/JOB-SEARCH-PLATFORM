@@ -105,20 +105,35 @@ SERIALIZE_JS = r"""
     }
     return '';
   }
+  // 019 (T032, FR-010): mirrors field_core.is_placeholder_value and
+  // content/scanner.js isPlaceholderValue. A control resting on "Select…"
+  // displays text but holds no answer.
+  var JE_PLACEHOLDER =
+    /^\\s*(?:[-–—•*\\s]*)?(?:select|choose|please\\s+select|pick|--+|—+|none|n\\/?a)\\b/i;
+  function jeIsPlaceholder(text) {
+    var value = (text || '').trim();
+    if (!value) { return true; }
+    return JE_PLACEHOLDER.test(value);
+  }
   function jeValue(el, widget) {
     if (el.type === 'checkbox' || el.type === 'radio') {
       return el.checked ? 'on' : '';
     }
     if (widget === 'native_select') {
-      return el.value ? ((el.options[el.selectedIndex] || {}).text || '') : '';
+      if (!el.value) { return ''; }
+      var selected = (el.options[el.selectedIndex] || {}).text || '';
+      return jeIsPlaceholder(selected) ? '' : selected;
     }
     if (widget === 'custom_combobox' || widget === 'typeahead') {
       var sv = el.querySelector &&
         el.querySelector('[class*=singleValue],[class*="-value"]');
-      if (sv) { return sv.textContent.trim(); }
-      if (el.value) { return el.value; }
+      if (sv) {
+        var svText = sv.textContent.trim();
+        return jeIsPlaceholder(svText) ? '' : svText;
+      }
+      if (el.value) { return jeIsPlaceholder(el.value) ? '' : el.value; }
       var t = (el.textContent || '').trim();
-      return /^(select|choose|--)/i.test(t) ? '' : t;
+      return jeIsPlaceholder(t) ? '' : t;
     }
     return el.value || '';
   }
@@ -159,6 +174,63 @@ SERIALIZE_JS = r"""
     }
     return null;
   }
+  // 019 (T026, FR-007): the full labelling ladder, byte-parallel with
+  // content/scanner.js labelText. Reading only labels[0]/aria-label left
+  // every aria-labelledby-labelled field (the Workday/React standard) with
+  // no question at all.
+  function jeReferencedText(el) {
+    const ids = el.getAttribute && el.getAttribute('aria-labelledby');
+    if (!ids) { return ''; }
+    const parts = ids.split(/\\s+/).map(function (id) {
+      const node = document.getElementById(id);
+      return node ? (node.innerText || node.textContent || '').trim() : '';
+    }).filter(Boolean);
+    return parts.join(' ');
+  }
+  function jeNearbyLabel(el) {
+    const wrapping = el.closest && el.closest('label');
+    if (wrapping) {
+      const clone = wrapping.cloneNode(true);
+      Array.prototype.forEach.call(
+        clone.querySelectorAll('input,select,textarea,button'),
+        function (child) { child.remove(); });
+      const text = (clone.innerText || clone.textContent || '').trim();
+      if (text) { return text; }
+    }
+    let prev = el.previousElementSibling;
+    let hops = 0;
+    while (prev && hops < 3) {
+      const tag = prev.tagName.toLowerCase();
+      if (tag === 'label' || /^h[1-6]$/.test(tag) || tag === 'legend') {
+        const text = (prev.innerText || prev.textContent || '').trim();
+        if (text) { return text; }
+      }
+      prev = prev.previousElementSibling;
+      hops += 1;
+    }
+    return '';
+  }
+  function jeLabelText(el) {
+    if (el.labels && el.labels[0]) { return el.labels[0].innerText || ''; }
+    const aria = el.getAttribute('aria-label');
+    if (aria) { return aria; }
+    const referenced = jeReferencedText(el);
+    if (referenced) { return referenced; }
+    return jeNearbyLabel(el);
+  }
+  // 019 (T034, FR-011): offsetParent is null for an element that is ITSELF
+  // position:fixed (modal fields vanished), while visibility:hidden ones
+  // have a non-null offsetParent and counted as visible.
+  function jeVisible(el) {
+    if ((el.type || '') === 'file') { return true; }
+    const rect = el.getClientRects && el.getClientRects()[0];
+    if (!rect || rect.width <= 0 || rect.height <= 0) { return false; }
+    const style = window.getComputedStyle ? window.getComputedStyle(el) : null;
+    if (style && (style.visibility === 'hidden' ||
+                  style.visibility === 'collapse' ||
+                  style.display === 'none')) { return false; }
+    return true;
+  }
   const els = document.querySelectorAll(selector);
   const pairs = Array.from(els).map(el => {
     if (!el.dataset.jeIdx) { el.dataset.jeIdx = String(window.__jeNext++); }
@@ -170,8 +242,7 @@ SERIALIZE_JS = r"""
       type: el.type || '',
       name: el.name || '',
       id: el.id || '',
-      label_text: (el.labels && el.labels[0] ? el.labels[0].innerText : '')
-        || el.getAttribute('aria-label') || '',
+      label_text: jeLabelText(el),
       placeholder: el.placeholder || '',
       aria_label: el.getAttribute('aria-label') || '',
       autocomplete: el.autocomplete || '',
@@ -186,7 +257,7 @@ SERIALIZE_JS = r"""
       required: !!(el.required ||
                    el.getAttribute('aria-required') === 'true'),
       focused: el === document.activeElement,
-      visible: !!(el.offsetParent || el.type === 'file'),
+      visible: jeVisible(el),
     } };
   });
   const radios = new Map();

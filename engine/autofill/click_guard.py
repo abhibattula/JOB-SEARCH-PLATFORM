@@ -66,6 +66,37 @@ def is_denylisted(text: str = "", type: str = "", role: str = "") -> bool:
     return False
 
 
+def is_widget_operable(own_name: str = "", descendant_text: str = "",
+                       type_: str = "", role: str = "",
+                       descendant_types: list[str] | None = None) -> bool:
+    """019 (T036, FR-012): may the filler operate this control to SET A
+    VALUE?
+
+    The 011 rule folds descendant text into the verdict, which is right for
+    judging a button but wrong for judging a widget: a react-select wrapper
+    whose card happens to contain the words "Next" or "Save the date" was
+    refused, so an ordinary dropdown became needs_manual. Text is therefore
+    judged on the element's OWN accessible name.
+
+    Descendant TYPES are still folded — a wrapper containing a real
+    `type=submit` control would submit the form, and that danger is
+    unchanged. `is_denylisted` itself is untouched: the fill path's
+    button-judging behavior is exactly what it was.
+    """
+    types = [type_] + list(descendant_types or [])
+    if any((t or "").strip().lower() == "submit" for t in types):
+        return False
+    # An element the page itself declares as an OPTION is a value, not a
+    # control: "Next year" in a date menu, "Continue Education" in a
+    # dropdown. Its text can therefore never make it submit-class — only a
+    # submit type can, and that was refused above. (This is why
+    # tests/fixtures/ats_pages/submit_styled_as_option.html exists: a submit
+    # button dressed as an option is still caught, by type.)
+    if (role or "").strip().lower() == "option":
+        return True
+    return not is_denylisted(own_name, type_, role)
+
+
 def combined_signal(own_text: str = "", own_type: str = "", own_role: str = "",
                     descendant_texts: list[str] | None = None,
                     descendant_types: list[str] | None = None,

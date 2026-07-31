@@ -440,3 +440,45 @@ class TestCheckboxGroup017:
         d = self.group("Ze/zir")
         assert d.action == "settle"
         assert d.outcome == "no_match"
+
+
+class TestPlaceholderChoiceIsUnanswered019:
+    """019 (T031, FR-010): a choice control resting on "Select…" displays a
+    value but the applicant has chosen nothing. Treating it as sacred is why
+    those dropdowns were skipped_existing forever."""
+
+    def _decide(self, raw, value="Yes"):
+        return field_core.decide("greenhouse", raw, {},
+                                 lambda tag, r: value)
+
+    def _select(self, value, options):
+        return {
+            "je_idx": "1", "doc": "d", "tag": "select", "type": "select-one",
+            "name": "authorized", "id": "authorized",
+            "label_text": "Are you authorized to work in the US?",
+            "placeholder": "", "aria_label": "", "autocomplete": "",
+            "value": value, "options": options, "visible": True,
+            "focused": False, "widget": "native_select",
+        }
+
+    def test_select_placeholder_text_counts_as_empty(self):
+        d = self._decide(self._select("Select…", ["Select…", "Yes", "No"]))
+        assert d.action == "fill"
+
+    def test_dash_placeholder_counts_as_empty(self):
+        d = self._decide(self._select("-- Please Select --",
+                                      ["-- Please Select --", "Yes", "No"]))
+        assert d.action == "fill"
+
+    def test_a_real_choice_is_still_sacred(self):
+        d = self._decide(self._select("No", ["Select…", "Yes", "No"]))
+        assert d.action != "fill"
+
+    def test_placeholder_rule_is_exported_for_the_serializers(self):
+        """One rule, three call sites (scanner.js, field_core, filler.js) —
+        the Python half must be importable so the parity test can pin it."""
+        assert field_core.is_placeholder_value("Select…") is True
+        assert field_core.is_placeholder_value("Choose one") is True
+        assert field_core.is_placeholder_value("-- Please Select --") is True
+        assert field_core.is_placeholder_value("United States") is False
+        assert field_core.is_placeholder_value("") is True

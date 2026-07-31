@@ -93,12 +93,17 @@ class TestManifestIntegrity:
                         code, _re.DOTALL)
         assert sc, "safeClick function not found"
         body = sc.group(1)
-        assert "isDenylisted" in body and ".click(" in body
-        assert body.index("isDenylisted") < body.index(".click(")
+        # 019 (T036): the guard call is `isWidgetOperable` — it judges TEXT
+        # on the element's own accessible name while still refusing any
+        # submit-typed control or wrapper. The invariant this test exists
+        # for is unchanged: one raw click, inside safeClick, after a guard
+        # verdict.
+        assert "isWidgetOperable" in body and ".click(" in body
+        assert body.index("isWidgetOperable") < body.index(".click(")
 
     def test_filler_uses_the_click_guard(self):
         filler = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
-        assert "jeClickGuard" in filler and "isDenylisted" in filler
+        assert "jeClickGuard" in filler and "isWidgetOperable" in filler
 
 
 class TestDenylistParity:
@@ -748,3 +753,55 @@ class TestVersionSkewAssets019:
                 ).read_text(encoding="utf-8")
         assert "version_ok" in html
         assert "reload" in html.lower()
+
+
+class TestSharedRulesParity019:
+    """019: three implementations of two rules — keep them in step."""
+
+    def test_placeholder_rule_exists_in_all_three(self):
+        scanner = (EXT / "content" / "scanner.js").read_text(encoding="utf-8")
+        filler = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
+        watcher = (EXT.parent / "engine" / "autofill" / "watcher.py"
+                   ).read_text(encoding="utf-8")
+        assert "isPlaceholderValue" in scanner
+        assert "isPlaceholderValue" in filler
+        assert "jeIsPlaceholder" in watcher
+
+    def test_placeholder_tokens_match_the_python_rule(self):
+        """The token list is the rule. If Python learns a new placeholder
+        word and the serializers do not, that dropdown silently goes back to
+        being permanently skipped."""
+        import re as _re
+
+        from engine.autofill import field_core
+
+        py = field_core._PLACEHOLDER_VALUE.pattern
+        tokens = set(_re.findall(r"[a-z/]{3,}", py)) - {"please"}
+        for source in ((EXT / "content" / "scanner.js"),
+                       (EXT.parent / "engine" / "autofill" / "watcher.py")):
+            text = source.read_text(encoding="utf-8")
+            for token in tokens:
+                assert token in text, (
+                    f"{source.name} is missing placeholder token {token!r}")
+
+    def test_widget_guard_exists_in_both_halves(self):
+        js = (EXT / "content" / "click_guard.js").read_text(encoding="utf-8")
+        assert "isWidgetOperable" in js
+        from engine.autofill import click_guard
+
+        assert hasattr(click_guard, "is_widget_operable")
+
+    def test_shadow_traversal_is_used_by_every_lookup(self):
+        """FR-008: a form inside an open shadow root must be scanned, probed
+        AND its options found — one missed call site is a silent blind spot."""
+        scanner = (EXT / "content" / "scanner.js").read_text(encoding="utf-8")
+        filler = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
+        assert "deepQueryAll" in scanner and "shadowRoot" in scanner
+        assert "deepQueryAll" in filler
+        # serialize/probe/elementByIdx must not fall back to a flat query
+        for fn in ("function serialize", "function probe",
+                   "function elementByIdx"):
+            start = scanner.index(fn)
+            body = scanner[start:start + 400]
+            assert "document.querySelectorAll" not in body, (
+                f"{fn} still uses a flat query — shadow roots stay invisible")

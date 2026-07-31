@@ -84,3 +84,41 @@ class TestExportedTerms:
         # the canonical term list here
         assert isinstance(cg.DENY_TERMS, (list, tuple))
         assert "submit" in cg.DENY_TERMS and "login" in cg.DENY_TERMS
+
+
+class TestWidgetOwnNameJudgment019:
+    """019 (T035, FR-012): a fillable widget is judged by its OWN accessible
+    name. Folding descendant text made an ordinary dropdown unfillable
+    whenever the card around it happened to contain "Next" or "Save"."""
+
+    def test_widget_wrapper_with_progression_text_inside_is_fillable(self):
+        assert cg.is_widget_operable(
+            own_name="How did you hear about us?",
+            descendant_text="Select… Next year Save the date",
+            type_="", role="combobox") is True
+
+    def test_an_option_labelled_next_year_is_selectable(self):
+        assert cg.is_widget_operable(
+            own_name="Next year", descendant_text="Next year",
+            type_="", role="option") is True
+
+    def test_a_real_submit_button_is_never_operable(self):
+        assert cg.is_widget_operable(
+            own_name="Submit application", descendant_text="Submit application",
+            type_="submit", role="button") is False
+
+    def test_a_real_next_button_is_never_operable(self):
+        assert cg.is_widget_operable(
+            own_name="Next", descendant_text="Next", type_="button",
+            role="button") is False
+
+    def test_a_wrapper_containing_a_submit_control_is_never_operable(self):
+        """The real danger the 011 fold protected against is unchanged."""
+        assert cg.is_widget_operable(
+            own_name="Choose a date", descendant_text="Choose a date",
+            type_="", role="combobox",
+            descendant_types=["button", "submit"]) is False
+
+    def test_fill_path_denylist_is_unchanged(self):
+        assert cg.is_denylisted("Continue", "", "") is True
+        assert cg.is_denylisted("anything", "submit", "") is True

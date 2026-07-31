@@ -36,6 +36,58 @@ window.jeClickGuard = (function () {
     return false;
   }
 
+  // 019 (T036, FR-012): may the filler OPERATE this control to set a value?
+  // Mirrors engine/autofill/click_guard.is_widget_operable. Text is judged
+  // on the element's own accessible name — folding descendant text (the 011
+  // rule, right for buttons) refused an ordinary dropdown whose surrounding
+  // card contained the word "Next" or "Save". Descendant TYPES are still
+  // folded: a wrapper containing a real submit control would submit the
+  // form, and that is the danger the fold existed for.
+  function ownName(el) {
+    const aria = el.getAttribute && el.getAttribute("aria-label");
+    if (aria) { return aria; }
+    const labelled = el.getAttribute && el.getAttribute("aria-labelledby");
+    if (labelled && window.jeScanner) {
+      // reuse the scanner's resolver so both agree on what the name IS
+      const root = el.getRootNode ? el.getRootNode() : document;
+      const parts = labelled.split(/\s+/).map(function (id) {
+        const node = (root.getElementById && root.getElementById(id))
+          || document.getElementById(id);
+        return node ? (node.innerText || node.textContent || "").trim() : "";
+      }).filter(Boolean);
+      if (parts.length) { return parts.join(" "); }
+    }
+    if (el.value) { return String(el.value); }
+    // Own text only: direct text nodes, not descendants' text.
+    let own = "";
+    Array.prototype.forEach.call(el.childNodes || [], function (node) {
+      if (node.nodeType === 3) { own += node.nodeValue; }
+    });
+    own = own.trim();
+    if (own) { return own; }
+    // A leaf element (an option row) has no element children — its
+    // textContent IS its own name.
+    return el.children && el.children.length === 0
+      ? (el.textContent || "").trim() : "";
+  }
+
+  function isWidgetOperable(el) {
+    if (!el) { return false; }
+    const ownType = (el.getAttribute && el.getAttribute("type")) || el.type || "";
+    if ((ownType || "").trim().toLowerCase() === "submit") { return false; }
+    if (el.querySelector &&
+        el.querySelector('button[type=submit], input[type=submit], [type=submit]')) {
+      return false;
+    }
+    const role = ((el.getAttribute && el.getAttribute("role")) || "")
+      .trim().toLowerCase();
+    // An element the page declares an OPTION is a value, not a control:
+    // "Next year" in a date menu is an answer. A submit dressed as an option
+    // was already refused above, by type.
+    if (role === "option") { return true; }
+    return !isDenylistedSignal(ownName(el), ownType, role);
+  }
+
   // Public: judge a DOM element (self + descendants).
   function isDenylisted(el) {
     if (!el) { return false; }
@@ -52,5 +104,5 @@ window.jeClickGuard = (function () {
     return isDenylistedSignal(text, foldedType, ownRole);
   }
 
-  return { DENY_TERMS, isDenylisted, isDenylistedSignal };
+  return { DENY_TERMS, isDenylisted, isDenylistedSignal, isWidgetOperable };
 })();

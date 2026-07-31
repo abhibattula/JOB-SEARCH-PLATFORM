@@ -555,3 +555,24 @@ class TestNamePronunciation017:
     def test_ordinary_name_fields_are_unaffected(self):
         assert fields.classify(field(label_text="First Name*")) == "first_name"
         assert fields.classify(field(label_text="Full name")) == "full_name"
+
+
+class TestAutomationIdInHaystack019:
+    """019 (T025, FR-013): a Workday field whose data-automation-id is not in
+    the adapter map still carries a real question in that attribute. It was
+    excluded from the classifier haystack, so such fields classified as
+    nothing at all."""
+
+    def test_automation_id_classifies_when_nothing_else_does(self):
+        assert fields.classify({
+            "tag": "input", "type": "text", "name": "", "id": "",
+            "label_text": "", "placeholder": "", "aria_label": "",
+            "automation_id": "legalNameSection_firstName",
+        }) == "first_name"
+
+    def test_automation_id_does_not_override_a_real_label(self):
+        assert fields.classify({
+            "tag": "input", "type": "text", "name": "", "id": "",
+            "label_text": "Last Name", "placeholder": "", "aria_label": "",
+            "automation_id": "legalNameSection_firstName",
+        }) == "last_name"

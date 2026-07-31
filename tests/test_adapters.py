@@ -121,3 +121,36 @@ class TestUnknownAts:
         assert adapters.classify(None, d(name="first_name")) is None
         # workday keys on data-automation-id, so a bare name is not mapped
         assert adapters.classify("workday", d(name="first_name")) is None
+
+
+class TestWorkdayMapGrowth019:
+    """019 (T029, FR-013): the Workday automation-id map covered 7 keys, so
+    everything else on a Workday form reached the classifier with an empty
+    haystack."""
+
+    def test_common_workday_fields_classify(self):
+        expected = {
+            "countryDropdown": "location_country",
+            "addressSection_countryRegion": "location_state",
+            "addressSection_postalCode": "location_postal",
+            "addressSection_addressLine1": "location_address1",
+            "linkedinQuestion": "linkedin_url",
+            "startDate": "start_date",
+        }
+        for automation_id, tag in expected.items():
+            assert adapters.classify("workday", {
+                "automation_id": automation_id, "autocomplete": "",
+            }) == tag, f"{automation_id} should classify as {tag}"
+
+    def test_map_is_materially_larger_than_016(self):
+        assert len(adapters._WORKDAY_AUTOMATION) >= 18
+
+    def test_every_mapped_tag_is_resolvable(self):
+        """A tag no resolver knows looks mapped and still fills nothing."""
+        from engine.autofill import profile_answers
+
+        known = set(profile_answers.PROFILE_ANSWER_TAGS) | {
+            "resume_upload", "cover_letter", "login_email", "login_password"}
+        unknown = {tag for tag in adapters._WORKDAY_AUTOMATION.values()
+                   if tag not in known}
+        assert not unknown, f"unresolvable tags in the Workday map: {unknown}"

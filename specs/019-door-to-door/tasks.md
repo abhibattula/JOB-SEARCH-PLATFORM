@@ -112,38 +112,38 @@ refresh with the shared step-key.
       (form inside a position:fixed dialog)
 - [x] T024 [P] [US2] Fixtures tests/fixtures/ats_pages/greenhouse_navigate_apply.html
       → greenhouse_application_target.html (Apply link that NAVIGATES)
-- [ ] T025 [P] [US2] Failing tests — browser: aria_labelledby fixture
+- [x] T025 [P] [US2] Failing tests — browser: aria_labelledby fixture
       question captured + field fills; unit tests/test_fields.py rows:
       automation_id joins the classifier haystack
-- [ ] T026 [US2] extension/content/scanner.js labelText ladder
+- [x] T026 [US2] extension/content/scanner.js labelText ladder
       (labels → aria-label → aria-labelledby → ancestor label → preceding
       sibling); engine/autofill/watcher.py SERIALIZE_JS parity;
       engine/autofill/fields.py haystack — T025 green
-- [ ] T027 [P] [US2] Failing browser test — shadow_form: probe > 0, widget
+- [x] T027 [P] [US2] Failing browser test — shadow_form: probe > 0, widget
       appears, fields fill (today: nothing renders at all)
-- [ ] T028 [US2] scanner.js `deepQueryAll()` (open roots, depth-capped) used
+- [x] T028 [US2] scanner.js `deepQueryAll()` (open roots, depth-capped) used
       by probe/serialize; filler.js option harvest via deepQueryAll;
       opener.js lookup — T027 green
-- [ ] T029 [P] [US2] Failing tests — browser: workday_prompt_options option
+- [x] T029 [P] [US2] Failing tests — browser: workday_prompt_options option
       chosen and verified; unit tests/test_adapters.py: expanded
       _WORKDAY_AUTOMATION (~20 keys)
-- [ ] T030 [US2] extension/content/filler.js harvest promptOption/menuItem;
+- [x] T030 [US2] extension/content/filler.js harvest promptOption/menuItem;
       engine/autofill/adapters.py map growth — T029 green
-- [ ] T031 [P] [US2] Failing tests — unit tests/test_field_core.py
+- [x] T031 [P] [US2] Failing tests — unit tests/test_field_core.py
       placeholder-value rule table; browser: placeholder_select fixture
       fills (today: skipped_existing forever)
-- [ ] T032 [US2] Shared placeholder rule: scanner.js jeValue +
+- [x] T032 [US2] Shared placeholder rule: scanner.js jeValue +
       engine/autofill/field_core.py decide + filler.js currentDisplayed —
       T031 green
-- [ ] T033 [P] [US2] Failing tests — browser: fixed_modal_form fields seen
+- [x] T033 [P] [US2] Failing tests — browser: fixed_modal_form fields seen
       and filled; unit tests/test_watcher.py visibility rows
       (visibility:hidden false-positives die too)
-- [ ] T034 [US2] scanner.js + watcher.py visibility check (client rect +
+- [x] T034 [US2] scanner.js + watcher.py visibility check (client rect +
       computed style; offsetParent no longer disqualifies fixed) — T033 green
-- [ ] T035 [P] [US2] Failing unit tests/test_click_guard.py own-name table —
+- [x] T035 [P] [US2] Failing unit tests/test_click_guard.py own-name table —
       widget wrapper with "Next" in descendant text is fillable; a real Next
       button stays denied; JS/PY parity test stays green
-- [ ] T036 [US2] engine/autofill/click_guard.py + extension/content/click_guard.js
+- [x] T036 [US2] engine/autofill/click_guard.py + extension/content/click_guard.js
       own-name-for-allow judgment — T035 green; behavior tables updated
       consciously
 - [ ] T037 [P] [US2] Failing tests — browser: greenhouse_navigate_apply

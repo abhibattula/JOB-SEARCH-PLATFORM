@@ -109,11 +109,33 @@ _MAPS: dict[str, dict[str, str]] = {
 _WORKDAY_AUTOMATION = {
     "legalNameSection_firstName": "first_name",
     "legalNameSection_lastName": "last_name",
+    "legalNameSection_middleName": "middle_name",
+    "preferredNameSection_firstName": "preferred_name",
     "email": "email",
     "phone-number": "phone",
     "phoneNumber": "phone",
+    # 019 (T030, FR-013): the map covered seven keys, so every other Workday
+    # control reached the classifier with an empty haystack. These are the
+    # ones a new-grad application actually presents. Every value here is a
+    # tag `profile_answers` can resolve — an invented tag would look mapped
+    # and still fill nothing. Fields with no profile column (phone device
+    # type, previous-worker) are deliberately absent: the automation_id now
+    # reaches the classifier haystack, so they become an answerable question
+    # instead of a silent nothing.
+    "addressSection_addressLine1": "location_address1",
+    "addressSection_addressLine2": "location_address2",
     "addressSection_city": "location_city",
+    "addressSection_countryRegion": "location_state",
+    "addressSection_postalCode": "location_postal",
+    "countryDropdown": "location_country",
+    "country": "location_country",
     "source": "how_heard",
+    "sourceSection_source": "how_heard",
+    "linkedinQuestion": "linkedin_url",
+    "websiteSection_url": "portfolio_url",
+    "degree": "degree",
+    "gpa": "gpa",
+    "startDate": "start_date",
 }
 
 # HTML autocomplete attribute — the highest-confidence signal any form can

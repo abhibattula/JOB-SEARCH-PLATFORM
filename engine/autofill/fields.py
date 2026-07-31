@@ -271,7 +271,15 @@ def _haystack(field: FieldDescriptor) -> str:
         field.get("name") or "",
         field.get("id") or "",
     )
-    return " ".join(parts)
+    text = " ".join(part for part in parts if part).strip()
+    if text:
+        return text
+    # 019 (T026, FR-013): a FALLBACK only. Workday labels its controls with
+    # data-automation-id and often nothing else, leaving the haystack empty
+    # and the field unclassifiable. Consulting it last means it can never
+    # outvote a real label — `legalNameSection_firstName` beside the label
+    # "Last Name" must still be the last name.
+    return field.get("automation_id") or ""
 
 
 def classify(field: FieldDescriptor) -> str:

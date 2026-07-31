@@ -37,21 +37,38 @@ window.jeScanner = (function () {
     return "";
   }
 
+  // 019 (T032, FR-010): mirrors engine/autofill/field_core.is_placeholder_value
+  // (kept in step by tests/test_extension_assets.py). A control resting on
+  // "Select…" DISPLAYS text but the applicant has chosen nothing — reading
+  // it back as a real value is why those dropdowns were skipped_existing
+  // forever and never filled.
+  const _PLACEHOLDER_VALUE =
+    /^\s*(?:[-–—•*\s]*)?(?:select|choose|please\s+select|pick|--+|—+|none|n\/?a)\b/i;
+
+  function isPlaceholderValue(text) {
+    const value = (text || "").trim();
+    if (!value) { return true; }
+    return _PLACEHOLDER_VALUE.test(value);
+  }
+
   function jeValue(el, widget) {
     const type = el.type || "";
     if (type === "checkbox" || type === "radio") {
       return el.checked ? "on" : "";
     }
     if (widget === "native_select") {
-      return el.value ? ((el.options[el.selectedIndex] || {}).text || "") : "";
+      if (!el.value) { return ""; }
+      const text = (el.options[el.selectedIndex] || {}).text || "";
+      return isPlaceholderValue(text) ? "" : text;
     }
     if (widget === "custom_combobox" || widget === "typeahead") {
       const sv = el.querySelector &&
         el.querySelector('[class*=singleValue],[class*="-value"]');
-      if (sv) { return sv.textContent.trim(); }
-      if (el.value) { return el.value; }
+      if (sv) { return isPlaceholderValue(sv.textContent) ? ""
+                                                         : sv.textContent.trim(); }
+      if (el.value) { return isPlaceholderValue(el.value) ? "" : el.value; }
       const t = (el.textContent || "").trim();
-      return /^(select|choose|--)/i.test(t) ? "" : t;
+      return isPlaceholderValue(t) ? "" : t;
     }
     return el.value || "";
   }
@@ -75,9 +92,96 @@ window.jeScanner = (function () {
     return el.dataset.jeIdx;
   }
 
+  // 019 (T026, FR-007): the full labelling ladder. This read only
+  // `el.labels[0]` then `aria-label`, so a field labelled by REFERENCE
+  // (aria-labelledby — the Workday/React standard) carried no question at
+  // all, and a div[role=combobox] never has `.labels`. Byte-parallel with
+  // watcher.py SERIALIZE_JS.
+  function referencedText(el) {
+    const ids = el.getAttribute && el.getAttribute("aria-labelledby");
+    if (!ids) { return ""; }
+    const root = el.getRootNode ? el.getRootNode() : document;
+    const parts = ids.split(/\s+/).map(function (id) {
+      const node = (root.getElementById && root.getElementById(id))
+        || document.getElementById(id);
+      return node ? (node.innerText || node.textContent || "").trim() : "";
+    }).filter(Boolean);
+    return parts.join(" ");
+  }
+
+  function nearbyLabel(el) {
+    const wrapping = el.closest && el.closest("label");
+    if (wrapping) {
+      // The control's own text is not its question — strip it.
+      const clone = wrapping.cloneNode(true);
+      Array.prototype.forEach.call(
+        clone.querySelectorAll("input,select,textarea,button"),
+        function (child) { child.remove(); });
+      const text = (clone.innerText || clone.textContent || "").trim();
+      if (text) { return text; }
+    }
+    let prev = el.previousElementSibling;
+    let hops = 0;
+    while (prev && hops < 3) {
+      const tag = prev.tagName.toLowerCase();
+      if (tag === "label" || /^h[1-6]$/.test(tag) || tag === "legend") {
+        const text = (prev.innerText || prev.textContent || "").trim();
+        if (text) { return text; }
+      }
+      prev = prev.previousElementSibling;
+      hops += 1;
+    }
+    return "";
+  }
+
   function labelText(el) {
     if (el.labels && el.labels[0]) { return el.labels[0].innerText || ""; }
-    return el.getAttribute("aria-label") || "";
+    const aria = el.getAttribute("aria-label");
+    if (aria) { return aria; }
+    const referenced = referencedText(el);
+    if (referenced) { return referenced; }
+    return nearbyLabel(el);
+  }
+
+  // 019 (T028, FR-008): every lookup in this file used
+  // `document.querySelectorAll`, which never enters a shadow root — so a
+  // form inside one was invisible to the scan AND to the probe, and no
+  // widget rendered at all. Open roots only; closed roots stay private by
+  // design. Depth-capped so a pathological page cannot hang the scan.
+  const _MAX_SHADOW_DEPTH = 10;
+
+  function deepQueryAll(selector, root, depth) {
+    const scope = root || document;
+    const out = Array.prototype.slice.call(scope.querySelectorAll(selector));
+    const level = depth || 0;
+    if (level >= _MAX_SHADOW_DEPTH) { return out; }
+    const all = scope.querySelectorAll("*");
+    Array.prototype.forEach.call(all, function (el) {
+      if (el.shadowRoot) {
+        Array.prototype.push.apply(
+          out, deepQueryAll(selector, el.shadowRoot, level + 1));
+      }
+    });
+    return out;
+  }
+
+  // 019 (T034, FR-011): `offsetParent` is null for an element that is
+  // ITSELF position:fixed — modal-dialog fields were reported invisible and
+  // silently ignored — while `visibility:hidden` elements have a non-null
+  // offsetParent and were counted visible. Judge by what the user can
+  // actually see: a real box, not hidden, not collapsed.
+  function isVisible(el) {
+    const type = (el.type || "").toLowerCase();
+    if (type === "file") { return true; }  // often deliberately off-screen
+    const rect = el.getClientRects && el.getClientRects()[0];
+    if (!rect || rect.width <= 0 || rect.height <= 0) { return false; }
+    const style = window.getComputedStyle ? window.getComputedStyle(el) : null;
+    if (style && (style.visibility === "hidden" ||
+                  style.visibility === "collapse" ||
+                  style.display === "none")) {
+      return false;
+    }
+    return true;
   }
 
   function describe(el) {
@@ -104,7 +208,7 @@ window.jeScanner = (function () {
       required: !!(el.required ||
                    el.getAttribute("aria-required") === "true"),
       focused: el === document.activeElement,
-      visible: !!(el.offsetParent || type === "file"),
+      visible: isVisible(el),
     };
   }
 
@@ -246,15 +350,16 @@ window.jeScanner = (function () {
   }
 
   function serialize() {
-    const els = document.querySelectorAll(FIELD_SELECTOR);
-    const pairs = Array.from(els).map(function (el) {
+    const els = deepQueryAll(FIELD_SELECTOR);
+    const pairs = els.map(function (el) {
       return { el: el, desc: describe(el) };
     });
     return groupControls(dropNestedChoiceControls(pairs));
   }
 
   function elementByIdx(jeIdx) {
-    return document.querySelector(`[data-je-idx="${jeIdx}"]`);
+    const found = deepQueryAll(`[data-je-idx="${jeIdx}"]`);
+    return found.length ? found[0] : null;
   }
 
   // 018 (R7, FR-005): a READ-ONLY answer to "does this page have an
@@ -287,11 +392,11 @@ window.jeScanner = (function () {
   }
 
   function probe() {
-    const els = document.querySelectorAll(FIELD_SELECTOR);
+    const els = deepQueryAll(FIELD_SELECTOR);
     let fields = 0, textish = 0, hasFile = false;
     Array.prototype.forEach.call(els, function (el) {
       const type = (el.type || "").toLowerCase();
-      if (!(el.offsetParent || type === "file")) { return; }   // not visible
+      if (!isVisible(el)) { return; }
       if (type === "search" || type === "password") { return; }
       if (_SEARCHY_NAME.test(el.name || "") ||
           _SEARCHY_NAME.test(el.id || "")) { return; }
@@ -314,5 +419,6 @@ window.jeScanner = (function () {
     return p.fields >= 3 || (p.hasFile && p.fields >= 2);
   }
 
-  return { serialize, elementByIdx, docToken, probe, looksLikeApplicationForm };
+  return { serialize, elementByIdx, docToken, probe, looksLikeApplicationForm,
+           deepQueryAll, isVisible, isPlaceholderValue };
 })();
