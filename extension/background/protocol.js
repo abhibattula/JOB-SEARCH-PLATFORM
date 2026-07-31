@@ -5,13 +5,25 @@ export const PROTOCOL_V = 1;
 
 export const EXT_TO_APP = Object.freeze([
   "hello", "tab_opened", "fields", "fill_result", "page_event",
-  "fill_here", "pong",
+  "fill_here", "pong", "score_request", "save_job", "scan_error",
+  "child_tab", "fill_again", "answer_question", "apply_here",
+  "session_control",
+  // 019
+  "credential_save", "advance_result",
 ]);
 
 export const APP_TO_EXT = Object.freeze([
   "hello_ok", "error", "ping", "open_tab", "close_tab",
-  "watch_start", "watch_stop", "fill", "overlay_state",
+  "watch_start", "watch_stop", "fill", "overlay_state", "answers",
+  "score_result", "save_result", "rescan",
+  // 019
+  "advance_step",
 ]);
+
+// 019: message fields that carry a credential. Dropped structurally before
+// anything reaches the console — a password must never be one console.debug
+// away from the page's own devtools.
+const SECRET_FIELDS = Object.freeze(["password", "secret", "email"]);
 
 let seq = 0;
 
@@ -37,6 +49,12 @@ export function logSafe(label, msg) {
       const { value, ...rest } = item;
       return rest;
     });
+  }
+  // 019: credential_save carries a real password. Strip by NAME, not by
+  // message type, so a future message that reuses the field name is
+  // covered the moment it exists rather than the moment someone remembers.
+  for (const field of SECRET_FIELDS) {
+    if (field in clone) { clone[field] = "•••"; }
   }
   console.debug(`[je] ${label}`, clone);
 }

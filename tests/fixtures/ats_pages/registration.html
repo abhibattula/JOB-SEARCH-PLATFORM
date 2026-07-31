@@ -1,0 +1,49 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Create account — Fixture Careers</title></head>
+<body>
+<h1>Create an account to apply</h1>
+<!-- R18 fixture: registration context (two password inputs + create-account
+     copy). The system must fill email + BOTH password fields with a
+     generated password, save it to the vault AT FILL TIME, and hand the
+     Create Account click to the human. The button is FINAL-CLASS: any
+     automated click echoes and fails the suite. -->
+<form id="register" method="get" action="login_wall_done.html">
+  <label>Email Address
+    <input name="email" type="email" autocomplete="username"></label>
+  <label>Create Password
+    <input name="new_password" type="password" autocomplete="new-password"></label>
+  <label>Verify New Password
+    <input name="confirm_password" type="password" autocomplete="new-password"></label>
+  <button type="submit" id="create">Create Account</button>
+</form>
+<script>
+  // A password-aware mirror. The generated secret NEVER goes on the wire,
+  // even in a test: what the suite needs to know is that both boxes were
+  // filled, that they match, and that the password is long — so that is
+  // exactly what gets reported.
+  function report() {
+    var a = document.getElementsByName('new_password')[0].value;
+    var b = document.getElementsByName('confirm_password')[0].value;
+    if (!a || !b) { return; }   // both boxes, or it is not a report yet
+    var payload = JSON.stringify({
+      name: 'pw_report',
+      value: a.length + ':' + (a === b ? 'match' : 'differ'),
+    });
+    fetch('/echo', {method:'POST',
+      headers:{'Content-Type':'application/json'}, body: payload});
+  }
+  document.addEventListener('input', function (e) {
+    var el = e.target;
+    if (!el || !el.name) { return; }
+    if (el.type === 'password') { report(); return; }
+    fetch('/echo', {method:'POST',
+      headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({name: el.name, value: el.value})});
+  });
+  document.getElementById('create').addEventListener('click', function () {
+    try {
+      var payload = JSON.stringify({name:'__create_account_clicked', value:'yes'});
+      navigator.sendBeacon('/echo', new Blob([payload], {type:'application/json'}));
+    } catch (e) { }
+  });
+</script>
+</body></html>

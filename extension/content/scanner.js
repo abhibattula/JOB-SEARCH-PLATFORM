@@ -37,21 +37,38 @@ window.jeScanner = (function () {
     return "";
   }
 
+  // 019 (T032, FR-010): mirrors engine/autofill/field_core.is_placeholder_value
+  // (kept in step by tests/test_extension_assets.py). A control resting on
+  // "Select…" DISPLAYS text but the applicant has chosen nothing — reading
+  // it back as a real value is why those dropdowns were skipped_existing
+  // forever and never filled.
+  const _PLACEHOLDER_VALUE =
+    /^\s*(?:[-–—•*\s]*)?(?:select|choose|please\s+select|pick|--+|—+|none|n\/?a)\b/i;
+
+  function isPlaceholderValue(text) {
+    const value = (text || "").trim();
+    if (!value) { return true; }
+    return _PLACEHOLDER_VALUE.test(value);
+  }
+
   function jeValue(el, widget) {
     const type = el.type || "";
     if (type === "checkbox" || type === "radio") {
       return el.checked ? "on" : "";
     }
     if (widget === "native_select") {
-      return el.value ? ((el.options[el.selectedIndex] || {}).text || "") : "";
+      if (!el.value) { return ""; }
+      const text = (el.options[el.selectedIndex] || {}).text || "";
+      return isPlaceholderValue(text) ? "" : text;
     }
     if (widget === "custom_combobox" || widget === "typeahead") {
       const sv = el.querySelector &&
         el.querySelector('[class*=singleValue],[class*="-value"]');
-      if (sv) { return sv.textContent.trim(); }
-      if (el.value) { return el.value; }
+      if (sv) { return isPlaceholderValue(sv.textContent) ? ""
+                                                         : sv.textContent.trim(); }
+      if (el.value) { return isPlaceholderValue(el.value) ? "" : el.value; }
       const t = (el.textContent || "").trim();
-      return /^(select|choose|--)/i.test(t) ? "" : t;
+      return isPlaceholderValue(t) ? "" : t;
     }
     return el.value || "";
   }
@@ -75,9 +92,116 @@ window.jeScanner = (function () {
     return el.dataset.jeIdx;
   }
 
+  // 019 (T026, FR-007): the full labelling ladder. This read only
+  // `el.labels[0]` then `aria-label`, so a field labelled by REFERENCE
+  // (aria-labelledby — the Workday/React standard) carried no question at
+  // all, and a div[role=combobox] never has `.labels`. Byte-parallel with
+  // watcher.py SERIALIZE_JS.
+  function referencedText(el) {
+    const ids = el.getAttribute && el.getAttribute("aria-labelledby");
+    if (!ids) { return ""; }
+    const root = el.getRootNode ? el.getRootNode() : document;
+    const parts = ids.split(/\s+/).map(function (id) {
+      const node = (root.getElementById && root.getElementById(id))
+        || document.getElementById(id);
+      return node ? (node.innerText || node.textContent || "").trim() : "";
+    }).filter(Boolean);
+    return parts.join(" ");
+  }
+
+  function nearbyLabel(el) {
+    const wrapping = el.closest && el.closest("label");
+    if (wrapping) {
+      const text = stripControls(wrapping);
+      if (text) { return text; }
+    }
+    let prev = el.previousElementSibling;
+    let hops = 0;
+    while (prev && hops < 3) {
+      const tag = prev.tagName.toLowerCase();
+      if (tag === "label" || /^h[1-6]$/.test(tag) || tag === "legend") {
+        const text = (prev.innerText || prev.textContent || "").trim();
+        if (text) { return text; }
+      }
+      prev = prev.previousElementSibling;
+      hops += 1;
+    }
+    return "";
+  }
+
+  function stripControls(node) {
+    const clone = node.cloneNode(true);
+    Array.prototype.forEach.call(
+      clone.querySelectorAll("input,select,textarea,button"),
+      function (child) { child.remove(); });
+    return (clone.innerText || clone.textContent || "").trim();
+  }
+
   function labelText(el) {
-    if (el.labels && el.labels[0]) { return el.labels[0].innerText || ""; }
-    return el.getAttribute("aria-label") || "";
+    if (el.labels && el.labels[0]) {
+      const label = el.labels[0];
+      // A WRAPPING label's innerText includes the control's own rendered
+      // text — for a <select> that is the selected option. Reading it raw
+      // made the question change the moment the answer did ("Authorized to
+      // work? Yes"), which is both wrong in the panel and enough to keep a
+      // step looking like it was still changing, forever.
+      const text = label.contains(el) ? stripControls(label)
+                                      : (label.innerText || "").trim();
+      if (text) { return text; }
+    }
+    const aria = el.getAttribute("aria-label");
+    if (aria) { return aria; }
+    const referenced = referencedText(el);
+    if (referenced) { return referenced; }
+    return nearbyLabel(el);
+  }
+
+  // 019 (T028, FR-008): every lookup in this file used
+  // `document.querySelectorAll`, which never enters a shadow root — so a
+  // form inside one was invisible to the scan AND to the probe, and no
+  // widget rendered at all. Open roots only; closed roots stay private by
+  // design. Depth-capped so a pathological page cannot hang the scan.
+  const _MAX_SHADOW_DEPTH = 10;
+
+  function deepQueryAll(selector, root, depth) {
+    const scope = root || document;
+    const out = Array.prototype.slice.call(scope.querySelectorAll(selector));
+    const level = depth || 0;
+    if (level >= _MAX_SHADOW_DEPTH) { return out; }
+    const all = scope.querySelectorAll("*");
+    Array.prototype.forEach.call(all, function (el) {
+      if (el.shadowRoot) {
+        Array.prototype.push.apply(
+          out, deepQueryAll(selector, el.shadowRoot, level + 1));
+      }
+    });
+    return out;
+  }
+
+  // 019 (T034, FR-011): `offsetParent` is null for an element that is
+  // ITSELF position:fixed — modal-dialog fields were reported invisible and
+  // silently ignored — while `visibility:hidden` elements have a non-null
+  // offsetParent and were counted visible. Judge by what the user can
+  // actually see: a real box, not hidden, not collapsed.
+  function isVisible(el) {
+    const type = (el.type || "").toLowerCase();
+    if (type === "file") { return true; }  // often deliberately off-screen
+    const rect = el.getClientRects && el.getClientRects()[0];
+    if (!rect || rect.width <= 0 || rect.height <= 0) { return false; }
+    // `left:-9999px` is the oldest hide-it-anyway idiom on the web, and it
+    // has a real box, so a rect test alone calls it visible. A field parked
+    // entirely off the left/top of the document is not something the
+    // applicant can see or answer — counting it costs a drafter call and
+    // stalls anything waiting for the page to be complete. Below the fold
+    // is NOT this: that field is visible, just scrolled.
+    if (rect.right <= 0 || rect.bottom <= 0) { return false; }
+    const style = window.getComputedStyle ? window.getComputedStyle(el) : null;
+    if (style && (style.visibility === "hidden" ||
+                  style.visibility === "collapse" ||
+                  style.display === "none")) {
+      return false;
+    }
+    return true;
   }
 
   function describe(el) {
@@ -104,7 +228,9 @@ window.jeScanner = (function () {
       required: !!(el.required ||
                    el.getAttribute("aria-required") === "true"),
       focused: el === document.activeElement,
-      visible: !!(el.offsetParent || type === "file"),
+      visible: isVisible(el),
+      // 019 (FR-014): additive — old app versions ignore it.
+      form_context: formContext(el),
     };
   }
 
@@ -246,15 +372,16 @@ window.jeScanner = (function () {
   }
 
   function serialize() {
-    const els = document.querySelectorAll(FIELD_SELECTOR);
-    const pairs = Array.from(els).map(function (el) {
+    const els = deepQueryAll(FIELD_SELECTOR);
+    const pairs = els.map(function (el) {
       return { el: el, desc: describe(el) };
     });
     return groupControls(dropNestedChoiceControls(pairs));
   }
 
   function elementByIdx(jeIdx) {
-    return document.querySelector(`[data-je-idx="${jeIdx}"]`);
+    const found = deepQueryAll(`[data-je-idx="${jeIdx}"]`);
+    return found.length ? found[0] : null;
   }
 
   // 018 (R7, FR-005): a READ-ONLY answer to "does this page have an
@@ -286,12 +413,47 @@ window.jeScanner = (function () {
     return !!(form && form.querySelector("input[type=password]"));
   }
 
+  // 019 (T044, FR-014): a credential wall is now a FIRST-CLASS state, not a
+  // page to hide on. The application-form counts still exclude credential
+  // fields (a login box plus a newsletter email is not an application), but
+  // the wall itself is reported so the companion can offer to sign in — the
+  // page where the applicant most needed it used to show nothing at all.
+  //
+  // 019 (FR-028): a bot check is reported the same way and always pauses to
+  // the human. Detection reads the frame's src attribute; nothing is ever
+  // clicked, focused, or read from inside it.
+  const _CAPTCHA_SRC = /recaptcha|hcaptcha|challenges\.cloudflare\.com|turnstile|funcaptcha|arkoselabs/i;
+
+  function captchaPresent() {
+    const frames = deepQueryAll("iframe");
+    for (let i = 0; i < frames.length; i += 1) {
+      const src = frames[i].getAttribute("src") || "";
+      if (_CAPTCHA_SRC.test(src)) { return true; }
+    }
+    return !!(document.querySelector(".g-recaptcha, .h-captcha, .cf-turnstile"));
+  }
+
+  function credentialWall() {
+    const passwords = deepQueryAll("input[type=password]").filter(isVisible);
+    if (!passwords.length) { return null; }
+    // Two password boxes (or an explicit new-password) means the applicant
+    // is CREATING the account, which is a different offer: we prepare the
+    // form, they press Create account.
+    const newPassword = passwords.some(function (el) {
+      return (el.getAttribute("autocomplete") || "") === "new-password";
+    });
+    return {
+      kind: passwords.length > 1 || newPassword ? "registration" : "login",
+      domain: location.hostname,
+    };
+  }
+
   function probe() {
-    const els = document.querySelectorAll(FIELD_SELECTOR);
+    const els = deepQueryAll(FIELD_SELECTOR);
     let fields = 0, textish = 0, hasFile = false;
     Array.prototype.forEach.call(els, function (el) {
       const type = (el.type || "").toLowerCase();
-      if (!(el.offsetParent || type === "file")) { return; }   // not visible
+      if (!isVisible(el)) { return; }
       if (type === "search" || type === "password") { return; }
       if (_SEARCHY_NAME.test(el.name || "") ||
           _SEARCHY_NAME.test(el.id || "")) { return; }
@@ -303,7 +465,10 @@ window.jeScanner = (function () {
         textish += 1;
       }
     });
-    return { fields: fields, textish: textish, hasFile: hasFile };
+    const wall = credentialWall();
+    return { fields: fields, textish: textish, hasFile: hasFile,
+             wall: wall ? wall.kind : "", domain: wall ? wall.domain : "",
+             captcha: captchaPresent() };
   }
 
   // A form worth offering to fill. Two text-ish fields is the floor: it keeps
@@ -314,5 +479,31 @@ window.jeScanner = (function () {
     return p.fields >= 3 || (p.hasFile && p.fields >= 2);
   }
 
-  return { serialize, elementByIdx, docToken, probe, looksLikeApplicationForm };
+  // 019 (T042, FR-014): which kind of credential form this field sits in —
+  // the signal that finally makes login_email/login_username reachable. It
+  // is computed from the FORM the serializer can see, which is exactly why
+  // it has to live here and not in the classifier.
+  function formContext(el) {
+    const form = el.closest && el.closest("form");
+    const scope = form || document;
+    const passwords = (form
+      ? Array.prototype.slice.call(form.querySelectorAll("input[type=password]"))
+      : deepQueryAll("input[type=password]")).filter(isVisible);
+    if (!passwords.length) { return ""; }
+    const newPassword = passwords.some(function (p) {
+      return (p.getAttribute("autocomplete") || "") === "new-password";
+    });
+    if (passwords.length > 1 || newPassword) { return "registration"; }
+    const text = ((scope.innerText || scope.textContent || "")
+      .slice(0, 400)).toLowerCase();
+    if (/create (an )?account|sign up|register/.test(text)
+        && !/sign in|log in/.test(text)) {
+      return "registration";
+    }
+    return "login";
+  }
+
+  return { serialize, elementByIdx, docToken, probe, looksLikeApplicationForm,
+           deepQueryAll, isVisible, isPlaceholderValue, formContext,
+           captchaPresent, credentialWall };
 })();

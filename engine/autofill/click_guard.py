@@ -42,6 +42,45 @@ DENY_TERMS: tuple[str, ...] = (
 )
 
 
+# 019 (T062, constitution v1.2.0): the FINAL-class layer. DENY_TERMS keeps
+# protecting the fill path unchanged — it still refuses "next"/"continue"
+# there, because a filler has no business advancing anything. Progression
+# clicks are a separate, narrower permission, and these are the terms that
+# permission never extends to. A wizard's Continue is now clickable; the
+# Submit at the end of it is not, and never will be.
+FINAL_TERMS: tuple[str, ...] = (
+    "submit application",
+    "submit my application",
+    "review and submit",
+    "submit",
+    "create account",
+    "create an account",
+    "register",
+    "sign up",
+    "signup",
+    "pay",
+    "checkout",
+    "place order",
+    "confirm and submit",
+)
+
+
+def is_progression_safe(name: str = "") -> bool:
+    """True when a control may be clicked to move the application FORWARD.
+
+    False for anything that would submit it, create an account, or pay —
+    the three things the human always does themselves (constitution v1.2.0).
+    """
+    norm = _normalize(name)
+    if not norm:
+        # An unnamed control is not identifiable as safe; refuse it.
+        return False
+    for term in FINAL_TERMS:
+        if re.search(rf"(?<![a-z]){re.escape(term)}(?![a-z])", norm):
+            return False
+    return True
+
+
 def _normalize(text: str) -> str:
     # lowercase, collapse whitespace, strip non-alphanumeric edges so
     # "Continue »" / "  submit  " normalize cleanly
@@ -64,6 +103,37 @@ def is_denylisted(text: str = "", type: str = "", role: str = "") -> bool:
         if re.search(rf"(?<![a-z]){re.escape(term)}(?![a-z])", norm):
             return True
     return False
+
+
+def is_widget_operable(own_name: str = "", descendant_text: str = "",
+                       type_: str = "", role: str = "",
+                       descendant_types: list[str] | None = None) -> bool:
+    """019 (T036, FR-012): may the filler operate this control to SET A
+    VALUE?
+
+    The 011 rule folds descendant text into the verdict, which is right for
+    judging a button but wrong for judging a widget: a react-select wrapper
+    whose card happens to contain the words "Next" or "Save the date" was
+    refused, so an ordinary dropdown became needs_manual. Text is therefore
+    judged on the element's OWN accessible name.
+
+    Descendant TYPES are still folded — a wrapper containing a real
+    `type=submit` control would submit the form, and that danger is
+    unchanged. `is_denylisted` itself is untouched: the fill path's
+    button-judging behavior is exactly what it was.
+    """
+    types = [type_] + list(descendant_types or [])
+    if any((t or "").strip().lower() == "submit" for t in types):
+        return False
+    # An element the page itself declares as an OPTION is a value, not a
+    # control: "Next year" in a date menu, "Continue Education" in a
+    # dropdown. Its text can therefore never make it submit-class — only a
+    # submit type can, and that was refused above. (This is why
+    # tests/fixtures/ats_pages/submit_styled_as_option.html exists: a submit
+    # button dressed as an option is still caught, by type.)
+    if (role or "").strip().lower() == "option":
+        return True
+    return not is_denylisted(own_name, type_, role)
 
 
 def combined_signal(own_text: str = "", own_type: str = "", own_role: str = "",

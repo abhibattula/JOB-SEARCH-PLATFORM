@@ -1,0 +1,24 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Application — Fixture Robotics</title></head>
+<body>
+<h1>Apply to Fixture Robotics</h1>
+<!-- The page the modern-Greenhouse Apply link navigates TO. Standard
+     Greenhouse field names so the adapter map classifies without AI. -->
+<form id="form">
+  <label>First Name<input name="job_application[first_name]" type="text"></label>
+  <label>Last Name<input name="job_application[last_name]" type="text"></label>
+  <label>Email<input name="job_application[email]" type="email"></label>
+  <label>Phone<input name="job_application[phone]" type="tel"></label>
+  <label>Resume<input name="job_application[resume]" type="file"></label>
+  <button type="submit" id="gh-submit">Submit application</button>
+</form>
+<script src="/_mirror.js"></script>
+<script>
+  // Final-class sentinel: any automated click here is a constitution
+  // violation — echo it so suites can assert zero occurrences (SC-006).
+  document.getElementById('gh-submit').addEventListener('click', function (e) {
+    e.preventDefault();
+    fetch('/echo',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:'__gh_submitted',value:'yes'})});
+  });
+</script>
+</body></html>

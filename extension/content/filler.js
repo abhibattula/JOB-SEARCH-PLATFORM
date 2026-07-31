@@ -40,9 +40,17 @@ window.jeFiller = (function () {
   }
 
   // The one and only click path. Refuses submit-class controls.
+  //
+  // 019 (T036, FR-012): judged by `isWidgetOperable`, which reads the
+  // element's OWN accessible name for the text verdict while still folding
+  // descendant TYPES. Folding descendant TEXT (the 011 behavior) refused an
+  // ordinary dropdown whenever the card around it happened to contain the
+  // word "Next" or "Save" — the widget became needs_manual for a reason
+  // that had nothing to do with it. A real submit control is still refused,
+  // by type, which is the danger that mattered.
   function safeClick(el) {
     if (!el) { throw new Error("no element to click"); }
-    if (window.jeClickGuard.isDenylisted(el)) {
+    if (!window.jeClickGuard.isWidgetOperable(el)) {
       throw new Error("refused: submit-class control");
     }
     el.click();
@@ -54,10 +62,23 @@ window.jeFiller = (function () {
     if (el.type === "checkbox" || el.type === "radio") {
       return el.checked ? "on" : "";
     }
+    // 019 (FR-010): a control resting on its placeholder has no value —
+    // treating "Select…" as the applicant's choice is what made those
+    // dropdowns permanently skipped_existing.
+    const placeholder = window.jeScanner && window.jeScanner.isPlaceholderValue;
     const sv = el.querySelector &&
       el.querySelector('[class*=singleValue],[class*="-value"]');
-    if (sv) { return sv.textContent.trim(); }
-    if ("value" in el && el.value) { return el.value; }
+    if (sv) {
+      const text = sv.textContent.trim();
+      return (placeholder && placeholder(text)) ? "" : text;
+    }
+    if ("value" in el && el.value) {
+      if (el.tagName === "SELECT") {
+        const text = (el.options[el.selectedIndex] || {}).text || "";
+        return (placeholder && placeholder(text)) ? "" : el.value;
+      }
+      return el.value;
+    }
     return "";
   }
 
@@ -81,10 +102,23 @@ window.jeFiller = (function () {
   // 016 (T013): harvest widened beyond [role=option] — react-select uses
   // it, but plenty of menus render plain <li> under a listbox or
   // *select__option* classes without the role.
+  // 019 (T030, FR-009): Workday renders its menu rows as
+  // [data-automation-id=promptOption] divs — no role, no listbox li, no
+  // select__option class — so every Workday dropdown matched nothing here
+  // and became needs_manual. 019 (FR-008) also routes the lookup through
+  // deepQueryAll so options inside an open shadow root are found.
   function visibleOptions() {
-    return Array.from(document.querySelectorAll(
-      '[role=option], [role=listbox] li, [class*="select__option"]'))
-      .filter((o) => o.offsetParent !== null);
+    const query = window.jeScanner && window.jeScanner.deepQueryAll
+      ? window.jeScanner.deepQueryAll
+      : (sel) => Array.from(document.querySelectorAll(sel));
+    const visible = window.jeScanner && window.jeScanner.isVisible
+      ? window.jeScanner.isVisible
+      : (o) => o.offsetParent !== null;
+    return query(
+      '[role=option], [role=listbox] li, [class*="select__option"],'
+      + ' [data-automation-id="promptOption"],'
+      + ' [data-automation-id*="menuItem"]')
+      .filter(visible);
   }
 
   function findOption(target) {

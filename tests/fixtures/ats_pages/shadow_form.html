@@ -1,0 +1,60 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Shadow-root application</title></head>
+<body>
+<h1>Apply — the whole form lives in a shadow root</h1>
+<!-- R7 fixture: document.querySelectorAll sees ZERO fields on this page.
+     Today: probe()==0, no widget renders, nothing fills. The form —
+     including the custom dropdown's options — is inside an OPEN shadow
+     root on #shadow-host. -->
+<div id="shadow-host"></div>
+<p id="light-dom-sentinel">No form fields exist in the light DOM.</p>
+<script>
+  var root = document.getElementById('shadow-host').attachShadow({mode: 'open'});
+  root.innerHTML =
+    '<form id="sform">' +
+    '  <label>First Name<input name="sh_first" type="text"></label>' +
+    '  <label>Last Name<input name="sh_last" type="text"></label>' +
+    '  <label>Email<input name="sh_email" type="email"></label>' +
+    '  <label>Years of experience<input name="sh_years" type="number"></label>' +
+    '  <label id="sh-src-label">Source</label>' +
+    '  <div role="combobox" aria-label="Source" id="sh-src" tabindex="0">' +
+    '    <span class="ph">Select…</span><span class="sv" style="display:none"></span>' +
+    '  </div>' +
+    '  <div id="sh-src-menu" role="listbox" style="display:none"></div>' +
+    '</form>';
+  // The page-level mirror cannot see in here: input/change events are
+  // composed, so they reach the document, but the target is RETARGETED to
+  // the host element and loses its name. The root gets its own mirror.
+  function mirror(e) {
+    var el = e.target;
+    if (!el || !el.name) { return; }
+    fetch('/echo', {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({name: el.name,
+                            value: el.value || (el.checked ? 'on' : '')}),
+    });
+  }
+  root.addEventListener('input', mirror, true);
+  root.addEventListener('change', mirror, true);
+
+  var hidden = document.createElement('input');
+  hidden.type='text'; hidden.name='sh_source'; hidden.style.position='absolute';
+  hidden.style.left='-9999px'; root.getElementById('sform').appendChild(hidden);
+  var box = root.getElementById('sh-src');
+  var menu = root.getElementById('sh-src-menu');
+  box.addEventListener('click', function () {
+    menu.innerHTML='';
+    ['LinkedIn','Referral','Careers page'].forEach(function (t) {
+      var o=document.createElement('div'); o.setAttribute('role','option'); o.textContent=t;
+      o.addEventListener('click', function () {
+        box.querySelector('.sv').textContent=t;
+        box.querySelector('.sv').style.display='';
+        box.querySelector('.ph').style.display='none';
+        menu.style.display='none'; hidden.value=t;
+        hidden.dispatchEvent(new Event('input',{bubbles:true}));
+      });
+      menu.appendChild(o);
+    });
+    menu.style.display='';
+  });
+</script>
+</body></html>

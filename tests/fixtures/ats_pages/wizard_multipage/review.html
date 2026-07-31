@@ -1,0 +1,23 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Application — review and submit</title></head>
+<body>
+<h1>Review your application (step 3 of 3)</h1>
+<!-- The DOOR. The only control here is final-class. The escort must park in
+     ready_for_review and the Submit sentinel must NEVER fire from
+     automation (SC-006). The human presses it. -->
+<p>Everything below is what will be sent to Fixture Robotics.</p>
+<div id="review-summary">
+  <p>Contact: (from step 1)</p>
+  <p>Questions: (from step 2)</p>
+</div>
+<form id="form" method="get" action="submitted.html">
+  <button type="submit" id="final-submit">Submit Application</button>
+</form>
+<script>
+  document.getElementById('final-submit').addEventListener('click', function () {
+    try {
+      var payload = JSON.stringify({name:'__final_submit_clicked', value:'yes'});
+      navigator.sendBeacon('/echo', new Blob([payload], {type:'application/json'}));
+    } catch (e) { }
+  });
+</script>
+</body></html>

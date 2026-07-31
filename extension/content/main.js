@@ -49,6 +49,10 @@
       url: location.href,
       doc: window.jeScanner.docToken(),
       descriptors,
+      // 019 (FR-028): a bot check on this page. The app pauses the escort
+      // and waits for the applicant; nothing is ever clicked near it.
+      captcha: !!(window.jeScanner.captchaPresent
+                  && window.jeScanner.captchaPresent()),
     });
     // 016 (T015): queue-driven watch on a recognized posting with no
     // fillable form → open the application ONCE; the observer/next scan
@@ -72,6 +76,11 @@
   function startWatch() {
     if (watching) { return; }
     watching = true;
+    // 019 (FR-014): a credential form is only a WALL when it stands between
+    // the applicant and an application they are already pursuing. On an
+    // ordinary page that merely has a login box — a blog, a docs site — an
+    // offer to sign in is noise, so the sign-in state is gated on this.
+    window.jeWatching = true;
     observer = new MutationObserver(scheduleScan);
     observer.observe(document.documentElement, {
       childList: true, subtree: true, attributes: true,
@@ -104,6 +113,15 @@
                                    value: answer }]);
         });
       }
+      // 019 (FR-017): a login saved from the wall. It goes to the app,
+      // which is the only thing that ever touches the OS keychain — the
+      // secret is never stored, echoed or logged on this side.
+      if (window.jePanel && window.jePanel.onCredential) {
+        window.jePanel.onCredential(function (identifier, password) {
+          toApp({ type: "credential_save", domain: location.hostname,
+                  email: identifier, password: password });
+        });
+      }
       // 017 (FR-036): scroll to a field that needs them.
       if (window.jeOverlay.onJump) {
         window.jeOverlay.onJump(function (jeIdx) {
@@ -121,6 +139,7 @@
 
   function teardown() {
     watching = false;
+    window.jeWatching = false;
     if (observer) { observer.disconnect(); observer = null; }
     clearInterval(safetyTimer);
     clearTimeout(debounceTimer);
@@ -173,8 +192,41 @@
           window.jeOverlay.setAnswers(message.items, message.truncated);
         }
         break;
+      // 019 (T007, FR-001): the app and this companion disagree on their
+      // version. Chrome keeps running the OLD bundle until the user presses
+      // ↻, and until they do some fills are withheld — so the page itself
+      // has to say it. Pinned above every other notice.
+      case "version_state":
+        if (isTop && message.mismatch && window.jePanel) {
+          window.jePanel.notice(
+            "Reload the companion at chrome://extensions (↻) — the app is "
+            + "v" + (message.appVersion || "?") + " and this companion is v"
+            + (message.companionVersion || "?")
+            + ". Until you do, some answers can't be filled.");
+          window.jePanel.show();
+        }
+        break;
+      // 019 (FR-016): the app says the credentials it filled have landed
+      // and the one permitted sign-in click may go out. The engine decided
+      // this — the page never infers it from a button's text.
+      case "advance_step":
+        if (window.jeAdvancer) { window.jeAdvancer.perform(message); }
+        break;
+      // 019 (FR-017): the app saved the login; the wall gets another go.
+      case "credential_saved":
+        if (isTop && window.jePanel) {
+          window.jePanel.setCredentialNeeded(false);
+          window.jePanel.notice("Login saved. Signing you in…");
+        }
+        break;
       case "overlay_state":
         if (isTop && window.jeOverlay) { window.jeOverlay.update(message.summary); }
+        // 019 (FR-017): the app knows whether a saved login exists for this
+        // domain; the panel offers the inline save form only when it does not.
+        if (isTop && window.jePanel && message.summary
+            && window.jePanel.setCredentialNeeded) {
+          window.jePanel.setCredentialNeeded(!!message.summary.needs_login);
+        }
         // 016 (T017): highlight the fields the human must answer
         if (message.summary && message.summary.needs_you_idx
             && window.jeFiller.annotateNeedsYou) {

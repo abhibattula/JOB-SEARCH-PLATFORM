@@ -37,6 +37,19 @@ state.onMessage = (msg) => {
     case "answers": toContent(msg.tab_id, { type: "answers",
                                             items: msg.items,
                                             truncated: msg.truncated }, 0); break;
+    // 019 (FR-016/FR-023): the app authorises ONE progression click, in the
+    // exact frame it names. Routed like a fill — never broadcast, because a
+    // sign-in click is only ever legal in the frame whose credentials the
+    // app itself just filled.
+    case "advance_step":
+      toContent(msg.tab_id, { type: "advance_step", kind: msg.kind,
+                              step_key: msg.step_key }, msg.frame_id);
+      break;
+    // 019 (FR-017): the login reached the OS keychain; tell the page.
+    case "credential_saved":
+      toContent(msg.tab_id, { type: "credential_saved",
+                              domain: msg.domain }, 0);
+      break;
     // 012 discovery: score/save replies go to the requesting tab's top frame.
     case "score_result": toContent(msg.tab_id, { ...msg, type: "score_result" }, 0);
       break;
@@ -84,15 +97,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // so the popup can explain WHY it isn't connected. A freshly-woken worker
   // has blank memory; fall back to the storage.session mirror.
   if (msg && msg.type === "status?") {
-    chrome.storage.session.get(["lastAttempt", "lastError"])
+    chrome.storage.session.get(["lastAttempt", "lastError", "versionState"])
       .then((stored) => sendResponse({
         connected: state.connected,
         lastAttempt: state.lastAttempt || stored.lastAttempt || null,
         lastError: stored.lastError || null,
+        // 019 (FR-001): the popup says "reload the companion" on a skew.
+        versionState: state.versionState || stored.versionState || null,
       }))
       .catch(() => sendResponse({ connected: state.connected,
                                   lastAttempt: state.lastAttempt || null,
-                                  lastError: null }));
+                                  lastError: null, versionState: null }));
     return true;
   }
   // Popup asked for an immediate reconnect attempt (015: "Connect now")
@@ -135,6 +150,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         adhoc: !entry || entry.jobId == null || entry.jobId === -2 },
       sender.frameId !== undefined ? { frameId: sender.frameId } : undefined,
     ).catch(() => {});
+    // 019 (FR-001): a freshly-injected content script also needs to know
+    // whether the app and companion agree on their version — the notice
+    // belongs on the page, not only behind the toolbar popup.
+    if (sender.frameId === 0) {
+      chrome.storage.session.get("versionState").then((stored) => {
+        const vs = state.versionState || stored.versionState || null;
+        if (vs) {
+          toContent(sender.tab.id, { type: "version_state", ...vs }, 0);
+        }
+      }).catch(() => {});
+    }
     return false;
   }
   // 017 (C9, FR-029): fetch an app file on the content script's behalf.

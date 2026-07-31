@@ -1258,3 +1258,26 @@ def whats_new_dismiss():
 
     settings.set("WHATS_NEW_SEEN_VERSION", APP_VERSION)
     return {"dismissed": True}
+
+
+class EscortRequest(BaseModel):
+    enabled: bool
+
+
+@router.post("/settings/escort")
+def set_escort(payload: EscortRequest) -> dict:
+    """019 (FR-034): the escort's on/off switch.
+
+    Off means Apply Assist fills exactly as before and presses nothing —
+    the rollback lever for a behaviour change this size. It takes effect on
+    the live session too, not only the next one.
+    """
+    from engine import db
+    from engine.autofill import ext_backend
+
+    db.set_setting("escort_enabled", "1" if payload.enabled else "0")
+    escort = ext_backend._get_escort()
+    escort.enabled = payload.enabled
+    if payload.enabled:
+        escort.resume()
+    return {"enabled": payload.enabled}

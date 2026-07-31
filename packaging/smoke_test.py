@@ -292,12 +292,45 @@ def main() -> int:
         proc.terminate()
         print("FAIL: stamp app_version does not match the running app")
         return 1
+    # 019: the version-skew signal must EXIST in the frozen build. It is the
+    # difference between "connected" and "connected but running last
+    # release's code, quietly dropping answers" — and it is the kind of
+    # thing that works in a source tree and is absent from a bundle.
+    if "version_ok" not in doctor or "app_version" not in doctor:
+        proc.terminate()
+        print(f"FAIL: doctor has no version-skew signal: {sorted(doctor)}")
+        return 1
+    if doctor.get("app_version") != bridge.get("app_version"):
+        proc.terminate()
+        print("FAIL: doctor app_version disagrees with the bridge")
+        return 1
     companion_html = urllib.request.urlopen(
         base + "/companion", timeout=30
     ).read().decode("utf-8", errors="replace")
     if "Load unpacked" not in companion_html:
         proc.terminate()
         print("FAIL: /companion walkthrough missing or malformed")
+        return 1
+    # 019: the escort's off switch and the auto-sign-in disclosure ship with
+    # the app or the applicant cannot consent to, or revoke, what it does.
+    settings_html = urllib.request.urlopen(
+        base + "/settings", timeout=30
+    ).read().decode("utf-8", errors="replace")
+    for needle, what in (("escort-enabled", "the escort toggle"),
+                         ("signs you in", "the auto-sign-in disclosure")):
+        if needle not in settings_html:
+            proc.terminate()
+            print(f"FAIL: /settings is missing {what}")
+            return 1
+    # 019: the credential vault must import INSIDE the frozen app — keyring
+    # cannot auto-detect its backend there, and a saved login that cannot be
+    # read is a sign-in that silently never happens.
+    from engine import credentials as _cred
+
+    generated = _cred.generate_password()
+    if len(generated) < 20:
+        proc.terminate()
+        print("FAIL: the frozen build cannot generate an account password")
         return 1
     next_actions = json.loads(
         urllib.request.urlopen(base + "/api/next-actions", timeout=30).read()

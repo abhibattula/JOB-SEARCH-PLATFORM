@@ -455,7 +455,7 @@ lets the app do the repetitive part of applying:
    answered by matching your confirmed answer to the site's own option
    wording — and left untouched (reported, never guessed) when nothing
    matches confidently.
-4. **The app never clicks submit, apply, next, or login for you — ever,
+4. **The app never presses the final Submit, Create account, or pay — ever,
    under any circumstance.** Review what was filled (the mission panel
    lists every field and value; passwords show only as `•••`), make
    corrections, and click the site's own button yourself. When *you* click
@@ -521,7 +521,9 @@ Realistically the same email/password covers most job-site logins, so
 
 Apply Assist fills matching login pages from whichever applies — default,
 or the domain's override if one exists — but, same rule as everywhere else,
-never clicks the login button. Passwords are stored in your OS's own
+presses Sign in for you, once per page, immediately after filling that
+page's own login fields — and never Create account. Passwords are
+stored in your OS's own
 credential store (Windows Credential Manager / macOS Keychain), never in
 this app's database, and are never displayed again once saved (write-only,
 like a real password manager).
@@ -628,7 +630,8 @@ UNKNOWN badges everywhere = run `python cli.py load-sponsorship`.
   `/application`), and a **continuous ~2s watch** over every frame of the
   page that fills each empty recognized field the moment it appears. Slow
   renders, iframe embeds, forms behind the Apply button, and multi-page
-  Next flows all fill. It still never clicks anything, never overwrites a
+  Next flows all fill. It presses Continue between steps it has fully
+  filled, stops at the review page, never overwrites a
   non-empty field, and never touches the field you're typing in.
 - **Test Apply Assist**: a bundled practice application (with a delayed
   section and an iframe section) fills with your real profile data in
@@ -823,7 +826,7 @@ Apply Assist's companion pairing was rebuilt end-to-end, and the on-device AI
 runtime was hardened — driven by a machine-verified root-cause investigation
 (the app could crash from a native AI fault, freeze while drafting an answer,
 and fail pairing silently at every step). Same stack, still $0 and offline;
-Apply Assist still never clicks submit.
+Apply Assist still never presses the final Submit.
 
 **The app doesn't freeze or crash from AI anymore.**
 - Every on-device AI call (scoring, drafting, suggestions, tailoring, resume
@@ -1053,3 +1056,47 @@ layer. Apply Assist behaviour is untouched (it never auto-submits).
   Windows still shows an "unknown publisher" notice on the installer (the app
   isn't code-signed — click *More info → Run anyway*); the companion runs
   locally and never leaves your machine.
+
+## 23. Door to door: what Apply Assist presses, and what it never will
+
+*(v1.9.0)*
+
+From a posting, one press of **Apply with Apply Assist** starts a session in
+**that tab** and Apply Assist works its way forward:
+
+| It presses | When |
+|---|---|
+| The posting's **Apply** | The page has no form yet and the Apply control only opens one |
+| **Sign in** | Immediately after it filled that page's own login fields from your saved login — once per page, never on a text match alone |
+| **Continue** / **Next** / **Save and continue** | Every visible required field on that step is answered, nothing is still filling, nothing is waiting on you, and the page has stopped changing |
+
+**It never presses:** Submit Application · Review and submit · Submit ·
+Create account · Register · Sign up · Pay · Checkout · anything inside a
+"prove you're human" check — and **nothing at all on LinkedIn**, which
+restricts accounts that look automated. There, it fills and stops.
+
+### When it stops and waits for you
+
+- **A question it can't answer honestly.** It pauses, shows the question and
+  the reason, and gives you a box. Answer it and the escort carries on.
+- **A bot check.** "Your turn: solve the check." It touches nothing on or
+  near it.
+- **The review page.** "Review & submit — your turn." Read the application.
+  Press Submit yourself.
+- **Twelve steps.** A wizard that keeps going gets a look from you before it
+  goes further.
+
+### Saved logins and new accounts
+
+Logins live in Windows Credential Manager (macOS Keychain), never in this
+app's database, and are write-only — nothing displays them again. On a site
+where you have none, the companion asks for one right on the sign-in page.
+
+On a **create-account** form it generates a strong password, fills both
+boxes, and saves it to your keychain the moment it uses it. You press
+**Create account** and handle the verification email.
+
+### Turning it off
+
+**Settings → Saved logins → Escort**. Off means you press every button; the
+filling is unchanged.

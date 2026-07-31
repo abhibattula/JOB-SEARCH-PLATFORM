@@ -1,0 +1,56 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>aria-labelledby application</title></head>
+<body>
+<h1>Apply — labels only by reference</h1>
+<!-- R6 fixture: NO wrapping <label>, NO for=, NO aria-label anywhere.
+     Every question reaches the field ONLY via aria-labelledby. Today's
+     labelText() returns "" for every control on this page. -->
+<form id="form">
+  <span id="q-first">First Name</span>
+  <input aria-labelledby="q-first" name="al_first" type="text">
+
+  <span id="q-last">Last Name</span>
+  <input aria-labelledby="q-last" name="al_last" type="text">
+
+  <span id="q-email">Email Address</span>
+  <input aria-labelledby="q-email" name="al_email" type="email">
+
+  <!-- multi-id reference: question assembled from two nodes -->
+  <span id="q-auth-a">Are you authorized to work</span>
+  <span id="q-auth-b">in the United States?</span>
+  <select aria-labelledby="q-auth-a q-auth-b" name="al_auth">
+    <option value=""></option>
+    <option>Yes</option>
+    <option>No</option>
+  </select>
+
+  <!-- custom combobox: div has no .labels and no aria-label — reference only -->
+  <span id="q-gender">Gender</span>
+  <div role="combobox" aria-labelledby="q-gender" id="al-gender" tabindex="0">
+    <span class="ph">Select…</span><span class="sv" style="display:none"></span>
+  </div>
+  <div id="al-gender-menu" role="listbox" style="display:none"></div>
+</form>
+<script src="/_mirror.js"></script>
+<script>
+  var hidden=document.createElement('input');
+  hidden.type='text'; hidden.name='al_gender'; hidden.style.position='absolute';
+  hidden.style.left='-9999px'; document.getElementById('form').appendChild(hidden);
+  var box=document.getElementById('al-gender');
+  var menu=document.getElementById('al-gender-menu');
+  box.addEventListener('click', function () {
+    menu.innerHTML='';
+    ['Male','Female','Decline to self-identify'].forEach(function (t) {
+      var o=document.createElement('div'); o.setAttribute('role','option'); o.textContent=t;
+      o.addEventListener('click', function () {
+        box.querySelector('.sv').textContent=t;
+        box.querySelector('.sv').style.display='';
+        box.querySelector('.ph').style.display='none';
+        menu.style.display='none'; hidden.value=t;
+        hidden.dispatchEvent(new Event('input',{bubbles:true}));
+      });
+      menu.appendChild(o);
+    });
+    menu.style.display='';
+  });
+</script>
+</body></html>

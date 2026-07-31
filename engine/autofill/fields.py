@@ -260,6 +260,10 @@ _FIRST_NAME_RE = re.compile(r"first[\s_-]*name|given[\s_-]*name", re.IGNORECASE)
 _LAST_NAME_RE = re.compile(r"last[\s_-]*name|family[\s_-]*name|surname", re.IGNORECASE)
 _FULL_NAME_RE = re.compile(r"full[\s_-]*name|your[\s_-]*name|\bname\b", re.IGNORECASE)
 _COVER_LETTER_RE = re.compile(r"cover[\s_-]*letter", re.IGNORECASE)
+# 019: many ATS login walls (Workday especially) label the identifier
+# "Username" rather than "Email".
+_USERNAME_RE = re.compile(r"user[\s_-]*name|user[\s_-]*id|account[\s_-]*name",
+                          re.IGNORECASE)
 _RESUME_RE = re.compile(r"resume|r[eé]sum[eé]|\bcv\b", re.IGNORECASE)
 
 
@@ -271,7 +275,15 @@ def _haystack(field: FieldDescriptor) -> str:
         field.get("name") or "",
         field.get("id") or "",
     )
-    return " ".join(parts)
+    text = " ".join(part for part in parts if part).strip()
+    if text:
+        return text
+    # 019 (T026, FR-013): a FALLBACK only. Workday labels its controls with
+    # data-automation-id and often nothing else, leaving the haystack empty
+    # and the field unclassifiable. Consulting it last means it can never
+    # outvote a real label — `legalNameSection_firstName` beside the label
+    # "Last Name" must still be the last name.
+    return field.get("automation_id") or ""
 
 
 def classify(field: FieldDescriptor) -> str:
@@ -286,10 +298,24 @@ def classify(field: FieldDescriptor) -> str:
     if field_type == "password":
         # type=password has no other legitimate use on a job application —
         # it is itself the corroborating signal.
+        # 019 (T042, FR-021): a password on a REGISTRATION form is an
+        # account the applicant is creating, not one they have. It gets a
+        # generated value saved to the vault; the human presses Create
+        # account. Distinguishing the two is what keeps the vault from
+        # being asked for a credential that does not exist yet.
+        if form_context == "registration" or autocomplete == "new-password":
+            return "signup_password"
         return "login_password"
+    # 019 (T042, FR-014/FR-020): `form_context` is finally produced by both
+    # serializers and carried by the bridge schema, so these two branches
+    # are reachable for the first time — before this, `login_email` was
+    # dead code and no username tag existed at all.
     is_email_shaped = field_type == "email" or _EMAIL_RE.search(text)
-    if is_email_shaped and form_context == "login" and autocomplete in ("username", "email"):
-        return "login_email"
+    if form_context in ("login", "registration"):
+        if is_email_shaped and autocomplete in ("username", "email", ""):
+            return "login_email"
+        if autocomplete == "username" or _USERNAME_RE.search(text):
+            return "login_username"
 
     # Legally-sensitive categories — checked before any generic catch-all.
     if _WORK_AUTH_RE.search(text):

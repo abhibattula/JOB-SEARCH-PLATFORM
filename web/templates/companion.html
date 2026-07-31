@@ -92,7 +92,17 @@
         }
         const c = doc.companion || {};
         const r = doc.rejects || {};
-        if (c.connected) {
+        if (c.connected && doc.version_ok === false) {
+          // 019 (FR-001): connected, but this bundle is STALE. Chrome keeps
+          // running the old code until ↻ reload, and until then some fills
+          // are withheld — a green tick here is a lie.
+          set('knock', '✓', 'detected', 'ok');
+          set('connected', '!', 'Reload the companion — the app is v'
+            + (doc.app_version || '?') + ' and the loaded companion is v'
+            + (c.version || '?') + '. Open the extensions page and click '
+            + 'the ↻ reload icon on the Job Engine Companion card. Until '
+            + 'you do, some answers cannot be filled.', 'warn');
+        } else if (c.connected) {
           set('knock', '✓', 'detected', 'ok');
           set('connected', '✓', 'Connected — ' + browserName(c.browser)
             + ' (companion v' + (c.version || '?') + ')', 'ok');

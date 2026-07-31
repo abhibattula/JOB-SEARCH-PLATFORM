@@ -4,6 +4,7 @@ and the secret-handling guarantees. All through a fake sender; no browser,
 no sockets."""
 import json
 import logging
+import time
 
 import pytest
 
@@ -445,8 +446,15 @@ class TestAdHocFillHere:
         assert fill["items"][0]["value"] == "Abhinav"
 
     def test_fill_here_refused_while_queue_filling(self, queue, sent):
-        # a queued job is active; an ad-hoc request must be refused
+        # 019 (FR-004) narrowed this refusal: only a queue ACTIVELY mid-fill
+        # on another tab is busy (a quiet session is superseded instead —
+        # TestFillHereSupersede019 covers that side).
+        import time as _time
+
         open_the_tab(queue, sent)
+        with ext_backend._lock:
+            ext_backend._inflight[(40, 0, "1")] = (
+                {}, "first_name", "Abhinav", False, _time.monotonic())
         sent.clear()
         ext_backend.handle_message(ext_protocol.FillHere(
             tab_id=77, url="https://x.example/other", title="Other"))
@@ -911,8 +919,12 @@ class TestApplyHere017:
         sent = []
         monkeypatch.setattr(ext_backend, "send", lambda p: sent.append(p))
         started = {}
-        monkeypatch.setattr(browser_controller, "start_queue",
-                            lambda ids: started.setdefault("ids", ids))
+
+        def fake_start(ids, adopt_tab_id=None):
+            started["ids"] = ids
+            started["adopt_tab_id"] = adopt_tab_id
+
+        monkeypatch.setattr(browser_controller, "start_queue", fake_start)
 
         ext_backend.handle_message(ext_protocol.ApplyHere(
             tab_id=21, url="https://job-boards.greenhouse.io/akuna/jobs/6532",
@@ -923,13 +935,12 @@ class TestApplyHere017:
             "https://job-boards.greenhouse.io/akuna/jobs/6532")
         assert row is not None
         assert row["status"] == "saved"
+        # a REAL job id, not the -2 ad-hoc sentinel — and 019 (FR-003): the
+        # session ADOPTS the pressed tab (watch_start itself is exercised
+        # unstubbed by TestApplyHereAdopts019).
         assert started["ids"] == [row["id"]]
-
-        watch = [p for p in sent if p.get("type") == "watch_start"]
-        assert watch and watch[0]["tab_id"] == 21
-        # a REAL job id, not the -2 ad-hoc sentinel
-        assert watch[0]["job_id"] == row["id"]
-        assert watch[0]["job_id"] > 0
+        assert row["id"] > 0
+        assert started["adopt_tab_id"] == 21
 
     def test_a_failure_to_start_is_surfaced_not_swallowed(self, tmp_db,
                                                           monkeypatch):
@@ -938,7 +949,7 @@ class TestApplyHere017:
         sent = []
         monkeypatch.setattr(ext_backend, "send", lambda p: sent.append(p))
 
-        def boom(_ids):
+        def boom(_ids, adopt_tab_id=None):
             raise RuntimeError("no browser")
 
         monkeypatch.setattr(browser_controller, "start_queue", boom)
@@ -1118,3 +1129,456 @@ class TestSessionControl018:
         assert overlay["summary"]["session"] == "filling"
         assert overlay["summary"]["current_job_id"] == queue
         assert overlay["summary"]["remaining"] == 0
+
+
+class TestVersionSkew019:
+    """019 (T004, FR-002): a version mismatch is NEVER a silent drop — the
+    withheld radio fill surfaces as needs-you with the mismatch named, and
+    the doctor counts it. The `sent` fixture registers version "1.0.0",
+    which mismatches APP_VERSION by construction."""
+
+    GROUP = TestVersionGate016.GROUP
+
+    def test_mismatch_radio_is_visible_not_silent(self, queue, sent):
+        db.save_profile(authorized_without_sponsorship="yes")
+        open_the_tab(queue, sent)
+        sent.clear()
+        before = ext_backend.counters().get("version_mismatch_fills", 0)
+        ext_backend.handle_message(fields_msg(
+            descriptors=[descriptor(**self.GROUP)]))
+        after = ext_backend.counters().get("version_mismatch_fills", 0)
+        assert after == before + 1
+        answers = [m for m in sent if m["type"] == "answers"]
+        assert answers, "the withheld field must reach the on-page feed"
+        entry = next(i for i in answers[-1]["items"]
+                     if "authorized" in i["question"].lower())
+        assert entry["group"] == "needs_you"
+        assert entry["reason"] == "version_mismatch"
+
+    def test_matched_version_pays_no_penalty(self, queue, sent):
+        from engine import APP_VERSION
+
+        db.save_profile(authorized_without_sponsorship="yes")
+        open_the_tab(queue, sent)
+        ext_backend.register(sent.append, lambda code: None, APP_VERSION)
+        sent.clear()
+        before = ext_backend.counters().get("version_mismatch_fills", 0)
+        ext_backend.handle_message(fields_msg(
+            descriptors=[descriptor(**self.GROUP)]))
+        assert ext_backend.counters().get("version_mismatch_fills", 0) == before
+        fill = next(m for m in sent if m["type"] == "fill")
+        assert fill["items"][0]["kind"] == "radio"
+
+    def test_version_ok_seam_for_escort_arming(self, queue, sent):
+        """FR-035: the escort consults this seam and never arms on a
+        mismatch."""
+        assert ext_backend.version_ok() is False  # fixture version "1.0.0"
+        from engine import APP_VERSION
+
+        ext_backend.register(sent.append, lambda code: None, APP_VERSION)
+        assert ext_backend.version_ok() is True
+
+
+class TestApplyHereAdopts019:
+    """019 (T009, FR-003): Apply-with-Apply-Assist runs in the tab the user
+    pressed it on. No duplicate tab, and a stray tab_opened can never steal
+    the adopted watch (the v1.8.0 bug)."""
+
+    def _apply_here(self, sent, tab_id=55):
+        ext_backend.handle_message(ext_protocol.ApplyHere(
+            tab_id=tab_id, url="https://boards.greenhouse.io/x/jobs/9",
+            title="SWE, New Grad", company="X Robotics", description="d"))
+
+    def test_apply_here_never_opens_a_tab(self, tmp_db, monkeypatch, sent):
+        monkeypatch.setattr(bc, "_dispatch", lambda *a, **k: None)
+        from engine import matcher
+
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: False)
+        db.save_profile(first_name="Abhinav", email="abhi@example.com")
+        self._apply_here(sent)
+        assert not any(m["type"] == "open_tab" for m in sent), (
+            "apply_here must adopt the pressed tab, never open a duplicate")
+        watch = next(m for m in sent if m["type"] == "watch_start")
+        assert watch["tab_id"] == 55
+        assert ext_backend._watch["tab_id"] == 55
+
+    def test_stray_tab_opened_cannot_steal_an_adopted_watch(
+            self, tmp_db, monkeypatch, sent):
+        monkeypatch.setattr(bc, "_dispatch", lambda *a, **k: None)
+        from engine import matcher
+
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: False)
+        db.save_profile(first_name="Abhinav", email="abhi@example.com")
+        self._apply_here(sent)
+        ext_backend.handle_message(ext_protocol.TabOpened(
+            req_id="stray", tab_id=99))
+        assert ext_backend._watch["tab_id"] == 55
+
+
+class TestFillHereSupersede019:
+    """019 (T012, FR-004): Fill this page is always honoured on a fillable
+    page — a quiet session is superseded; busy only while another tab is
+    actively mid-fill, and then the refusal names it."""
+
+    def test_supersedes_a_quiet_running_session(self, queue, sent):
+        open_the_tab(queue, sent)
+        sent.clear()
+        ext_backend.handle_message(ext_protocol.FillHere(
+            tab_id=99, url="https://co.example/careers/apply", title="t"))
+        assert not any(m["type"] == "error" and m.get("code") == "busy"
+                       for m in sent)
+        watch = next(m for m in sent if m["type"] == "watch_start")
+        assert watch["tab_id"] == 99
+        assert watch["job_id"] == ext_backend.ADHOC_JOB_ID
+
+    def test_busy_only_while_another_tab_is_mid_fill_and_names_it(
+            self, queue, sent):
+        import time as _time
+
+        open_the_tab(queue, sent)
+        with ext_backend._lock:
+            ext_backend._inflight[(40, 0, "1")] = (
+                {}, "first_name", "Abhinav", False, _time.monotonic())
+        sent.clear()
+        ext_backend.handle_message(ext_protocol.FillHere(
+            tab_id=99, url="https://co.example/careers/apply", title="t"))
+        err = next(m for m in sent if m["type"] == "error")
+        assert err["code"] == "busy"
+        assert "40" in err["message"], "the refusal must name the busy tab"
+
+    def test_same_tab_fill_here_supersedes_even_mid_fill(self, queue, sent):
+        import time as _time
+
+        open_the_tab(queue, sent)
+        with ext_backend._lock:
+            ext_backend._inflight[(40, 0, "1")] = (
+                {}, "first_name", "Abhinav", False, _time.monotonic())
+        sent.clear()
+        ext_backend.handle_message(ext_protocol.FillHere(
+            tab_id=40, url="https://co.example/careers/apply", title="t"))
+        assert not any(m["type"] == "error" for m in sent)
+        watch = next(m for m in sent if m["type"] == "watch_start")
+        assert watch["tab_id"] == 40
+
+
+class TestFileTokenRetry019:
+    """019 (T014, FR-005): a transient attach failure must not burn the
+    resume — tokens stay redeemable within TTL and die with the session."""
+
+    def test_token_redeemable_more_than_once_within_ttl(self):
+        ext_backend.reset_for_tests()
+        tok = ext_backend.issue_file_token("C:/resumes/abhinav.pdf")
+        assert ext_backend.consume_file_token(tok) == "C:/resumes/abhinav.pdf"
+        assert ext_backend.consume_file_token(tok) == "C:/resumes/abhinav.pdf"
+
+    def test_token_expires_at_ttl(self):
+        ext_backend.reset_for_tests()
+        tok = ext_backend.issue_file_token("C:/resumes/abhinav.pdf")
+        with ext_backend._lock:
+            path, issued = ext_backend._file_tokens[tok]
+            ext_backend._file_tokens[tok] = (
+                path, issued - ext_backend.FILE_TOKEN_TTL - 1)
+        assert ext_backend.consume_file_token(tok) is None
+
+    def test_tokens_die_with_the_session(self, queue, sent):
+        open_the_tab(queue, sent)
+        tok = ext_backend.issue_file_token("C:/resumes/abhinav.pdf")
+        ext_backend.close_current()
+        assert ext_backend.consume_file_token(tok) is None
+
+
+class TestCredentialFill019:
+    """019 (T045-T048, FR-015/FR-016/FR-019): the vault fills the wall, and
+    the Sign in click is armed by STATE — never by button text."""
+
+    LOGIN = dict(je_idx="1", tag="input", type="email", name="email",
+                 id="email", label_text="Email Address",
+                 autocomplete="username", form_context="login")
+    PASSWORD = dict(je_idx="2", tag="input", type="password", name="password",
+                    id="password", label_text="Password",
+                    autocomplete="current-password", form_context="login")
+
+    def _wall(self, tab_id=40, url="https://wd5.myworkdayjobs.com/en-US/login"):
+        return fields_msg(job_url=url, tab_id=tab_id, doc="wall1",
+                          descriptors=[descriptor(**self.LOGIN),
+                                       descriptor(**self.PASSWORD)])
+
+    def _vault(self, monkeypatch, saved=None):
+        from engine import credentials
+
+        monkeypatch.setattr(
+            credentials, "get",
+            lambda domain: saved or {"email": "me@example.com",
+                                     "password": "s3cret-Pa55!"})
+
+    def _matched_companion(self, sent):
+        """FR-035: the escort never arms across a version mismatch, and the
+        shared fixture registers "1.0.0" on purpose. An arming test has to
+        speak for a companion that actually matches."""
+        from engine import APP_VERSION
+
+        ext_backend.register(sent.append, lambda code: None, APP_VERSION)
+
+    def test_saved_login_fills_both_fields(self, queue, sent, monkeypatch):
+        self._vault(monkeypatch)
+        open_the_tab(queue, sent)
+        sent.clear()
+        ext_backend.handle_message(self._wall())
+        fills = [i for m in sent if m["type"] == "fill" for i in m["items"]]
+        kinds = {i["je_idx"]: i["kind"] for i in fills}
+        assert kinds.get("1") == "text"
+        assert kinds.get("2") == "secret"
+
+    def test_the_secret_never_reaches_the_page_feed(self, queue, sent,
+                                                    monkeypatch):
+        self._vault(monkeypatch)
+        open_the_tab(queue, sent)
+        sent.clear()
+        ext_backend.handle_message(self._wall())
+        blob = json.dumps([m for m in sent if m["type"] == "answers"])
+        assert "s3cret-Pa55!" not in blob
+
+    def test_sign_in_arms_only_after_the_engine_filled_both(
+            self, queue, sent, monkeypatch):
+        self._vault(monkeypatch)
+        open_the_tab(queue, sent)
+        self._matched_companion(sent)
+        ext_backend.handle_message(self._wall())
+        sent.clear()
+        # nothing yet: the fills have not reported back
+        assert not any(m["type"] == "advance_step" for m in sent)
+        ext_backend.handle_message(ext_protocol.FillResult(
+            tab_id=40, frame_id=0,
+            items=[{"je_idx": "1", "outcome": "filled"},
+                   {"je_idx": "2", "outcome": "filled"}]))
+        step = next(m for m in sent if m["type"] == "advance_step")
+        assert step["kind"] == "sign_in"
+        assert step["frame_id"] == 0
+
+    def test_sign_in_is_one_shot_per_document(self, queue, sent, monkeypatch):
+        self._vault(monkeypatch)
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(self._wall())
+        ext_backend.handle_message(ext_protocol.FillResult(
+            tab_id=40, frame_id=0,
+            items=[{"je_idx": "1", "outcome": "filled"},
+                   {"je_idx": "2", "outcome": "filled"}]))
+        sent.clear()
+        # a re-render of the SAME wall must not fire a second click
+        ext_backend.handle_message(self._wall())
+        ext_backend.handle_message(ext_protocol.FillResult(
+            tab_id=40, frame_id=0,
+            items=[{"je_idx": "1", "outcome": "filled"},
+                   {"je_idx": "2", "outcome": "filled"}]))
+        assert not any(m["type"] == "advance_step" for m in sent)
+
+    def test_a_chrome_prefilled_password_still_arms_sign_in(
+            self, queue, sent, monkeypatch):
+        """FR-019: the browser's own password manager got there first. That
+        is a satisfied credential, not a dead end."""
+        self._vault(monkeypatch)
+        open_the_tab(queue, sent)
+        self._matched_companion(sent)
+        sent.clear()
+        prefilled = fields_msg(
+            job_url="https://wd5.myworkdayjobs.com/en-US/login", tab_id=40,
+            doc="wall2",
+            descriptors=[descriptor(**dict(self.LOGIN, value="me@example.com")),
+                         descriptor(**dict(self.PASSWORD, value="already"))])
+        ext_backend.handle_message(prefilled)
+        step = next(m for m in sent if m["type"] == "advance_step")
+        assert step["kind"] == "sign_in"
+
+    def test_no_saved_login_is_visible_not_silent(self, queue, sent,
+                                                  monkeypatch):
+        """FR-017: this used to be a silent skip — the applicant never
+        learned why nothing happened."""
+        from engine import credentials
+
+        monkeypatch.setattr(credentials, "get", lambda domain: None)
+        open_the_tab(queue, sent)
+        sent.clear()
+        ext_backend.handle_message(self._wall())
+        answers = [m for m in sent if m["type"] == "answers"]
+        assert answers
+        entry = next(i for i in answers[-1]["items"]
+                     if "password" in i["question"].lower()
+                     or "email" in i["question"].lower())
+        assert entry["group"] == "needs_you"
+        assert entry["reason"] == "no_saved_login"
+        assert not any(m["type"] == "advance_step" for m in sent)
+
+
+class TestCredentialSave019:
+    """019 (T047-T048, FR-017/FR-018): a login saved from the page goes to
+    the vault and NOWHERE else."""
+
+    def test_it_saves_and_acknowledges_without_the_secret(self, queue, sent,
+                                                          monkeypatch):
+        saved = {}
+        from engine import credentials
+
+        monkeypatch.setattr(credentials, "save",
+                            lambda d, e, p: saved.update(domain=d, email=e,
+                                                         password=p))
+        open_the_tab(queue, sent)
+        sent.clear()
+        ext_backend.handle_message(ext_protocol.CredentialSave(
+            tab_id=40, domain="wd5.myworkdayjobs.com",
+            email="me@example.com", password="s3cret-Pa55!"))
+        assert saved["domain"] == "wd5.myworkdayjobs.com"
+        assert saved["password"] == "s3cret-Pa55!"
+        blob = json.dumps(sent)
+        assert "s3cret-Pa55!" not in blob
+        assert "me@example.com" not in blob
+
+    def test_saving_never_logs_the_secret(self, queue, sent, monkeypatch,
+                                          caplog):
+        from engine import credentials
+
+        monkeypatch.setattr(credentials, "save", lambda d, e, p: None)
+        open_the_tab(queue, sent)
+        with caplog.at_level(logging.DEBUG):
+            ext_backend.handle_message(ext_protocol.CredentialSave(
+                tab_id=40, domain="d.example", email="me@example.com",
+                password="s3cret-Pa55!"))
+        assert "s3cret-Pa55!" not in caplog.text
+
+
+class TestEscortWiring019:
+    """019 (T059/T060): the escort's verdict reaches the page as exactly one
+    advance_step, and everything it refuses is visible instead."""
+
+    STEP = dict(je_idx="1", tag="input", type="text", name="first_name",
+                id="first_name", label_text="First name", required=True)
+
+    def _matched(self, sent):
+        from engine import APP_VERSION
+
+        ext_backend.register(sent.append, lambda code: None, APP_VERSION)
+
+    def _complete_step(self, tab_id=40, doc="stepA", url=None):
+        return fields_msg(
+            job_url=url or "https://boards.greenhouse.io/figma/jobs/77",
+            tab_id=tab_id, doc=doc,
+            descriptors=[descriptor(**dict(self.STEP, value="Abhinav"))])
+
+    def _settle(self, sent, msg):
+        """Two scans a quiet-period apart — the escort will not advance a
+        step that is still rendering."""
+        ext_backend.handle_message(msg)
+        for key in list(ext_backend._quiet_since):
+            fh, _at = ext_backend._quiet_since[key]
+            ext_backend._quiet_since[key] = (fh, time.monotonic() - 10)
+        sent.clear()
+        ext_backend.handle_message(msg)
+
+    def test_a_complete_step_advances_once(self, queue, sent):
+        open_the_tab(queue, sent)
+        self._matched(sent)
+        self._settle(sent, self._complete_step())
+        steps = [m for m in sent if m["type"] == "advance_step"]
+        assert len(steps) == 1
+        assert steps[0]["kind"] == "next"
+        assert steps[0]["step_key"]
+
+        # ...and never again for the same rendered step
+        sent.clear()
+        ext_backend.handle_message(self._complete_step())
+        assert not [m for m in sent if m["type"] == "advance_step"]
+
+    def test_a_pending_required_field_blocks_the_advance(self, queue, sent):
+        open_the_tab(queue, sent)
+        self._matched(sent)
+        unfilled = fields_msg(
+            tab_id=40, doc="stepB",
+            descriptors=[descriptor(**dict(self.STEP, je_idx="9",
+                                           name="zz_unknown", id="zz",
+                                           label_text="Unanswerable?",
+                                           value=""))])
+        self._settle(sent, unfilled)
+        assert not [m for m in sent if m["type"] == "advance_step"]
+
+    def test_a_captcha_pauses_and_says_so(self, queue, sent):
+        open_the_tab(queue, sent)
+        self._matched(sent)
+        msg = self._complete_step(doc="stepC")
+        msg.captcha = True
+        self._settle(sent, msg)
+        assert not [m for m in sent if m["type"] == "advance_step"]
+        overlay = [m for m in sent if m["type"] == "overlay_state"][-1]
+        assert overlay["summary"]["session"] == "your_turn_captcha"
+
+    def test_linkedin_is_never_clicked(self, queue, sent):
+        open_the_tab(queue, sent)
+        self._matched(sent)
+        self._settle(sent, self._complete_step(
+            doc="stepD", url="https://www.linkedin.com/jobs/view/123/"))
+        assert not [m for m in sent if m["type"] == "advance_step"]
+
+    def test_a_stale_companion_is_never_escorted(self, queue, sent):
+        """FR-035: the fixture's "1.0.0" mismatches by construction."""
+        open_the_tab(queue, sent)
+        self._settle(sent, self._complete_step(doc="stepE"))
+        assert not [m for m in sent if m["type"] == "advance_step"]
+
+    def test_the_click_lands_in_the_activity_trail(self, queue, sent):
+        open_the_tab(queue, sent)
+        self._matched(sent)
+        ext_backend.handle_message(ext_protocol.AdvanceResult(
+            tab_id=40, frame_id=0, kind="next", status="clicked",
+            selector_kind="workday_next", control_hash="abc"))
+        trail = ext_backend.progression_clicks()
+        assert trail and trail[-1]["kind"] == "next"
+        assert trail[-1]["status"] == "clicked"
+
+    def test_a_refusal_is_recorded_too(self, queue, sent):
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(ext_protocol.AdvanceResult(
+            tab_id=40, frame_id=0, kind="next", status="refused",
+            selector_kind="final_class", control_hash=""))
+        assert ext_backend.progression_clicks()[-1]["status"] == "refused"
+
+
+class TestSubmitAttribution019:
+    """019 (FR-032): a wizard step POSTs its form. Without attribution every
+    escorted step would look like an application the applicant sent."""
+
+    def test_a_submit_right_after_our_advance_is_ours(self, queue, sent):
+        open_the_tab(queue, sent)
+        ext_backend._get_escort().note_advance("docA::f1")
+        ext_backend.handle_message(ext_protocol.PageEvent(
+            tab_id=40, kind="submit_detected",
+            url="https://boards.greenhouse.io/figma/jobs/77"))
+        assert not ext_backend.pending_submissions()
+
+    def test_a_submit_with_no_advance_is_the_applicants(self, queue, sent):
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(ext_protocol.PageEvent(
+            tab_id=40, kind="submit_detected",
+            url="https://boards.greenhouse.io/figma/jobs/77"))
+        assert ext_backend.pending_submissions()
+
+
+class TestNoClickHosts019:
+    """019 (FR-033): the domain rule that keeps us off LinkedIn."""
+
+    def test_linkedin_and_its_subdomains_are_refused(self):
+        for url in ("https://www.linkedin.com/jobs/view/1/",
+                    "https://linkedin.com/jobs/view/1/",
+                    "https://in.linkedin.com/jobs/view/1/"):
+            assert ext_backend._clickable_host(url) is False, url
+
+    def test_an_explicit_port_cannot_defeat_the_rule(self):
+        """netloc carries the port; a host rule that ":443" slips past is
+        not a rule."""
+        assert ext_backend._clickable_host(
+            "https://www.linkedin.com:443/jobs/view/1/") is False
+
+    def test_ordinary_ats_hosts_are_clickable(self):
+        for url in ("https://boards.greenhouse.io/x/jobs/1",
+                    "https://co.wd5.myworkdayjobs.com/en-US/careers",
+                    "https://notlinkedin.com/jobs"):
+            assert ext_backend._clickable_host(url) is True, url

@@ -379,6 +379,19 @@ a.tailor-btn:hover, a.tailor-btn:focus-visible { text-decoration: none; filter: 
 }
 .status-card .dot.on { background: var(--ok); }
 .companion-page .steps { line-height: 1.7; }
+/* 019 (FR-001): the wizard has set ok/bad on its steps since 015 but nothing
+   ever styled them, so a failing step read the same as a passing one. The
+   version-skew state (warn) is the reason this matters: "connected, but the
+   loaded companion is stale" must not look like success. */
+.companion-page .wizard li.ok > [data-mark] { color: var(--ok); }
+.companion-page .wizard li.bad > [data-mark] { color: var(--danger); }
+.companion-page .wizard li.bad > [data-detail] { color: var(--danger); }
+.companion-page .wizard li.warn {
+  background: var(--warn-tint); border-left: 3px solid var(--warn);
+  padding: var(--s1) var(--s2); border-radius: var(--r-sm);
+}
+.companion-page .wizard li.warn > [data-mark],
+.companion-page .wizard li.warn > [data-detail] { color: var(--warn); }
 .companion-page .path-row {
   display: flex; align-items: center; gap: var(--s2);
   margin: var(--s2) 0; flex-wrap: wrap;

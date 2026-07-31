@@ -1,0 +1,14 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Sign in — username variant</title></head>
+<body>
+<h1>Applicant sign in</h1>
+<!-- R13 fixture: the identifier is a USERNAME text input (not type=email).
+     Today no tag exists for it; login_username must classify and fill the
+     saved identifier here. -->
+<form id="login" method="get" action="login_wall_done.html">
+  <label>Username
+    <input name="username" type="text" autocomplete="username"></label>
+  <label>Password
+    <input name="password" type="password" autocomplete="current-password"></label>
+  <button type="submit" id="signin">Log In</button>
+</form>
+</body></html>

@@ -341,3 +341,117 @@ class TestSurvivesServiceWorkerTermination:
         )
         _seed_and_queue(fixture_server, "greenhouse_delayed.html")
         assert _echoed("first_name", timeout=25) == "Abhinav"
+
+
+def _seed_and_queue_full(fixture_server, page_name):
+    """Like _seed_and_queue but with the profile columns the 019 fixtures
+    ask for (address, country, source)."""
+    from engine import db
+    from engine.autofill import browser_controller as bc
+
+    url = f"{fixture_server}/{page_name}"
+    db.save_profile(first_name="Abhinav", last_name="Battula",
+                    email="abhi@example.com", phone="5125550100",
+                    city="Austin", state_region="TX", postal_code="78712",
+                    country="United States of America",
+                    how_heard_default="LinkedIn",
+                    authorized_without_sponsorship="yes")
+    db.upsert_job({"title": "SWE", "company": "Fixture", "url": url,
+                   "source": "manual", "location": "SF", "is_remote": False,
+                   "description": "d", "posted_date": None})
+    job_id = next(j["id"] for j in db.list_all_jobs_minimal()
+                  if j["url"] == url)
+    bc.start_queue([job_id])
+    return job_id
+
+
+class TestFillGaps019:
+    """019 US2: five confirmed blind spots, five fixtures. Every assertion is
+    a real value landing in a real field via the /echo mirror — the 018
+    lesson, applied: a source-string assertion would have let all five ship
+    broken again."""
+
+    def test_aria_labelledby_fields_fill(self, context, app_server,
+                                         fixture_server):
+        """FR-007: the question reaches these controls ONLY by reference.
+        labelText() read labels[0] then aria-label, so every field here
+        carried an empty question and classified as nothing."""
+        assert _wait_connected(app_server["port"])
+        _seed_and_queue_full(fixture_server, "aria_labelledby.html")
+        assert _echoed("al_first") == "Abhinav"
+        assert _echoed("al_email") == "abhi@example.com"
+
+    def test_shadow_root_form_is_seen_and_filled(self, context, app_server,
+                                                 fixture_server):
+        """FR-008: document.querySelectorAll never enters a shadow root, so
+        this page reported zero fields and rendered no widget at all."""
+        assert _wait_connected(app_server["port"])
+        _seed_and_queue_full(fixture_server, "shadow_form.html")
+        assert _echoed("sh_first") == "Abhinav"
+        assert _echoed("sh_email") == "abhi@example.com"
+
+    def test_workday_prompt_options_are_operable(self, context, app_server,
+                                                 fixture_server):
+        """FR-009: Workday's rows are [data-automation-id=promptOption]
+        divs — no role, no listbox li — so the harvester matched nothing and
+        every Workday dropdown became needs_manual."""
+        assert _wait_connected(app_server["port"])
+        _seed_and_queue_full(fixture_server, "workday_prompt_options.html")
+        assert _echoed("wp_country") == "United States of America"
+        assert _echoed("wp_first") == "Abhinav"
+        # the wizard's Next is not the fill path's business
+        assert not any(e.get("name") == "__wd_next_clicked"
+                       for e in _Handler.echoes)
+
+    def test_placeholder_selects_count_as_unanswered(self, context,
+                                                     app_server,
+                                                     fixture_server):
+        """FR-010: `<option value="0">Select…` read back as a real value, so
+        the field was skipped_existing for the life of the document."""
+        assert _wait_connected(app_server["port"])
+        _seed_and_queue_full(fixture_server, "placeholder_select.html")
+        assert _echoed("ps_auth") in ("yes", "Yes")
+        # A genuinely prefilled control is still the applicant's own:
+        # it is never written, so it never echoes. (Reading the DOM
+        # here would mean hunting the right tab; the mirror already
+        # knows every value that landed.)
+        assert not any(e.get("name") == "ps_country"
+                       for e in _Handler.echoes)
+
+    def test_fields_in_a_fixed_dialog_are_visible(self, context, app_server,
+                                                  fixture_server):
+        """FR-011: an element that is ITSELF position:fixed has a null
+        offsetParent — reported invisible, never counted, never filled."""
+        assert _wait_connected(app_server["port"])
+        _seed_and_queue_full(fixture_server, "fixed_modal_form.html")
+        assert _echoed("fx_first") == "Abhinav"
+        assert _echoed("fx_city") == "Austin"
+        # visibility:hidden is genuinely not on screen — never filled
+        assert not any(e.get("name") == "fx_ghost" for e in _Handler.echoes)
+
+
+class TestGreenhouseNavigateApply019:
+    """019 (T037, FR-022): modern job-boards.greenhouse.io NAVIGATES to a
+    separate application page. The 016 opener selectors matched none of it,
+    and its one-shot key was the href — wrong the moment an SPA keeps the
+    address. Neither the click nor the fill happened."""
+
+    def test_apply_navigates_and_the_application_fills(
+            self, context, app_server, fixture_server):
+        assert _wait_connected(app_server["port"])
+        _seed_and_queue_full(fixture_server, "greenhouse_navigate_apply.html")
+        # the opener clicked Apply, the browser navigated, and the fields on
+        # the NEXT page filled — proven by real values, not by a source read
+        assert _echoed("job_application[first_name]") == "Abhinav"
+        assert _echoed("job_application[email]") == "abhi@example.com"
+
+    def test_the_final_submit_is_never_clicked(self, context, app_server,
+                                               fixture_server):
+        """SC-006. The application page's Submit echoes if anything clicks
+        it; the fill path must reach the page and stop."""
+        assert _wait_connected(app_server["port"])
+        _seed_and_queue_full(fixture_server, "greenhouse_navigate_apply.html")
+        assert _echoed("job_application[first_name]") == "Abhinav"
+        time.sleep(3.0)  # give a wrong click every chance to happen
+        assert not any(e.get("name") == "__gh_submitted"
+                       for e in _Handler.echoes)

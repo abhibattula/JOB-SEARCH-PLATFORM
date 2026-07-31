@@ -49,6 +49,8 @@ export const state = {
   onMessage: null, // set by service-worker.js
   recoveryPairing: null, // {port, secret} entered in the popup, optional
   lastAttempt: null, // {stage, port, code, at} — popup diagnostics (015)
+  // 019: {appVersion, companionVersion, mismatch, at} — versions only
+  versionState: null,
 };
 
 // 015 (FR-011): record every connection-attempt outcome so the popup can say
@@ -62,6 +64,21 @@ export function recordAttempt(stage, port, code) {
   try {
     chrome.storage.session.set({ lastAttempt: state.lastAttempt });
   } catch (_e) { /* storage.session unavailable — in-memory copy stands */ }
+}
+
+// 019 (T007, FR-001): the app/companion version comparison. Persisted like
+// lastAttempt (a woken worker has blank memory) and read by the popup, the
+// content script, and the app's connect page. Carries versions only.
+export function recordVersionState(appVersion) {
+  const mine = chrome.runtime.getManifest().version;
+  state.versionState = {
+    appVersion: appVersion || "", companionVersion: mine,
+    mismatch: !!appVersion && appVersion !== mine, at: Date.now(),
+  };
+  try {
+    chrome.storage.session.set({ versionState: state.versionState });
+  } catch (_e) { /* storage.session unavailable — in-memory copy stands */ }
+  return state.versionState;
 }
 
 export async function readPairing() {
@@ -144,6 +161,7 @@ async function _openSocket() {
   state.ws = ws;
 
   ws.addEventListener("open", () => {
+    // (see recordVersionState — the reply carries the app's version)
     ws.send(JSON.stringify({
       v: 1, type: "hello", seq: 1,
       secret: pairing.secret,
@@ -163,6 +181,11 @@ async function _openSocket() {
       markConnected(true);
       state.backoff = BACKOFF_MIN_MS;
       recordAttempt("connected", pairing.port, null);
+      // 019 (T007, FR-001): the app has always told us its version in
+      // hello_ok and we always threw it away — so an app upgrade left the
+      // OLD companion running behind a green tick, with radio fills
+      // silently dropped. Compare, persist, and let every surface say so.
+      recordVersionState(msg.app_version || "");
       return;
     }
     if (msg.type === "ping") { send({ v: 1, type: "pong", seq: 0 }); return; }

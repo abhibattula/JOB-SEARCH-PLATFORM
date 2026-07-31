@@ -137,15 +137,20 @@ def issue_file_token(path: str) -> str:
 
 
 def consume_file_token(token: str) -> str | None:
-    """Single use, expiring — the resume-file endpoint's whole auth."""
+    """Expiring — the resume-file endpoint's whole auth. 019 (FR-005): a
+    token stays redeemable for its TTL instead of dying on first use, so a
+    transient fetch failure doesn't turn the retry into http_404 →
+    needs_manual. The map dies with the session (close_current /
+    reset_for_tests), and the TTL bounds the exposure window."""
     with _lock:
-        entry = _file_tokens.pop(token, None)
-    if entry is None:
-        return None
-    path, issued_at = entry
-    if time.monotonic() - issued_at > FILE_TOKEN_TTL:
-        return None
-    return path
+        entry = _file_tokens.get(token)
+        if entry is None:
+            return None
+        path, issued_at = entry
+        if time.monotonic() - issued_at > FILE_TOKEN_TTL:
+            del _file_tokens[token]
+            return None
+        return path
 
 
 # --- watch session (extension analogue of the worker's current page) --------
@@ -157,12 +162,24 @@ _watch: dict = {"tab_id": None, "job_id": None, "pending_open": {}}
 OPEN_TAB_ACK_S = 5.0
 
 # 016 (T008/T010): doctor tripwires — silently-dropped traffic is counted.
-_counters: dict = {"dropped_fields": 0, "scan_errors": 0}
+# 019 (FR-002): version_mismatch_fills counts fills withheld from a stale
+# companion — each one is ALSO visible on the page as needs-you.
+_counters: dict = {"dropped_fields": 0, "scan_errors": 0,
+                   "version_mismatch_fills": 0}
 
 
 def counters() -> dict:
     with _lock:
         return dict(_counters)
+
+
+def version_ok() -> bool:
+    """019 (FR-035): exact app/companion version match. The escort consults
+    this and never arms across a mismatch; the UI renders the amber state."""
+    from .. import APP_VERSION
+
+    with _lock:
+        return _session["version"] == APP_VERSION
 # (tab_id, frame_id, je_idx) -> (descriptor_raw, tag, preview, ai_draft,
 # sent_at) for fills whose result has not come back — prevents double-fill
 # on overlapping scans. 016 (T007): entries EXPIRE — a lost fill_result
@@ -214,6 +231,19 @@ def open_job(job_id: int, url: str) -> None:
     _queue_open(job_id, url)
 
 
+def adopt_tab(tab_id: int, job_id: int) -> None:
+    """019 (FR-003): watch the tab the user is ALREADY on — no open_tab, no
+    duplicate. Clearing pending_open guarantees a late tab_opened from an
+    earlier queued open can never steal this watch (the v1.8.0 bug)."""
+    with _lock:
+        _watch.update(tab_id=tab_id, job_id=job_id)
+        _watch["pending_open"].clear()
+        _inflight.clear()
+        _frame_seen.clear()
+        _start_answer_feed(tab_id, job_id)
+    send(_outbound("watch_start", tab_id=tab_id, job_id=job_id))
+
+
 def open_practice(url: str) -> None:
     """OPEN_PRACTICE for the companion — the bundled practice application
     watched as a job-less session (PRACTICE_JOB_ID)."""
@@ -258,6 +288,7 @@ def close_current() -> None:
         _watch["pending_open"].clear()
         _inflight.clear()
         _frame_seen.clear()
+        _file_tokens.clear()  # 019 (FR-005): tokens die with the session
     if tab_id is not None:
         send(_outbound("close_tab", tab_id=tab_id))
 
@@ -305,7 +336,55 @@ def handle_message(msg) -> None:
         _handle_apply_here(msg)
     elif isinstance(msg, ext_protocol.SessionControl):
         _handle_session_control(msg)
+    elif isinstance(msg, ext_protocol.AdvanceResult):
+        _handle_advance_result(msg)
+    elif isinstance(msg, ext_protocol.CredentialSave):
+        _handle_credential_save(msg)
     # Pong: heartbeat only (touch() above)
+
+
+# 019 (FR-031): every automated progression click, in order — the session's
+# activity trail. `open_apply` comes from the opener, `sign_in`/`next` from
+# the advancer; one shape for all three so the record is complete.
+_progression_clicks: list[dict] = []
+MAX_PROGRESSION_CLICKS = 200
+
+
+def progression_clicks() -> list[dict]:
+    with _lock:
+        return list(_progression_clicks)
+
+
+def _handle_advance_result(msg) -> None:
+    from . import browser_controller as bc, escort as escort_mod
+
+    # 019 (FR-030): the advancer looked for a way forward and every
+    # candidate was final-class (or there was none at all) on a step we had
+    # judged complete. That is the door: everything fillable is in, and the
+    # Submit is the applicant's.
+    if msg.kind == "next" and msg.status in ("refused", "not_found"):
+        if msg.selector_kind in ("final_class", "") :
+            with _lock:
+                tab_id = _watch["tab_id"]
+            if tab_id is not None:
+                send(_outbound("overlay_state", tab_id=tab_id, summary={
+                    "session": escort_mod.STATE_READY,
+                    "message": "Review & submit — your turn",
+                }))
+
+    with _lock:
+        job_id = _watch["job_id"]
+        if len(_progression_clicks) < MAX_PROGRESSION_CLICKS:
+            _progression_clicks.append({
+                "kind": msg.kind,
+                "status": msg.status,
+                "selector_kind": msg.selector_kind,
+                "control_hash": msg.control_hash,
+                "job_id": job_id,
+                "at": bc._utcnow_iso(),
+            })
+    log.info("companion progression click: %s %s (%s)",
+             msg.kind, msg.status, msg.selector_kind)
 
 
 def _handle_answer_question(msg) -> None:
@@ -368,6 +447,22 @@ def _handle_session_control(msg) -> None:
             "seen": 0, "filled": 0, "needs_you": 0, "drafts": 0,
             "needs_you_idx": [], "attention": [], "session": "stopped",
             "message": "stopped — nothing was submitted",
+        }))
+        return
+    # 019 (FR-034): pause/resume the ESCORT only — filling continues either
+    # way. This is the rollback lever a behaviour change this size needs.
+    if action in ("pause_escort", "resume_escort"):
+        escort = _get_escort()
+        if action == "pause_escort":
+            escort.enabled = False
+        else:
+            escort.enabled = True
+            escort.resume()   # the applicant looked; the cap starts over
+        send(_outbound("overlay_state", tab_id=msg.tab_id, summary={
+            "session": "filling",
+            "message": ("escort paused — you advance the pages"
+                        if action == "pause_escort"
+                        else "escort on — I'll advance completed steps"),
         }))
         return
     if action == "next":
@@ -467,6 +562,115 @@ def _frame_domain(url: str) -> str | None:
     return urlparse(url).netloc or None
 
 
+# 019 (T046, FR-016): sign-in arming state, per (tab, frame, doc token).
+#   `pending`  — credential fills this engine issued, awaiting their result
+#   `armed`    — every one of them landed; the click may go out ONCE
+#   `fired`    — it went out; a re-render of the same document never repeats
+# The state is what makes the click legal under constitution v1.2.0: it is
+# permitted only "immediately after a credential fill the engine itself
+# issued for that exact frame", never inferred from a button's text.
+_CREDENTIAL_TAGS = ("login_email", "login_username", "login_password")
+_signin: dict[tuple, dict] = {}
+
+# 019 (T060): the escort for the current session, plus per-(tab,frame) quiet
+# clocks. A step that is still rendering is not a step that is complete.
+_escort = None
+_quiet_since: dict[tuple, tuple] = {}   # (tab, frame) -> (fieldset_hash, at)
+# Hosts where we fill but never click (FR-033). The account at risk is the
+# applicant's, so this is a domain rule, not a heuristic.
+_NO_CLICK_HOSTS = ("linkedin.com",)
+
+
+def _get_escort():
+    global _escort
+    from . import escort as escort_mod
+
+    with _lock:
+        if _escort is None:
+            from .. import db
+
+            enabled = (db.get_setting("escort_enabled") or "1") != "0"
+            _escort = escort_mod.Escort(enabled=enabled)
+        return _escort
+
+
+def _clickable_host(url: str) -> bool:
+    # netloc carries userinfo and an explicit port; a host rule that can be
+    # defeated by ":443" is not a rule. Strip both before comparing.
+    host = (_frame_domain(url) or "").lower()
+    host = host.rsplit("@", 1)[-1].split(":", 1)[0]
+    return not any(host == h or host.endswith("." + h)
+                   for h in _NO_CLICK_HOSTS)
+
+
+def _signin_key(tab_id: int, frame_id: int, doc: str) -> tuple:
+    return (tab_id, frame_id, doc)
+
+
+def _signin_note_issued(key: tuple, je_idx: str, *, satisfied: bool) -> None:
+    entry = _signin.setdefault(key, {"pending": set(), "landed": set(),
+                                     "fired": False})
+    if entry["fired"]:
+        return
+    entry["pending"].add(je_idx)
+    if satisfied:
+        entry["landed"].add(je_idx)
+
+
+def _signin_note_landed(tab_id: int, frame_id: int, je_idx: str) -> None:
+    for (t, f, _doc), entry in _signin.items():
+        if t == tab_id and f == frame_id and je_idx in entry["pending"]:
+            entry["landed"].add(je_idx)
+
+
+def _signin_ready(key: tuple) -> bool:
+    entry = _signin.get(key)
+    if not entry or entry["fired"]:
+        return False
+    # Both halves of a credential must have landed — clicking Sign in with
+    # only the email filled submits an empty login form.
+    return len(entry["pending"]) >= 2 and entry["landed"] >= entry["pending"]
+
+
+def _maybe_sign_in(tab_id: int, frame_id: int, doc: str) -> None:
+    """Fire the one permitted sign-in click for this rendered document."""
+    key = _signin_key(tab_id, frame_id, doc)
+    with _lock:
+        if not _signin_ready(key):
+            return
+        if not version_ok():
+            return  # FR-035: never arm across a version mismatch
+        _signin[key]["fired"] = True
+    send(_outbound("advance_step", tab_id=tab_id, frame_id=frame_id,
+                   kind="sign_in", step_key=f"{doc}::signin"))
+
+
+def _handle_credential_save(msg) -> None:
+    """019 (T048, FR-017): a login saved from the on-page panel.
+
+    The password goes to the OS keychain and nowhere else — not the ack, not
+    the log line, not the answers feed. Saving re-arms the wall so the
+    applicant does not have to hunt for a Retry button.
+    """
+    from .. import credentials
+
+    try:
+        credentials.save(msg.domain, msg.email, msg.password)
+    except Exception:  # noqa: BLE001 — surface, never crash the bridge
+        log.warning("credential save failed for %s", msg.domain, exc_info=True)
+        send(_outbound("error", code="credential_save_failed", tab_id=msg.tab_id,
+                       message="Couldn't save that login to your OS keychain."))
+        return
+    log.info("saved a login for %s", msg.domain)  # domain only, never the pair
+    with _lock:
+        # The wall gets one more chance now that a credential exists.
+        for key in [k for k in _signin if k[0] == msg.tab_id]:
+            _signin.pop(key, None)
+        _answers_force.add(msg.tab_id)
+    send(_outbound("credential_saved", tab_id=msg.tab_id, domain=msg.domain))
+    send(_outbound("rescan", reason="credential_saved"))
+
+
 def _handle_fields(msg) -> None:
     from . import adapters, browser_controller as bc, field_core
 
@@ -486,24 +690,57 @@ def _handle_fields(msg) -> None:
 
     frame_domain = _frame_domain(msg.url)
 
+    missing_login = {"seen": False}
+
     def get_value(tag, raw):
         # Credentials are gated by the SENDING FRAME's domain — the frame
         # is where the secret would land, and it may not be the job's own
         # host (Greenhouse iframes, SSO pages). Everything else reuses the
         # facade's value resolution unchanged.
-        if tag in ("login_email", "login_password"):
+        if tag in _CREDENTIAL_TAGS:
             from .. import credentials
 
             if not frame_domain:
                 return None
             saved = credentials.get(frame_domain)
             if not saved:
+                # 019 (FR-017): this used to be a silent skip — the wall sat
+                # there and the applicant never learned why.
+                missing_login["seen"] = True
                 return None
-            return saved["email"] if tag == "login_email" else saved["password"]
+            return (saved["password"] if tag == "login_password"
+                    else saved["email"])
+        # 019 (FR-021): an account the applicant is CREATING. A strong
+        # password is generated and saved to the vault at fill time, so the
+        # credential exists the moment the form holds it — the human still
+        # presses Create account.
+        if tag == "signup_password":
+            from .. import credentials
+
+            if not frame_domain:
+                return None
+            existing = credentials.get(frame_domain)
+            if existing and existing.get("password"):
+                return existing["password"]
+            email = (profile or {}).get("email") or ""
+            if not email:
+                return None
+            generated = credentials.generate_password()
+            try:
+                credentials.save(frame_domain, email, generated)
+            except Exception:  # noqa: BLE001 — never crash the fill
+                log.warning("could not save the generated login for %s",
+                            frame_domain, exc_info=True)
+                return None
+            return generated
         return bc._value_for_tag(tag, raw, profile, job_id)
 
     ats = adapters.ats_from_url(msg.url)
     seen = 0
+    # 019 (FR-023): visible REQUIRED fields still holding no answer. The
+    # escort will not advance a step while any of these remain — that is
+    # what makes "complete" mean complete rather than "we tried".
+    required_pending = 0
     # 016 (T017): fields the HUMAN must answer (sensitive / missing fact /
     # no valid option) — highlighted on the page + listed in the panel.
     from . import drafter
@@ -522,7 +759,7 @@ def _handle_fields(msg) -> None:
 
     def note_answer(descriptor: dict, *, action: str, answer: str = "",
                     tag: str = "", ai_draft: bool = False,
-                    secret: bool = False) -> None:
+                    secret: bool = False, reason: str = "") -> None:
         """018 (FR-019): remember this decision for the on-page feed.
 
         Recorded HERE, inside the decision loop, because this is the only
@@ -555,6 +792,10 @@ def _handle_fields(msg) -> None:
             "ai_draft": ai_draft,
             "secret": secret,
             "tag": tag,
+            # 019 (FR-002/FR-017): a decision-layer reason (version_mismatch,
+            # no_saved_login) makes the skip visible as needs-you without a
+            # drafter record.
+            "reason": reason,
         }
 
     for raw in raws:
@@ -578,9 +819,22 @@ def _handle_fields(msg) -> None:
         if decision.action == "ignore":
             continue
         seen += 1
+        if (raw.get("required") and raw.get("visible")
+                and decision.action in ("fill", "skip")
+                and not (raw.get("value") or "").strip()):
+            required_pending += 1
         lkey = field_core.key(raw)
         if decision.action == "skip":
             question = question_of(raw)
+            # 019 (FR-017): a credential field with no saved login is a
+            # question for the applicant, not a field to ignore.
+            if decision.tag in _CREDENTIAL_TAGS and missing_login["seen"]:
+                note_answer(raw, action="skip", tag=decision.tag,
+                            reason="no_saved_login")
+                needs_you_idx.append(raw["je_idx"])
+                needs_you_labels.append(
+                    question or f"Sign in to {frame_domain or 'this site'}")
+                continue
             if question:
                 note_answer(raw, action="skip", tag=decision.tag)
                 record = drafter.get(job_id, question)
@@ -590,6 +844,16 @@ def _handle_fields(msg) -> None:
                     needs_you_labels.append(question)
             continue
         if decision.action == "settle":
+            # 019 (FR-019): a credential the browser's own password manager
+            # already filled is SATISFIED, not a dead end. It counts toward
+            # arming sign-in exactly as one we filled ourselves would.
+            if (decision.tag in _CREDENTIAL_TAGS
+                    and decision.outcome == "skipped_existing"):
+                with _lock:
+                    _signin_note_issued(
+                        _signin_key(msg.tab_id, msg.frame_id,
+                                    raw.get("doc") or msg.doc),
+                        raw["je_idx"], satisfied=True)
             bc._record(job_id, raw, decision.tag, "", decision.outcome)
             with bc._lock:
                 ledger[lkey] = field_core.settle_entry(decision.outcome)
@@ -624,14 +888,16 @@ def _handle_fields(msg) -> None:
             item.update(kind="typeahead", value=str(decision.value))
         elif decision.kind == "radio":
             # 016 (T013): version gate — an old companion has no radio
-            # branch and would text-set the element (silent mis-fill). The
-            # doctor already surfaces the version mismatch; the field stays
-            # open and fills the moment the companion is reloaded.
-            from .. import APP_VERSION
-
-            with _lock:
-                companion_version = _session["version"]
-            if companion_version != APP_VERSION:
+            # branch and would text-set the element (silent mis-fill).
+            # 019 (T005, FR-002): withholding is no longer SILENT — the
+            # field surfaces on the page as needs-you naming the mismatch,
+            # and the doctor counts it. Still retryable: it fills the
+            # moment the companion is reloaded.
+            if not version_ok():
+                with _lock:
+                    _counters["version_mismatch_fills"] += 1
+                note_answer(raw, action="skip", tag=decision.tag,
+                            reason="version_mismatch")
                 continue
             item.update(kind="radio", value=str(decision.value),
                         option_label=decision.option_label)
@@ -656,6 +922,13 @@ def _handle_fields(msg) -> None:
         with _lock:
             _inflight[fkey] = (raw, decision.tag, decision.preview,
                                decision.ai_draft, time.monotonic())
+            # 019 (FR-016): remember that WE issued this credential fill —
+            # the sign-in click is legal only because of that fact.
+            if decision.tag in _CREDENTIAL_TAGS:
+                _signin_note_issued(
+                    _signin_key(msg.tab_id, msg.frame_id,
+                                raw.get("doc") or msg.doc),
+                    raw["je_idx"], satisfied=False)
         # 016 (T005/R1): incremental dispatch — a decided fill goes out
         # IMMEDIATELY. Batching until the whole form was decided is what
         # withheld name/email fills behind slow decisions (RC1).
@@ -675,7 +948,7 @@ def _handle_fields(msg) -> None:
         url=msg.url if msg.frame_id == 0 else bc._state.activity.get("url"),
         message=(
             f"watching page — {total_seen} fields seen · "
-            f"{filled_total} filled · you click the actual apply/submit"
+            f"{filled_total} filled · you press the final Submit"
             if total_seen else
             "no form fields visible yet — click the site's own Apply "
             "button; fields fill the moment the form appears"
@@ -691,15 +964,52 @@ def _handle_fields(msg) -> None:
     with bc._lock:
         remaining = max(0, len(bc._state.job_ids) - bc._state.index - 1)
         running = bc._state.running
+    # 019 (T060): the escort's judgment on THIS step. Everything it needs is
+    # already in hand from the scan we just did — no extra page work.
+    from . import escort as escort_mod
+
+    escort = _get_escort()
+    fh = escort_mod.fieldset_hash(raws)
+    qkey = (msg.tab_id, msg.frame_id)
+    now = time.monotonic()
+    with _lock:
+        prior = _quiet_since.get(qkey)
+        if prior is None or prior[0] != fh:
+            _quiet_since[qkey] = (fh, now)   # the step changed; clock restarts
+            quiet_for = 0.0
+        else:
+            quiet_for = now - prior[1]
+        inflight_here = sum(1 for k in _inflight
+                            if k[0] == msg.tab_id and k[1] == msg.frame_id)
+    step = escort_mod.StepView(
+        doc=msg.doc, fieldset_hash=fh,
+        visible_required_pending=required_pending,
+        inflight=inflight_here, needs_you=len(needs_you_idx),
+        focused=any(r.get("focused") for r in raws),
+        captcha=bool(getattr(msg, "captcha", False)),
+        missing_login=missing_login["seen"],
+        quiet_for=quiet_for, seen=seen)
+    verdict = escort.should_advance(
+        step, version_ok=version_ok(), clickable_host=_clickable_host(msg.url))
+    if verdict.advance:
+        escort.note_advance(step.key)
+        send(_outbound("advance_step", tab_id=msg.tab_id,
+                       frame_id=msg.frame_id, kind=verdict.kind,
+                       step_key=step.key))
+    session_state = verdict.state or ("filling" if running else "done")
+
     send(_outbound("overlay_state", tab_id=msg.tab_id, summary={
         "seen": total_seen, "filled": filled_total, "drafts": draft_count,
         "needs_you": len(needs_you_idx),
         "needs_you_idx": needs_you_idx,
         "attention": needs_you_labels[:5],
-        "message": "you click the actual apply/submit",
-        "session": "filling" if running else "done",
+        "message": "you press the final Submit — never us",
+        "session": session_state if running else "done",
         "current_job_id": job_id if job_id and job_id > 0 else None,
         "remaining": remaining,
+        # 019 (FR-017): the panel offers its inline save form only when the
+        # app actually has no login for this domain.
+        "needs_login": missing_login["seen"],
     }))
 
     # 017 (FR-034) / 018 (FR-019, FR-020, FR-027): the FULL answer text goes
@@ -709,6 +1019,13 @@ def _handle_fields(msg) -> None:
     job_id = _watch["job_id"]
     if job_id is not None:
         _push_answers(msg.tab_id, job_id)
+
+    # 019 (FR-016): a credential already satisfied by the browser's own
+    # password manager arms sign-in without any fill_result ever arriving.
+    # Keyed by the DESCRIPTOR's document token — the same identity the
+    # ledger uses, so the two halves of the state machine cannot disagree.
+    for doc in {r.get("doc") or msg.doc for r in raws}:
+        _maybe_sign_in(msg.tab_id, msg.frame_id, doc)
 
 
 def _start_answer_feed(tab_id: int, job_id: int) -> None:
@@ -768,6 +1085,7 @@ def _handle_fill_result(msg) -> None:
     if job_id is None:
         return
     filled_now = 0
+    docs: set[str] = set()
     for item in msg.items:
         fkey = (msg.tab_id, msg.frame_id, item.je_idx)
         with _lock:
@@ -780,6 +1098,11 @@ def _handle_fill_result(msg) -> None:
             bc._record(job_id, raw, tag, preview, "filled", ai_draft)
             with bc._lock:
                 bc._state.handled.setdefault(job_id, {})[lkey] = "filled"
+                # 019 (FR-016): this credential landed. When both halves
+                # have, the one permitted sign-in click is armed.
+                if tag in _CREDENTIAL_TAGS:
+                    _signin_note_landed(msg.tab_id, msg.frame_id, item.je_idx)
+                    docs.add(raw.get("doc") or "")
             filled_now += 1
         elif item.outcome == "needs_manual":
             bc._record(job_id, raw, tag, "", "needs_manual")
@@ -792,6 +1115,8 @@ def _handle_fill_result(msg) -> None:
             bc._state.activity["fields_filled"] = (
                 bc._state.activity.get("fields_filled", 0) + filled_now
             )
+    for doc in docs:
+        _maybe_sign_in(msg.tab_id, msg.frame_id, doc)
 
 
 def _handle_page_event(msg) -> None:
@@ -827,6 +1152,13 @@ def _handle_page_event(msg) -> None:
             for key in [k for k in _inflight if k[0] == msg.tab_id]:
                 del _inflight[key]
     elif msg.kind == "submit_detected":
+        # 019 (FR-032): a wizard step POSTs its form, so an escorted advance
+        # looks exactly like a submission. Attribute it: only a submit the
+        # applicant themselves caused belongs in the did-you-apply queue.
+        if _get_escort().attribute_submit() == "app":
+            log.debug("submit on tab %s attributed to an escorted advance",
+                      msg.tab_id)
+            return
         with _lock:
             _pending_submissions.append({
                 "job_id": job_id, "tab_id": msg.tab_id,
@@ -842,16 +1174,37 @@ _adhoc: dict = {}
 
 def _handle_fill_here(msg) -> None:
     """Ad-hoc 'Fill this page' (FR-004a): fill whatever application page the
-    user is already viewing. Refused while a queued job is actively
-    filling — one fill session at a time."""
+    user is already viewing.
+
+    019 (T013, FR-004): always honoured on a fillable page. A finished or
+    quiet earlier session is SUPERSEDED (its tab stays open, just
+    unwatched); `busy` is reported only while another tab is actively
+    mid-fill — and then the refusal names that tab."""
     from . import browser_controller as bc
 
     with bc._lock:
         queue_active = bc._state.running and bc._state.backend == "extension"
     if queue_active:
-        send(_outbound("error", code="busy",
-                       message="finish or stop the current queue first"))
-        return
+        now = time.monotonic()
+        with _lock:
+            watched_tab = _watch["tab_id"]
+            mid_fill = any(
+                key[0] == watched_tab and now - info[-1] <= INFLIGHT_TTL_S
+                for key, info in _inflight.items())
+        if (mid_fill and watched_tab is not None
+                and watched_tab != msg.tab_id):
+            send(_outbound("error", code="busy",
+                           message=f"tab {watched_tab} is mid-fill — "
+                                   "finish or stop it first"))
+            return
+        # Supersede: release the old watch; its tab stays open. The tab
+        # that LOSES the session is told why — a companion that goes quiet
+        # with no explanation is the defect this feature exists to fix.
+        if watched_tab is not None and watched_tab != msg.tab_id:
+            send(_outbound("error", code="superseded", tab_id=watched_tab,
+                           message="Filling moved to the tab you just "
+                                   "pressed Fill in."))
+            send(_outbound("watch_stop", tab_id=watched_tab))
 
     # Stand up a job-less session on the extension backend keyed to this tab.
     with bc._lock:
@@ -987,17 +1340,15 @@ def _handle_apply_here(msg) -> None:
 
     from . import browser_controller as bc
 
+    # 019 (T010, FR-003): the session ADOPTS the tab the user pressed the
+    # button on. start_queue(adopt_tab_id=…) never opens a tab, and
+    # adopt_tab() clears pending_open so nothing can re-route the watch.
     try:
-        bc.start_queue([job_id])
+        bc.start_queue([job_id], adopt_tab_id=msg.tab_id)
     except Exception as exc:  # noqa: BLE001 — surface, never crash the bridge
         log.warning("apply_here failed to start", exc_info=True)
         send(_outbound("error", code="start_failed", message=str(exc)[:200]))
         return
-    with _lock:
-        _watch["tab_id"] = msg.tab_id
-        _watch["job_id"] = job_id
-        _start_answer_feed(msg.tab_id, job_id)
-    send(_outbound("watch_start", tab_id=msg.tab_id, job_id=job_id))
 
 
 def reset_for_tests() -> None:
@@ -1011,6 +1362,14 @@ def reset_for_tests() -> None:
         _inflight.clear()
         _frame_seen.clear()
         _pending_submissions.clear()
+        _progression_clicks.clear()
+        _signin.clear()
+        # The doctor's tripwires belong to a session too — a count carried
+        # over from a previous one is a lie about this one.
+        for name in _counters:
+            _counters[name] = 0
+        _quiet_since.clear()
+        globals()["_escort"] = None
         _page_entries.clear()
         _answers_digest.clear()
         _answers_force.clear()

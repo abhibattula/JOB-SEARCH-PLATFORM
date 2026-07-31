@@ -1,0 +1,51 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>SPA wizard application</title></head>
+<body>
+<h1>Apply — single-page wizard</h1>
+<!-- Escort fixture: the URL NEVER changes; steps are swapped in the DOM.
+     One-shot advancing must key on the rendered step (doc token + field
+     set), not the address — the old href-keyed opener logic would either
+     dead-lock or double-fire here. Step 2's fields have different names so
+     the fieldset hash changes. -->
+<div id="step-host"></div>
+<script src="/_mirror.js"></script>
+<script>
+  var host = document.getElementById('step-host');
+  function sentinel(name) {
+    try {
+      var payload = JSON.stringify({name:name, value:'yes'});
+      navigator.sendBeacon('/echo', new Blob([payload], {type:'application/json'}));
+    } catch (e) { }
+  }
+  function renderStep1() {
+    host.innerHTML =
+      '<h2>Step 1 of 2</h2>' +
+      '<form id="f1">' +
+      '<label>First Name<input name="spa_first" type="text" required></label>' +
+      '<label>Email<input name="spa_email" type="email" required></label>' +
+      '<button type="button" id="spa-next-1">Next</button></form>';
+    document.getElementById('spa-next-1').addEventListener('click', function () {
+      sentinel('__spa_step1_next'); renderStep2();
+    });
+  }
+  function renderStep2() {
+    host.innerHTML =
+      '<h2>Step 2 of 2</h2>' +
+      '<form id="f2">' +
+      '<label>Phone<input name="spa_phone" type="tel" required></label>' +
+      '<label>City<input name="spa_city" type="text" required></label>' +
+      '<button type="button" id="spa-next-2">Continue</button></form>';
+    document.getElementById('spa-next-2').addEventListener('click', function () {
+      sentinel('__spa_step2_next'); renderReview();
+    });
+  }
+  function renderReview() {
+    host.innerHTML =
+      '<h2>Review</h2><p>Ready to send.</p>' +
+      '<button type="submit" id="spa-submit">Submit application</button>';
+    document.getElementById('spa-submit').addEventListener('click', function () {
+      sentinel('__spa_final_submit');
+    });
+  }
+  renderStep1();
+</script>
+</body></html>

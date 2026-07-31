@@ -93,12 +93,17 @@ class TestManifestIntegrity:
                         code, _re.DOTALL)
         assert sc, "safeClick function not found"
         body = sc.group(1)
-        assert "isDenylisted" in body and ".click(" in body
-        assert body.index("isDenylisted") < body.index(".click(")
+        # 019 (T036): the guard call is `isWidgetOperable` — it judges TEXT
+        # on the element's own accessible name while still refusing any
+        # submit-typed control or wrapper. The invariant this test exists
+        # for is unchanged: one raw click, inside safeClick, after a guard
+        # verdict.
+        assert "isWidgetOperable" in body and ".click(" in body
+        assert body.index("isWidgetOperable") < body.index(".click(")
 
     def test_filler_uses_the_click_guard(self):
         filler = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
-        assert "jeClickGuard" in filler and "isDenylisted" in filler
+        assert "jeClickGuard" in filler and "isWidgetOperable" in filler
 
 
 class TestDenylistParity:
@@ -340,7 +345,11 @@ class TestApplyOpener016:
     def test_opener_module_exists_with_bounds(self):
         js = (EXT / "content" / "opener.js").read_text(encoding="utf-8")
         assert "OPENERS" in js
-        assert "attemptedFor" in js          # one-shot per page state
+        # 019 (T038): the one-shot key became (doc token + control
+        # fingerprint). `attemptedFor = href` dead-locked the opener on an
+        # SPA wizard that keeps its address, and re-armed it on every
+        # in-page navigation elsewhere. Same guarantee, correct key.
+        assert "stepKey" in js and "attempted" in js
         assert 'type === "submit"' in js     # never a submit control
         assert "hasFillableForm" in js       # only when no form is open
 
@@ -360,7 +369,12 @@ class TestApplyOpener016:
         js = (EXT / "content" / "opener.js").read_text(encoding="utf-8")
         assert adapters.APPLY_OPENERS, "registry must not be empty"
         for ats, selector in adapters.APPLY_OPENERS.items():
-            assert selector in js, f"opener.js missing {ats} selector"
+            # Compare SELECTOR PARTS: a long allowlist is wrapped across
+            # string-concatenation lines in the JS, and a whole-string match
+            # would fail on formatting rather than on drift.
+            for part in [s.strip() for s in selector.split(",")]:
+                assert part in js, (
+                    f"opener.js missing {ats} selector {part}")
 
     def test_main_wires_opener_for_queue_watches_only(self):
         main = (EXT / "content" / "main.js").read_text(encoding="utf-8")
@@ -500,7 +514,11 @@ class TestPanelIsTheReviewSurface017:
         source = self.panel()
         for required in ("Fill again", "onFillAgain", "note", "attention"):
             assert required in source or required == "attention", required
-        assert "You click apply / submit" in source
+        # 019 (T070): the promise changed with the product. The escort
+        # presses Apply, Sign in and Continue now; the FINAL Submit is
+        # still, always, the applicant's — that is what the footer must
+        # say, and it must never disappear.
+        assert "You press the final Submit" in source
 
     def test_it_never_clicks_anything_on_the_page(self):
         """The panel's own buttons use addEventListener; it must not invoke
@@ -718,3 +736,156 @@ class TestSessionControlAssets018:
         assert "app_error" in sw
         content = (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
         assert "app_error" in content
+
+
+class TestVersionSkewAssets019:
+    """019 (T006): wiring pins for the version-skew surfaces. Structure only —
+    behavior is proven in a real browser by TestVersionSkew019."""
+
+    def _read(self, rel):
+        return (EXT / rel).read_text(encoding="utf-8")
+
+    def test_socket_compares_app_version_and_persists(self):
+        sock = self._read("background/socket.js")
+        assert "app_version" in sock
+        assert "getManifest().version" in sock.replace(" ", "")
+        assert "mismatch" in sock
+
+    def test_popup_renders_the_reload_instruction(self):
+        popup = self._read("popup/popup.js")
+        assert "mismatch" in popup
+        assert "reload" in popup.lower()
+
+    def test_page_notice_copy_reaches_main(self):
+        main = self._read("content/main.js")
+        assert "version_state" in main
+        assert "reload the companion" in main.lower()
+
+    def test_companion_page_has_the_amber_branch(self):
+        html = (EXT.parent / "web" / "templates" / "companion.html"
+                ).read_text(encoding="utf-8")
+        assert "version_ok" in html
+        assert "reload" in html.lower()
+
+
+class TestSharedRulesParity019:
+    """019: three implementations of two rules — keep them in step."""
+
+    def test_placeholder_rule_exists_in_all_three(self):
+        scanner = (EXT / "content" / "scanner.js").read_text(encoding="utf-8")
+        filler = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
+        watcher = (EXT.parent / "engine" / "autofill" / "watcher.py"
+                   ).read_text(encoding="utf-8")
+        assert "isPlaceholderValue" in scanner
+        assert "isPlaceholderValue" in filler
+        assert "jeIsPlaceholder" in watcher
+
+    def test_placeholder_tokens_match_the_python_rule(self):
+        """The token list is the rule. If Python learns a new placeholder
+        word and the serializers do not, that dropdown silently goes back to
+        being permanently skipped."""
+        import re as _re
+
+        from engine.autofill import field_core
+
+        py = field_core._PLACEHOLDER_VALUE.pattern
+        tokens = set(_re.findall(r"[a-z/]{3,}", py)) - {"please"}
+        for source in ((EXT / "content" / "scanner.js"),
+                       (EXT.parent / "engine" / "autofill" / "watcher.py")):
+            text = source.read_text(encoding="utf-8")
+            for token in tokens:
+                assert token in text, (
+                    f"{source.name} is missing placeholder token {token!r}")
+
+    def test_widget_guard_exists_in_both_halves(self):
+        js = (EXT / "content" / "click_guard.js").read_text(encoding="utf-8")
+        assert "isWidgetOperable" in js
+        from engine.autofill import click_guard
+
+        assert hasattr(click_guard, "is_widget_operable")
+
+    def test_shadow_traversal_is_used_by_every_lookup(self):
+        """FR-008: a form inside an open shadow root must be scanned, probed
+        AND its options found — one missed call site is a silent blind spot."""
+        scanner = (EXT / "content" / "scanner.js").read_text(encoding="utf-8")
+        filler = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
+        assert "deepQueryAll" in scanner and "shadowRoot" in scanner
+        assert "deepQueryAll" in filler
+        # serialize/probe/elementByIdx must not fall back to a flat query
+        for fn in ("function serialize", "function probe",
+                   "function elementByIdx"):
+            start = scanner.index(fn)
+            body = scanner[start:start + 400]
+            assert "document.querySelectorAll" not in body, (
+                f"{fn} still uses a flat query — shadow roots stay invisible")
+
+
+class TestAdvancerAssets019:
+    """019: the second click module. It follows the opener's shape — its own
+    allowlist mirrored from the engine, its own single guarded click site —
+    so filler.js's one-click pin stays exactly as it was."""
+
+    ADVANCER = EXT / "content" / "advancer.js"
+
+    def test_it_exists_and_loads_in_the_right_order(self):
+        assert self.ADVANCER.exists()
+        manifest = json.loads((EXT / "manifest.json").read_text(encoding="utf-8"))
+        js = manifest["content_scripts"][0]["js"]
+        assert "content/advancer.js" in js
+        assert js.index("content/advancer.js") < js.index("content/main.js")
+        assert js.index("content/click_guard.js") < js.index("content/advancer.js")
+        assert js.index("content/scanner.js") < js.index("content/advancer.js")
+
+    def test_exactly_one_raw_click(self):
+        """The same guarantee filler.js carries: ONE click site, reachable
+        only after every refusal has been checked."""
+        import re as _re
+
+        code = "\n".join(line.split("//")[0]
+                          for line in self.ADVANCER.read_text(
+                              encoding="utf-8").splitlines())
+        clicks = _re.findall(r"\.click\s*\(", code)
+        assert len(clicks) == 1, f"expected one raw click; found {len(clicks)}"
+
+    def test_every_refusal_precedes_the_click(self):
+        code = self.ADVANCER.read_text(encoding="utf-8")
+        click_at = code.index(".click(")
+        for guard in ("isProgressionSafe", "finalClass", "captchaPresent",
+                      "NO_CLICK_HOSTS", "done.has"):
+            assert guard in code, f"advancer.js lost its {guard} refusal"
+            assert code.index(guard) < click_at, (
+                f"{guard} must be checked BEFORE the click")
+
+    def test_allowlist_mirrors_the_engine_registry(self):
+        from engine.autofill import adapters
+
+        js = self.ADVANCER.read_text(encoding="utf-8")
+        assert adapters.ADVANCE_ALLOWLIST, "registry must not be empty"
+        for ats, selector in adapters.ADVANCE_ALLOWLIST.items():
+            for part in [s.strip() for s in selector.split(",")]:
+                assert part in js, f"advancer.js missing {ats} selector {part}"
+
+    def test_final_terms_parity(self):
+        """A term the app refuses and the page permits is a submitted
+        application. The two lists must be identical."""
+        import re as _re
+
+        from engine.autofill import click_guard as py_guard
+
+        js = (EXT / "content" / "click_guard.js").read_text(encoding="utf-8")
+        block = _re.search(r"FINAL_TERMS = \[(.*?)\];", js, _re.DOTALL).group(1)
+        js_terms = _re.findall(r'"([^"]+)"', block)
+        assert set(js_terms) == set(py_guard.FINAL_TERMS), (
+            f"final-class drift — JS:{sorted(js_terms)} "
+            f"PY:{sorted(py_guard.FINAL_TERMS)}")
+
+    def test_the_panel_still_never_clicks_the_page(self):
+        """018's guarantee, unchanged: the widget renders and delegates."""
+        panel = (EXT / "content" / "panel.js").read_text(encoding="utf-8")
+        code = "\n".join(line.split("//")[0] for line in panel.splitlines())
+        assert ".click(" not in code
+
+    def test_the_scanner_still_never_clicks_the_page(self):
+        scanner = (EXT / "content" / "scanner.js").read_text(encoding="utf-8")
+        code = "\n".join(line.split("//")[0] for line in scanner.splitlines())
+        assert ".click(" not in code

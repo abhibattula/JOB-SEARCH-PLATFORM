@@ -8,17 +8,28 @@ export const watched = new Map(); // tabId -> {jobId|null}
 // 016 (T008): the watched set survives MV3 worker restarts — an
 // amnesiac worker used to answer watch_state{watched:false} and the tab
 // went permanently quiet until the next socket reconnect.
+// 019 (T017, FR-006): the RECORD is persisted, not just the tab id. A bare
+// id list restored as {jobId: null}, which the worker reads as adhoc — and
+// an adhoc watch silently disarms the apply-opener (and the escort after
+// it) for the rest of the session. Records are {tabId, jobId}; the old
+// bare-number form is still accepted so an in-flight upgrade degrades to
+// the previous behavior instead of throwing.
 function persistWatched() {
-  chrome.storage.session
-    .set({ watchedTabs: Array.from(watched.keys()) })
-    .catch(() => {});
+  const records = Array.from(watched.entries()).map(
+    ([tabId, entry]) => ({ tabId, jobId: (entry && entry.jobId) ?? null }));
+  chrome.storage.session.set({ watchedTabs: records }).catch(() => {});
 }
 
 export async function restoreWatched() {
   try {
     const stored = await chrome.storage.session.get("watchedTabs");
-    for (const tabId of stored.watchedTabs || []) {
-      if (!watched.has(tabId)) { watched.set(tabId, { jobId: null }); }
+    for (const item of stored.watchedTabs || []) {
+      const tabId = typeof item === "number" ? item : item && item.tabId;
+      const jobId = typeof item === "number" ? null
+        : (item && item.jobId) ?? null;
+      if (tabId != null && !watched.has(tabId)) {
+        watched.set(tabId, { jobId });
+      }
     }
   } catch (_e) { /* session storage unavailable — degrade to old behavior */ }
 }
@@ -70,6 +81,11 @@ export function relayFromContent(tabId, frameId, msg) {
     withRoute.frame_id = frameId;
   }
   if (frameId !== undefined && msg.type === "fill_result") {
+    withRoute.frame_id = frameId;
+  }
+  // 019 (FR-031): a progression click reports the frame it acted in — the
+  // sign-in click is only ever valid in the frame the app itself filled.
+  if (frameId !== undefined && msg.type === "advance_result") {
     withRoute.frame_id = frameId;
   }
   send({ v: 1, seq: 0, ...withRoute });

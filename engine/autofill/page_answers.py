@@ -36,6 +36,11 @@ NEEDS_YOU_REASONS = ("sensitive", "no_valid_option", "profile_fact_missing",
 NEVER_RETRY_REASONS = ("sensitive", "cannot_answer", "never_generated",
                        "binding_commitment")
 
+# 019 (FR-002/FR-017): decision-layer reasons that need no drafter record —
+# the fill layer itself knows a person has to look (a stale companion, a
+# missing saved login). Not askable: typing an answer fixes neither.
+ITEM_NEEDS_YOU_REASONS = ("version_mismatch", "no_saved_login")
+
 # The fields the panel renders. The digest is taken over exactly these, so a
 # change the applicant cannot see never causes a re-render.
 _RENDERED = ("key", "je_idx", "question", "answer", "group", "state", "reason",
@@ -49,6 +54,8 @@ def _normalize(question: str) -> str:
 def _classify(item: dict, record: dict | None) -> tuple[str, str, bool]:
     """→ (group, state, askable) for one decision."""
     if item.get("action") == "skip":
+        if item.get("reason") in ITEM_NEEDS_YOU_REASONS:
+            return ("needs_you", "needs_you", False)
         if record is None:
             # A field we deliberately ignored is not an unanswered question.
             # Listing it would bury the ones that genuinely need an answer.
@@ -106,7 +113,8 @@ def build(entries, drafter_records=None) -> list[dict]:
             "answer": answer,
             "group": group,
             "state": state,
-            "reason": record.get("reason") if record else None,
+            "reason": item.get("reason")
+                      or (record.get("reason") if record else None),
             "askable": askable,
         }
 

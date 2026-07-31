@@ -408,12 +408,15 @@ class TestPrimaryActionWorks:
         from engine import db
 
         assert _wait_connected()
+        db.save_profile(first_name="Abhinav", last_name="Battula",
+                        email="abhi@example.com")
         url = f"{fixture_server}/hostile_css.html"
         page = _open_and_wait_companion(context, url)
         page.wait_for_function(
             "(ids) => ids.some(id => { const h = document.getElementById(id);"
             " return h && h.dataset.jeScore; })",
             arg=list(HOST_IDS), timeout=45000)
+        pages_before = len(context.pages)
 
         _click(page, PRIMARY_IDS)
 
@@ -424,6 +427,26 @@ class TestPrimaryActionWorks:
         job = db.get_job_by_url(url)
         assert job is not None, "the posting was not recorded"
         assert current["job_id"] == job["id"]
+        # 019 (T011, FR-003): the session runs in THIS tab. v1.8.0 opened a
+        # duplicate tab, moved the watch to it, and stranded the tab the
+        # user pressed the button on.
+        time.sleep(2.0)  # give a (wrong) open_tab time to surface
+        assert len(context.pages) == pages_before, (
+            "Apply with Apply Assist opened a duplicate tab")
+        # ...and fills land HERE: reveal a form in this same document and
+        # watch the scan → decide → fill loop put the profile name into it.
+        page.evaluate(
+            """() => {
+                const f = document.createElement('form');
+                f.innerHTML = '<label>First Name'
+                  + '<input name="first_name" id="t011-first"></label>'
+                  + '<label>Email<input name="email" type="email"></label>';
+                document.body.appendChild(f);
+            }""")
+        page.wait_for_function(
+            "() => { const el = document.getElementById('t011-first');"
+            " return el && el.value === 'Abhinav'; }",
+            timeout=30000)
 
     def test_it_reports_failure_instead_of_going_quiet(self, context,
                                                       app_server,
@@ -1139,10 +1162,17 @@ class TestSessionControlFromThePage:
             time.sleep(0.3)
         assert bc.current_job() is None, "Stop did not stop the app's queue"
 
-    def test_an_app_refusal_is_shown_on_the_page(self, context, app_server,
-                                                 fixture_server):
-        """FR-033: the refusal used to be stored for the toolbar popup only —
-        a surface the applicant has no reason to open."""
+    def test_the_tab_that_loses_the_session_is_told(self, context, app_server,
+                                                    fixture_server):
+        """FR-033 + 019 FR-004: an app message about the session must reach
+        the PAGE, not just the toolbar popup nobody opens.
+
+        019 changed which message that is. "Fill this page" on a second tab
+        used to be REFUSED as busy — which bricked the button whenever an
+        old session was still marked running. It now supersedes the quiet
+        session, so the message that must appear is on the tab that LOST
+        it: going silent with no explanation is the same defect wearing a
+        different hat."""
         assert _wait_connected()
         first = _fill_the_bare_form(context, fixture_server)
         assert first is not None
@@ -1150,10 +1180,10 @@ class TestSessionControlFromThePage:
         second = _open_and_wait_companion(
             context, f"{fixture_server}/bare_application.html")
         _click(second, PRIMARY_IDS)
-        deadline = time.time() + 15
+        deadline = time.time() + 20
         notice = ""
         while time.time() < deadline:
-            notice = second.evaluate(
+            notice = first.evaluate(
                 """(ids) => {
                     const id = ids.find(i => document.getElementById(i));
                     const n = document.getElementById(id).shadowRoot
@@ -1163,7 +1193,10 @@ class TestSessionControlFromThePage:
             if notice:
                 break
             time.sleep(0.4)
-        assert notice, "the app's refusal never reached the page"
+        assert notice, (
+            "the tab that lost the session was never told — it just went "
+            "quiet")
+        assert "moved" in notice.lower()
 
 
 class TestCompanionStillTouchesNothing:
@@ -1200,3 +1233,92 @@ class TestCompanionStillTouchesNothing:
                 const doc = document.getElementById('embedded').contentDocument;
                 return doc ? doc.defaultView.__pageSubmitted : false;
             }""") in (None, False)
+
+
+class TestVersionSkew019:
+    """019 (T006, FR-001/FR-002): a stale companion is unmissable — the page
+    widget says "reload the companion", and the doctor reports version_ok
+    False. A mismatch degrades visibly; it never silently breaks filling."""
+
+    def test_mismatch_shows_reload_notice_on_the_page(
+            self, context, app_server, fixture_server, monkeypatch):
+        import engine
+        from web import routes_bridge as rb
+
+        monkeypatch.setattr(engine, "APP_VERSION", "0.0.1-skew")
+        monkeypatch.setattr(rb, "APP_VERSION", "0.0.1-skew")
+        assert _wait_connected(), "companion never paired"
+        page = _open_and_wait_companion(
+            context, f"{fixture_server}/bare_application.html")
+        deadline = time.time() + 30
+        seen = ""
+        while time.time() < deadline:
+            seen = _panel_notice(page) + " " + _shadow_text(page)
+            if "reload the companion" in seen.lower():
+                break
+            time.sleep(0.5)
+        assert "reload the companion" in seen.lower(), (
+            f"no mismatch notice on the page; panel showed: {seen[:400]}")
+
+    def test_doctor_reports_version_ok_false(
+            self, context, app_server, fixture_server, monkeypatch):
+        import json as _json
+        import urllib.request
+
+        import engine
+        from web import routes_bridge as rb
+
+        monkeypatch.setattr(engine, "APP_VERSION", "0.0.1-skew")
+        monkeypatch.setattr(rb, "APP_VERSION", "0.0.1-skew")
+        assert _wait_connected(), "companion never paired"
+        doc = _json.loads(urllib.request.urlopen(
+            f"http://127.0.0.1:{app_server['port']}/api/companion/doctor"
+        ).read())
+        assert doc.get("version_ok") is False
+        assert doc.get("app_version") == "0.0.1-skew"
+
+    def test_matched_versions_show_no_notice(
+            self, context, app_server, fixture_server):
+        assert _wait_connected(), "companion never paired"
+        page = _open_and_wait_companion(
+            context, f"{fixture_server}/bare_application.html")
+        time.sleep(2.0)  # give any (wrong) notice time to render
+        seen = (_panel_notice(page) + " " + _shadow_text(page)).lower()
+        assert "reload the companion" not in seen
+
+
+class TestArmingPersists019:
+    """019 (T016, FR-006): the watched-tab record persists its jobId, so a
+    restarted MV3 worker recomputes adhoc correctly instead of silently
+    disarming the opener (and the escort after it)."""
+
+    def test_persisted_watch_record_carries_the_job_id(
+            self, context, app_server, fixture_server):
+        from engine import db
+
+        assert _wait_connected(), "companion never paired"
+        url = f"{fixture_server}/hostile_css.html"
+        page = _open_and_wait_companion(context, url)
+        page.wait_for_function(
+            "(ids) => ids.some(id => { const h = document.getElementById(id);"
+            " return h && h.dataset.jeScore; })",
+            arg=list(HOST_IDS), timeout=45000)
+        _click(page, PRIMARY_IDS)
+        assert _wait_for_session() is not None
+        deadline = time.time() + 20
+        entries = None
+        sw = context.service_workers[0]
+        while time.time() < deadline:
+            stored = sw.evaluate(
+                "() => chrome.storage.session.get('watchedTabs')")
+            entries = (stored or {}).get("watchedTabs")
+            if entries and all(isinstance(e, dict) for e in entries):
+                break
+            time.sleep(0.5)
+        assert entries, "no watched record was persisted at all"
+        assert all(isinstance(e, dict) and "tabId" in e and "jobId" in e
+                   for e in entries), (
+            f"persisted watch records must carry jobId; got {entries!r}")
+        assert any((e.get("jobId") or 0) > 0 for e in entries), (
+            "the adopted session's real job id must be persisted — a bare "
+            "tab list restores as adhoc and silently disarms the opener")

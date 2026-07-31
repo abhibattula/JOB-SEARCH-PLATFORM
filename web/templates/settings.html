@@ -121,8 +121,33 @@
     <p class="muted">Stored in your OS's own credential store (Windows
       Credential Manager / macOS Keychain) — never in this app's database.
       Passwords are write-only: once saved, this page never displays them
-      again. Apply Assist fills recognized login fields for a matching
-      domain, but never clicks the login button itself — you always do.</p>
+      again.</p>
+    {# 019 (FR-037): auto sign-in is a real change in what these saved
+       logins DO. Say it here, where they are entered. #}
+    <p class="notice" role="note">
+      <strong>Apply Assist signs you in with these.</strong> When an
+      application is behind a sign-in wall, it fills the login and presses
+      <em>Sign in</em> for you — once per page, only right after filling
+      that page's own login fields. It never presses <em>Create account</em>,
+      never touches a “prove you're human” check, and never presses the
+      final <em>Submit</em>: you always do that.
+    </p>
+
+    <h3>Escort</h3>
+    <p class="muted">With the escort on, Apply Assist also presses
+      <em>Next</em> / <em>Continue</em> between wizard steps it has fully
+      filled, and stops at the review page for you. Turn it off to press
+      every button yourself — filling is unchanged either way.</p>
+    <label class="switch">
+      <input type="checkbox" id="escort-enabled"
+             {% if escort_enabled %}checked{% endif %}
+             onchange="fetch('/api/settings/escort', {method:'POST',
+                 headers:{'Content-Type':'application/json'},
+                 body: JSON.stringify({enabled: this.checked})})
+                 .then(() => window.toast &amp;&amp; toast(this.checked
+                   ? 'Escort on' : 'Escort off — you advance the pages'))">
+      <span>Escort completed steps forward</span>
+    </label>
 
     <h3>Default login</h3>
     <p class="muted">Most job sites reuse the same email/password — set it

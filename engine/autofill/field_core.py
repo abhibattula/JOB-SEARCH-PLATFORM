@@ -155,6 +155,26 @@ def value_fits(descriptor: dict, value, tag: str | None = None) -> tuple[bool, s
     return True, ""
 
 
+# 019 (T032, FR-010): a choice control resting on its placeholder DISPLAYS
+# text but the applicant has chosen nothing — `<option value="0">Select…`
+# read back as a real value, so the field was skipped_existing forever and
+# never filled. One rule, three call sites: here, content/scanner.js jeValue
+# and content/filler.js currentDisplayed (kept in step by
+# tests/test_extension_assets.py).
+_PLACEHOLDER_VALUE = re.compile(
+    r"^\s*(?:[-–—•*\s]*)?"
+    r"(?:select|choose|please\s+select|pick|--+|—+|none|n/?a)\b",
+    re.IGNORECASE)
+
+
+def is_placeholder_value(text: str | None) -> bool:
+    """True when a displayed choice means "nothing chosen yet"."""
+    value = (text or "").strip()
+    if not value:
+        return True
+    return bool(_PLACEHOLDER_VALUE.match(value))
+
+
 def key(descriptor: dict) -> tuple:
     """Ledger key: (per-document token, scan-time stamp)."""
     return (descriptor.get("doc"), descriptor.get("je_idx"))
@@ -257,7 +277,13 @@ def decide(ats: str | None, descriptor: dict, handled: dict, get_value) -> Decis
            or fields_mod.classify(descriptor))
 
     # A value already present is sacred — the user's own input above all.
-    if (descriptor.get("value") or "").strip():
+    # 019 (FR-010): unless it is a choice control still showing its
+    # placeholder, which is not a choice the applicant made.
+    present = (descriptor.get("value") or "").strip()
+    if present and is_choice_control(descriptor) and \
+            is_placeholder_value(present):
+        present = ""
+    if present:
         if tag != "free_text_unknown":
             return Decision("settle", tag=tag, outcome="skipped_existing")
         return Decision("skip")
@@ -266,7 +292,10 @@ def decide(ats: str | None, descriptor: dict, handled: dict, get_value) -> Decis
 
     value = get_value(tag, descriptor)
     if value is None:
-        return Decision("skip")
+        # 019: carry the tag. A caller that knows WHY it returned no value
+        # (no saved login for this domain) can only say so on the page if
+        # it can tell which field the skip belongs to.
+        return Decision("skip", tag=tag)
 
     # 017 (FR-012): the answer must fit the control. Settling `no_match`
     # leaves the field untouched and epoch-retryable, so a later, correctly
@@ -339,7 +368,12 @@ def decide(ats: str | None, descriptor: dict, handled: dict, get_value) -> Decis
         return Decision("fill", tag=tag, kind="checkbox", value=True,
                         preview=str(value))
 
-    secret = tag == "login_password"
+    # 019: a GENERATED account password is every bit as secret as a saved
+    # one — it is the credential for an account the applicant is creating,
+    # and it has already been written to the OS keychain. Without this it
+    # would travel as ordinary text and be rendered in the on-page answer
+    # feed like any other answer.
+    secret = tag in ("login_password", "signup_password")
     is_draft = isinstance(value, Draft)
     return Decision("fill", tag=tag, kind="text", value=str(value),
                     preview="•••" if secret else str(value), secret=secret,
