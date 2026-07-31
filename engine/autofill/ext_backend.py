@@ -356,7 +356,21 @@ def progression_clicks() -> list[dict]:
 
 
 def _handle_advance_result(msg) -> None:
-    from . import browser_controller as bc
+    from . import browser_controller as bc, escort as escort_mod
+
+    # 019 (FR-030): the advancer looked for a way forward and every
+    # candidate was final-class (or there was none at all) on a step we had
+    # judged complete. That is the door: everything fillable is in, and the
+    # Submit is the applicant's.
+    if msg.kind == "next" and msg.status in ("refused", "not_found"):
+        if msg.selector_kind in ("final_class", "") :
+            with _lock:
+                tab_id = _watch["tab_id"]
+            if tab_id is not None:
+                send(_outbound("overlay_state", tab_id=tab_id, summary={
+                    "session": escort_mod.STATE_READY,
+                    "message": "Review & submit — your turn",
+                }))
 
     with _lock:
         job_id = _watch["job_id"]
@@ -433,6 +447,22 @@ def _handle_session_control(msg) -> None:
             "seen": 0, "filled": 0, "needs_you": 0, "drafts": 0,
             "needs_you_idx": [], "attention": [], "session": "stopped",
             "message": "stopped — nothing was submitted",
+        }))
+        return
+    # 019 (FR-034): pause/resume the ESCORT only — filling continues either
+    # way. This is the rollback lever a behaviour change this size needs.
+    if action in ("pause_escort", "resume_escort"):
+        escort = _get_escort()
+        if action == "pause_escort":
+            escort.enabled = False
+        else:
+            escort.enabled = True
+            escort.resume()   # the applicant looked; the cap starts over
+        send(_outbound("overlay_state", tab_id=msg.tab_id, summary={
+            "session": "filling",
+            "message": ("escort paused — you advance the pages"
+                        if action == "pause_escort"
+                        else "escort on — I'll advance completed steps"),
         }))
         return
     if action == "next":
@@ -541,6 +571,36 @@ def _frame_domain(url: str) -> str | None:
 # issued for that exact frame", never inferred from a button's text.
 _CREDENTIAL_TAGS = ("login_email", "login_username", "login_password")
 _signin: dict[tuple, dict] = {}
+
+# 019 (T060): the escort for the current session, plus per-(tab,frame) quiet
+# clocks. A step that is still rendering is not a step that is complete.
+_escort = None
+_quiet_since: dict[tuple, tuple] = {}   # (tab, frame) -> (fieldset_hash, at)
+# Hosts where we fill but never click (FR-033). The account at risk is the
+# applicant's, so this is a domain rule, not a heuristic.
+_NO_CLICK_HOSTS = ("linkedin.com",)
+
+
+def _get_escort():
+    global _escort
+    from . import escort as escort_mod
+
+    with _lock:
+        if _escort is None:
+            from .. import db
+
+            enabled = (db.get_setting("escort_enabled") or "1") != "0"
+            _escort = escort_mod.Escort(enabled=enabled)
+        return _escort
+
+
+def _clickable_host(url: str) -> bool:
+    # netloc carries userinfo and an explicit port; a host rule that can be
+    # defeated by ":443" is not a rule. Strip both before comparing.
+    host = (_frame_domain(url) or "").lower()
+    host = host.rsplit("@", 1)[-1].split(":", 1)[0]
+    return not any(host == h or host.endswith("." + h)
+                   for h in _NO_CLICK_HOSTS)
 
 
 def _signin_key(tab_id: int, frame_id: int, doc: str) -> tuple:
@@ -677,6 +737,10 @@ def _handle_fields(msg) -> None:
 
     ats = adapters.ats_from_url(msg.url)
     seen = 0
+    # 019 (FR-023): visible REQUIRED fields still holding no answer. The
+    # escort will not advance a step while any of these remain — that is
+    # what makes "complete" mean complete rather than "we tried".
+    required_pending = 0
     # 016 (T017): fields the HUMAN must answer (sensitive / missing fact /
     # no valid option) — highlighted on the page + listed in the panel.
     from . import drafter
@@ -755,6 +819,10 @@ def _handle_fields(msg) -> None:
         if decision.action == "ignore":
             continue
         seen += 1
+        if (raw.get("required") and raw.get("visible")
+                and decision.action in ("fill", "skip")
+                and not (raw.get("value") or "").strip()):
+            required_pending += 1
         lkey = field_core.key(raw)
         if decision.action == "skip":
             question = question_of(raw)
@@ -880,7 +948,7 @@ def _handle_fields(msg) -> None:
         url=msg.url if msg.frame_id == 0 else bc._state.activity.get("url"),
         message=(
             f"watching page — {total_seen} fields seen · "
-            f"{filled_total} filled · you click the actual apply/submit"
+            f"{filled_total} filled · you press the final Submit"
             if total_seen else
             "no form fields visible yet — click the site's own Apply "
             "button; fields fill the moment the form appears"
@@ -896,15 +964,52 @@ def _handle_fields(msg) -> None:
     with bc._lock:
         remaining = max(0, len(bc._state.job_ids) - bc._state.index - 1)
         running = bc._state.running
+    # 019 (T060): the escort's judgment on THIS step. Everything it needs is
+    # already in hand from the scan we just did — no extra page work.
+    from . import escort as escort_mod
+
+    escort = _get_escort()
+    fh = escort_mod.fieldset_hash(raws)
+    qkey = (msg.tab_id, msg.frame_id)
+    now = time.monotonic()
+    with _lock:
+        prior = _quiet_since.get(qkey)
+        if prior is None or prior[0] != fh:
+            _quiet_since[qkey] = (fh, now)   # the step changed; clock restarts
+            quiet_for = 0.0
+        else:
+            quiet_for = now - prior[1]
+        inflight_here = sum(1 for k in _inflight
+                            if k[0] == msg.tab_id and k[1] == msg.frame_id)
+    step = escort_mod.StepView(
+        doc=msg.doc, fieldset_hash=fh,
+        visible_required_pending=required_pending,
+        inflight=inflight_here, needs_you=len(needs_you_idx),
+        focused=any(r.get("focused") for r in raws),
+        captcha=bool(getattr(msg, "captcha", False)),
+        missing_login=missing_login["seen"],
+        quiet_for=quiet_for, seen=seen)
+    verdict = escort.should_advance(
+        step, version_ok=version_ok(), clickable_host=_clickable_host(msg.url))
+    if verdict.advance:
+        escort.note_advance(step.key)
+        send(_outbound("advance_step", tab_id=msg.tab_id,
+                       frame_id=msg.frame_id, kind=verdict.kind,
+                       step_key=step.key))
+    session_state = verdict.state or ("filling" if running else "done")
+
     send(_outbound("overlay_state", tab_id=msg.tab_id, summary={
         "seen": total_seen, "filled": filled_total, "drafts": draft_count,
         "needs_you": len(needs_you_idx),
         "needs_you_idx": needs_you_idx,
         "attention": needs_you_labels[:5],
-        "message": "you click the actual apply/submit",
-        "session": "filling" if running else "done",
+        "message": "you press the final Submit — never us",
+        "session": session_state if running else "done",
         "current_job_id": job_id if job_id and job_id > 0 else None,
         "remaining": remaining,
+        # 019 (FR-017): the panel offers its inline save form only when the
+        # app actually has no login for this domain.
+        "needs_login": missing_login["seen"],
     }))
 
     # 017 (FR-034) / 018 (FR-019, FR-020, FR-027): the FULL answer text goes
@@ -1047,6 +1152,13 @@ def _handle_page_event(msg) -> None:
             for key in [k for k in _inflight if k[0] == msg.tab_id]:
                 del _inflight[key]
     elif msg.kind == "submit_detected":
+        # 019 (FR-032): a wizard step POSTs its form, so an escorted advance
+        # looks exactly like a submission. Attribute it: only a submit the
+        # applicant themselves caused belongs in the did-you-apply queue.
+        if _get_escort().attribute_submit() == "app":
+            log.debug("submit on tab %s attributed to an escorted advance",
+                      msg.tab_id)
+            return
         with _lock:
             _pending_submissions.append({
                 "job_id": job_id, "tab_id": msg.tab_id,
@@ -1247,6 +1359,8 @@ def reset_for_tests() -> None:
         _pending_submissions.clear()
         _progression_clicks.clear()
         _signin.clear()
+        _quiet_since.clear()
+        globals()["_escort"] = None
         _page_entries.clear()
         _answers_digest.clear()
         _answers_force.clear()

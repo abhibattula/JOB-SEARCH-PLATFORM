@@ -49,6 +49,10 @@
       url: location.href,
       doc: window.jeScanner.docToken(),
       descriptors,
+      // 019 (FR-028): a bot check on this page. The app pauses the escort
+      // and waits for the applicant; nothing is ever clicked near it.
+      captcha: !!(window.jeScanner.captchaPresent
+                  && window.jeScanner.captchaPresent()),
     });
     // 016 (T015): queue-driven watch on a recognized posting with no
     // fillable form → open the application ONCE; the observer/next scan

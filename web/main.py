@@ -703,7 +703,7 @@ def create_app() -> FastAPI:
 
     @app.get("/settings", response_class=HTMLResponse)
     def settings_page(request: Request):
-        from engine import credentials, watchlist
+        from engine import credentials, db, watchlist
 
         from .routes_api import get_settings
 
@@ -717,6 +717,9 @@ def create_app() -> FastAPI:
                 "settings": get_settings(),
                 "credential_domains": credentials.list_domains(),
                 "default_credential_email": default_cred["email"] if default_cred else None,
+                # 019 (FR-034/FR-037): the escort's on/off state, shown
+                # where the saved logins it uses are entered.
+                "escort_enabled": (db.get_setting("escort_enabled") or "1") != "0",
             },
         )
 

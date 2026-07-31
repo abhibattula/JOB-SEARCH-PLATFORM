@@ -146,14 +146,14 @@ refresh with the shared step-key.
 - [x] T036 [US2] engine/autofill/click_guard.py + extension/content/click_guard.js
       own-name-for-allow judgment — T035 green; behavior tables updated
       consciously
-- [ ] T037 [P] [US2] Failing tests — browser: greenhouse_navigate_apply
+- [x] T037 [P] [US2] Failing tests — browser: greenhouse_navigate_apply
       clicks Apply, navigates, application page fills; unit: opener one-shot
       key is (doc token + control fingerprint), not href (SPA-safe)
-- [ ] T038 [US2] extension/content/opener.js refreshed selectors
+- [x] T038 [US2] extension/content/opener.js refreshed selectors
       (job-boards.greenhouse.io, navigating links) + step-keyed one-shot;
       engine/autofill/adapters.py APPLY_OPENERS additions; parity test —
       T037 green
-- [ ] T039 [US2] Checkpoint: full unit battery + `-m browser` green; commit
+- [x] T039 [US2] Checkpoint: full unit battery + `-m browser` green; commit
 
 ---
 
@@ -169,50 +169,50 @@ crossed with zero manual clicks; without one, the widget offers the save form.
 - [x] T040 [P] [US3] Fixtures tests/fixtures/ats_pages/login_wall.html
       (email/username + password + Sign in; post-login page) and
       registration.html (password + confirm + Create account)
-- [ ] T041 [P] [US3] Failing unit tests/test_fields.py — login_email
+- [x] T041 [P] [US3] Failing unit tests/test_fields.py — login_email
       reachable via form_context; new login_username tag; registration
       context rows; watcher/scanner parity rows
-- [ ] T042 [US3] scanner.js describe() emits form_context; watcher.py
+- [x] T042 [US3] scanner.js describe() emits form_context; watcher.py
       SERIALIZE_JS parity; engine/autofill/fields.py classify — T041 green
-- [ ] T043 [P] [US3] Failing browser test — login_wall fixture: widget
+- [x] T043 [P] [US3] Failing browser test — login_wall fixture: widget
       APPEARS in sign-in state (red today: probe hides it); without a vault
       entry it renders the save-login form
-- [ ] T044 [US3] scanner.js probe reports login_wall (stops hiding password
+- [x] T044 [US3] scanner.js probe reports login_wall (stops hiding password
       forms; application-form counts still exclude credential fields);
       extension/content/panel.js sign-in states per contracts/escort-ui.md —
       T043 green
-- [ ] T045 [P] [US3] Failing unit — `prefilled_ok` terminal outcome for
+- [x] T045 [P] [US3] Failing unit — `prefilled_ok` terminal outcome for
       credential fields; sign-in arming requires BOTH engine-issued fills
       `filled`/`prefilled_ok` in that frame; once per doc token; failed
       sign-in (new doc, same wall) does NOT re-arm (FR-016, R15/R16)
-- [ ] T046 [US3] engine/autofill/field_core.py prefilled_ok;
+- [x] T046 [US3] engine/autofill/field_core.py prefilled_ok;
       engine/autofill/escort.py (new) sign-in arming state; ext_backend
       wiring — T045 green
-- [ ] T047 [P] [US3] Failing unit — credential_save handler: saves via fake
+- [x] T047 [P] [US3] Failing unit — credential_save handler: saves via fake
       keyring backend, ack carries no secret/email, captured logs clean,
       re-arms sign-in for the reporting tab (FR-017)
-- [ ] T048 [US3] ext_backend.py credential_save handler with redaction;
+- [x] T048 [US3] ext_backend.py credential_save handler with redaction;
       panel.js save-form submit + immediate input clear — T047 green
-- [ ] T049 [P] [US3] Failing browser test — full sign-in journey on
+- [x] T049 [P] [US3] Failing browser test — full sign-in journey on
       login_wall with a fake-keyring saved login: both fields fill AND the
       Sign in control is actually clicked (observable navigation), exactly
       once
-- [ ] T050 [US3] extension/content/advancer.js (sign_in kind only):
+- [x] T050 [US3] extension/content/advancer.js (sign_in kind only):
       allowlisted single guarded click site with its own asset pin;
       manifest.json content_scripts order; service-worker advance_step
       routing; engine dispatch — T049 green
-- [ ] T051 [P] [US3] Failing tests — unit: credentials.generate_password
+- [x] T051 [P] [US3] Failing tests — unit: credentials.generate_password
       properties (length/classes/no-ambiguous); browser: registration
       fixture — both password fields fill, credential saved to fake vault at
       fill time, Create account NOT clicked, needs-you prompt shown
-- [ ] T052 [US3] engine/credentials.py generate_password; ext_backend
+- [x] T052 [US3] engine/credentials.py generate_password; ext_backend
       registration flow; page_answers.py no_saved_login + prompts —
       T051 green
 - [ ] T053 [US3] tests/test_secret_hygiene.py — instrumented full credential
       browser run; self-check that the scanner detects a planted canary
       leak, then assert DB/logs/chrome.storage/feed/doctor/artifacts are
       clean of the test password
-- [ ] T054 [US3] Checkpoint: full unit battery + `-m browser` +
+- [x] T054 [US3] Checkpoint: full unit battery + `-m browser` +
       secret-hygiene green; commit
 
 ---
@@ -232,38 +232,38 @@ sign-in → two filled steps → parked at review with Submit provably unclicked
 - [x] T056 [P] [US4] Fixtures wizard_spa.html (same URL, DOM-swapped steps),
       wizard_loop.html (never-ending steps, for the cap), captcha_frame.html
       (stub recaptcha-style iframe)
-- [ ] T057 [P] [US4] Failing unit tables tests/test_escort.py — completeness
+- [x] T057 [P] [US4] Failing unit tables tests/test_escort.py — completeness
       predicate truth table (required/in-flight/needs-you/focused/quiet
       ~2 s per research R19); one-shot per step_key; cap 12 ⇒ paused_cap;
       `advance_result not_found` on a complete step ⇒ your-turn pause
       (FR-024); attribution-window verdicts; state transitions incl.
       CAPTCHA-outranks-completeness; LinkedIn / mismatch / setting-off gates
       never arm
-- [ ] T058 [US4] engine/autofill/escort.py full module (pure logic, no I/O) —
+- [x] T058 [US4] engine/autofill/escort.py full module (pure logic, no I/O) —
       T057 green
-- [ ] T059 [P] [US4] Failing unit — ext_backend issues advance_step from the
+- [x] T059 [P] [US4] Failing unit — ext_backend issues advance_step from the
       scan path when the predicate fires; advance_result lands in the
       Progression Click Record trail (fill report); submit_detected inside an
       attribution window excluded from _pending_submissions; overlay summary
       carries the new session states
-- [ ] T060 [US4] ext_backend.py + browser_controller.py wiring (report trail,
+- [x] T060 [US4] ext_backend.py + browser_controller.py wiring (report trail,
       states, `escort_enabled` setting read) — T059 green
-- [ ] T061 [P] [US4] Failing tests — unit: adapters.ADVANCE_ALLOWLIST
+- [x] T061 [P] [US4] Failing tests — unit: adapters.ADVANCE_ALLOWLIST
       (Workday bottom-navigation-next etc.) + advancer.js parity;
       FINAL_TERMS layer in both guard files (tests/test_click_guard.py new
       tables: progression-vs-final precedence, "Continue »" advance allowed
       for the advancer while final phrasings refuse); advancer single-click
       asset pin; LinkedIn domain refusal
-- [ ] T062 [US4] engine/autofill/adapters.py ADVANCE_ALLOWLIST;
+- [x] T062 [US4] engine/autofill/adapters.py ADVANCE_ALLOWLIST;
       engine/autofill/click_guard.py + extension/content/click_guard.js
       FINAL_TERMS; advancer.js `next` kind with generic fallback and
       final-class refusal (open_apply stays OPENER-owned per analyze finding
       A1 — opener reports its click via advance_result into the trail) —
       T061 green
-- [ ] T063 [P] [US4] Failing browser test — captcha_frame: your_turn_captcha
+- [x] T063 [P] [US4] Failing browser test — captcha_frame: your_turn_captcha
       state shown, ZERO interactions with the frame, resume after the stub
       is removed and the page progresses
-- [ ] T064 [US4] scanner.js captcha_present detection; escort precedence —
+- [x] T064 [US4] scanner.js captcha_present detection; escort precedence —
       T063 green
 - [ ] T065 [P] [US4] Failing browser tests — panel states per
       contracts/escort-ui.md: ready_for_review park on review.html with the
@@ -272,7 +272,7 @@ sign-in → two filled steps → parked at review with Submit provably unclicked
       stops advances while filling continues
 - [ ] T066 [US4] panel.js state rendering + session_control pause_escort —
       T065 green
-- [ ] T067 [US4] Flagship tests/integration/test_escort.py end-to-end:
+- [x] T067 [US4] Flagship tests/integration/test_escort.py end-to-end:
       posting → opener Apply click → login_wall (fake vault) → sign_in →
       step1 fills → next → step2 fills (Workday options + placeholder
       select) → next → parked at review; trail (incl. the opener's
@@ -280,22 +280,22 @@ sign-in → two filled steps → parked at review with Submit provably unclicked
       assertion); _pending_submissions stays empty throughout; plus a
       linkedin-domain fixture leg asserting ZERO clicks while filling stays
       active (FR-033 / US4-AS7)
-- [ ] T068 [US4] Settings `escort_enabled` toggle (web/templates/settings.html
+- [x] T068 [US4] Settings `escort_enabled` toggle (web/templates/settings.html
       + engine setting) with browser assert: OFF ⇒ exactly v1.8.0 fill-only;
       worker-restart browser test: advance count survives (cap cannot reset)
-- [ ] T069 [US4] Checkpoint: full unit battery + `-m browser` green; commit
+- [x] T069 [US4] Checkpoint: full unit battery + `-m browser` green; commit
 
 ---
 
 ## Phase 7: User Story 5 — The promises match the product (P5) + Ship
 
-- [ ] T070 [P] [US5] Update every pinned promise atomically with its test:
+- [x] T070 [P] [US5] Update every pinned promise atomically with its test:
       extension/manifest.json description; panel.js footer ("You press the
       final Submit — never us.") + tests/test_extension_assets.py pin;
       activity messages in browser_controller.py + ext_backend.py;
       tests/test_browser_controller.py advance-is-user-driven reworded to
       Playwright-path-only
-- [ ] T071 [P] [US5] Supersession notes: specs/018-companion/contracts/
+- [x] T071 [P] [US5] Supersession notes: specs/018-companion/contracts/
       companion-ui.md footer line points at 019 contract;
       specs/005-apply-assist/spec.md FR-008 annotated superseded-in-part by
       constitution v1.2.0 (history preserved, not rewritten)

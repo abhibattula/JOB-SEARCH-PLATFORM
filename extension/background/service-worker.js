@@ -37,6 +37,19 @@ state.onMessage = (msg) => {
     case "answers": toContent(msg.tab_id, { type: "answers",
                                             items: msg.items,
                                             truncated: msg.truncated }, 0); break;
+    // 019 (FR-016/FR-023): the app authorises ONE progression click, in the
+    // exact frame it names. Routed like a fill — never broadcast, because a
+    // sign-in click is only ever legal in the frame whose credentials the
+    // app itself just filled.
+    case "advance_step":
+      toContent(msg.tab_id, { type: "advance_step", kind: msg.kind,
+                              step_key: msg.step_key }, msg.frame_id);
+      break;
+    // 019 (FR-017): the login reached the OS keychain; tell the page.
+    case "credential_saved":
+      toContent(msg.tab_id, { type: "credential_saved",
+                              domain: msg.domain }, 0);
+      break;
     // 012 discovery: score/save replies go to the requesting tab's top frame.
     case "score_result": toContent(msg.tab_id, { ...msg, type: "score_result" }, 0);
       break;

@@ -368,7 +368,12 @@ def decide(ats: str | None, descriptor: dict, handled: dict, get_value) -> Decis
         return Decision("fill", tag=tag, kind="checkbox", value=True,
                         preview=str(value))
 
-    secret = tag == "login_password"
+    # 019: a GENERATED account password is every bit as secret as a saved
+    # one — it is the credential for an account the applicant is creating,
+    # and it has already been written to the OS keychain. Without this it
+    # would travel as ordinary text and be rendered in the on-page answer
+    # feed like any other answer.
+    secret = tag in ("login_password", "signup_password")
     is_draft = isinstance(value, Draft)
     return Decision("fill", tag=tag, kind="text", value=str(value),
                     preview="•••" if secret else str(value), secret=secret,

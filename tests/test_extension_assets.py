@@ -514,7 +514,11 @@ class TestPanelIsTheReviewSurface017:
         source = self.panel()
         for required in ("Fill again", "onFillAgain", "note", "attention"):
             assert required in source or required == "attention", required
-        assert "You click apply / submit" in source
+        # 019 (T070): the promise changed with the product. The escort
+        # presses Apply, Sign in and Continue now; the FINAL Submit is
+        # still, always, the applicant's — that is what the footer must
+        # say, and it must never disappear.
+        assert "You press the final Submit" in source
 
     def test_it_never_clicks_anything_on_the_page(self):
         """The panel's own buttons use addEventListener; it must not invoke

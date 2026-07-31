@@ -936,7 +936,7 @@ def _tick_if_active(force: bool = False) -> None:
         phase = "watching"
         message = (
             f"watching page — {result.fields_seen} fields seen · "
-            f"{filled_total} filled · you click the actual apply/submit"
+            f"{filled_total} filled · you press the final Submit"
         )
     else:
         phase = "waiting_for_form"

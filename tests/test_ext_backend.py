@@ -4,6 +4,7 @@ and the secret-handling guarantees. All through a fake sender; no browser,
 no sockets."""
 import json
 import logging
+import time
 
 import pytest
 
@@ -1444,3 +1445,140 @@ class TestCredentialSave019:
                 tab_id=40, domain="d.example", email="me@example.com",
                 password="s3cret-Pa55!"))
         assert "s3cret-Pa55!" not in caplog.text
+
+
+class TestEscortWiring019:
+    """019 (T059/T060): the escort's verdict reaches the page as exactly one
+    advance_step, and everything it refuses is visible instead."""
+
+    STEP = dict(je_idx="1", tag="input", type="text", name="first_name",
+                id="first_name", label_text="First name", required=True)
+
+    def _matched(self, sent):
+        from engine import APP_VERSION
+
+        ext_backend.register(sent.append, lambda code: None, APP_VERSION)
+
+    def _complete_step(self, tab_id=40, doc="stepA", url=None):
+        return fields_msg(
+            job_url=url or "https://boards.greenhouse.io/figma/jobs/77",
+            tab_id=tab_id, doc=doc,
+            descriptors=[descriptor(**dict(self.STEP, value="Abhinav"))])
+
+    def _settle(self, sent, msg):
+        """Two scans a quiet-period apart — the escort will not advance a
+        step that is still rendering."""
+        ext_backend.handle_message(msg)
+        for key in list(ext_backend._quiet_since):
+            fh, _at = ext_backend._quiet_since[key]
+            ext_backend._quiet_since[key] = (fh, time.monotonic() - 10)
+        sent.clear()
+        ext_backend.handle_message(msg)
+
+    def test_a_complete_step_advances_once(self, queue, sent):
+        open_the_tab(queue, sent)
+        self._matched(sent)
+        self._settle(sent, self._complete_step())
+        steps = [m for m in sent if m["type"] == "advance_step"]
+        assert len(steps) == 1
+        assert steps[0]["kind"] == "next"
+        assert steps[0]["step_key"]
+
+        # ...and never again for the same rendered step
+        sent.clear()
+        ext_backend.handle_message(self._complete_step())
+        assert not [m for m in sent if m["type"] == "advance_step"]
+
+    def test_a_pending_required_field_blocks_the_advance(self, queue, sent):
+        open_the_tab(queue, sent)
+        self._matched(sent)
+        unfilled = fields_msg(
+            tab_id=40, doc="stepB",
+            descriptors=[descriptor(**dict(self.STEP, je_idx="9",
+                                           name="zz_unknown", id="zz",
+                                           label_text="Unanswerable?",
+                                           value=""))])
+        self._settle(sent, unfilled)
+        assert not [m for m in sent if m["type"] == "advance_step"]
+
+    def test_a_captcha_pauses_and_says_so(self, queue, sent):
+        open_the_tab(queue, sent)
+        self._matched(sent)
+        msg = self._complete_step(doc="stepC")
+        msg.captcha = True
+        self._settle(sent, msg)
+        assert not [m for m in sent if m["type"] == "advance_step"]
+        overlay = [m for m in sent if m["type"] == "overlay_state"][-1]
+        assert overlay["summary"]["session"] == "your_turn_captcha"
+
+    def test_linkedin_is_never_clicked(self, queue, sent):
+        open_the_tab(queue, sent)
+        self._matched(sent)
+        self._settle(sent, self._complete_step(
+            doc="stepD", url="https://www.linkedin.com/jobs/view/123/"))
+        assert not [m for m in sent if m["type"] == "advance_step"]
+
+    def test_a_stale_companion_is_never_escorted(self, queue, sent):
+        """FR-035: the fixture's "1.0.0" mismatches by construction."""
+        open_the_tab(queue, sent)
+        self._settle(sent, self._complete_step(doc="stepE"))
+        assert not [m for m in sent if m["type"] == "advance_step"]
+
+    def test_the_click_lands_in_the_activity_trail(self, queue, sent):
+        open_the_tab(queue, sent)
+        self._matched(sent)
+        ext_backend.handle_message(ext_protocol.AdvanceResult(
+            tab_id=40, frame_id=0, kind="next", status="clicked",
+            selector_kind="workday_next", control_hash="abc"))
+        trail = ext_backend.progression_clicks()
+        assert trail and trail[-1]["kind"] == "next"
+        assert trail[-1]["status"] == "clicked"
+
+    def test_a_refusal_is_recorded_too(self, queue, sent):
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(ext_protocol.AdvanceResult(
+            tab_id=40, frame_id=0, kind="next", status="refused",
+            selector_kind="final_class", control_hash=""))
+        assert ext_backend.progression_clicks()[-1]["status"] == "refused"
+
+
+class TestSubmitAttribution019:
+    """019 (FR-032): a wizard step POSTs its form. Without attribution every
+    escorted step would look like an application the applicant sent."""
+
+    def test_a_submit_right_after_our_advance_is_ours(self, queue, sent):
+        open_the_tab(queue, sent)
+        ext_backend._get_escort().note_advance("docA::f1")
+        ext_backend.handle_message(ext_protocol.PageEvent(
+            tab_id=40, kind="submit_detected",
+            url="https://boards.greenhouse.io/figma/jobs/77"))
+        assert not ext_backend.pending_submissions()
+
+    def test_a_submit_with_no_advance_is_the_applicants(self, queue, sent):
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(ext_protocol.PageEvent(
+            tab_id=40, kind="submit_detected",
+            url="https://boards.greenhouse.io/figma/jobs/77"))
+        assert ext_backend.pending_submissions()
+
+
+class TestNoClickHosts019:
+    """019 (FR-033): the domain rule that keeps us off LinkedIn."""
+
+    def test_linkedin_and_its_subdomains_are_refused(self):
+        for url in ("https://www.linkedin.com/jobs/view/1/",
+                    "https://linkedin.com/jobs/view/1/",
+                    "https://in.linkedin.com/jobs/view/1/"):
+            assert ext_backend._clickable_host(url) is False, url
+
+    def test_an_explicit_port_cannot_defeat_the_rule(self):
+        """netloc carries the port; a host rule that ":443" slips past is
+        not a rule."""
+        assert ext_backend._clickable_host(
+            "https://www.linkedin.com:443/jobs/view/1/") is False
+
+    def test_ordinary_ats_hosts_are_clickable(self):
+        for url in ("https://boards.greenhouse.io/x/jobs/1",
+                    "https://co.wd5.myworkdayjobs.com/en-US/careers",
+                    "https://notlinkedin.com/jobs"):
+            assert ext_backend._clickable_host(url) is True, url

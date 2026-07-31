@@ -112,12 +112,7 @@ window.jeScanner = (function () {
   function nearbyLabel(el) {
     const wrapping = el.closest && el.closest("label");
     if (wrapping) {
-      // The control's own text is not its question — strip it.
-      const clone = wrapping.cloneNode(true);
-      Array.prototype.forEach.call(
-        clone.querySelectorAll("input,select,textarea,button"),
-        function (child) { child.remove(); });
-      const text = (clone.innerText || clone.textContent || "").trim();
+      const text = stripControls(wrapping);
       if (text) { return text; }
     }
     let prev = el.previousElementSibling;
@@ -134,8 +129,26 @@ window.jeScanner = (function () {
     return "";
   }
 
+  function stripControls(node) {
+    const clone = node.cloneNode(true);
+    Array.prototype.forEach.call(
+      clone.querySelectorAll("input,select,textarea,button"),
+      function (child) { child.remove(); });
+    return (clone.innerText || clone.textContent || "").trim();
+  }
+
   function labelText(el) {
-    if (el.labels && el.labels[0]) { return el.labels[0].innerText || ""; }
+    if (el.labels && el.labels[0]) {
+      const label = el.labels[0];
+      // A WRAPPING label's innerText includes the control's own rendered
+      // text — for a <select> that is the selected option. Reading it raw
+      // made the question change the moment the answer did ("Authorized to
+      // work? Yes"), which is both wrong in the panel and enough to keep a
+      // step looking like it was still changing, forever.
+      const text = label.contains(el) ? stripControls(label)
+                                      : (label.innerText || "").trim();
+      if (text) { return text; }
+    }
     const aria = el.getAttribute("aria-label");
     if (aria) { return aria; }
     const referenced = referencedText(el);
@@ -175,6 +188,13 @@ window.jeScanner = (function () {
     if (type === "file") { return true; }  // often deliberately off-screen
     const rect = el.getClientRects && el.getClientRects()[0];
     if (!rect || rect.width <= 0 || rect.height <= 0) { return false; }
+    // `left:-9999px` is the oldest hide-it-anyway idiom on the web, and it
+    // has a real box, so a rect test alone calls it visible. A field parked
+    // entirely off the left/top of the document is not something the
+    // applicant can see or answer — counting it costs a drafter call and
+    // stalls anything waiting for the page to be complete. Below the fold
+    // is NOT this: that field is visible, just scrolled.
+    if (rect.right <= 0 || rect.bottom <= 0) { return false; }
     const style = window.getComputedStyle ? window.getComputedStyle(el) : null;
     if (style && (style.visibility === "hidden" ||
                   style.visibility === "collapse" ||

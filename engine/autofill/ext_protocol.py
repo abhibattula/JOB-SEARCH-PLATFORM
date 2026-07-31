@@ -101,6 +101,10 @@ class Fields(_Strict):
     url: str
     doc: str
     descriptors: list[Descriptor]
+    # 019 (FR-028, additive): a bot check is present on this page. The
+    # escort refuses to advance past one and pauses to the human; nothing
+    # is ever clicked on or near it.
+    captcha: bool = False
 
 
 class OutcomeItem(_Strict):

@@ -154,6 +154,22 @@ class TestFieldsetHash:
                   {"je_idx": "2", "name": "last", "label_text": "Last"}]
         assert escort.fieldset_hash(fields) == escort.fieldset_hash(fields)
 
+    def test_a_relabelled_field_is_still_the_same_step(self):
+        """A site that re-words its own question — or a label that briefly
+        carried the answer — must not make the step look brand new. A step
+        that never settles never advances."""
+        before = [{"je_idx": "1", "name": "q_auth",
+                   "label_text": "Authorized to work?"}]
+        after = [{"je_idx": "1", "name": "q_auth",
+                  "label_text": "Authorized to work? Yes"}]
+        assert escort.fieldset_hash(before) == escort.fieldset_hash(after)
+
+    def test_invisible_scaffolding_is_not_part_of_the_step(self):
+        visible_only = [{"je_idx": "1", "name": "first", "visible": True}]
+        with_hidden = visible_only + [
+            {"je_idx": "2", "name": "mirror", "visible": False}]
+        assert escort.fieldset_hash(visible_only) ==             escort.fieldset_hash(with_hidden)
+
     def test_order_does_not_matter(self):
         a = [{"je_idx": "1", "name": "first"}, {"je_idx": "2", "name": "last"}]
         assert escort.fieldset_hash(a) == escort.fieldset_hash(list(reversed(a)))

@@ -190,11 +190,7 @@ SERIALIZE_JS = r"""
   function jeNearbyLabel(el) {
     const wrapping = el.closest && el.closest('label');
     if (wrapping) {
-      const clone = wrapping.cloneNode(true);
-      Array.prototype.forEach.call(
-        clone.querySelectorAll('input,select,textarea,button'),
-        function (child) { child.remove(); });
-      const text = (clone.innerText || clone.textContent || '').trim();
+      const text = jeStripControls(wrapping);
       if (text) { return text; }
     }
     let prev = el.previousElementSibling;
@@ -210,8 +206,23 @@ SERIALIZE_JS = r"""
     }
     return '';
   }
+  function jeStripControls(node) {
+    const clone = node.cloneNode(true);
+    Array.prototype.forEach.call(
+      clone.querySelectorAll('input,select,textarea,button'),
+      function (child) { child.remove(); });
+    return (clone.innerText || clone.textContent || '').trim();
+  }
   function jeLabelText(el) {
-    if (el.labels && el.labels[0]) { return el.labels[0].innerText || ''; }
+    if (el.labels && el.labels[0]) {
+      // A wrapping label's innerText includes the control's own text — for
+      // a <select> that is the selected option, so the question changed
+      // whenever the answer did.
+      const label = el.labels[0];
+      const text = label.contains(el) ? jeStripControls(label)
+                                      : (label.innerText || '').trim();
+      if (text) { return text; }
+    }
     const aria = el.getAttribute('aria-label');
     if (aria) { return aria; }
     const referenced = jeReferencedText(el);
@@ -225,6 +236,8 @@ SERIALIZE_JS = r"""
     if ((el.type || '') === 'file') { return true; }
     const rect = el.getClientRects && el.getClientRects()[0];
     if (!rect || rect.width <= 0 || rect.height <= 0) { return false; }
+    // left:-9999px and friends: a real box, parked off the document.
+    if (rect.right <= 0 || rect.bottom <= 0) { return false; }
     const style = window.getComputedStyle ? window.getComputedStyle(el) : null;
     if (style && (style.visibility === 'hidden' ||
                   style.visibility === 'collapse' ||

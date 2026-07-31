@@ -298,7 +298,7 @@ window.jePanel = (function () {
         <div class="notice" id="notice" hidden role="status"></div>
         <div id="answers"></div>
       </div>
-      <div class="foot">You click apply / submit — never us.</div>
+      <div class="foot">You press the final Submit — never us.</div>
     </div>
   `;
 

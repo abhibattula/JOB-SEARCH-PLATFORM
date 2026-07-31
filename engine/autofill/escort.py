@@ -170,15 +170,30 @@ def fieldset_hash(descriptors) -> str:
     swaps its contents without navigating — same document, different form.
     Hashing what is ON the page is what makes "one advance per rendered
     step" true in both shapes.
+
+    Two deliberate exclusions, both learned the hard way:
+
+    * INVISIBLE fields. They are not part of the rendered step, and pages
+      are full of off-screen scaffolding whose labels shift as the DOM
+      moves around them.
+    * The label TEXT. A question can be re-rendered, re-worded by the site's
+      own script, or (before the fix in scanner.js) carry the answer inside
+      it. `(je_idx, name)` identifies the same control across scans without
+      inheriting any of that churn.
+
+    Anything that varies between two scans of an unchanged page makes the
+    step look like it is still rendering — and a step that never settles is
+    a step the escort will never advance.
     """
     import hashlib
 
     parts = []
     for raw in descriptors or ():
+        if not raw.get("visible", True):
+            continue
         parts.append("|".join((
             str(raw.get("je_idx") or ""),
             str(raw.get("name") or ""),
-            str(raw.get("label_text") or "")[:60],
         )))
     blob = "\n".join(sorted(parts))
     return hashlib.sha256(blob.encode("utf-8")).hexdigest()[:16]

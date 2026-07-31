@@ -147,6 +147,12 @@ Keyboard-reachable controls with a visible focus ring; group headers are
 - All styles are inline in the shadow root; no external requests, no
   `web_accessible_resources`, no fonts.
 - The pairing secret is never rendered, logged, or received.
+> **Superseded in part by 019** (constitution v1.2.0): the companion now
+> presses Apply, Sign in, and a completed step's Continue. The footer line
+> below became "You press the final Submit — never us." The *guarantee* it
+> encodes — a permanent, unremovable statement of what the human always
+> does — is unchanged. See `specs/019-door-to-door/contracts/escort-ui.md`.
+
 - "You click apply / submit — never us." is always present when the widget is
   expanded.
 
