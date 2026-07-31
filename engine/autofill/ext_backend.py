@@ -1197,8 +1197,13 @@ def _handle_fill_here(msg) -> None:
                            message=f"tab {watched_tab} is mid-fill — "
                                    "finish or stop it first"))
             return
-        # Supersede: release the old watch; its tab stays open.
+        # Supersede: release the old watch; its tab stays open. The tab
+        # that LOSES the session is told why — a companion that goes quiet
+        # with no explanation is the defect this feature exists to fix.
         if watched_tab is not None and watched_tab != msg.tab_id:
+            send(_outbound("error", code="superseded", tab_id=watched_tab,
+                           message="Filling moved to the tab you just "
+                                   "pressed Fill in."))
             send(_outbound("watch_stop", tab_id=watched_tab))
 
     # Stand up a job-less session on the extension backend keyed to this tab.

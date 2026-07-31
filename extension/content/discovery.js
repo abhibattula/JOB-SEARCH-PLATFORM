@@ -205,7 +205,8 @@
     // 019 (FR-014): a credential wall counts as something worth showing up
     // for. It used to be the one page we deliberately hid on — which is
     // exactly where the applicant concluded the companion did nothing.
-    wall = form ? (form.wall || "") : "";
+    // Only while a session is actually running here (see main.js).
+    wall = (form && window.jeWatching) ? (form.wall || "") : "";
     captcha = !!(form && form.captcha);
     detection = current ? (hasForm ? "posting+form" : "posting")
       : (hasForm ? "form" : "none");

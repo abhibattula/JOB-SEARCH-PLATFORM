@@ -76,6 +76,11 @@
   function startWatch() {
     if (watching) { return; }
     watching = true;
+    // 019 (FR-014): a credential form is only a WALL when it stands between
+    // the applicant and an application they are already pursuing. On an
+    // ordinary page that merely has a login box — a blog, a docs site — an
+    // offer to sign in is noise, so the sign-in state is gated on this.
+    window.jeWatching = true;
     observer = new MutationObserver(scheduleScan);
     observer.observe(document.documentElement, {
       childList: true, subtree: true, attributes: true,
@@ -134,6 +139,7 @@
 
   function teardown() {
     watching = false;
+    window.jeWatching = false;
     if (observer) { observer.disconnect(); observer = null; }
     clearInterval(safetyTimer);
     clearTimeout(debounceTimer);

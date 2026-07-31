@@ -109,7 +109,7 @@ SERIALIZE_JS = r"""
   // content/scanner.js isPlaceholderValue. A control resting on "Select…"
   // displays text but holds no answer.
   var JE_PLACEHOLDER =
-    /^\\s*(?:[-–—•*\\s]*)?(?:select|choose|please\\s+select|pick|--+|—+|none|n\\/?a)\\b/i;
+    /^\s*(?:[-–—•*\s]*)?(?:select|choose|please\s+select|pick|--+|—+|none|n\/?a)\b/i;
   function jeIsPlaceholder(text) {
     var value = (text || '').trim();
     if (!value) { return true; }
@@ -181,7 +181,7 @@ SERIALIZE_JS = r"""
   function jeReferencedText(el) {
     const ids = el.getAttribute && el.getAttribute('aria-labelledby');
     if (!ids) { return ''; }
-    const parts = ids.split(/\\s+/).map(function (id) {
+    const parts = ids.split(/\s+/).map(function (id) {
       const node = document.getElementById(id);
       return node ? (node.innerText || node.textContent || '').trim() : '';
     }).filter(Boolean);

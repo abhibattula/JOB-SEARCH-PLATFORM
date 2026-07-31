@@ -90,7 +90,10 @@ window.jePanel = (function () {
     if (session === "paused_cap") {
       return { action: "resume_escort", label: "Continue", disabled: false };
     }
-    if (session === "filling") {
+    // `escorting` IS filling — with the escort advancing steps as well.
+    // Anything that is not one of the explicit pause states must still
+    // offer Stop, or the applicant loses it exactly when they want it.
+    if (session === "filling" || session === "escorting") {
       return { action: "stop", label: "Stop", disabled: false };
     }
     if (session === "stopped" || session === "done") {

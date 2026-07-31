@@ -291,7 +291,11 @@ release-notes entry describes the change.
 **Sign-in and accounts**
 
 - **FR-014**: A page whose form is a credential wall MUST present the
-  companion in a dedicated sign-in state (walls are no longer hidden).
+  companion in a dedicated sign-in state (walls are no longer hidden) —
+  while an application session is running on that tab. A login box on an
+  ordinary page the applicant is merely browsing is not a wall, and an
+  unsolicited offer to sign in there would be noise on a large share of the
+  web.
 - **FR-015**: With a saved login matching the site, the system MUST fill the
   username/email and password from the OS credential vault.
 - **FR-016**: The Sign in control MUST be clicked only immediately after the

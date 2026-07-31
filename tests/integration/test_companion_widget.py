@@ -1162,10 +1162,17 @@ class TestSessionControlFromThePage:
             time.sleep(0.3)
         assert bc.current_job() is None, "Stop did not stop the app's queue"
 
-    def test_an_app_refusal_is_shown_on_the_page(self, context, app_server,
-                                                 fixture_server):
-        """FR-033: the refusal used to be stored for the toolbar popup only —
-        a surface the applicant has no reason to open."""
+    def test_the_tab_that_loses_the_session_is_told(self, context, app_server,
+                                                    fixture_server):
+        """FR-033 + 019 FR-004: an app message about the session must reach
+        the PAGE, not just the toolbar popup nobody opens.
+
+        019 changed which message that is. "Fill this page" on a second tab
+        used to be REFUSED as busy — which bricked the button whenever an
+        old session was still marked running. It now supersedes the quiet
+        session, so the message that must appear is on the tab that LOST
+        it: going silent with no explanation is the same defect wearing a
+        different hat."""
         assert _wait_connected()
         first = _fill_the_bare_form(context, fixture_server)
         assert first is not None
@@ -1173,10 +1180,10 @@ class TestSessionControlFromThePage:
         second = _open_and_wait_companion(
             context, f"{fixture_server}/bare_application.html")
         _click(second, PRIMARY_IDS)
-        deadline = time.time() + 15
+        deadline = time.time() + 20
         notice = ""
         while time.time() < deadline:
-            notice = second.evaluate(
+            notice = first.evaluate(
                 """(ids) => {
                     const id = ids.find(i => document.getElementById(i));
                     const n = document.getElementById(id).shadowRoot
@@ -1186,7 +1193,10 @@ class TestSessionControlFromThePage:
             if notice:
                 break
             time.sleep(0.4)
-        assert notice, "the app's refusal never reached the page"
+        assert notice, (
+            "the tab that lost the session was never told — it just went "
+            "quiet")
+        assert "moved" in notice.lower()
 
 
 class TestCompanionStillTouchesNothing:
