@@ -304,8 +304,8 @@ sign-in → two filled steps → parked at review with Submit provably unclicked
       docs/USER_GUIDE.md; README.md ("Using it (v1.9)")
 - [x] T073 [US5] Version bumps: engine/__init__.py APP_VERSION,
       extension/manifest.json, packaging/windows.iss (byte-safe edit)
-- [ ] T074 [US5] Full battery ×2 (flake check) + `-m browser` + slow markers
-- [ ] T075 [US5] Frozen smoke (packaging/smoke_test.py) incl. keyring backend
+- [x] T074 [US5] Full battery ×2 (flake check) + `-m browser` + slow markers
+- [x] T075 [US5] Frozen smoke (packaging/smoke_test.py) incl. keyring backend
       pinning frozen + version-skew amber against a stale 1.8.0 bundle
 - [ ] T076 [US5] Manual quickstart.md §3-§5 against real Workday (account
       wall → escort → review STOP), real Greenhouse navigate-apply, and a
