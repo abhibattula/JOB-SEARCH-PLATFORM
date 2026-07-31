@@ -300,7 +300,8 @@ release-notes entry describes the change.
   on the same rendering.
 - **FR-017**: With no saved login for the site, the system MUST say so as a
   needs-attention item and MUST offer saving one from the page; the saved
-  secret goes only to the OS credential vault.
+  secret goes only to the OS credential vault. After a login is saved from
+  the page, sign-in MUST proceed in the same session without re-asking.
 - **FR-018**: Credential secrets MUST never be stored in the application
   database, extension storage, logs, fill reports, diagnostics, or the
   on-page answer list; saved secrets are write-only after saving.
@@ -325,7 +326,9 @@ release-notes entry describes the change.
 - **FR-024**: Progression controls MUST be matched allowlist-first per
   supported site, with a conservative generic fallback (exact accessible
   names meaning next/continue/save-and-continue) used only when no allowlist
-  matches; any final-class match MUST refuse the click.
+  matches; any final-class match MUST refuse the click. If a complete step
+  yields no clickable progression control at all, the session MUST pause to
+  the human with a "your turn" state rather than wait silently.
 - **FR-025**: Final-class controls MUST never be clicked: any submission of
   the application in any phrasing, account creation/registration, payment,
   and bot-check widgets.
@@ -355,7 +358,9 @@ release-notes entry describes the change.
 
 - **FR-035**: All protocol changes MUST be additive; a previous-version
   companion MUST still connect and operate at its own level while showing
-  the mismatch state (FR-001).
+  the mismatch state (FR-001). The escort MUST NOT arm against a mismatched
+  companion — the session behaves as fill-only until the companion is
+  reloaded, and the mismatch state says so.
 - **FR-036**: Every user-facing promise about clicking MUST be updated to
   the new contract (widget footer, extension description, manual, README,
   in-app activity messages, release notes).
