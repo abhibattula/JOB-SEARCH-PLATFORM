@@ -81,14 +81,20 @@ class TestBridgeAuth:
 
 
 class TestFileToken:
-    def test_token_serves_once_then_404(self, client, tmp_path):
+    def test_token_survives_a_retry_within_ttl(self, client, tmp_path):
+        # 019 (FR-005): the token used to die on first use, so a transient
+        # attach failure turned the retry into http_404 → needs_manual. It
+        # now stays redeemable for its TTL; expiry and session-close still
+        # kill it (tests below + TestFileTokenRetry019).
         pdf = tmp_path / "resume.pdf"
         pdf.write_bytes(b"%PDF-1.4 fake resume")
         token = ext_backend.issue_file_token(str(pdf))
         first = client.get(f"/api/bridge/file/{token}")
         assert first.status_code == 200
         assert first.content == b"%PDF-1.4 fake resume"
-        assert client.get(f"/api/bridge/file/{token}").status_code == 404
+        retry = client.get(f"/api/bridge/file/{token}")
+        assert retry.status_code == 200
+        assert retry.content == b"%PDF-1.4 fake resume"
 
     def test_expired_token_404(self, client, tmp_path, monkeypatch):
         pdf = tmp_path / "resume.pdf"
@@ -207,7 +213,8 @@ class TestDoctorCounters016:
         ext_backend.record_reject("auth")  # unrelated counters still work
         client = TestClient(create_app())
         doctor = client.get("/api/companion/doctor").json()
-        assert doctor["counters"] == {"dropped_fields": 0, "scan_errors": 0}
+        assert doctor["counters"] == {"dropped_fields": 0, "scan_errors": 0,
+                                      "version_mismatch_fills": 0}
 
     def test_doctor_counters_track_drops(self, tmp_db):
         from fastapi.testclient import TestClient

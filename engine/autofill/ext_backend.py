@@ -137,15 +137,20 @@ def issue_file_token(path: str) -> str:
 
 
 def consume_file_token(token: str) -> str | None:
-    """Single use, expiring — the resume-file endpoint's whole auth."""
+    """Expiring — the resume-file endpoint's whole auth. 019 (FR-005): a
+    token stays redeemable for its TTL instead of dying on first use, so a
+    transient fetch failure doesn't turn the retry into http_404 →
+    needs_manual. The map dies with the session (close_current /
+    reset_for_tests), and the TTL bounds the exposure window."""
     with _lock:
-        entry = _file_tokens.pop(token, None)
-    if entry is None:
-        return None
-    path, issued_at = entry
-    if time.monotonic() - issued_at > FILE_TOKEN_TTL:
-        return None
-    return path
+        entry = _file_tokens.get(token)
+        if entry is None:
+            return None
+        path, issued_at = entry
+        if time.monotonic() - issued_at > FILE_TOKEN_TTL:
+            del _file_tokens[token]
+            return None
+        return path
 
 
 # --- watch session (extension analogue of the worker's current page) --------
@@ -157,12 +162,24 @@ _watch: dict = {"tab_id": None, "job_id": None, "pending_open": {}}
 OPEN_TAB_ACK_S = 5.0
 
 # 016 (T008/T010): doctor tripwires — silently-dropped traffic is counted.
-_counters: dict = {"dropped_fields": 0, "scan_errors": 0}
+# 019 (FR-002): version_mismatch_fills counts fills withheld from a stale
+# companion — each one is ALSO visible on the page as needs-you.
+_counters: dict = {"dropped_fields": 0, "scan_errors": 0,
+                   "version_mismatch_fills": 0}
 
 
 def counters() -> dict:
     with _lock:
         return dict(_counters)
+
+
+def version_ok() -> bool:
+    """019 (FR-035): exact app/companion version match. The escort consults
+    this and never arms across a mismatch; the UI renders the amber state."""
+    from .. import APP_VERSION
+
+    with _lock:
+        return _session["version"] == APP_VERSION
 # (tab_id, frame_id, je_idx) -> (descriptor_raw, tag, preview, ai_draft,
 # sent_at) for fills whose result has not come back — prevents double-fill
 # on overlapping scans. 016 (T007): entries EXPIRE — a lost fill_result
@@ -214,6 +231,19 @@ def open_job(job_id: int, url: str) -> None:
     _queue_open(job_id, url)
 
 
+def adopt_tab(tab_id: int, job_id: int) -> None:
+    """019 (FR-003): watch the tab the user is ALREADY on — no open_tab, no
+    duplicate. Clearing pending_open guarantees a late tab_opened from an
+    earlier queued open can never steal this watch (the v1.8.0 bug)."""
+    with _lock:
+        _watch.update(tab_id=tab_id, job_id=job_id)
+        _watch["pending_open"].clear()
+        _inflight.clear()
+        _frame_seen.clear()
+        _start_answer_feed(tab_id, job_id)
+    send(_outbound("watch_start", tab_id=tab_id, job_id=job_id))
+
+
 def open_practice(url: str) -> None:
     """OPEN_PRACTICE for the companion — the bundled practice application
     watched as a job-less session (PRACTICE_JOB_ID)."""
@@ -258,6 +288,7 @@ def close_current() -> None:
         _watch["pending_open"].clear()
         _inflight.clear()
         _frame_seen.clear()
+        _file_tokens.clear()  # 019 (FR-005): tokens die with the session
     if tab_id is not None:
         send(_outbound("close_tab", tab_id=tab_id))
 
@@ -522,7 +553,7 @@ def _handle_fields(msg) -> None:
 
     def note_answer(descriptor: dict, *, action: str, answer: str = "",
                     tag: str = "", ai_draft: bool = False,
-                    secret: bool = False) -> None:
+                    secret: bool = False, reason: str = "") -> None:
         """018 (FR-019): remember this decision for the on-page feed.
 
         Recorded HERE, inside the decision loop, because this is the only
@@ -555,6 +586,10 @@ def _handle_fields(msg) -> None:
             "ai_draft": ai_draft,
             "secret": secret,
             "tag": tag,
+            # 019 (FR-002/FR-017): a decision-layer reason (version_mismatch,
+            # no_saved_login) makes the skip visible as needs-you without a
+            # drafter record.
+            "reason": reason,
         }
 
     for raw in raws:
@@ -624,14 +659,16 @@ def _handle_fields(msg) -> None:
             item.update(kind="typeahead", value=str(decision.value))
         elif decision.kind == "radio":
             # 016 (T013): version gate — an old companion has no radio
-            # branch and would text-set the element (silent mis-fill). The
-            # doctor already surfaces the version mismatch; the field stays
-            # open and fills the moment the companion is reloaded.
-            from .. import APP_VERSION
-
-            with _lock:
-                companion_version = _session["version"]
-            if companion_version != APP_VERSION:
+            # branch and would text-set the element (silent mis-fill).
+            # 019 (T005, FR-002): withholding is no longer SILENT — the
+            # field surfaces on the page as needs-you naming the mismatch,
+            # and the doctor counts it. Still retryable: it fills the
+            # moment the companion is reloaded.
+            if not version_ok():
+                with _lock:
+                    _counters["version_mismatch_fills"] += 1
+                note_answer(raw, action="skip", tag=decision.tag,
+                            reason="version_mismatch")
                 continue
             item.update(kind="radio", value=str(decision.value),
                         option_label=decision.option_label)
@@ -842,16 +879,32 @@ _adhoc: dict = {}
 
 def _handle_fill_here(msg) -> None:
     """Ad-hoc 'Fill this page' (FR-004a): fill whatever application page the
-    user is already viewing. Refused while a queued job is actively
-    filling — one fill session at a time."""
+    user is already viewing.
+
+    019 (T013, FR-004): always honoured on a fillable page. A finished or
+    quiet earlier session is SUPERSEDED (its tab stays open, just
+    unwatched); `busy` is reported only while another tab is actively
+    mid-fill — and then the refusal names that tab."""
     from . import browser_controller as bc
 
     with bc._lock:
         queue_active = bc._state.running and bc._state.backend == "extension"
     if queue_active:
-        send(_outbound("error", code="busy",
-                       message="finish or stop the current queue first"))
-        return
+        now = time.monotonic()
+        with _lock:
+            watched_tab = _watch["tab_id"]
+            mid_fill = any(
+                key[0] == watched_tab and now - info[-1] <= INFLIGHT_TTL_S
+                for key, info in _inflight.items())
+        if (mid_fill and watched_tab is not None
+                and watched_tab != msg.tab_id):
+            send(_outbound("error", code="busy",
+                           message=f"tab {watched_tab} is mid-fill — "
+                                   "finish or stop it first"))
+            return
+        # Supersede: release the old watch; its tab stays open.
+        if watched_tab is not None and watched_tab != msg.tab_id:
+            send(_outbound("watch_stop", tab_id=watched_tab))
 
     # Stand up a job-less session on the extension backend keyed to this tab.
     with bc._lock:
@@ -987,17 +1040,15 @@ def _handle_apply_here(msg) -> None:
 
     from . import browser_controller as bc
 
+    # 019 (T010, FR-003): the session ADOPTS the tab the user pressed the
+    # button on. start_queue(adopt_tab_id=…) never opens a tab, and
+    # adopt_tab() clears pending_open so nothing can re-route the watch.
     try:
-        bc.start_queue([job_id])
+        bc.start_queue([job_id], adopt_tab_id=msg.tab_id)
     except Exception as exc:  # noqa: BLE001 — surface, never crash the bridge
         log.warning("apply_here failed to start", exc_info=True)
         send(_outbound("error", code="start_failed", message=str(exc)[:200]))
         return
-    with _lock:
-        _watch["tab_id"] = msg.tab_id
-        _watch["job_id"] = job_id
-        _start_answer_feed(msg.tab_id, job_id)
-    send(_outbound("watch_start", tab_id=msg.tab_id, job_id=job_id))
 
 
 def reset_for_tests() -> None:

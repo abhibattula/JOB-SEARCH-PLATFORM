@@ -48,11 +48,11 @@ tokens survive retries; arming survives worker restarts.
 **Independent Test**: stale-bundle run shows amber on all three surfaces;
 apply-here browser test asserts tab count unchanged + a field actually filled.
 
-- [ ] T004 [P] [US1] Failing unit tests/test_ext_backend.py::TestVersionSkew019 —
+- [x] T004 [P] [US1] Failing unit tests/test_ext_backend.py::TestVersionSkew019 —
       mismatched hello version ⇒ radio decisions become visible `needs_manual`
       reason `version_mismatch` + doctor counter `version_mismatch_fills`
       (today: silent drop); escort arming refused on mismatch (FR-035)
-- [ ] T005 [US1] engine/autofill/ext_backend.py + engine/autofill/page_answers.py:
+- [x] T005 [US1] engine/autofill/ext_backend.py + engine/autofill/page_answers.py:
       replace the silent radio drop; surface the reason; add the doctor
       counter — T004 green
 - [ ] T006 [P] [US1] Failing asset+browser tests
@@ -66,23 +66,23 @@ apply-here browser test asserts tab count unchanged + a field actually filled.
       render the mismatch state — T006 green (extension side)
 - [ ] T008 [US1] web/main.py + web/templates/companion.html: server-side
       compare of the hello version; amber state + copy — T006 green (app side)
-- [ ] T009 [P] [US1] Failing unit tests/test_browser_controller.py +
+- [x] T009 [P] [US1] Failing unit tests/test_browser_controller.py +
       tests/test_ext_backend.py — `start_queue(job_ids, adopt_tab_id=…)`
       skips open_tab and seeds the watch; `_handle_tab_opened` never
       overwrites an adopted watch
-- [ ] T010 [US1] engine/autofill/browser_controller.py + ext_backend.py:
+- [x] T010 [US1] engine/autofill/browser_controller.py + ext_backend.py:
       adopt-current-tab path; `_handle_apply_here` passes the tab — T009 green
 - [ ] T011 [US1] Strengthen browser test
       tests/integration/test_companion_widget.py apply-here: assert tab count
       unchanged AND ≥1 field filled in the original tab (red on old behavior,
       green after T010)
-- [ ] T012 [P] [US1] Failing unit — `fill_here` supersedes a finished/
+- [x] T012 [P] [US1] Failing unit — `fill_here` supersedes a finished/
       abandoned session; `busy` only while another tab is actively mid-fill
       and the refusal names that tab (FR-004)
-- [ ] T013 [US1] ext_backend.py `_handle_fill_here` supersede logic — T012 green
-- [ ] T014 [P] [US1] Failing unit — file token redeemable more than once
+- [x] T013 [US1] ext_backend.py `_handle_fill_here` supersede logic — T012 green
+- [x] T014 [P] [US1] Failing unit — file token redeemable more than once
       within TTL; expires at TTL; invalidated on session end (FR-005)
-- [ ] T015 [US1] ext_backend.py token mark-used-within-TTL — T014 green
+- [x] T015 [US1] ext_backend.py token mark-used-within-TTL — T014 green
 - [ ] T016 [P] [US1] Failing browser test — kill/restart the MV3 service
       worker mid-session (CDP), assert the opener stays armed
       (`adhoc:false` restored via persisted jobId)

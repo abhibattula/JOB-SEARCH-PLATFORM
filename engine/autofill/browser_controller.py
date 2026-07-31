@@ -492,7 +492,11 @@ def on_draft_complete(job_id: int) -> None:
 # --- queue state machine (public facade) -------------------------------------
 
 
-def start_queue(job_ids: list[int]) -> dict | None:
+def start_queue(job_ids: list[int],
+                adopt_tab_id: int | None = None) -> dict | None:
+    """019 (T010, FR-003): `adopt_tab_id` runs the session in the tab the
+    user is already on — extension backend only, no OPEN_JOB, no open_tab,
+    no duplicate. Without it, behavior is unchanged."""
     with _lock:
         _state.job_ids = list(job_ids)
         _state.index = 0 if job_ids else -1
@@ -507,11 +511,33 @@ def start_queue(job_ids: list[int]) -> dict | None:
         _state.summary = None
         _state.activity = _fresh_activity()
         _state.backend = _choose_backend() if job_ids else None
+        adopting = (adopt_tab_id is not None
+                    and _state.backend == "extension" and bool(job_ids))
         if job_ids:
-            _state.activity.update(phase="opening",
-                                   message="opening the application page…")
+            if adopting:
+                _state.activity.update(
+                    phase="watching",
+                    message="watching the page you're on — fields fill as "
+                            "they appear")
+            else:
+                _state.activity.update(
+                    phase="opening", message="opening the application page…")
     if job_ids:
-        _open_job_on_backend(job_ids[0])
+        if adopting:
+            # Same stored-answer rehydration the open path performs (017
+            # FR-004) — an adopted tab is still a fresh session for answers.
+            try:
+                from . import drafter
+
+                drafter.rehydrate_from_store(job_ids[0])
+            except Exception:  # noqa: BLE001 — never block the session
+                log.warning("draft rehydration failed for job %s",
+                            job_ids[0], exc_info=True)
+            from . import ext_backend
+
+            ext_backend.adopt_tab(adopt_tab_id, job_ids[0])
+        else:
+            _open_job_on_backend(job_ids[0])
     return current_job()
 
 

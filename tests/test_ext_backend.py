@@ -445,8 +445,15 @@ class TestAdHocFillHere:
         assert fill["items"][0]["value"] == "Abhinav"
 
     def test_fill_here_refused_while_queue_filling(self, queue, sent):
-        # a queued job is active; an ad-hoc request must be refused
+        # 019 (FR-004) narrowed this refusal: only a queue ACTIVELY mid-fill
+        # on another tab is busy (a quiet session is superseded instead —
+        # TestFillHereSupersede019 covers that side).
+        import time as _time
+
         open_the_tab(queue, sent)
+        with ext_backend._lock:
+            ext_backend._inflight[(40, 0, "1")] = (
+                {}, "first_name", "Abhinav", False, _time.monotonic())
         sent.clear()
         ext_backend.handle_message(ext_protocol.FillHere(
             tab_id=77, url="https://x.example/other", title="Other"))
@@ -911,8 +918,12 @@ class TestApplyHere017:
         sent = []
         monkeypatch.setattr(ext_backend, "send", lambda p: sent.append(p))
         started = {}
-        monkeypatch.setattr(browser_controller, "start_queue",
-                            lambda ids: started.setdefault("ids", ids))
+
+        def fake_start(ids, adopt_tab_id=None):
+            started["ids"] = ids
+            started["adopt_tab_id"] = adopt_tab_id
+
+        monkeypatch.setattr(browser_controller, "start_queue", fake_start)
 
         ext_backend.handle_message(ext_protocol.ApplyHere(
             tab_id=21, url="https://job-boards.greenhouse.io/akuna/jobs/6532",
@@ -923,13 +934,12 @@ class TestApplyHere017:
             "https://job-boards.greenhouse.io/akuna/jobs/6532")
         assert row is not None
         assert row["status"] == "saved"
+        # a REAL job id, not the -2 ad-hoc sentinel — and 019 (FR-003): the
+        # session ADOPTS the pressed tab (watch_start itself is exercised
+        # unstubbed by TestApplyHereAdopts019).
         assert started["ids"] == [row["id"]]
-
-        watch = [p for p in sent if p.get("type") == "watch_start"]
-        assert watch and watch[0]["tab_id"] == 21
-        # a REAL job id, not the -2 ad-hoc sentinel
-        assert watch[0]["job_id"] == row["id"]
-        assert watch[0]["job_id"] > 0
+        assert row["id"] > 0
+        assert started["adopt_tab_id"] == 21
 
     def test_a_failure_to_start_is_surfaced_not_swallowed(self, tmp_db,
                                                           monkeypatch):
@@ -938,7 +948,7 @@ class TestApplyHere017:
         sent = []
         monkeypatch.setattr(ext_backend, "send", lambda p: sent.append(p))
 
-        def boom(_ids):
+        def boom(_ids, adopt_tab_id=None):
             raise RuntimeError("no browser")
 
         monkeypatch.setattr(browser_controller, "start_queue", boom)
@@ -1118,3 +1128,161 @@ class TestSessionControl018:
         assert overlay["summary"]["session"] == "filling"
         assert overlay["summary"]["current_job_id"] == queue
         assert overlay["summary"]["remaining"] == 0
+
+
+class TestVersionSkew019:
+    """019 (T004, FR-002): a version mismatch is NEVER a silent drop — the
+    withheld radio fill surfaces as needs-you with the mismatch named, and
+    the doctor counts it. The `sent` fixture registers version "1.0.0",
+    which mismatches APP_VERSION by construction."""
+
+    GROUP = TestVersionGate016.GROUP
+
+    def test_mismatch_radio_is_visible_not_silent(self, queue, sent):
+        db.save_profile(authorized_without_sponsorship="yes")
+        open_the_tab(queue, sent)
+        sent.clear()
+        before = ext_backend.counters().get("version_mismatch_fills", 0)
+        ext_backend.handle_message(fields_msg(
+            descriptors=[descriptor(**self.GROUP)]))
+        after = ext_backend.counters().get("version_mismatch_fills", 0)
+        assert after == before + 1
+        answers = [m for m in sent if m["type"] == "answers"]
+        assert answers, "the withheld field must reach the on-page feed"
+        entry = next(i for i in answers[-1]["items"]
+                     if "authorized" in i["question"].lower())
+        assert entry["group"] == "needs_you"
+        assert entry["reason"] == "version_mismatch"
+
+    def test_matched_version_pays_no_penalty(self, queue, sent):
+        from engine import APP_VERSION
+
+        db.save_profile(authorized_without_sponsorship="yes")
+        open_the_tab(queue, sent)
+        ext_backend.register(sent.append, lambda code: None, APP_VERSION)
+        sent.clear()
+        before = ext_backend.counters().get("version_mismatch_fills", 0)
+        ext_backend.handle_message(fields_msg(
+            descriptors=[descriptor(**self.GROUP)]))
+        assert ext_backend.counters().get("version_mismatch_fills", 0) == before
+        fill = next(m for m in sent if m["type"] == "fill")
+        assert fill["items"][0]["kind"] == "radio"
+
+    def test_version_ok_seam_for_escort_arming(self, queue, sent):
+        """FR-035: the escort consults this seam and never arms on a
+        mismatch."""
+        assert ext_backend.version_ok() is False  # fixture version "1.0.0"
+        from engine import APP_VERSION
+
+        ext_backend.register(sent.append, lambda code: None, APP_VERSION)
+        assert ext_backend.version_ok() is True
+
+
+class TestApplyHereAdopts019:
+    """019 (T009, FR-003): Apply-with-Apply-Assist runs in the tab the user
+    pressed it on. No duplicate tab, and a stray tab_opened can never steal
+    the adopted watch (the v1.8.0 bug)."""
+
+    def _apply_here(self, sent, tab_id=55):
+        ext_backend.handle_message(ext_protocol.ApplyHere(
+            tab_id=tab_id, url="https://boards.greenhouse.io/x/jobs/9",
+            title="SWE, New Grad", company="X Robotics", description="d"))
+
+    def test_apply_here_never_opens_a_tab(self, tmp_db, monkeypatch, sent):
+        monkeypatch.setattr(bc, "_dispatch", lambda *a, **k: None)
+        from engine import matcher
+
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: False)
+        db.save_profile(first_name="Abhinav", email="abhi@example.com")
+        self._apply_here(sent)
+        assert not any(m["type"] == "open_tab" for m in sent), (
+            "apply_here must adopt the pressed tab, never open a duplicate")
+        watch = next(m for m in sent if m["type"] == "watch_start")
+        assert watch["tab_id"] == 55
+        assert ext_backend._watch["tab_id"] == 55
+
+    def test_stray_tab_opened_cannot_steal_an_adopted_watch(
+            self, tmp_db, monkeypatch, sent):
+        monkeypatch.setattr(bc, "_dispatch", lambda *a, **k: None)
+        from engine import matcher
+
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: False)
+        db.save_profile(first_name="Abhinav", email="abhi@example.com")
+        self._apply_here(sent)
+        ext_backend.handle_message(ext_protocol.TabOpened(
+            req_id="stray", tab_id=99))
+        assert ext_backend._watch["tab_id"] == 55
+
+
+class TestFillHereSupersede019:
+    """019 (T012, FR-004): Fill this page is always honoured on a fillable
+    page — a quiet session is superseded; busy only while another tab is
+    actively mid-fill, and then the refusal names it."""
+
+    def test_supersedes_a_quiet_running_session(self, queue, sent):
+        open_the_tab(queue, sent)
+        sent.clear()
+        ext_backend.handle_message(ext_protocol.FillHere(
+            tab_id=99, url="https://co.example/careers/apply", title="t"))
+        assert not any(m["type"] == "error" and m.get("code") == "busy"
+                       for m in sent)
+        watch = next(m for m in sent if m["type"] == "watch_start")
+        assert watch["tab_id"] == 99
+        assert watch["job_id"] == ext_backend.ADHOC_JOB_ID
+
+    def test_busy_only_while_another_tab_is_mid_fill_and_names_it(
+            self, queue, sent):
+        import time as _time
+
+        open_the_tab(queue, sent)
+        with ext_backend._lock:
+            ext_backend._inflight[(40, 0, "1")] = (
+                {}, "first_name", "Abhinav", False, _time.monotonic())
+        sent.clear()
+        ext_backend.handle_message(ext_protocol.FillHere(
+            tab_id=99, url="https://co.example/careers/apply", title="t"))
+        err = next(m for m in sent if m["type"] == "error")
+        assert err["code"] == "busy"
+        assert "40" in err["message"], "the refusal must name the busy tab"
+
+    def test_same_tab_fill_here_supersedes_even_mid_fill(self, queue, sent):
+        import time as _time
+
+        open_the_tab(queue, sent)
+        with ext_backend._lock:
+            ext_backend._inflight[(40, 0, "1")] = (
+                {}, "first_name", "Abhinav", False, _time.monotonic())
+        sent.clear()
+        ext_backend.handle_message(ext_protocol.FillHere(
+            tab_id=40, url="https://co.example/careers/apply", title="t"))
+        assert not any(m["type"] == "error" for m in sent)
+        watch = next(m for m in sent if m["type"] == "watch_start")
+        assert watch["tab_id"] == 40
+
+
+class TestFileTokenRetry019:
+    """019 (T014, FR-005): a transient attach failure must not burn the
+    resume — tokens stay redeemable within TTL and die with the session."""
+
+    def test_token_redeemable_more_than_once_within_ttl(self):
+        ext_backend.reset_for_tests()
+        tok = ext_backend.issue_file_token("C:/resumes/abhinav.pdf")
+        assert ext_backend.consume_file_token(tok) == "C:/resumes/abhinav.pdf"
+        assert ext_backend.consume_file_token(tok) == "C:/resumes/abhinav.pdf"
+
+    def test_token_expires_at_ttl(self):
+        ext_backend.reset_for_tests()
+        tok = ext_backend.issue_file_token("C:/resumes/abhinav.pdf")
+        with ext_backend._lock:
+            path, issued = ext_backend._file_tokens[tok]
+            ext_backend._file_tokens[tok] = (
+                path, issued - ext_backend.FILE_TOKEN_TTL - 1)
+        assert ext_backend.consume_file_token(tok) is None
+
+    def test_tokens_die_with_the_session(self, queue, sent):
+        open_the_tab(queue, sent)
+        tok = ext_backend.issue_file_token("C:/resumes/abhinav.pdf")
+        ext_backend.close_current()
+        assert ext_backend.consume_file_token(tok) is None

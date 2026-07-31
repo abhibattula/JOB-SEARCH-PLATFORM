@@ -923,3 +923,33 @@ class TestCoverLetterUpload017:
                 drafter.answer_for(job_id, "Cover letter") is None:
             time.sleep(0.01)
         assert drafter.answer_for(job_id, "Cover letter") == "Dear team, ..."
+
+
+class TestAdoptTab019:
+    """019 (T009, FR-003): start_queue can adopt the tab the user is already
+    on — no OPEN_JOB dispatch, no open_tab; the extension backend seeds the
+    watch directly."""
+
+    def test_adopt_skips_every_open_path(self, tmp_db, monkeypatch):
+        from engine.autofill import ext_backend
+
+        opened = []
+        monkeypatch.setattr(
+            bc, "_dispatch",
+            lambda name, payload=None, wait=None:
+                opened.append(name) if name == "OPEN_JOB" else None)
+        ext_backend.register(lambda m: None, lambda c: None, "1.0.0")
+        adopted = []
+        monkeypatch.setattr(ext_backend, "adopt_tab",
+                            lambda tab_id, job_id: adopted.append(
+                                (tab_id, job_id)),
+                            raising=False)
+        j1 = seed_job("https://x.example/adopt-1")
+
+        result = bc.start_queue([j1], adopt_tab_id=41)
+
+        assert result["job_id"] == j1
+        assert opened == [], "adopting must never dispatch OPEN_JOB"
+        assert adopted == [(41, j1)]
+        with bc._lock:
+            assert bc._state.backend == "extension"
