@@ -1,0 +1,11 @@
+T001 baseline — 0cb20a0 — Fri Jul 31 14:39:51 CDT 2026
+=== unit battery ===
+........................................................................ [ 86%]
+........................................................................ [ 91%]
+........................................................................ [ 96%]
+.........................................................                [100%]
+1497 passed, 70 deselected in 413.18s (0:06:53)
+=== browser suite ===
+.....................(browser suite interrupted externally at ~21 tests, zero failures to that
+point; full browser green last proven at the v1.8.0 tag with no source
+changes since — the US1 checkpoint T018 re-proves it on this branch)

@@ -1,0 +1,49 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Application — step 2 of 3</title></head>
+<body>
+<h1>Apply — Questions (step 2 of 3)</h1>
+<!-- Page 2 mixes the US2 blind spots into the escort path: a Workday-style
+     prompt menu and a placeholder select must BOTH fill before Continue
+     may be clicked. -->
+<form id="form" method="get" action="review.html">
+  <label>Are you authorized to work in the United States?
+    <select name="q_auth" required>
+      <option value="0">Select…</option>
+      <option value="yes">Yes</option>
+      <option value="no">No</option>
+    </select>
+  </label>
+
+  <label id="src2-label">How did you hear about us?</label>
+  <button type="button" id="w2-src" data-automation-id="source"
+          aria-haspopup="listbox" aria-labelledby="src2-label">Select One</button>
+  <div id="w2-src-menu" style="display:none"></div>
+
+  <button type="submit" id="continue2">Save and Continue</button>
+</form>
+<script src="/_mirror.js"></script>
+<script>
+  var hidden=document.createElement('input');
+  hidden.type='text'; hidden.name='q_source'; hidden.style.position='absolute';
+  hidden.style.left='-9999px'; document.getElementById('form').appendChild(hidden);
+  var btn=document.getElementById('w2-src'), menu=document.getElementById('w2-src-menu');
+  btn.addEventListener('click', function () {
+    menu.innerHTML='';
+    ['LinkedIn','Referral','Careers page'].forEach(function (t) {
+      var o=document.createElement('div');
+      o.setAttribute('data-automation-id','promptOption'); o.textContent=t;
+      o.addEventListener('click', function () {
+        btn.textContent=t; menu.style.display='none'; hidden.value=t;
+        hidden.dispatchEvent(new Event('input',{bubbles:true}));
+      });
+      menu.appendChild(o);
+    });
+    menu.style.display='';
+  });
+  document.getElementById('continue2').addEventListener('click', function () {
+    try {
+      var payload = JSON.stringify({name:'__step2_continue', value:'yes'});
+      navigator.sendBeacon('/echo', new Blob([payload], {type:'application/json'}));
+    } catch (e) { }
+  });
+</script>
+</body></html>

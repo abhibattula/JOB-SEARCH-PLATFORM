@@ -1,0 +1,65 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Workday promptOption menus</title></head>
+<body>
+<h1>Apply — Workday prompt menus</h1>
+<!-- R8 fixture: the dropdown's options are [data-automation-id=promptOption]
+     DIVS — no role=option, no listbox li, no select__option class. Today's
+     visibleOptions() matches none of them → needs_manual. The extra fields
+     exercise the EXPANDED automation-id map (phone device type, previous
+     worker, country) which today classify as unknown. -->
+<form id="form">
+  <label>First Name<input data-automation-id="legalNameSection_firstName"
+    name="wp_first" type="text"></label>
+  <label>Email<input data-automation-id="email" name="wp_email" type="email"></label>
+
+  <label id="dev-label">Phone Device Type</label>
+  <button type="button" id="wp-device" data-automation-id="phone-device-type"
+          aria-haspopup="listbox" aria-labelledby="dev-label">Select One</button>
+  <div id="wp-device-menu" style="display:none"></div>
+
+  <label id="pw-label">Have you worked for us before?</label>
+  <button type="button" id="wp-prev" data-automation-id="previousWorker"
+          aria-haspopup="listbox" aria-labelledby="pw-label">Select One</button>
+  <div id="wp-prev-menu" style="display:none"></div>
+
+  <label id="cty-label">Country</label>
+  <button type="button" id="wp-country" data-automation-id="countryDropdown"
+          aria-haspopup="listbox" aria-labelledby="cty-label">Select One</button>
+  <div id="wp-country-menu" style="display:none"></div>
+
+  <button type="button" id="wp-next" data-automation-id="bottom-navigation-next-button">Next</button>
+</form>
+<script src="/_mirror.js"></script>
+<script>
+  function promptMenu(btnId, menuId, hiddenName, options) {
+    var hidden=document.createElement('input');
+    hidden.type='text'; hidden.name=hiddenName; hidden.style.position='absolute';
+    hidden.style.left='-9999px'; document.getElementById('form').appendChild(hidden);
+    var btn=document.getElementById(btnId), menu=document.getElementById(menuId);
+    btn.addEventListener('click', function () {
+      menu.innerHTML='';
+      options.forEach(function (t) {
+        var o=document.createElement('div');
+        o.setAttribute('data-automation-id','promptOption');
+        o.setAttribute('data-automation-label',t);
+        o.textContent=t;
+        o.addEventListener('click', function () {
+          btn.textContent=t; menu.style.display='none'; hidden.value=t;
+          hidden.dispatchEvent(new Event('input',{bubbles:true}));
+        });
+        menu.appendChild(o);
+      });
+      menu.style.display='';
+    });
+  }
+  promptMenu('wp-device','wp-device-menu','wp_device',['Mobile','Home','Work']);
+  promptMenu('wp-prev','wp-prev-menu','wp_prev',['Yes','No']);
+  promptMenu('wp-country','wp-country-menu','wp_country',
+             ['United States of America','Canada','India']);
+  // The wizard Next is advancer territory — echo if anything clicks it so
+  // fill-path tests can prove they never do.
+  document.getElementById('wp-next').addEventListener('click', function () {
+    fetch('/echo',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({name:'__wd_next_clicked',value:'yes'})});
+  });
+</script>
+</body></html>

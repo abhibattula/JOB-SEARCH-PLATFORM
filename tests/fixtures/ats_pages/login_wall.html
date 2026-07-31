@@ -1,0 +1,28 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Sign in — Fixture Careers</title></head>
+<body>
+<h1>Sign in to continue your application</h1>
+<!-- R14/R15 fixture: a credential wall. Today probe() deliberately hides
+     the companion here (password-bearing form) — the widget must now
+     appear in the sign-in state. With a saved login, both fields fill and
+     Sign In is clicked ONCE (kind sign_in), which navigates to
+     login_wall_done.html. A second automated click on a re-rendered wall
+     is forbidden (one-shot per rendered document). -->
+<form id="login" method="get" action="login_wall_done.html">
+  <label>Email Address
+    <input name="email" type="email" autocomplete="username"></label>
+  <label>Password
+    <input name="password" type="password" autocomplete="current-password"></label>
+  <button type="submit" id="signin">Sign In</button>
+</form>
+<p><a href="registration.html">Create account</a></p>
+<script>
+  // Sentinel: every click on Sign In is echoed so tests can count EXACTLY
+  // one automated click (and zero when no credential fill preceded it).
+  document.getElementById('signin').addEventListener('click', function () {
+    try {
+      var payload = JSON.stringify({name:'__signin_clicked', value:'yes'});
+      navigator.sendBeacon('/echo', new Blob([payload], {type:'application/json'}));
+    } catch (e) { /* navigation may race the fetch; sendBeacon survives it */ }
+  });
+</script>
+</body></html>

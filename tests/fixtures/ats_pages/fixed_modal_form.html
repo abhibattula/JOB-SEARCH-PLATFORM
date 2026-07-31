@@ -1,0 +1,27 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Fixed-position modal application</title></head>
+<body>
+<h1 style="height:2000px">Job description filler (tall page behind the modal)</h1>
+<!-- R10 fixture. Three cases:
+     1. fields inside a position:fixed ANCESTOR (dialog) — offsetParent
+        resolves to the dialog, works today; must keep working.
+     2. a field that is ITSELF position:fixed — offsetParent === null →
+        reported invisible today → ignored. The fix must see it.
+     3. a visibility:hidden field — offsetParent is non-null → counted
+        visible today (false positive). The fix must exclude it. -->
+<div id="dialog" style="position:fixed;top:40px;left:40px;background:#fff;
+     border:1px solid #333;padding:16px;z-index:10">
+  <h2>Quick apply</h2>
+  <form id="form">
+    <label>First Name<input name="fx_first" type="text"></label>
+    <label>Email<input name="fx_email" type="email"></label>
+    <label>Phone<input name="fx_phone" type="tel"></label>
+  </form>
+</div>
+<!-- case 2: the input itself is fixed (own offsetParent === null) -->
+<label id="fx-city-label" style="position:fixed;top:260px;left:40px;z-index:10">City</label>
+<input name="fx_city" type="text" aria-labelledby="fx-city-label" form="form"
+       style="position:fixed;top:280px;left:40px;z-index:10">
+<!-- case 3: must NOT be counted visible or filled -->
+<input name="fx_ghost" type="text" style="visibility:hidden" form="form">
+<script src="/_mirror.js"></script>
+</body></html>

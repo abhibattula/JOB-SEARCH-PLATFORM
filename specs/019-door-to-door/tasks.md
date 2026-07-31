@@ -19,7 +19,7 @@ delivery, each story independently testable and shippable.
 
 ## Phase 1: Setup
 
-- [ ] T001 Baseline evidence: run the full unit battery and `-m browser`
+- [x] T001 Baseline evidence: run the full unit battery and `-m browser`
       suite on branch tip pre-change; record counts in
       specs/019-door-to-door/baseline.txt
 
@@ -100,17 +100,17 @@ refresh with the shared step-key.
 
 **Independent Test**: each new fixture fills end-to-end in a real browser.
 
-- [ ] T019 [P] [US2] Fixture tests/fixtures/ats_pages/aria_labelledby.html
+- [x] T019 [P] [US2] Fixture tests/fixtures/ats_pages/aria_labelledby.html
       (fields labelled ONLY via aria-labelledby, incl. a div[role=combobox])
-- [ ] T020 [P] [US2] Fixture tests/fixtures/ats_pages/shadow_form.html
+- [x] T020 [P] [US2] Fixture tests/fixtures/ats_pages/shadow_form.html
       (whole form inside an open shadow root; options in the root too)
-- [ ] T021 [P] [US2] Fixture tests/fixtures/ats_pages/workday_prompt_options.html
+- [x] T021 [P] [US2] Fixture tests/fixtures/ats_pages/workday_prompt_options.html
       ([data-automation-id=promptOption] menu + extended automation-id fields)
-- [ ] T022 [P] [US2] Fixture tests/fixtures/ats_pages/placeholder_select.html
+- [x] T022 [P] [US2] Fixture tests/fixtures/ats_pages/placeholder_select.html
       (<option value="0">Select…</option> + custom-widget placeholder text)
-- [ ] T023 [P] [US2] Fixture tests/fixtures/ats_pages/fixed_modal_form.html
+- [x] T023 [P] [US2] Fixture tests/fixtures/ats_pages/fixed_modal_form.html
       (form inside a position:fixed dialog)
-- [ ] T024 [P] [US2] Fixtures tests/fixtures/ats_pages/greenhouse_navigate_apply.html
+- [x] T024 [P] [US2] Fixtures tests/fixtures/ats_pages/greenhouse_navigate_apply.html
       → greenhouse_application_target.html (Apply link that NAVIGATES)
 - [ ] T025 [P] [US2] Failing tests — browser: aria_labelledby fixture
       question captured + field fills; unit tests/test_fields.py rows:
@@ -166,7 +166,7 @@ assist; secret hygiene proven.
 **Independent Test**: login_wall fixture with a fake-keyring saved login is
 crossed with zero manual clicks; without one, the widget offers the save form.
 
-- [ ] T040 [P] [US3] Fixtures tests/fixtures/ats_pages/login_wall.html
+- [x] T040 [P] [US3] Fixtures tests/fixtures/ats_pages/login_wall.html
       (email/username + password + Sign in; post-login page) and
       registration.html (password + confirm + Create account)
 - [ ] T041 [P] [US3] Failing unit tests/test_fields.py — login_email
@@ -226,10 +226,10 @@ LinkedIn refusal, flagship end-to-end suite.
 **Independent Test**: one press on the wizard fixture set escorts posting →
 sign-in → two filled steps → parked at review with Submit provably unclicked.
 
-- [ ] T055 [P] [US4] Fixtures tests/fixtures/ats_pages/wizard_multipage/
+- [x] T055 [P] [US4] Fixtures tests/fixtures/ats_pages/wizard_multipage/
       (step1.html → step2.html → review.html with real navigation, Continue
       buttons type=submit, final Review-and-Submit sentinel)
-- [ ] T056 [P] [US4] Fixtures wizard_spa.html (same URL, DOM-swapped steps),
+- [x] T056 [P] [US4] Fixtures wizard_spa.html (same URL, DOM-swapped steps),
       wizard_loop.html (never-ending steps, for the cap), captcha_frame.html
       (stub recaptcha-style iframe)
 - [ ] T057 [P] [US4] Failing unit tables tests/test_escort.py — completeness

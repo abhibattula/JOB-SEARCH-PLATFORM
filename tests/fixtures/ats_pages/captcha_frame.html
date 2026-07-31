@@ -1,0 +1,32 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Application with a bot check</title></head>
+<body>
+<h1>Apply — prove you are human first</h1>
+<!-- CAPTCHA fixture (FR-028): the iframe src matches the recaptcha
+     signature. The session must enter your_turn_captcha, click NOTHING on
+     or near the frame, and resume only after the test calls
+     window.__clearCaptcha() (simulating the human solving it) AND the
+     fields become decidable. The iframe target 404s offline — detection
+     reads the src attribute, not the content. -->
+<form id="form">
+  <label>First Name<input name="cp_first" type="text" required></label>
+  <label>Email<input name="cp_email" type="email" required></label>
+  <div id="captcha-box">
+    <iframe id="captcha" src="/recaptcha/api2/anchor?k=fixture-site-key"
+            title="reCAPTCHA" width="304" height="78"></iframe>
+  </div>
+  <button type="submit" id="cp-continue">Continue</button>
+</form>
+<script src="/_mirror.js"></script>
+<script>
+  window.__clearCaptcha = function () {
+    var box = document.getElementById('captcha-box');
+    if (box) { box.parentNode.removeChild(box); }
+  };
+  document.getElementById('cp-continue').addEventListener('click', function () {
+    try {
+      var payload = JSON.stringify({name:'__captcha_page_continue', value:'yes'});
+      navigator.sendBeacon('/echo', new Blob([payload], {type:'application/json'}));
+    } catch (e) { }
+  });
+</script>
+</body></html>
