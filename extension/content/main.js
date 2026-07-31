@@ -173,6 +173,20 @@
           window.jeOverlay.setAnswers(message.items, message.truncated);
         }
         break;
+      // 019 (T007, FR-001): the app and this companion disagree on their
+      // version. Chrome keeps running the OLD bundle until the user presses
+      // ↻, and until they do some fills are withheld — so the page itself
+      // has to say it. Pinned above every other notice.
+      case "version_state":
+        if (isTop && message.mismatch && window.jePanel) {
+          window.jePanel.notice(
+            "Reload the companion at chrome://extensions (↻) — the app is "
+            + "v" + (message.appVersion || "?") + " and this companion is v"
+            + (message.companionVersion || "?")
+            + ". Until you do, some answers can't be filled.");
+          window.jePanel.show();
+        }
+        break;
       case "overlay_state":
         if (isTop && window.jeOverlay) { window.jeOverlay.update(message.summary); }
         // 016 (T017): highlight the fields the human must answer

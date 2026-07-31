@@ -55,16 +55,16 @@ apply-here browser test asserts tab count unchanged + a field actually filled.
 - [x] T005 [US1] engine/autofill/ext_backend.py + engine/autofill/page_answers.py:
       replace the silent radio drop; surface the reason; add the doctor
       counter — T004 green
-- [ ] T006 [P] [US1] Failing asset+browser tests
+- [x] T006 [P] [US1] Failing asset+browser tests
       (tests/test_extension_assets.py::TestVersionSkewAssets019;
       tests/integration/test_companion_widget.py::TestVersionSkew019) —
       socket.js persists {appVersion, mismatch} from hello_ok; popup and
       panel render the reload notice; companion.html renders amber on
       mismatch (patched app_version in the live app)
-- [ ] T007 [US1] extension/background/socket.js + service-worker.js +
+- [x] T007 [US1] extension/background/socket.js + service-worker.js +
       extension/popup/ + extension/content/panel.js: read/compare/persist/
       render the mismatch state — T006 green (extension side)
-- [ ] T008 [US1] web/main.py + web/templates/companion.html: server-side
+- [x] T008 [US1] web/main.py + web/templates/companion.html: server-side
       compare of the hello version; amber state + copy — T006 green (app side)
 - [x] T009 [P] [US1] Failing unit tests/test_browser_controller.py +
       tests/test_ext_backend.py — `start_queue(job_ids, adopt_tab_id=…)`
@@ -72,7 +72,7 @@ apply-here browser test asserts tab count unchanged + a field actually filled.
       overwrites an adopted watch
 - [x] T010 [US1] engine/autofill/browser_controller.py + ext_backend.py:
       adopt-current-tab path; `_handle_apply_here` passes the tab — T009 green
-- [ ] T011 [US1] Strengthen browser test
+- [x] T011 [US1] Strengthen browser test
       tests/integration/test_companion_widget.py apply-here: assert tab count
       unchanged AND ≥1 field filled in the original tab (red on old behavior,
       green after T010)
@@ -83,10 +83,10 @@ apply-here browser test asserts tab count unchanged + a field actually filled.
 - [x] T014 [P] [US1] Failing unit — file token redeemable more than once
       within TTL; expires at TTL; invalidated on session end (FR-005)
 - [x] T015 [US1] ext_backend.py token mark-used-within-TTL — T014 green
-- [ ] T016 [P] [US1] Failing browser test — kill/restart the MV3 service
+- [x] T016 [P] [US1] Failing browser test — kill/restart the MV3 service
       worker mid-session (CDP), assert the opener stays armed
       (`adhoc:false` restored via persisted jobId)
-- [ ] T017 [US1] extension/background/tabs.js persist jobId;
+- [x] T017 [US1] extension/background/tabs.js persist jobId;
       service-worker.js adhoc recompute — T016 green
 - [ ] T018 [US1] Checkpoint: full unit battery + `-m browser` green; commit
 

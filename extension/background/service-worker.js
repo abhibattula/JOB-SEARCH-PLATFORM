@@ -84,15 +84,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
   // so the popup can explain WHY it isn't connected. A freshly-woken worker
   // has blank memory; fall back to the storage.session mirror.
   if (msg && msg.type === "status?") {
-    chrome.storage.session.get(["lastAttempt", "lastError"])
+    chrome.storage.session.get(["lastAttempt", "lastError", "versionState"])
       .then((stored) => sendResponse({
         connected: state.connected,
         lastAttempt: state.lastAttempt || stored.lastAttempt || null,
         lastError: stored.lastError || null,
+        // 019 (FR-001): the popup says "reload the companion" on a skew.
+        versionState: state.versionState || stored.versionState || null,
       }))
       .catch(() => sendResponse({ connected: state.connected,
                                   lastAttempt: state.lastAttempt || null,
-                                  lastError: null }));
+                                  lastError: null, versionState: null }));
     return true;
   }
   // Popup asked for an immediate reconnect attempt (015: "Connect now")
@@ -135,6 +137,17 @@ chrome.runtime.onMessage.addListener((msg, sender, sendResponse) => {
         adhoc: !entry || entry.jobId == null || entry.jobId === -2 },
       sender.frameId !== undefined ? { frameId: sender.frameId } : undefined,
     ).catch(() => {});
+    // 019 (FR-001): a freshly-injected content script also needs to know
+    // whether the app and companion agree on their version — the notice
+    // belongs on the page, not only behind the toolbar popup.
+    if (sender.frameId === 0) {
+      chrome.storage.session.get("versionState").then((stored) => {
+        const vs = state.versionState || stored.versionState || null;
+        if (vs) {
+          toContent(sender.tab.id, { type: "version_state", ...vs }, 0);
+        }
+      }).catch(() => {});
+    }
     return false;
   }
   // 017 (C9, FR-029): fetch an app file on the content script's behalf.

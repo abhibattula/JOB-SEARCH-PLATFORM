@@ -718,3 +718,33 @@ class TestSessionControlAssets018:
         assert "app_error" in sw
         content = (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
         assert "app_error" in content
+
+
+class TestVersionSkewAssets019:
+    """019 (T006): wiring pins for the version-skew surfaces. Structure only —
+    behavior is proven in a real browser by TestVersionSkew019."""
+
+    def _read(self, rel):
+        return (EXT / rel).read_text(encoding="utf-8")
+
+    def test_socket_compares_app_version_and_persists(self):
+        sock = self._read("background/socket.js")
+        assert "app_version" in sock
+        assert "getManifest().version" in sock.replace(" ", "")
+        assert "mismatch" in sock
+
+    def test_popup_renders_the_reload_instruction(self):
+        popup = self._read("popup/popup.js")
+        assert "mismatch" in popup
+        assert "reload" in popup.lower()
+
+    def test_page_notice_copy_reaches_main(self):
+        main = self._read("content/main.js")
+        assert "version_state" in main
+        assert "reload the companion" in main.lower()
+
+    def test_companion_page_has_the_amber_branch(self):
+        html = (EXT.parent / "web" / "templates" / "companion.html"
+                ).read_text(encoding="utf-8")
+        assert "version_ok" in html
+        assert "reload" in html.lower()

@@ -112,6 +112,11 @@ def companion_doctor() -> dict:
         "pairing": pairing,
         "port": {"current": current_port, "match": port_match},
         "companion": ext_backend.status(),
+        # 019 (FR-001): the app and companion ship as one version and the
+        # check is exact. A stale bundle connects happily and silently
+        # withholds fills, so the connect page must be able to go amber.
+        "app_version": APP_VERSION,
+        "version_ok": ext_backend.version_ok(),
         "rejects": ext_backend.reject_stats(),
         # 016 (T010): silent-drop tripwires — wrong-tab fields + content-
         # script scan failures are counted, never invisible.

@@ -61,6 +61,17 @@ function render(resp) {
   text.textContent = d.ok ? "Connected to Job Engine" : "Not connected";
   // 016 (T010): a recent app-side refusal (e.g. busy) outranks the happy
   // text — it used to be silently discarded (RC4).
+  // 019 (T007, FR-001): a version skew outranks everything else — the app
+  // upgraded and this bundle is stale, so some fills are being withheld.
+  const vs = resp && resp.versionState;
+  if (vs && vs.mismatch) {
+    reason.textContent =
+      "App and companion versions differ (app " + (vs.appVersion || "?")
+      + ", companion " + (vs.companionVersion || "?")
+      + ") — open chrome://extensions and click ↻ reload on the Job Engine "
+      + "Companion card. Until you do, some answers can't be filled.";
+    return;
+  }
   const err = resp && resp.lastError;
   if (err && Date.now() - (err.at || 0) < 60000) {
     reason.textContent = "Can't fill: " + (err.message || err.code ||
