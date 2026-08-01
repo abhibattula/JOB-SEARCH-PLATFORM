@@ -123,6 +123,13 @@ templates.env.globals["current_theme"] = _current_theme
 # 008 (FR-032): plain-language changelog behind the What's New overlay —
 # keyed by APP_VERSION, shown once per version.
 WHATS_NEW: dict[str, list[str]] = {
+    "1.9.1": [
+        "The companion no longer forgets what it filled. On the review page "
+        "at the end of an escorted application — and when you paused or "
+        "resumed the escort — the progress row reset to “Filled 0 · "
+        "Seen 0”, in the exact moment it had the most to show for "
+        "itself. It now keeps the real numbers; only stopping clears them.",
+    ],
     "1.9.0": [
         "Apply Assist now takes you to the door. From a posting it presses "
         "Apply, signs you in with your saved login, fills every step, and "
