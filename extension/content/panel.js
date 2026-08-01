@@ -119,6 +119,23 @@ window.jePanel = (function () {
     return { action: "", label: "Fill this page", disabled: true };
   }
 
+  // 019: an ABSENT key is not a claim of zero. Pure, and exported, so the
+  // suite can execute the real merge rather than assert on its source.
+  function keepValue(value, previous) {
+    return (value === undefined || value === null) ? previous : value;
+  }
+
+  function mergeCounts(previous, summary) {
+    const base = previous || { seen: 0, filled: 0, needs_you: 0, drafts: 0 };
+    if (!summary) { return base; }
+    return {
+      seen: keepValue(summary.seen, base.seen),
+      filled: keepValue(summary.filled, base.filled),
+      needs_you: keepValue(summary.needs_you, base.needs_you),
+      drafts: keepValue(summary.drafts, base.drafts),
+    };
+  }
+
   // ---------- mounting ----------
 
   // 018 (R1): reset FIRST, then pin — `all` is a shorthand for every CSS
@@ -445,15 +462,18 @@ window.jePanel = (function () {
   function setCounts(summary) {
     if (!summary) { return; }
     build();
-    state.counts = {
-      seen: summary.seen || 0,
-      filled: summary.filled || 0,
-      needs_you: summary.needs_you || 0,
-      drafts: summary.drafts || 0,
-    };
+    // 019: PATCH, don't replace. Some messages exist only to change the
+    // session state — reaching the review page, pausing the escort — and
+    // carry no counts at all. Replacing wholesale made those messages
+    // claim the page had zero fields, so the applicant arrived at the end
+    // of a fully escorted application and was told "Filled 0 · Seen 0" in
+    // the exact moment the widget had the most to be proud of. An absent
+    // key is not a claim of zero.
+    state.counts = mergeCounts(state.counts, summary);
     // 018 (FR-032): session context, so Stop and Next can live here.
-    state.remaining = summary.remaining || 0;
-    state.currentJobId = summary.current_job_id || null;
+    state.remaining = keepValue(summary.remaining, state.remaining);
+    state.currentJobId = keepValue(summary.current_job_id,
+                                   state.currentJobId);
     if (summary.session) { state.session = summary.session; }
     else if (state.session === "idle" || state.session === "starting") {
       state.session = "filling";
@@ -893,8 +913,8 @@ window.jePanel = (function () {
     onInsert: function (fn) { handlers.insert = fn; },
     onJump: function (fn) { handlers.jump = fn; },
     onCredential: function (fn) { handlers.credential = fn; },
-    // pure, exported for the state-machine test
-    primaryFor,
+    // pure, exported for the state-machine tests
+    primaryFor, mergeCounts,
   };
 })();
 

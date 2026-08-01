@@ -1322,3 +1322,71 @@ class TestArmingPersists019:
         assert any((e.get("jobId") or 0) > 0 for e in entries), (
             "the adopted session's real job id must be persisted — a bare "
             "tab list restores as adhoc and silently disarms the opener")
+
+def _slice_fn(name):
+    """Cut a named function out of the SHIPPED panel source, braces
+    balanced, so it can be run as-is in the page context."""
+    src = (EXT_SRC / "content" / "panel.js").read_text(encoding="utf-8")
+    start = src.index("function " + name + "(")
+    depth, i = 0, src.index("{", start)
+    while True:
+        if src[i] == "{":
+            depth += 1
+        elif src[i] == "}":
+            depth -= 1
+            if depth == 0:
+                break
+        i += 1
+    return src[start:i + 1]
+
+
+def _merge_counts(page, previous, summary):
+    """Run the panel's OWN count merge. Same reasoning as `_primary_for`:
+    the function is pure, and the isolated world puts `window.jePanel` out
+    of reach from a page-context evaluate, so the shipped source is sliced
+    and executed."""
+    fn = _slice_fn("mergeCounts") + "\n" + _slice_fn("keepValue")
+    return page.evaluate(
+        "([p, s]) => { " + fn + " return mergeCounts(p, s); }",
+        [previous, summary])
+
+
+class TestCountsSurviveAStateOnlyMessage019:
+    """019: some messages exist only to change the session state — reaching
+    the review page, pausing the escort — and carry no counts at all.
+
+    Replacing the counts wholesale made those messages claim the page had
+    zero fields, so the applicant arrived at the end of a fully escorted
+    application and was told "Filled 0 · Seen 0" in the exact moment the
+    widget had the most to show for itself.
+    """
+
+    BEFORE = {"seen": 12, "filled": 9, "needs_you": 1, "drafts": 2}
+
+    def test_a_state_only_message_keeps_every_count(self, context, app_server,
+                                                    fixture_server):
+        page = _open_and_wait_companion(
+            context, f"{fixture_server}/bare_application.html")
+        after = _merge_counts(page, self.BEFORE,
+                              {"session": "ready_for_review",
+                               "message": "Review & submit — your turn"})
+        assert after == self.BEFORE
+
+    def test_a_real_count_still_overwrites(self, context, app_server,
+                                           fixture_server):
+        page = _open_and_wait_companion(
+            context, f"{fixture_server}/bare_application.html")
+        after = _merge_counts(page, self.BEFORE, {"seen": 20, "filled": 15})
+        assert after["seen"] == 20 and after["filled"] == 15
+        assert after["needs_you"] == 1, "unmentioned counts must be kept"
+
+    def test_an_explicit_zero_is_honoured(self, context, app_server,
+                                          fixture_server):
+        """Stopping DOES reset the display — it sends real zeros, and a
+        real zero is an answer, not an absence."""
+        page = _open_and_wait_companion(
+            context, f"{fixture_server}/bare_application.html")
+        after = _merge_counts(page, self.BEFORE,
+                              {"seen": 0, "filled": 0, "needs_you": 0,
+                               "drafts": 0})
+        assert after == {"seen": 0, "filled": 0, "needs_you": 0, "drafts": 0}
