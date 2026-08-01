@@ -15,6 +15,7 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 
 FATAL_LOG_PATTERNS = (
@@ -77,6 +78,30 @@ def main() -> int:
         return 1
 
     base = f"http://127.0.0.1:{port}"
+
+    # The app writes port.txt when it CHOOSES a port, which is a moment
+    # before uvicorn is actually accepting on it. On a loaded runner the
+    # first request lands inside that window and dies with ECONNREFUSED —
+    # a green build failing because the test was early, not because the
+    # bundle was broken. Wait for the socket to answer once; every check
+    # after this one is then a real assertion about a running app.
+    accept_deadline = time.time() + 60
+    while True:
+        try:
+            urllib.request.urlopen(base + "/", timeout=10).read(1)
+            break
+        except (urllib.error.URLError, ConnectionError, OSError) as exc:
+            if proc.poll() is not None:
+                print(f"FAIL: process exited while starting, "
+                      f"rc={proc.returncode}")
+                return 1
+            if time.time() >= accept_deadline:
+                proc.terminate()
+                print(f"FAIL: bound port {port} never accepted a connection "
+                      f"within 60s ({exc})")
+                return 1
+            time.sleep(2)
+
     for path in ("/", "/settings", "/profile", "/analytics"):
         code = urllib.request.urlopen(base + path, timeout=10).status
         print(f"GET {path} -> {code}")
