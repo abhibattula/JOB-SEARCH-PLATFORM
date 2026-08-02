@@ -338,9 +338,9 @@ without losing any detection.
 - [x] T060 Run the **real-data check** (quickstart §3) against the applicant's
       own database: 0 eligible unscored, refresh under 60 s, and the same run
       repeated with inference forced to fail
-- [ ] T061 Frozen build + `packaging/smoke_test.py`; the smoke must still assert
+- [x] T061 Frozen build + `packaging/smoke_test.py`; the smoke must still assert
       only against the HTTP surface and never import `engine`
-- [ ] T062 Bump the version byte-safely in `engine/__init__.py`,
+- [x] T062 Bump the version byte-safely in `engine/__init__.py`,
       `extension/manifest.json`, `packaging/windows.iss`
 - [ ] T063 Manual: quickstart §4 (one pass, no duplicates, resume), §5
       (**applying beats ranking** — the regression most likely to be caused by
