@@ -62,6 +62,14 @@ window.jeFiller = (function () {
     if (el.type === "checkbox" || el.type === "radio") {
       return el.checked ? "on" : "";
     }
+    // 020: a rich-text editor has no .value, and it renders its own
+    // placeholder as a CHILD node — so reading it naively sees "Tell us
+    // why…" and concludes the applicant already answered. Defer to the
+    // scanner, which is the single place that rule lives.
+    if (window.jeScanner && window.jeScanner.isRichText &&
+        window.jeScanner.isRichText(el)) {
+      return window.jeScanner.richTextValue(el);
+    }
     // 019 (FR-010): a control resting on its placeholder has no value —
     // treating "Select…" as the applicant's choice is what made those
     // dropdowns permanently skipped_existing.
@@ -85,6 +93,51 @@ window.jeFiller = (function () {
   function fillable(el) {
     if (el === document.activeElement) { return false; }
     return !currentDisplayed(el).trim();
+  }
+
+  // 020 (FR-017, guarantee W1): write into a rich-text editor.
+  //
+  // These are not form controls: there is no .value and no native setter to
+  // borrow. They are also model-backed — React, ProseMirror and Quill keep
+  // their own state and re-render from it, so a silent textContent write is
+  // discarded on the next render and the applicant's cover letter vanishes
+  // between fill and submit. What makes the value stick is a REAL input
+  // event, which is why every branch below dispatches one and why the write
+  // is verified by reading the text back (W2).
+  function writeRichText(el, value) {
+    el.focus();
+    try {
+      const range = document.createRange();
+      range.selectNodeContents(el);
+      const selection = window.getSelection();
+      selection.removeAllRanges();
+      selection.addRange(range);
+    } catch (_e) { /* selection is best-effort; the write still proceeds */ }
+
+    let wrote = false;
+    // Preferred: the same path a real keystroke takes.
+    try {
+      wrote = document.execCommand("insertText", false, value);
+    } catch (_e) { wrote = false; }
+
+    if (!wrote) {
+      // Last resort: mutate, then announce it loudly enough that a
+      // model-backed editor adopts the change instead of overwriting it.
+      el.textContent = value;
+      try {
+        el.dispatchEvent(new InputEvent("input", {
+          bubbles: true, inputType: "insertText", data: value,
+        }));
+      } catch (_e) {
+        el.dispatchEvent(new Event("input", { bubbles: true }));
+      }
+    }
+    el.dispatchEvent(new Event("change", { bubbles: true }));
+    return richTextValue(el);
+  }
+
+  function richTextValue(el) {
+    return (el.innerText || el.textContent || "").trim();
   }
 
   function sleep(ms) { return new Promise((r) => setTimeout(r, ms)); }
@@ -262,6 +315,14 @@ window.jeFiller = (function () {
         await fillTypeahead(el, item.value);
       } else if (item.kind === "checkbox") {
         if (!el.checked) { el.checked = true; fireInput(el); }
+      } else if (item.kind === "richtext") {
+        // 020 (W2): VERIFY. An editor that quietly rejected the write must
+        // become a visible needs-you item, never a silently blank field —
+        // that silent gap is the whole reason this branch exists.
+        const landed = writeRichText(el, item.value);
+        if (!landed || landed.indexOf((item.value || "").trim().slice(0, 24)) === -1) {
+          return { je_idx: item.je_idx, outcome: "needs_manual" };
+        }
       } else {
         setNativeValue(el, item.value);
       }

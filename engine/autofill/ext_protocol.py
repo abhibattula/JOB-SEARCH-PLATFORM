@@ -61,7 +61,14 @@ class Descriptor(_Strict):
     visible: bool = True
     # 011: how the field is operated (drives the fill technique). "" = a
     # plain input handled by the text/checkbox/file paths.
-    widget: Literal["native_select", "custom_combobox", "typeahead", ""] = ""
+    # 020: "richtext" joins this list for rich-text editors. Adding a widget
+    # the model does not know about is NOT a small mistake — pydantic rejects
+    # the whole `fields` message, so ONE unknown widget silently stops the
+    # entire page from filling. That is exactly what happened while building
+    # this feature: the scan was perfect, the tab opened, the watch armed, and
+    # nothing filled, with no scan error recorded anywhere.
+    widget: Literal["native_select", "custom_combobox", "typeahead",
+                    "richtext", ""] = ""
     # 011: Workday's data-automation-id, the stable adapter key ("" if absent)
     automation_id: str = ""
     # 016 (T002, additive — PROTOCOL_V stays 1): grouped-control members

@@ -314,6 +314,69 @@ class TestGroupingAssets016:
                 f"watcher SERIALIZE_JS missing {token!r}"
 
 
+class TestRichTextAssets020:
+    """020 US4 (FR-016..FR-019): rich-text editors become real fields.
+
+    Before this, a repository-wide search for "contenteditable" across
+    engine/ and extension/ returned NOTHING. A rich-text cover letter — the
+    highest-value field on most applications — was not unfilled, it was
+    unseen: not counted, not flagged, no reason given.
+
+    Both halves of the selector must move together. The DOM behaviour is
+    proven by the browser suite; these fail fast on a missing half.
+    """
+
+    RICHTEXT_TOKENS = ("contenteditable", "role=textbox")
+
+    def test_the_canonical_selector_covers_rich_text(self):
+        from engine.autofill import fields
+
+        for token in self.RICHTEXT_TOKENS:
+            assert token in fields.FIELD_QUERY_SELECTOR, token
+
+    def test_scanner_selector_covers_rich_text(self):
+        js = (EXT / "content" / "scanner.js").read_text(encoding="utf-8")
+        for token in self.RICHTEXT_TOKENS:
+            assert token in js, f"scanner.js missing {token!r}"
+
+    def test_both_serializers_speak_richtext(self):
+        """Parity: scanner.js and watcher.SERIALIZE_JS must produce the same
+        descriptor for the same page. Drift here is what broke the whole
+        Playwright serializer in 019."""
+        from engine.autofill import watcher
+
+        js = (EXT / "content" / "scanner.js").read_text(encoding="utf-8")
+        for token in ("richtext", "innerText"):
+            assert token in js, f"scanner.js missing {token!r}"
+            assert token in watcher.SERIALIZE_JS, \
+                f"watcher SERIALIZE_JS missing {token!r}"
+
+    def test_readonly_editors_are_excluded_by_both(self):
+        """contenteditable=false / aria-readonly is display, not input."""
+        from engine.autofill import watcher
+
+        js = (EXT / "content" / "scanner.js").read_text(encoding="utf-8")
+        for token in ("aria-readonly",):
+            assert token in js, f"scanner.js missing {token!r}"
+            assert token in watcher.SERIALIZE_JS, \
+                f"watcher SERIALIZE_JS missing {token!r}"
+
+    def test_filler_has_a_rich_text_write_branch(self):
+        js = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
+        assert 'kind === "richtext"' in js
+        # a silent DOM write is discarded by React/ProseMirror/Quill on the
+        # next render — only a real input event makes the value stick
+        assert "InputEvent" in js or "insertText" in js
+        assert "input" in js
+
+    def test_filler_still_has_exactly_one_raw_click(self):
+        """The 016 pin. The rich-text branch types; it must not add a click,
+        and it must not be an excuse to loosen this."""
+        js = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
+        assert js.count(".click(") == 1, (
+            "filler.js must keep exactly one raw .click( site")
+
+
 class TestFillerUpgrades016:
     """016 (T013, R8): real radio branch, normalized select matching,
     widened combobox harvest — behavior is DOM-verified in the E2E; these

@@ -18,13 +18,40 @@ window.jeScanner = (function () {
     "[role=listbox]",
     "[aria-haspopup=listbox]",
     "[class*=select__control]",
+    // 020 (FR-016): rich-text editors. A cover letter written in one of these
+    // used to be invisible — not filled, not counted, not flagged, no reason
+    // shown. `contenteditable=false` is display, not input, so only the
+    // editable forms are matched here and aria-readonly is filtered below.
+    '[contenteditable=""]',
+    '[contenteditable="true"]',
+    "[role=textbox]",
   ].join(",");
+
+  // 020: an editable region is not a form control — no .value, no .labels,
+  // no .name. Everything downstream keys off this one predicate.
+  function isRichText(el) {
+    const editable = el.getAttribute && el.getAttribute("contenteditable");
+    const role = (el.getAttribute && el.getAttribute("role") || "").toLowerCase();
+    if (editable === "false") { return false; }
+    if (editable === "" || editable === "true") { return true; }
+    // role=textbox on a real <input>/<textarea> is just an ARIA restatement
+    const tag = el.tagName.toLowerCase();
+    return role === "textbox" && tag !== "input" && tag !== "textarea";
+  }
+
+  function isRichTextWritable(el) {
+    if ((el.getAttribute("aria-readonly") || "").toLowerCase() === "true") {
+      return false;
+    }
+    return (el.getAttribute("contenteditable") || "").toLowerCase() !== "false";
+  }
 
   // 011: widget classification + displayed-value read — byte-parallel with
   // engine/autofill/watcher.py SERIALIZE_JS jeWidget/jeValue.
   function jeWidget(el) {
     const tag = el.tagName.toLowerCase();
     if (tag === "select") { return "native_select"; }
+    if (isRichText(el)) { return "richtext"; }
     const role = (el.getAttribute("role") || "").toLowerCase();
     const ac = (el.getAttribute("aria-autocomplete") || "").toLowerCase();
     const isInput = tag === "input" || tag === "textarea";
@@ -55,6 +82,21 @@ window.jeScanner = (function () {
     const type = el.type || "";
     if (type === "checkbox" || type === "radio") {
       return el.checked ? "on" : "";
+    }
+    if (widget === "richtext") {
+      // 020: no .value on an editable region. Editors also render their own
+      // placeholder as a CHILD node, so a naive innerText read sees "Tell us
+      // why…" and concludes the box is already answered — the 019
+      // placeholder trap in a new place.
+      const ph = el.querySelector && el.querySelector("[data-placeholder]");
+      let text = (el.innerText || el.textContent || "").trim();
+      if (ph) {
+        const phText = (ph.innerText || ph.textContent || "").trim();
+        if (phText && text.indexOf(phText) === 0) {
+          text = text.slice(phText.length).trim();
+        }
+      }
+      return isPlaceholderValue(text) ? "" : text;
     }
     if (widget === "native_select") {
       if (!el.value) { return ""; }
@@ -205,8 +247,10 @@ window.jeScanner = (function () {
   }
 
   function describe(el) {
-    const type = el.type || "";
     const widget = jeWidget(el);
+    // 020: an editable region has no el.type, so it reports "richtext" —
+    // the one token the classifier and the filler both key off.
+    const type = widget === "richtext" ? "richtext" : (el.type || "");
     return {
       doc: docToken(),
       je_idx: stamp(el),
@@ -372,7 +416,11 @@ window.jeScanner = (function () {
   }
 
   function serialize() {
-    const els = deepQueryAll(FIELD_SELECTOR);
+    const els = deepQueryAll(FIELD_SELECTOR).filter(function (el) {
+      // 020: readonly editors are never fields — filtered here as well as in
+      // probe() so the two never disagree about what is on the page.
+      return !isRichText(el) || isRichTextWritable(el);
+    });
     const pairs = els.map(function (el) {
       return { el: el, desc: describe(el) };
     });
@@ -453,6 +501,9 @@ window.jeScanner = (function () {
     let fields = 0, textish = 0, hasFile = false;
     Array.prototype.forEach.call(els, function (el) {
       const type = (el.type || "").toLowerCase();
+      const rich = isRichText(el);
+      // 020: a rich-text editor that cannot be written is display, not input
+      if (rich && !isRichTextWritable(el)) { return; }
       if (!isVisible(el)) { return; }
       if (type === "search" || type === "password") { return; }
       if (_SEARCHY_NAME.test(el.name || "") ||
@@ -461,7 +512,10 @@ window.jeScanner = (function () {
       fields += 1;
       if (type === "file") { hasFile = true; }
       const tag = el.tagName.toLowerCase();
-      if (tag === "textarea" || (tag === "input" && _TEXTISH.indexOf(type) !== -1)) {
+      // 020 (guarantee S2): rich text is text-ish, so a form whose only long
+      // answer is a rich-text cover letter still clears the two-text floor.
+      if (rich || tag === "textarea" ||
+          (tag === "input" && _TEXTISH.indexOf(type) !== -1)) {
         textish += 1;
       }
     });
@@ -503,7 +557,15 @@ window.jeScanner = (function () {
     return "login";
   }
 
+  // 020: richTextValue mirrors jeValue's richtext branch so the filler reads
+  // an editor exactly the way the scan does — one placeholder rule, one
+  // reader, no chance of the two disagreeing about whether a cover letter is
+  // already answered.
+  function richTextValue(el) {
+    return jeValue(el, "richtext");
+  }
+
   return { serialize, elementByIdx, docToken, probe, looksLikeApplicationForm,
            deepQueryAll, isVisible, isPlaceholderValue, formContext,
-           captchaPresent, credentialWall };
+           captchaPresent, credentialWall, isRichText, richTextValue };
 })();

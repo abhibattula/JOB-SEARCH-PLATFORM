@@ -30,7 +30,12 @@ FIELD_QUERY_SELECTOR = (
     # 011: custom dropdowns that are not native <select> — React-Select and
     # ARIA comboboxes/listboxes (Workday, Greenhouse's newer widgets, etc.)
     " [role=combobox], [role=listbox], [aria-haspopup=listbox],"
-    " [class*=select__control]"
+    " [class*=select__control],"
+    # 020 (FR-016): rich-text editors — the shape a modern cover-letter box
+    # takes. Until now these matched nothing, so the field was not merely
+    # unfilled, it was never seen. contenteditable=false is display, not
+    # input, and is filtered out by the serializers.
+    ' [contenteditable=""], [contenteditable="true"], [role=textbox]'
 )
 
 _WORK_AUTH_RE = re.compile(
@@ -458,7 +463,11 @@ def classify(field: FieldDescriptor) -> str:
     if _FULL_NAME_RE.search(text):
         return "full_name"
 
-    if tag == "textarea" and _COVER_LETTER_RE.search(text):
+    # 020 (D1): a modern cover-letter box is a rich-text editor (an editable
+    # <div>), not a <textarea>. Same question, same answer, different
+    # element — so the long-free-text gate admits both.
+    if (tag == "textarea" or field_type == "richtext") and \
+            _COVER_LETTER_RE.search(text):
         return "cover_letter"
 
     return "free_text_unknown"

@@ -206,3 +206,77 @@ class TestTypingRace:
         assert echoed()["email"] == "abhi@example.com"
         # the user's typed value survived every tick
         assert echoed()["first_name"] == "UserTyped"
+
+
+class TestRichTextFill020:
+    """020 US4 (FR-016..FR-019): a rich-text cover letter is seen and written.
+
+    Before this feature these editors matched no selector at all, so the
+    highest-value field on the form was not merely unfilled — it was never
+    counted, never flagged, and carried no reason. Ground truth here is the
+    fixture's own echo, so the assertion is about what actually landed in the
+    page, not what the engine believed it wrote.
+    """
+
+    ANSWER = "I build embedded systems and want to do it here."
+
+    @pytest.fixture()
+    def with_cover_letter(self, profile):
+        """A stored answer for the cover-letter question, so the fill has
+        something truthful to write (the v1.7.0 contract is unchanged: the
+        engine never invents an answer it does not have)."""
+        from engine.autofill import answer_bank
+
+        answer_bank.save("Cover Letter", self.ANSWER)
+        return profile
+
+    def test_the_editor_is_discovered_and_written(self, with_cover_letter,
+                                                  server):
+        run_job(f"{server}/richtext_cover_letter.html")
+        # the ordinary fields prove the page is being filled at all
+        assert wait_for(lambda: {"first_name", "email"} <= set(echoed())), \
+            f"echoes: {echoed()}"
+        assert wait_for(lambda: "cover_letter" in echoed(), timeout=30), (
+            "the rich-text cover letter was never written — before 020 it was "
+            f"not even seen. echoes: {echoed()}")
+        assert self.ANSWER[:20] in echoed()["cover_letter"]
+
+    def test_the_page_registered_it_as_real_input(self, with_cover_letter,
+                                                  server):
+        """W1, and the reason this branch exists at all.
+
+        The echo mirror listens for `input`/`change` events. A silent
+        textContent write fires neither, so an echo arriving IS the proof
+        that a real input event reached the page — which is exactly what
+        React, ProseMirror and Quill require before they will keep the value
+        instead of re-rendering it away.
+        """
+        run_job(f"{server}/richtext_cover_letter.html")
+        assert wait_for(lambda: "cover_letter" in echoed(), timeout=30), (
+            "no input event ever reached the editor — a silent DOM write "
+            "would look like this, and a real ATS would discard the text")
+
+    def test_an_editor_placeholder_is_not_mistaken_for_an_answer(
+            self, with_cover_letter, server):
+        """The Lever shape renders its placeholder as a CHILD node, so a naive
+        innerText read sees 'Tell us why…' and concludes the box is already
+        answered — the 019 placeholder trap in a new place."""
+        from engine.autofill import answer_bank
+
+        answer_bank.save("Why do you want to work here?",
+                         "Because of the hardware team.")
+        run_job(f"{server}/lever_richtext.html")
+
+        assert wait_for(lambda: "name" in echoed(), timeout=30), \
+            f"the page never filled at all: {echoed()}"
+        assert wait_for(lambda: "why_editor" in echoed(), timeout=30), (
+            "the placeholder was read as an existing answer, so the editor "
+            f"was skipped. echoes: {echoed()}")
+        assert "Tell us why" not in echoed()["why_editor"]
+
+    def test_a_readonly_editor_is_never_written(self, with_cover_letter, server):
+        """contenteditable=false / aria-readonly is display, not input."""
+        run_job(f"{server}/lever_richtext.html")
+        assert wait_for(lambda: "name" in echoed(), timeout=30)
+        time.sleep(2)  # let a few more ticks go by
+        assert "locked-note" not in echoed()

@@ -227,48 +227,48 @@ silently absent.
 **Independent Test**: fixture pages with rich-text editors are counted, written,
 and verified in a real browser.
 
-- [ ] T033 [P] [US4] Create fixtures
+- [x] T033 [P] [US4] Create fixtures
       `tests/fixtures/ats_pages/richtext_cover_letter.html` (Greenhouse-style
       `div[contenteditable=true]` labelled by `aria-labelledby`, required) and
       `lever_richtext.html` (`[role=textbox]` in a wrapping label, with an
       editor-rendered placeholder child)
-- [ ] T034 [P] [US4] Failing tests `tests/test_extension_assets.py` — the
+- [x] T034 [P] [US4] Failing tests `tests/test_extension_assets.py` — the
       scanner selector covers `[contenteditable]` / `[role=textbox]`, and the
       `scanner.js` ↔ `watcher.py` SERIALIZE_JS parity assertion is extended to
       the rich-text branch (guarantee S3)
-- [ ] T035 [US4] `extension/content/scanner.js`: add rich-text to
+- [x] T035 [US4] `extension/content/scanner.js`: add rich-text to
       `FIELD_SELECTOR`; `type: "richtext"`; read `innerText`; apply the
       credential-form, readonly, visibility and placeholder exclusions — T034
       green
-- [ ] T036 [US4] `engine/autofill/watcher.py`: mirror the change in
+- [x] T036 [US4] `engine/autofill/watcher.py`: mirror the change in
       `SERIALIZE_JS` — parity green. **Edit the raw string with literal edits**;
       a heredoc mangles `\s` and broke the whole serializer in 019
-- [ ] T037 [P] [US4] Failing tests `tests/test_field_core.py::TestRichText020` +
+- [x] T037 [P] [US4] Failing tests `tests/test_field_core.py::TestRichText020` +
       `tests/test_fields.py` — a `richtext` descriptor is decided like a
       `textarea` (D1); it counts as text-ish (S2); with no `name`,
       classification falls back to `automation_id`/`id`/label and an
       unclassifiable box stays `free_text_unknown`, never a wrong tag (D3)
-- [ ] T038 [US4] `engine/autofill/field_core.py` + `fields.py`: implement the
+- [x] T038 [US4] `engine/autofill/field_core.py` + `fields.py`: implement the
       rich-text decision path — T037 green
-- [ ] T039 [P] [US4] Failing test `tests/test_escort.py::TestRichTextPending020`
+- [x] T039 [P] [US4] Failing test `tests/test_escort.py::TestRichTextPending020`
       — a visible required rich-text box holding no answer counts toward
       `visible_required_pending`, so the escort will not advance past an empty
       cover letter (FR-019, D2)
-- [ ] T040 [US4] Wire the rich-text field into the required-pending count in
+- [x] T040 [US4] Wire the rich-text field into the required-pending count in
       `engine/autofill/ext_backend.py` — T039 green
-- [ ] T041 [P] [US4] Failing browser tests
+- [x] T041 [P] [US4] Failing browser tests
       `tests/integration/test_autofill_fixture_pages.py::TestRichTextFill020` —
       on both fixtures: the box is counted; the text lands; a real `input` event
       fires so the host page registers it (W1); the written value is verified by
       re-reading `innerText` (W2)
-- [ ] T042 [US4] `extension/content/filler.js`: add the `kind: "richtext"` write
+- [x] T042 [US4] `extension/content/filler.js`: add the `kind: "richtext"` write
       branch — focus, select contents, insert, dispatch `input`+`change`,
       re-read and verify — T041 green. **`filler.js` must still contain exactly
       one raw `.click(` site** (the 016 pin) — this branch adds none
-- [ ] T043 [P] [US4] Failing browser test — an editor that rejects the write
+- [x] T043 [P] [US4] Failing browser test — an editor that rejects the write
       degrades to `needs_manual` naming the field, and appears as a needs-you
       item on the panel; there is no silent third state (FR-018, W2)
-- [ ] T044 [US4] Implement the verify-and-degrade path — T043 green
+- [x] T044 [US4] Implement the verify-and-degrade path — T043 green
 
 **Checkpoint**: the last known silent gap in the fill path is closed.
 
