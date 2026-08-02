@@ -1,0 +1,144 @@
+Baseline evidence — feature 020 "Every Job Ranked" (T001)
+Recorded 2026-08-01 on branch tip 78b7dfb (v1.9.1), before any 020 change.
+
+Machine: Intel(R) Core(TM) i5-10210U @ 1.60GHz — 4 physical / 8 logical cores
+OS:      Windows 11 Home 10.0.26200
+Python:  3.12 (.venv)
+
+
+== TEST GATES (pre-change) ==
+
+  unit battery    1622 passed, 93 deselected   303.25s  (0:05:03)
+                  .venv\Scripts\python.exe -m pytest -q
+
+  browser suite     90 passed, 1625 deselected 1107.95s (0:18:27)
+                  .venv\Scripts\python.exe -m pytest -m browser -q
+
+  Both green. Post-change counts must EXCEED these, never fall below.
+
+  Note: the system Python (outside .venv) cannot collect the suite at all —
+  10 collection errors, ModuleNotFoundError: fitz. Always use .venv.
+
+
+== REAL DATABASE (data/jobs.db, 141,914,112 bytes, last written 2026-07-28) ==
+
+  eligible := delisted=0 AND is_entry_level=1 AND sponsorship != 'EXCLUDED'
+
+  total jobs                22145
+  eligible                    937
+  eligible scored             310   (33%)
+  eligible UNSCORED           627   (67%)   <-- the reported problem
+  eligible embedded           600
+
+  Backed up to data/backup/jobs-pre-2.0.0.db before any 020 stage ran (T002).
+
+
+== SCORING COST (measured, resume prefix warm, varying JD per call) ==
+
+  full analysis schema, JD 6000 chars   66.8 s/job   -> 627 jobs = 11.6 h
+  score-only output,     JD 6000 chars  24.1 s/job   ->  4.2 h
+  score-only output,     JD 2000 chars  13.9 s/job   ->  2.4 h
+  semantic.embed()                       0.60 s/job  ->  6.3 min
+  basic_match.score()                    0.0044 s/job -> 2.8 SECONDS
+
+  Component isolation (same prompt, prefix cache observed directly):
+    identical prompt re-issued          1.7 s   (pure generation, full cache hit)
+    system message changed             35.3 s   (~1500 tok re-eval => ~42 tok/s)
+    generation rate                    ~5-6 tok/s
+
+  => the ~250 tokens of matching_skills/missing_skills/gap_actions/reasoning
+     dominate; the JD half of the prompt is second. The resume is already
+     emitted first, so llama-cpp's prefix reuse already covers it.
+
+
+== CPU THREADS — MEASURED DEAD END, DO NOT RE-ATTEMPT ==
+
+  n_threads=8 (today, os.cpu_count())   22.9 s
+  n_threads=4 (physical cores)          23.2 s
+  n_threads=3                           24.0 s
+
+  Flat. The workload is memory-bandwidth-bound on this CPU. os.cpu_count()
+  is NOT the misconfiguration it appears to be. Recorded so this is never
+  chased again.
+
+
+== REFRESH LIFECYCLE (read from code, confirmed against the database) ==
+
+  _score_new_jobs() runs inline in _post_ingest (engine/pipeline.py:156),
+  so db.finish_run() is unreachable for the whole pass:
+
+      150-job cap x 66.8 s = 2 h 47 m with the run held open
+
+  STALE_RUN_MINUTES = 30 (engine/db.py:21) is SHORTER than that pass, so at
+  30 minutes start_run() declares the live run crashed, marks it finished,
+  and starts a second one while the first scoring thread is still running.
+
+  The trigger is not a button: web/templates/feed.html:5 fires
+  hx-post="/api/refresh" on EVERY feed page load.
+
+  Both loops read the same jobs_needing_score set (a job is not marked until
+  set_match completes), so they re-score the same jobs through one
+  serialized inference worker.
+
+  docs/USER_MANUAL.md:81 promises "a few minutes".
+
+
+== FEED LISTING QUERY (22,145 rows) ==
+
+  FIRST MEASUREMENT WAS WRONG — recorded here so the mistake is traceable.
+
+  A hand-written query with NO date window measured 67.9 ms and planned as
+  USE TEMP B-TREE FOR ORDER BY, and the plan claimed an expression index
+  would take it to single-digit ms. The app never runs that query:
+  db.query_jobs() always applies a window (14 days by default) and defaults
+  to sort="score", whose ORDER BY leads with match_score — which an index on
+  the date expression cannot serve at all.
+
+  MEASURED PROPERLY via db.query_jobs() against a copy of the real database,
+  median of 5 runs, with and without the candidate index:
+
+    view                                        today    with index
+    default: 14d + entry-level + score sort     22.3 ms    23.6 ms
+    all window + entry-level + score sort       27.1 ms    24.5 ms
+    all window, no entry filter, score sort      332 ms     318 ms
+    all window, no entry filter, DATE sort       329 ms     153 ms  <-- 2.1x
+
+  => The default view was never slow. The index is worth 2.1x on exactly one
+     view (the widest listing, date-ordered) and is neutral elsewhere.
+     FR-022 and SC-009 were rewritten to this measurement. See research R7.
+
+  A composite (match_score DESC, COALESCE(posted_date, first_seen) DESC)
+  index was also built and measured: no improvement on any view, because the
+  dynamic WHERE clause stops SQLite using it for ordering. Rejected.
+
+  needing-score scan (600 rows)   9.4 ms
+
+
+== COMPANION IDLE COST (structure confirmed; magnitude NOT yet measured) ==
+
+  discovery.js:404  setInterval(tick, 1500) under <all_urls>, all_frames:true
+    -> classify()          discovery.js:195
+    -> scanner.probe()     scanner.js:451
+    -> deepQueryAll()      scanner.js:166 — querySelectorAll("*") over the
+                           WHOLE document to find shadow hosts
+    -> isVisible() per candidate — getClientRects() forces layout
+
+  Runs in every frame of every page, forever, application or not.
+
+  T045 must measure this before T046 optimises it. Per research R6 and the
+  019 step-2 lesson: a purpose-built measurement beat three plausible
+  hypotheses. Do not skip straight to the fix.
+
+  PRE-CHANGE probe() cost per tick: [T045 — to be recorded]
+  POST-CHANGE:                      [T049 — must be <= 50% of the above]
+
+
+== KNOWN GAP: RICH TEXT ==
+
+  extension/content/scanner.js:13 FIELD_SELECTOR covers input/select/textarea
+  and ARIA combobox/listbox shapes only. A repository-wide search for
+  "contenteditable" across engine/ and extension/ returns NOTHING.
+
+  So a rich-text cover letter is not filled, not counted, not flagged, and
+  carries no reason — the silent-gap failure mode 018 and 019 were both
+  spent eliminating.

@@ -215,20 +215,61 @@ number one of this workstream and the success criterion (SC-008, at least a
 
 ## R7 — Feed listing index
 
-**Decision**: Add an expression index covering the feed's sort key.
+> **CORRECTED during implementation.** The first version of this decision was
+> based on a query the application never runs. The corrected finding is
+> narrower and is recorded in full here, because the wrong version was
+> approved and the difference matters.
 
-**Evidence**: the default feed query measures **67.9 ms** against the real
-22,145-row table and plans as `SEARCH jobs USING INDEX idx_jobs_entry` followed
-by `USE TEMP B-TREE FOR ORDER BY` — no index can serve
-`ORDER BY COALESCE(posted_date, first_seen) DESC`, so SQLite materialises and
-sorts every matching row on each page load.
+**Original (wrong) claim**: "the default feed query measures 67.9 ms and plans
+as `USE TEMP B-TREE FOR ORDER BY`; an expression index brings it to
+single-digit ms."
 
-**Rationale**: SQLite supports indexes on expressions, so the existing query
-needs no rewrite and the fallback semantics ("approximate date when the source
-gave none", a Principle-III recency requirement) are preserved exactly.
+**What was wrong**: that 67.9 ms was a hand-written query with **no date
+window**, scanning all 22,145 rows. `db.query_jobs()` always applies a window
+(14 days by default) and defaults to `sort="score"`, whose ORDER BY is
+`j.match_score IS NULL, j.match_score DESC, COALESCE(j.posted_date,
+j.first_seen) DESC`. An index on the date expression cannot serve that sort at
+all — the leading keys are `match_score` — and the WHERE clause is built
+dynamically from a dozen optional filters, so no single composite index serves
+the general case either.
 
-**Alternative rejected**: a stored `sort_date` column maintained by triggers —
-more moving parts and a migration over 22k rows, for the same result.
+**Measured properly**, via `db.query_jobs()` itself against a copy of the real
+database, median of 5, with and without the index:
+
+| view | today | with index |
+|---|---|---|
+| **default** — 14 d, entry-level, score sort | 22.3 ms | 23.6 ms |
+| All window, entry-level, score sort | 27.1 ms | 24.5 ms |
+| All window, no entry filter, score sort | 332 ms | 318 ms |
+| All window, no entry filter, **date sort** | 329 ms | **153 ms** |
+
+**Decision**: keep the expression index, with an honest and much smaller
+claim. It is worth **2.1× on exactly one view** — "All jobs, all levels, sorted
+by date", the widest listing the app offers — and is neutral everywhere else
+(the other three rows are within run-to-run noise). The default view was never
+slow: **22 ms is not a problem and this feature does not pretend to fix it.**
+
+`FR-022` and `SC-009` were rewritten to match this measurement instead of the
+original one. The success criterion is now the date-sorted wide listing, not
+"the feed listing", and it is stated as a time ratio rather than as the absence
+of a temp B-tree — because the temp B-tree legitimately remains on the
+score-sorted path and always will.
+
+**Alternatives considered and rejected**:
+
+- **A composite `(match_score DESC, COALESCE(posted_date, first_seen) DESC)`
+  index** to serve the default sort — built and measured: 318 ms vs 332 ms on
+  the wide view and no change on the default view, because the dynamic WHERE
+  clause stops SQLite using it for ordering. **Rejected: measurably useless.**
+- **Dropping the redundant `match_score IS NULL` sort key** (SQLite already
+  sorts NULLs last under DESC, so it is a no-op there) — would make the ORDER
+  BY marginally more indexable but changes documented feed ordering semantics
+  on other engines for no measured gain. **Rejected.**
+- **A stored `sort_date` column maintained by triggers** — more moving parts
+  and a migration over 22k rows, for the same 2.1× on one view. **Rejected.**
+- **Dropping the item entirely** — defensible, since the default view is fine.
+  Kept only because the index is one line, measurably helps the widest view,
+  and regresses nothing.
 
 ---
 

@@ -24,29 +24,55 @@ each story independently testable and shippable.
 
 ## Phase 1: Setup
 
-- [ ] T001 Baseline evidence: record pre-change counts and measurements in
+- [x] T001 Baseline evidence: record pre-change counts and measurements in
       `specs/020-every-job-ranked/baseline.txt` — unit battery, `-m browser`
       suite, and against `data/jobs.db`: total/eligible/scored/unscored/embedded
       counts, the feed query plan, and the per-job AI assessment timing
-- [ ] T002 [P] Back up the real database to `data/backup/jobs-pre-2.0.0.db`
+- [x] T002 [P] Back up the real database to `data/backup/jobs-pre-2.0.0.db`
       before any stage touches it (quickstart §3)
 
 ---
 
 ## Phase 2: Foundational (blocks US1 and US2)
 
-- [ ] T003 [P] Failing tests `tests/test_db.py::TestAssessmentProgress020` —
-      the read-only assessment-progress record round-trips its full shape and
-      defaults to `{running: False, done: 0, total: 0, failed: 0,
-      paused_for_session: False}` before any pass has run
-- [ ] T004 `engine/db.py`: implement the assessment-progress record — T003 green
-- [ ] T005 [P] Failing test `tests/test_db.py::TestFeedSortIndex020` — the feed
-      listing query plan contains no `USE TEMP B-TREE FOR ORDER BY` (SC-009,
-      FR-022)
-- [ ] T006 `engine/db.py`: add `idx_jobs_sort_date` on
-      `COALESCE(posted_date, first_seen) DESC` to the idempotent schema init —
-      T005 green; confirm the `posted_date`→`first_seen` fallback semantics are
-      unchanged
+> **Corrected during implementation.** T003/T004 originally placed the
+> assessment-progress record in `engine/db.py`. That contradicts
+> data-model.md §2, which keeps pass state deliberately in-memory — persisting
+> nothing is precisely what makes FR-010's resumability free, since every pass
+> rebuilds its candidate list from the database anyway. The app serves the web
+> layer from the same process, exactly as `browser_controller._state` already
+> does, so no storage is involved. Retargeted to the module skeleton.
+
+- [x] T003 [P] Failing tests `tests/test_upgrade.py::TestProgressShape020` —
+      `upgrade.progress()` returns the full shape with safe defaults before any
+      pass has run (`{running: False, done: 0, total: 0, failed: 0,
+      paused_for_session: False}`), is safe to call from any thread, and never
+      blocks; `reset_for_tests()` restores those defaults
+- [x] T004 Create `engine/upgrade.py` with the state record, `progress()` and
+      `reset_for_tests()` — T003 green. Pure Python, imports nothing from
+      `web/`, and must not import `pipeline` (guarantee L5)
+> **Narrowed during implementation, on measurement.** T005/T006 originally
+> claimed the *default* feed view was slow (67.9 ms) and that an index would
+> make it single-digit. That baseline came from a hand-written query the app
+> never runs. Measured through `db.query_jobs()` the default view is **22 ms**,
+> and its ORDER BY leads with `match_score`, which no date index can serve. The
+> index helps exactly one view — all jobs, all levels, date order — and only
+> **with statistics present**: index alone left the plan unchanged (316 ms);
+> index + `ANALYZE` gave 159 ms. `PRAGMA optimize` was measured and does *not*
+> substitute. FR-022, SC-009 and research R7 were rewritten to this. See
+> baseline.txt.
+
+- [x] T005 [P] Failing test `tests/test_db.py::TestFeedSortIndex020` — the
+      date-ordered all-jobs listing plan contains no
+      `USE TEMP B-TREE FOR ORDER BY` and names `idx_jobs_sort_date`; the
+      score-sorted default still sorts **and that is pinned as expected**; the
+      `posted_date`→`first_seen` fallback ordering is preserved. Queries are
+      captured from `db.query_jobs` by tracing, never hand-copied
+- [x] T006 `engine/db.py`: add `idx_jobs_sort_date` on
+      `COALESCE(posted_date, first_seen) DESC` plus `refresh_statistics()` and a
+      one-time `_ensure_statistics()` bootstrap in `init_db` — T005 green. A
+      test pins that the index is **inert without statistics**, so nobody
+      deletes the ANALYZE believing the index alone suffices
 
 **Checkpoint**: storage can describe a pass and serve the feed sort from an
 index; nothing user-visible has changed yet
@@ -111,10 +137,8 @@ the run still finishes promptly and alerts fire in the same refresh.
 - [ ] T016 [P] [US2] Failing tests `tests/test_upgrade.py::TestResume020` —
       no pass state is persisted; a fresh pass rebuilds candidates from the
       database and never re-assesses an already-assessed job (FR-010, G5)
-- [ ] T017 [US2] Create `engine/upgrade.py` implementing
-      `start` / `progress` / `run_once` / `reset_for_tests` per
-      contracts/upgrade-api.md — T013–T016 green. `upgrade` must not import
-      `pipeline` (guarantee L5)
+- [ ] T017 [US2] `engine/upgrade.py`: implement `start` and `run_once` on the
+      T004 skeleton, per contracts/upgrade-api.md — T013–T016 green
 - [ ] T018 [P] [US2] Failing tests `tests/test_pipeline.py::TestRunLifecycle020`
       — with a `matcher` stub that sleeps: (a) `db.finish_run()` is reached
       promptly (FR-007, L1); (b) `alerts.process()` runs in the same refresh

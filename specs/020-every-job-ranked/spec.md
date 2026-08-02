@@ -276,7 +276,11 @@ rather than the generic fallback.
 
 **Reach and responsiveness**
 
-- **FR-022**: The feed listing MUST be served without an unindexed sort.
+- **FR-022**: The widest feed listing — every job, all experience levels,
+  ordered by date — MUST be served substantially faster than today. (Narrowed
+  during implementation: the *default* feed view was measured at 22 ms and was
+  never slow; see research R7 for the corrected measurement and why the
+  score-sorted path cannot be index-served.)
 - **FR-023**: iCIMS application steps MUST advance using iCIMS-recognised
   progression controls, under the same allowlist-first, one-shot, capped,
   pause-on-ambiguity rules as every other supported site.
@@ -323,7 +327,8 @@ rather than the generic fallback.
 - **SC-008**: The companion's periodic inspection cost on a large
   form-free page falls by at least half, with no detection regressions in the
   browser suite.
-- **SC-009**: The feed listing query plan contains no unindexed sort.
+- **SC-009**: The date-ordered all-jobs listing is at least 1.8× faster than
+  the pre-change baseline (measured 329 ms → 153 ms), with no view regressing.
 - **SC-010**: Both existing gates stay green: the full unit battery and the
   real-browser suite pass, and secret hygiene remains clean.
 
