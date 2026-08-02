@@ -133,6 +133,27 @@ Python:  3.12 (.venv)
   POST-CHANGE:                      [T049 — must be <= 50% of the above]
 
 
+== T010 RESULT: RANKING THROUGHPUT (post-change) ==
+
+  Budget (SC-002): the whole eligible backlog ranked in under 30 s, no model.
+
+  627 eligible jobs, end to end through pipeline._rank_new_jobs():
+
+    first implementation   11.48 s   (18.32 ms/job)
+    after batching writes   0.66 s   ( 1.05 ms/job)   <-- 17x
+
+  The first number was NOT the matcher. basic_match itself measured
+  0.0044 s/job standalone; db.set_match opens a connection and commits per
+  call, so 627 jobs meant 627 WAL commits. db.set_matches() writes one
+  transaction per chunk instead.
+
+  Caveat on comparing the two figures honestly: the standalone benchmark used
+  a ~2900-char resume and a ~2900-char JD, the harness uses shorter text. A
+  realistic worst case is therefore a few seconds, not 0.66 s. Either way it
+  is far inside the 30 s budget, and against the pre-020 local tier's
+  measured 66.8 s/job the same 627 jobs were 11.6 HOURS.
+
+
 == KNOWN GAP: RICH TEXT ==
 
   extension/content/scanner.js:13 FIELD_SELECTOR covers input/select/textarea

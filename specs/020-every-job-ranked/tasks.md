@@ -87,28 +87,39 @@ the model.
 **Independent Test**: seed a backlog of unscored eligible jobs, run one
 refresh with inference patched to raise, assert full coverage.
 
-- [ ] T007 [P] [US1] Failing tests `tests/test_pipeline.py::TestRanking020` —
+> **Two corrections from implementation.**
+> 1. **Embedding moved out of the refresh.** `_score_new_jobs` embedded up to
+>    300 jobs inline at 0.60 s each — 180 s, which alone would blow SC-003's
+>    60-second budget. Embeddings exist only to ORDER the assessment pass, so
+>    they belong to that pass. `_rank_new_jobs` is purely deterministic.
+> 2. **T012 was already done.** The plan claimed "the feed template never
+>    reads `match_method`". It does — `partials/feed_table.html:52-54` has
+>    rendered `~` for basic and `•` for local, with explanatory tooltips,
+>    since an earlier feature. What was missing was a TEST, which this release
+>    makes load-bearing because most scores now become `basic`.
+
+- [x] T007 [P] [US1] Failing tests `tests/test_pipeline.py::TestRanking020` —
       (a) every eligible unscored job gets a score after one refresh with **no
       cap applied**; (b) coverage still 100% when `matcher._chat` and
       `local_llm` both raise (FR-002, guarantee R2); (c) an existing score of
       any tier is never overwritten (R3); (d) `profile_skills` reach
       `basic_match.score(extra_skills=…)` (R4); (e) a job with an empty
       description still receives a score
-- [ ] T008 [US1] `engine/pipeline.py`: extract `_rank_new_jobs()` from
+- [x] T008 [US1] `engine/pipeline.py`: extract `_rank_new_jobs()` from
       `_score_new_jobs()` — uncapped, model-free, `method: "basic"`, reusing
       `basic_match.score()` unchanged — T007 green
-- [ ] T009 [P] [US1] Failing test `tests/test_pipeline.py::TestRankingThroughput020`
+- [x] T009 [P] [US1] Failing test `tests/test_pipeline.py::TestRankingThroughput020`
       — ranking a backlog the size of the applicant's (627 jobs) completes well
       inside the SC-002 budget with the model never touched
-- [ ] T010 [US1] Verify T009 green against the real baseline; record the
+- [x] T010 [US1] Verify T009 green against the real baseline; record the
       measured figure in `baseline.txt` beside the pre-change number
-- [ ] T011 [P] [US1] Failing test `tests/test_web.py::TestFeedScoreKind020` — a
+- [x] T011 [P] [US1] Failing test `tests/test_web.py::TestFeedScoreKind020` — a
       feed listing containing one `basic`-scored and one `local`-scored job
       renders two **distinguishable** markers (guarantee P1, FR-003); assert the
       rendered distinction, not merely that the template mentions `method`
-- [ ] T012 [US1] `web/templates/feed.html`: render the score kind from the
-      already-selected `match_method` column, matching `job_detail.html:85`'s
-      `~` / `•` vocabulary — T011 green
+- [x] T012 [US1] **No code change needed** — `partials/feed_table.html:52-54`
+      already renders `~`/`•` from `match_method` with explanatory tooltips.
+      Verified by T011 rather than rewritten
 
 **Checkpoint**: the feed is 100% ranked and honest about which scores are
 keyword-derived. Shippable on its own.

@@ -899,6 +899,26 @@ def set_match(job_id: int, score: float | None, match_json: str | None) -> None:
         )
 
 
+def set_matches(rows: list[tuple[int, float | None, str | None]]) -> None:
+    """020: write many scores in ONE transaction.
+
+    Ranking assigns a score to every eligible job in the backlog, and
+    set_match opens a connection and commits per call — 627 separate WAL
+    commits measured at 11.5 s, of which the keyword matcher itself was a
+    fraction (0.0044 s a job standalone). Batching keeps ranking a rounding
+    error inside the refresh instead of most of its budget.
+
+    Same statement and same semantics as set_match, one row at a time.
+    """
+    if not rows:
+        return
+    with _conn() as conn:
+        conn.executemany(
+            "UPDATE jobs SET match_score = ?, match_json = ? WHERE id = ?",
+            [(score, payload, job_id) for job_id, score, payload in rows],
+        )
+
+
 def set_classification(
     job_id: int, is_entry_level: bool, sponsorship: str, evidence: dict | None
 ) -> None:
