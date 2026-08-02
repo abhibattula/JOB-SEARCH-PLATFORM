@@ -544,6 +544,17 @@ def create_app() -> FastAPI:
 
         threading.Thread(target=_quiet_update_check, daemon=True).start()
 
+        # 020 (FR-004): pick the AI assessment backlog up on startup, not only
+        # after a refresh. Ranking gives every job a keyword score during the
+        # refresh that finds it, but the slower assessment is bounded per pass
+        # — so a large backlog needs several passes. Without this, opening the
+        # app inside the refresh cooldown would start no pass at all and the
+        # backlog would sit there. start() is single-flight, so this can never
+        # race the one a refresh kicks off.
+        from engine import upgrade as _upgrade
+
+        _upgrade.start("startup")
+
     @asynccontextmanager
     async def _lifespan(app: FastAPI):
         # 014: replaces the deprecated @app.on_event("startup").

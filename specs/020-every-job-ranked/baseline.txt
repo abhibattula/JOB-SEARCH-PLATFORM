@@ -201,3 +201,24 @@ Python:  3.12 (.venv)
   guarantee R3. The feed went from 33% ranked to 100% ranked in under four
   seconds, against the same backlog the old stage would have needed 11.6
   hours for.
+
+
+== T058 RESULT: GATES AFTER THE FEATURE ==
+
+    unit battery     1728 passed  (was 1622)   +106, none lost
+    browser suite     104 passed  (was   90)    +14, none lost
+    secret hygiene     13 passed
+
+  Note on running these: do NOT run the browser suite in the background
+  while running other browser tests in the foreground. They contend for the
+  same installed browser and the same fixture ports; the first attempt at
+  this produced a run that never completed. Run it alone.
+
+  STILL OUTSTANDING before a tag (deliberately not done here):
+    T061  frozen build + packaging/smoke_test.py
+    T062  version bump to 2.0.0
+    T063  manual: one pass / no duplicates / resume, applying-beats-ranking,
+          rich text on a real Greenhouse or Lever form
+    T064  manual: the automation line unchanged, INCLUDING 019's still
+          outstanding T076 (real Workday sign-in + escort + stop at review)
+    T065  tag v2.0.0 and verify BOTH installers by magic bytes + SHA-256

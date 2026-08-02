@@ -325,17 +325,17 @@ without losing any detection.
 
 ## Phase 9: Polish, docs, ship
 
-- [ ] T055 [P] Update `docs/USER_MANUAL.md` — line 81's "a few minutes" becomes
+- [x] T055 [P] Update `docs/USER_MANUAL.md` — line 81's "a few minutes" becomes
       true rather than edited around; document the two scoring tiers, the
       background pass, and the changed meaning of `MAX_SCORE_PER_RUN`
-- [ ] T056 [P] Update `docs/USER_GUIDE.md` and `README.md` for the two-tier
+- [x] T056 [P] Update `docs/USER_GUIDE.md` and `README.md` for the two-tier
       scoring model and the rich-text cover-letter support
-- [ ] T057 [P] Add `WHATS_NEW["2.0.0"]`
-- [ ] T058 Re-run the full unit battery **twice** and the `-m browser` suite;
+- [x] T057 [P] Add `WHATS_NEW["2.0.0"]`
+- [x] T058 Re-run the full unit battery **twice** and the `-m browser` suite;
       counts must exceed the T001 baseline, never fall below it
-- [ ] T059 Run `tests/test_secret_hygiene.py` — secrets remain fill-and-forget
+- [x] T059 Run `tests/test_secret_hygiene.py` — secrets remain fill-and-forget
       (FR-025)
-- [ ] T060 Run the **real-data check** (quickstart §3) against the applicant's
+- [x] T060 Run the **real-data check** (quickstart §3) against the applicant's
       own database: 0 eligible unscored, refresh under 60 s, and the same run
       repeated with inference forced to fail
 - [ ] T061 Frozen build + `packaging/smoke_test.py`; the smoke must still assert

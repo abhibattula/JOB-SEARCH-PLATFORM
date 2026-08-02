@@ -544,3 +544,28 @@ class TestFeedScoreKind020:
         cells = self._score_cells(html)
         assert cells, "the job did not reach the feed at all"
         assert "—" in cells[0], cells
+
+
+def test_startup_picks_up_the_assessment_backlog_020(monkeypatch, tmp_db):
+    """020 (FR-004): a bounded pass cannot clear a large backlog in one go,
+    so opening the app must start one too — not only a refresh.
+
+    Without this, opening the app inside the 30-minute refresh cooldown would
+    start no pass at all and the backlog would simply sit there.
+    """
+    from fastapi.testclient import TestClient
+
+    from engine import upgrade
+    from web import main as webmain
+
+    started = []
+    monkeypatch.setattr(upgrade, "start",
+                        lambda reason="refresh": started.append(reason))
+    monkeypatch.setattr(webmain, "_bootstrap_sponsorship", lambda: None)
+    from engine import updates
+    monkeypatch.setattr(updates, "startup_check", lambda: None)
+
+    with TestClient(webmain.create_app()):
+        pass
+
+    assert "startup" in started

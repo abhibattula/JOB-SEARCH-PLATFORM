@@ -280,3 +280,98 @@ class TestRichTextFill020:
         assert wait_for(lambda: "name" in echoed(), timeout=30)
         time.sleep(2)  # let a few more ticks go by
         assert "locked-note" not in echoed()
+
+
+class TestCompanionIdleCost020:
+    """020 T045/T049: the companion's per-tick cost, kept measurable.
+
+    discovery.js calls scanner.probe() on a timer for the whole time a page
+    is open. probe() walks the entire DOM hunting shadow roots and forces
+    layout per candidate, so its cost scales with page size. Measured when
+    this feature was written (see specs/020-every-job-ranked/baseline.txt):
+
+        4,009 elements ->  2.8 ms      20,009 -> 16.9 ms      60,009 -> 52 ms
+
+    Two corrections that measurement produced, both recorded in research R6:
+    the poll is TOP-FRAME ONLY (not per-frame as first claimed), and at
+    ordinary page sizes the cost was never the problem it was described as.
+    The fix that shipped is a 4x reduction in FREQUENCY, not in per-tick cost.
+
+    The ceiling here is deliberately loose — this is a regression tripwire for
+    someone making probe() accidentally quadratic, not a benchmark. A tight
+    bound would flake on a loaded CI machine and teach everyone to ignore it.
+    """
+
+    CEILING_MS = 60.0
+
+    def test_probe_stays_cheap_on_a_large_form_free_page(self, server):
+        from playwright.sync_api import sync_playwright
+
+        scanner = (Path(__file__).resolve().parents[2] / "extension" /
+                   "content" / "scanner.js").read_text(encoding="utf-8")
+
+        with sync_playwright() as p:
+            browser = None
+            for channel in ("msedge", "chrome"):
+                try:
+                    browser = p.chromium.launch(channel=channel, headless=True)
+                    break
+                except Exception:
+                    continue
+            if browser is None:
+                pytest.skip("no installed browser channel available")
+            page = browser.new_page()
+            page.goto(f"{server}/heavy_no_form.html")
+            page.wait_for_timeout(300)
+            result = page.evaluate(
+                "(src) => { eval(src);\n"
+                "  const n = document.querySelectorAll('*').length;\n"
+                "  const times = [];\n"
+                "  for (let i = 0; i < 25; i++) {\n"
+                "    const t0 = performance.now();\n"
+                "    window.jeScanner.probe();\n"
+                "    times.push(performance.now() - t0);\n"
+                "  }\n"
+                "  times.sort((a, b) => a - b);\n"
+                "  return { elements: n, median: times[12] }; }",
+                scanner)
+            browser.close()
+
+        assert result["elements"] > 3000, "the heavy fixture did not build"
+        print(f"\n  probe() median {result['median']:.2f} ms over "
+              f"{result['elements']} elements")
+        assert result["median"] < self.CEILING_MS, (
+            f"probe() median {result['median']:.1f} ms over "
+            f"{result['elements']} elements — it was 2.8 ms when 020 measured "
+            f"it; something made the scan much more expensive")
+
+    def test_a_form_free_page_is_not_offered_a_fill(self, server):
+        """The other half of cheapness: a big ordinary page with one search
+        box must not look like an application form."""
+        from playwright.sync_api import sync_playwright
+
+        scanner = (Path(__file__).resolve().parents[2] / "extension" /
+                   "content" / "scanner.js").read_text(encoding="utf-8")
+
+        with sync_playwright() as p:
+            browser = None
+            for channel in ("msedge", "chrome"):
+                try:
+                    browser = p.chromium.launch(channel=channel, headless=True)
+                    break
+                except Exception:
+                    continue
+            if browser is None:
+                pytest.skip("no installed browser channel available")
+            page = browser.new_page()
+            page.goto(f"{server}/heavy_no_form.html")
+            page.wait_for_timeout(300)
+            verdict = page.evaluate(
+                "(src) => { eval(src);"
+                " const p = window.jeScanner.probe();"
+                " return { fields: p.fields, textish: p.textish,"
+                "   looks: window.jeScanner.looksLikeApplicationForm(p) }; }",
+                scanner)
+            browser.close()
+
+        assert verdict["looks"] is False, verdict
