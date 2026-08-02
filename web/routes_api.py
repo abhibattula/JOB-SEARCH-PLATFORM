@@ -232,7 +232,12 @@ def set_theme(theme: str = ""):
 
 @router.get("/refresh/status")
 def refresh_status():
-    return db.get_run_status()
+    # 020 (FR-011): additive. The background AI assessment pass deliberately
+    # OUTLIVES the refresh run, so it cannot ride on a run-scoped source row —
+    # it gets its own object. Read-only and non-blocking.
+    from engine import upgrade
+
+    return {**db.get_run_status(), "assessment": upgrade.progress()}
 
 
 @router.get("/jobs")
@@ -394,7 +399,7 @@ def get_settings():
         "prefer_local_llm": settings.get("PREFER_LOCAL_LLM") != "0",
         "schedule_refresh": settings.get("SCHEDULE_REFRESH") == "1",
         "alerts_enabled": settings.get("ALERTS_ENABLED") != "0",
-        "max_score_per_run": int(settings.get("MAX_SCORE_PER_RUN") or "150"),
+        "max_score_per_run": int(settings.get("MAX_SCORE_PER_RUN") or "40"),
         "theme": settings.get("THEME") or "",
         "autofill_use_tailored_pdf": settings.get("AUTOFILL_USE_TAILORED_PDF") != "0",
         # 015 (D3/FR-016)
@@ -417,6 +422,7 @@ async def save_settings(
     autofill_use_tailored_pdf: str | None = Form(None),
     onboarding_dismissed: str | None = Form(None),
     preferred_browser: str | None = Form(None),
+    max_score_per_run: str | None = Form(None),
 ):
     if llm_api_key:  # blank never clears an existing key
         settings.set("LLM_API_KEY", llm_api_key.strip())
@@ -445,6 +451,16 @@ async def save_settings(
         settings.set("ONBOARDING_DISMISSED", "1")
     if preferred_browser in ("chrome", "msedge", "auto"):  # unknown ignored
         settings.set("PREFERRED_BROWSER", preferred_browser)
+    if max_score_per_run is not None:
+        # 020 (FR-006): AI assessments per background pass. Nonsense and
+        # negatives are ignored rather than stored — a bad value here would
+        # silently stop assessment altogether.
+        try:
+            value = int(str(max_score_per_run).strip())
+        except (TypeError, ValueError):
+            value = -1
+        if value >= 0:
+            settings.set("MAX_SCORE_PER_RUN", str(value))
     if "text/html" in (request.headers.get("accept") or ""):
         return RedirectResponse("/settings", status_code=303)
     return get_settings()

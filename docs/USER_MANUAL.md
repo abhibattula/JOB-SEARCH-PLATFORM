@@ -78,10 +78,34 @@ with the *system* Python fails with `ModuleNotFoundError` because the
 dependencies are installed only in the venv.
 
 - First ever open: the feed is empty and a refresh starts automatically —
-  watch the channel strip fill in over a few minutes.
+  watch the channel strip fill in over a few minutes. **Every job it finds
+  gets a match score in that same refresh** (020); nothing is left unranked.
 - Later opens: the feed shows instantly from the database; a new background
   refresh only starts if the last one is older than 30 minutes.
+- After the refresh finishes, the strip may keep showing **AI-scoring _n_/40**.
+  That is the slower, fuller AI assessment working through the best
+  candidates in the background — roughly a minute a job on a laptop CPU. You
+  can keep working; it stands down completely while you are filling in an
+  application.
 - Stop the app with `Ctrl+C` in the terminal.
+
+### Two kinds of match score (020)
+
+Scoring is deliberately split, because a full AI assessment costs about a
+minute per job on a laptop and there are hundreds of jobs.
+
+| shown as | what it is | when |
+|---|---|---|
+| `~72` | quick keyword match against your resume | every eligible job, during the refresh |
+| `•85` | full AI assessment with skills and gap advice | the best candidates, in the background afterwards |
+
+Both are real scores you can sort and filter by. The marker tells you which
+kind you are looking at — a `~` score is a fast approximation, not a
+judgement — and a job upgrades from `~` to `•` in place once assessed.
+
+**Settings → "Jobs given a full AI assessment per background pass"** controls
+how much background work one pass does (default 40). Ranking is never capped
+by it: every eligible job is scored during the refresh regardless.
 
 ### One-time enrichment steps (recommended)
 

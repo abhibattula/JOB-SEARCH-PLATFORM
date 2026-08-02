@@ -1,0 +1,29 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Form appears long after load</title></head>
+<body>
+<h1>Nothing to see yet</h1>
+<!-- 020 R6 fixture: the regression the idle backoff could cause. This page
+     shows NO posting and NO form for long enough that discovery.js has
+     backed off to its slow poll, then mounts a real application form. The
+     companion must still notice promptly — the MutationObserver waker is
+     the thing being proven here, not the poll. -->
+<p>Some ordinary content while the applicant reads.</p>
+<div id="slot"></div>
+<script src="/_mirror.js"></script>
+<script>
+  // Longer than IDLE_AFTER_TICKS * POLL_MS (5 * 1500 = 7.5 s), so the poll
+  // has definitely widened before the form exists.
+  setTimeout(function () {
+    document.getElementById('slot').innerHTML =
+      '<form id="app">' +
+      '<label for="lf_first">First Name</label>' +
+      '<input id="lf_first" name="lf_first" type="text">' +
+      '<label for="lf_last">Last Name</label>' +
+      '<input id="lf_last" name="lf_last" type="text">' +
+      '<label for="lf_email">Email</label>' +
+      '<input id="lf_email" name="lf_email" type="email">' +
+      '<textarea name="lf_notes" id="lf_notes"></textarea>' +
+      '</form>';
+    window.__formMountedAt = Date.now();
+  }, 9000);
+</script>
+</body></html>

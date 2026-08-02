@@ -766,3 +766,150 @@ class TestProfileRoundTrip017:
                        "preferred_name", "gpa"):
             assert column in stored, column
             assert not stored[column]
+
+
+class TestFeedSortIndex020:
+    """T005 (FR-022, SC-009): the widest feed listing — every job, all
+    experience levels, ordered by date — is served from an index instead of
+    materialising and sorting every matching row.
+
+    Scope is deliberately narrow, and the narrowness is the point. The first
+    version of this work claimed the DEFAULT feed view was slow, measured from
+    a hand-written query the app never runs. Measured through db.query_jobs()
+    the default view is 22 ms and its ORDER BY leads with `match_score`, which
+    no index on the date expression can serve. Only the date-sorted wide
+    listing benefits (329 ms -> 153 ms). See research R7.
+
+    The queries here are CAPTURED from db.query_jobs rather than rewritten, so
+    the test cannot drift away from what the application actually executes.
+    """
+
+    @staticmethod
+    def _captured_plans(**kwargs) -> list[list[str]]:
+        """Run the real feed query, trapping the SQL it issues, then EXPLAIN
+        each SELECT that reads from `jobs`."""
+        import sqlite3
+
+        statements: list[str] = []
+        real_connect = sqlite3.connect
+
+        def tracing_connect(*args, **kw):
+            conn = real_connect(*args, **kw)
+            conn.set_trace_callback(statements.append)
+            return conn
+
+        sqlite3.connect = tracing_connect
+        try:
+            db.query_jobs(**kwargs)
+        finally:
+            sqlite3.connect = real_connect
+
+        listing = [s for s in statements
+                   if s.lstrip().upper().startswith("SELECT")
+                   and " FROM jobs j " in s and "ORDER BY" in s]
+        assert listing, f"no listing query captured from {statements!r}"
+
+        plans = []
+        with db._conn() as conn:
+            for sql in listing:
+                # EXPLAIN needs the same parameter count; the planner does not
+                # care about the values, so bind harmless ones.
+                params = [""] * sql.count("?")
+                plans.append([r[3] for r in
+                              conn.execute("EXPLAIN QUERY PLAN " + sql, params)])
+        return plans
+
+    def _seed(self, n=60):
+        for i in range(n):
+            db.upsert_job(make_job(
+                url=f"https://boards.greenhouse.io/acme/jobs/{i}",
+                posted_date=iso_days_ago(i % 30),
+            ))
+
+    def test_index_exists_after_init(self, tmp_db):
+        with db._conn() as conn:
+            names = {r["name"] for r in
+                     conn.execute("PRAGMA index_list(jobs)")}
+        assert "idx_jobs_sort_date" in names
+
+    def test_date_sorted_listing_avoids_a_temp_btree(self, tmp_db):
+        """The one view this index is for — with statistics present, which is
+        the state the shipped code maintains (see the next two tests)."""
+        self._seed()
+        db.refresh_statistics()
+        plans = self._captured_plans(window="all", sort="date", limit=100)
+        joined = " | ".join(line for plan in plans for line in plan)
+        assert "TEMP B-TREE" not in joined.upper(), joined
+        assert "idx_jobs_sort_date" in joined, joined
+
+    def test_the_index_is_inert_without_statistics(self, tmp_db):
+        """Pins a fact that cost real measurement to find, so that nobody
+        removes the ANALYZE call believing the index alone is enough.
+
+        On the real 22k-row database the index without statistics left the
+        plan completely unchanged (316 ms, still sorting); ANALYZE took it to
+        159 ms. `PRAGMA optimize` was measured too and did NOT help.
+        """
+        self._seed()
+        with db._conn() as conn:
+            conn.execute("DROP TABLE IF EXISTS sqlite_stat1")
+            conn.execute("ANALYZE sqlite_master")  # force the planner to reload
+        plans = self._captured_plans(window="all", sort="date", limit=100)
+        joined = " | ".join(line for plan in plans for line in plan)
+        assert "TEMP B-TREE" in joined.upper(), (
+            "the index served the sort with no statistics — if this is "
+            "genuinely true now, re-measure before deleting refresh_statistics"
+        )
+
+    def test_refresh_statistics_creates_them(self, tmp_db):
+        self._seed()
+        with db._conn() as conn:
+            conn.execute("DROP TABLE IF EXISTS sqlite_stat1")
+        db.refresh_statistics()
+        with db._conn() as conn:
+            assert conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table'"
+                " AND name='sqlite_stat1'").fetchone()
+
+    def test_refresh_statistics_never_raises(self, tmp_db, monkeypatch):
+        """Statistics are an optimisation; a failure must never break a
+        refresh or a startup."""
+        def boom(*_a, **_k):
+            raise sqlite3.OperationalError("disk I/O error")
+
+        monkeypatch.setattr(db, "_conn", boom)
+        db.refresh_statistics()  # must not raise
+
+    def test_score_sorted_default_still_sorts_and_that_is_expected(self, tmp_db):
+        """Pins the documented limitation so a later reader does not 'fix' it
+        or claim it was fixed. The default ORDER BY leads with match_score, so
+        the date index cannot serve it — by design, not by omission."""
+        self._seed()
+        plans = self._captured_plans(window="all", sort="score", limit=100)
+        joined = " | ".join(line for plan in plans for line in plan)
+        assert "TEMP B-TREE" in joined.upper(), joined
+
+    def test_date_ordering_is_still_correct(self, tmp_db):
+        """An index that reorders the feed would be worse than a slow feed."""
+        self._seed()
+        jobs, _ = db.query_jobs(window="all", sort="date", limit=100)
+        dates = [j.get("posted_date") or j.get("first_seen") for j in jobs]
+        assert dates == sorted(dates, reverse=True)
+
+    def test_posted_date_falls_back_to_first_seen(self, tmp_db):
+        """The constitution's recency rule: a job with no source posted date
+        orders by first_seen. The expression index must preserve that, which
+        is exactly why it indexes COALESCE and not posted_date alone."""
+        # distinct titles: identical title+company share a dedup_key and would
+        # collapse into a single job, leaving nothing to order
+        db.upsert_job(make_job(url="https://boards.greenhouse.io/acme/jobs/old",
+                               title="Firmware Engineer I",
+                               posted_date=iso_days_ago(20)))
+        db.upsert_job(make_job(url="https://boards.greenhouse.io/acme/jobs/nodate",
+                               title="Hardware Engineer I",
+                               posted_date=None))
+        jobs, _ = db.query_jobs(window="all", sort="date", limit=10)
+        urls = [j["url"] for j in jobs]
+        # the dateless job first_seen=now, so it outranks the 20-day-old one
+        assert urls.index("https://boards.greenhouse.io/acme/jobs/nodate") < \
+            urls.index("https://boards.greenhouse.io/acme/jobs/old")

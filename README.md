@@ -42,13 +42,14 @@ entirely on your machine for $0.
   feed entirely** (an Ineligible view lets you audit them with the exact
   trigger phrase).
 - **Resume matching that always works, three tiers deep**: a deterministic
-  keyword matcher scores instantly with zero setup (`~NN`); the bundled
-  offline AI model upgrades that automatically the moment you have a resume
-  on file — still zero setup, fully offline (`•NN`); pasting a free Groq key
-  (or any OpenAI-compatible endpoint) upgrades everything again to full cloud
-  analysis with matching/missing skills and "add X to your resume" actions.
-  Each tier's scores are visually distinct and auto-upgrade in place — you
-  never lose anything by adding a key later.
+  keyword matcher scores **every eligible job instantly**, with zero setup
+  (`~NN`); the bundled offline AI model then upgrades the best matches in the
+  background — still zero setup, fully offline (`•NN`); pasting a free Groq
+  key (or any OpenAI-compatible endpoint) upgrades everything again to full
+  cloud analysis with matching/missing skills and "add X to your resume"
+  actions. Each tier's scores are visually distinct and auto-upgrade in
+  place — you never lose anything by adding a key later, and no job is ever
+  left unranked because the AI was slow, busy, or unavailable.
 - **Apply fast, apply well**: desktop notifications when a refresh finds new
   70+ matches, a "New today" view of everything just discovered, and one-click
   **tailored resume bullets + cover letter** per job (generated from your real

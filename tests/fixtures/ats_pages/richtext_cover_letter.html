@@ -1,0 +1,55 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Rich-text cover letter</title></head>
+<body>
+<h1>Apply — Greenhouse-style rich-text editor</h1>
+<!-- 020 R5 fixture: the cover letter is a contenteditable div, not a
+     textarea. Before 020 the scanner selector covered input/select/textarea
+     and ARIA combobox shapes only, so this box was not merely unfilled — it
+     was never SEEN. Not counted, not flagged, no reason shown. That silent
+     gap is the failure mode 018 and 019 were both spent eliminating.
+
+     It carries none of the affordances a native control has:
+       * no .value      -> the answer must be read from innerText
+       * no .labels     -> the question arrives only via aria-labelledby
+       * no .name       -> classification must fall back to automation_id/id
+     and it ignores a silent DOM write: only a real input event sticks. -->
+<form id="form">
+  <label for="rt_first">First Name</label>
+  <input id="rt_first" name="first_name" type="text">
+
+  <label for="rt_email">Email</label>
+  <input id="rt_email" name="email" type="email">
+
+  <span id="q-cover">Cover Letter</span>
+  <div id="cover-editor"
+       contenteditable="true"
+       role="textbox"
+       aria-labelledby="q-cover"
+       aria-required="true"
+       data-automation-id="coverLetter"
+       data-echo-name="cover_letter"
+       style="min-height:120px;border:1px solid #ccc;padding:8px"></div>
+
+  <button type="submit" id="submit">Submit application</button>
+</form>
+<script src="/_mirror.js"></script>
+<script>
+  // A React/ProseMirror-style editor: it keeps its own model and only trusts
+  // real input events. A test that set textContent directly would "pass"
+  // while a real ATS discarded the text on the next render.
+  (function () {
+    var el = document.getElementById('cover-editor');
+    var model = { text: '' };
+    el.addEventListener('input', function () { model.text = el.innerText; });
+    el.addEventListener('blur', function () {
+      // re-render from the model — a silent DOM write is erased here
+      if (el.innerText !== model.text) { el.innerText = model.text; }
+    });
+    window.__coverModel = model;
+
+    document.getElementById('submit').addEventListener('click', function (e) {
+      e.preventDefault();
+      window.__submitted = true;
+    });
+  })();
+</script>
+</body></html>

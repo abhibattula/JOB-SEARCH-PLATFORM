@@ -482,3 +482,66 @@ class TestPlaceholderChoiceIsUnanswered019:
         assert field_core.is_placeholder_value("-- Please Select --") is True
         assert field_core.is_placeholder_value("United States") is False
         assert field_core.is_placeholder_value("") is True
+
+
+class TestRichText020:
+    """020 US4 (guarantees D1-D3): a rich-text editor decides like a textarea.
+
+    Everything that made these fields invisible was upstream — the selector.
+    Once they arrive as descriptors, the decision path must treat them as the
+    long free-text answers they are, with no new special cases in the honesty
+    rules (the v1.7.0 refusal contract is untouched).
+    """
+
+    def rich(self, **overrides):
+        base = {
+            "tag": "div", "type": "richtext", "widget": "richtext",
+            "name": "", "id": "cover-editor",
+            "label_text": "Cover Letter", "value": "",
+            "automation_id": "coverLetter",
+        }
+        base.update(overrides)
+        return make_descriptor(**base)
+
+    def test_it_fills_as_text_not_as_a_choice(self):
+        """D1: a rich-text box has no options, so it must never be routed to
+        the select/combobox path."""
+        d = decide(self.rich(), value="Dear hiring manager…")
+        assert d.action == "fill"
+        assert d.kind == "richtext"
+        assert d.value == "Dear hiring manager…"
+
+    def test_an_already_answered_editor_is_left_alone(self):
+        """The applicant's own words always win."""
+        d = decide(self.rich(value="I already wrote this myself."))
+        assert d.action in ("settle", "skip")
+
+    def test_a_focused_editor_is_never_written_over(self):
+        d = decide(self.rich(focused=True))
+        assert d.action != "fill"
+
+    def test_it_classifies_as_a_cover_letter_without_a_name(self):
+        """D3: an editable div has no .name, so classification has to work
+        from the label and automation id alone."""
+        from engine.autofill import fields
+
+        tag = fields.classify(self.rich(label_text="Cover Letter", name=""))
+        assert tag == "cover_letter"
+
+    def test_an_unclassifiable_editor_stays_free_text_not_a_wrong_tag(self):
+        """A missing .name must never be an excuse to guess."""
+        from engine.autofill import fields
+
+        tag = fields.classify(
+            self.rich(label_text="Anything else we should know?",
+                      name="", automation_id=""))
+        assert tag == "free_text_unknown"
+
+    def test_a_secret_never_travels_as_rich_text(self):
+        """W4: kind 'secret' and 'richtext' are mutually exclusive. A
+        credential rendered into a contenteditable would also land in the
+        on-page answer feed."""
+        d = decide(self.rich(label_text="Password", name="password",
+                             type="richtext"),
+                   value="hunter2")
+        assert d.kind != "richtext" or not d.secret

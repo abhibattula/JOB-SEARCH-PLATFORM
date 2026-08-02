@@ -1,0 +1,53 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Lever-style rich text</title></head>
+<body>
+<h1>Apply — Lever-style editor with a rendered placeholder</h1>
+<!-- 020 R5 fixture, second shape. Differences from richtext_cover_letter:
+       * the question comes from a WRAPPING label, not aria-labelledby
+       * the editor renders its own placeholder as a CHILD element, so a
+         naive innerText read sees "Tell us why…" and concludes the field is
+         already answered (the 019 placeholder-value trap, in a new place)
+       * one editor is readonly and must be skipped, not written -->
+<form id="form">
+  <label>
+    Full name
+    <input name="name" type="text">
+  </label>
+
+  <label>
+    Why do you want to work here?
+    <div class="lever-richtext"
+         contenteditable="true"
+         id="why-editor"
+         data-qa="why-editor"
+         data-echo-name="why_editor">
+      <span class="placeholder" data-placeholder="true">Tell us why…</span>
+    </div>
+  </label>
+
+  <label>
+    Reference (provided by your recruiter)
+    <div contenteditable="false" aria-readonly="true" id="locked-note">
+      Filled in by Lever — not editable
+    </div>
+  </label>
+
+  <button type="submit" id="submit">Submit application</button>
+</form>
+<script src="/_mirror.js"></script>
+<script>
+  (function () {
+    var el = document.getElementById('why-editor');
+    var ph = el.querySelector('.placeholder');
+    el.addEventListener('input', function () {
+      // real editors drop their placeholder node on first real input
+      if (ph && ph.parentNode && el.innerText.replace(ph.textContent, '').trim()) {
+        ph.parentNode.removeChild(ph);
+      }
+    });
+    document.getElementById('submit').addEventListener('click', function (e) {
+      e.preventDefault();
+      window.__submitted = true;
+    });
+  })();
+</script>
+</body></html>

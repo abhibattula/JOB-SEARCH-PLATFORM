@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import logging
 import os
 import re
 import sqlite3
@@ -16,6 +17,8 @@ from contextlib import contextmanager
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any, Iterator, Mapping
+
+log = logging.getLogger(__name__)
 
 COOLDOWN_MINUTES = 30
 STALE_RUN_MINUTES = 30
@@ -59,6 +62,17 @@ CREATE INDEX IF NOT EXISTS idx_jobs_posted ON jobs(posted_date);
 CREATE INDEX IF NOT EXISTS idx_jobs_status ON jobs(status);
 CREATE INDEX IF NOT EXISTS idx_jobs_entry ON jobs(is_entry_level, sponsorship);
 CREATE INDEX IF NOT EXISTS idx_jobs_dedup ON jobs(dedup_key);
+-- 020 (FR-022): the feed's date ordering is an EXPRESSION — posted_date with
+-- first_seen as the fallback the constitution's recency rule requires — so no
+-- plain column index can serve it and SQLite sorted every matching row.
+-- Worth 2.1x on the widest listing (all jobs, all levels, date order:
+-- 329ms -> 153ms on the real 22k-row database) and neutral elsewhere.
+-- It deliberately does NOT help the DEFAULT score-sorted view, whose ORDER BY
+-- leads with match_score; that view measured 22ms and was never slow. The
+-- first version of this change claimed otherwise from a query the app never
+-- runs — see specs/020-every-job-ranked/research.md R7.
+CREATE INDEX IF NOT EXISTS idx_jobs_sort_date
+    ON jobs(COALESCE(posted_date, first_seen) DESC);
 
 CREATE TABLE IF NOT EXISTS user_profile (
     id INTEGER PRIMARY KEY,
@@ -415,6 +429,44 @@ def init_db() -> None:
             if backup is not None:
                 _restore_db(path, backup)
             raise
+        _ensure_statistics()
+
+
+def refresh_statistics() -> None:
+    """020 (FR-022): recompute the query planner's table statistics.
+
+    idx_jobs_sort_date is INERT without this. Measured on the real 22k-row
+    database: with the index but no statistics the planner still picks
+    idx_jobs_status and sorts every row (316 ms); after ANALYZE it scans the
+    new index and the sort disappears (159 ms). `PRAGMA optimize` is NOT a
+    substitute — it was measured at 14 ms and left the plan unchanged, because
+    it declines to analyze when it judges the existing stats good enough.
+
+    ANALYZE itself costs ~31 ms over 22k rows, so this is called after a
+    refresh (where it is noise) rather than per request.
+    """
+    try:
+        with _conn() as conn:
+            conn.execute("ANALYZE")
+    except Exception:  # noqa: BLE001 — statistics are an optimisation only
+        log.warning("could not refresh query statistics", exc_info=True)
+
+
+def _ensure_statistics() -> None:
+    """One-time bootstrap so the index pays off immediately after an upgrade
+    rather than only after the next refresh — an existing database has never
+    been ANALYZEd and would otherwise ignore the new index until then."""
+    try:
+        with _conn() as conn:
+            exists = conn.execute(
+                "SELECT 1 FROM sqlite_master WHERE type='table'"
+                " AND name='sqlite_stat1'"
+            ).fetchone()
+        if exists:
+            return
+    except Exception:  # noqa: BLE001
+        return
+    refresh_statistics()
 
 
 def normalize_company(name: str) -> str:
@@ -844,6 +896,26 @@ def set_match(job_id: int, score: float | None, match_json: str | None) -> None:
         conn.execute(
             "UPDATE jobs SET match_score = ?, match_json = ? WHERE id = ?",
             (score, match_json, job_id),
+        )
+
+
+def set_matches(rows: list[tuple[int, float | None, str | None]]) -> None:
+    """020: write many scores in ONE transaction.
+
+    Ranking assigns a score to every eligible job in the backlog, and
+    set_match opens a connection and commits per call — 627 separate WAL
+    commits measured at 11.5 s, of which the keyword matcher itself was a
+    fraction (0.0044 s a job standalone). Batching keeps ranking a rounding
+    error inside the refresh instead of most of its budget.
+
+    Same statement and same semantics as set_match, one row at a time.
+    """
+    if not rows:
+        return
+    with _conn() as conn:
+        conn.executemany(
+            "UPDATE jobs SET match_score = ?, match_json = ? WHERE id = ?",
+            [(score, payload, job_id) for job_id, score, payload in rows],
         )
 
 

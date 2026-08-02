@@ -186,3 +186,36 @@ class TestFieldsetHash:
 class TestReadyForReview:
     def test_the_door_has_its_own_state(self):
         assert escort.Escort().note_ready() == escort.STATE_READY
+
+
+class TestRichTextPending020:
+    """020 (FR-019, guarantee D2): an empty required rich-text cover letter
+    holds the escort exactly as an empty required textarea does.
+
+    Before 020 these boxes were invisible to the scan entirely, so the escort
+    would have advanced straight past an unanswered cover letter — the worst
+    possible version of the bug, because the applicant would never see the
+    field that was skipped.
+    """
+
+    def test_an_empty_required_rich_text_box_blocks_the_advance(self):
+        d = escort.Escort().should_advance(step(visible_required_pending=1))
+        assert d.advance is False
+        assert d.state in ("escorting", "needs_login", "your_turn_captcha",
+                           "ready_for_review", "paused_cap")
+
+    def test_the_step_advances_once_it_is_answered(self):
+        d = escort.Escort().should_advance(step(visible_required_pending=0))
+        assert d.advance is True
+
+    def test_a_rich_text_field_counts_in_the_fieldset_hash(self):
+        """The hash keys the one-shot bookkeeping. A cover-letter box that did
+        not contribute to it would let the same step be advanced twice."""
+        without = escort.fieldset_hash([
+            {"je_idx": "1", "name": "first_name", "visible": True},
+        ])
+        with_rich = escort.fieldset_hash([
+            {"je_idx": "1", "name": "first_name", "visible": True},
+            {"je_idx": "2", "name": "", "type": "richtext", "visible": True},
+        ])
+        assert without != with_rich

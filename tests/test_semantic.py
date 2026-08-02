@@ -41,10 +41,21 @@ class TestOrdering:
 
 
 class TestPipelineIntegration:
-    def test_new_jobs_get_embeddings_and_scoring_goes_top_down(
+    """020 RELOCATION: embedding moved out of the refresh and into the
+    background AI assessment pass (engine/upgrade.py).
+
+    008 put embedding in the scoring stage because that stage chose which jobs
+    to spend the AI quota on. In 020 that choice belongs to the assessment
+    pass, and embedding costs 0.60 s a job with a 300-job cap — three minutes
+    of inference that has no business inside a refresh which now promises to
+    finish in seconds. The BEHAVIOUR asserted here is unchanged; only its
+    owner moved, so these tests now drive upgrade.run_once().
+    """
+
+    def test_new_jobs_get_embeddings_and_assessment_goes_top_down(
         self, tmp_db, monkeypatch
     ):
-        from engine import pipeline
+        from engine import matcher, upgrade
 
         db.save_profile(resume_text="fpga verification resume", skills=["fpga"])
         db.upsert_job(make_job(url="https://x/match", title="FPGA Engineer"))
@@ -55,48 +66,69 @@ class TestPipelineIntegration:
         def fake_embed(text):
             return [1.0, 0.0] if "fpga" in text.lower() else [0.0, 1.0]
 
-        # force the basic tier: a dev machine's models/ gguf would otherwise
-        # run REAL local inference here
-        from engine import matcher
-
+        # a local tier must EXIST for a pass to happen at all, but no real
+        # model may be touched — the assessor is stubbed below
         monkeypatch.delenv("LLM_API_KEY", raising=False)
-        monkeypatch.setattr(matcher.local_llm, "available", lambda: False)
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: True)
         monkeypatch.setattr(semantic, "available", lambda: True)
         monkeypatch.setattr(semantic, "embed", fake_embed)
-        scored_order = []
-        from engine import basic_match
 
-        real_score = basic_match.score  # capture BEFORE patching
+        assessed_order = []
 
-        def fake_score(resume_text, title, description, extra_skills=None):
-            scored_order.append(title)
-            return real_score(resume_text, title, description, extra_skills=extra_skills)
+        def fake_analyze(_resume, title, _company, _description):
+            assessed_order.append(title)
+            return matcher.MatchAnalysis(match_score=70, reasoning="assessed")
 
-        monkeypatch.setattr(basic_match, "score", fake_score)
-        pipeline._score_new_jobs()
+        monkeypatch.setattr(matcher, "analyze_match", fake_analyze)
+        upgrade.run_once(limit=2)
 
         with db._conn() as conn:
             rows = conn.execute(
                 "SELECT title, embedding FROM jobs ORDER BY id"
             ).fetchall()
         assert all(row["embedding"] is not None for row in rows)
-        assert scored_order[0] == "FPGA Engineer"  # top-ranked scored first
+        assert assessed_order[0] == "FPGA Engineer"  # top-ranked assessed first
         profile = db.get_profile()
         assert profile["resume_embedding"] is not None
 
     def test_missing_model_degrades_silently(self, tmp_db, monkeypatch):
-        from engine import pipeline
+        """Unchanged guarantee: no embedding model means the incoming order,
+        never a crash — and the jobs still carry scores, which after 020 the
+        REFRESH already guaranteed before any pass runs."""
+        from engine import matcher, pipeline, upgrade
 
         db.save_profile(resume_text="some resume")
         db.upsert_job(make_job(url="https://x/1", title="Role"))
         with db._conn() as conn:
             conn.execute("UPDATE jobs SET is_entry_level = 1")
         monkeypatch.setattr(semantic, "available", lambda: False)
-        from engine import matcher
-
         monkeypatch.delenv("LLM_API_KEY", raising=False)
-        monkeypatch.setattr(matcher.local_llm, "available", lambda: False)
-        pipeline._score_new_jobs()  # must not raise; jobs still get scored
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: True)
+        monkeypatch.setattr(matcher, "analyze_match", lambda *a:
+                            matcher.MatchAnalysis(match_score=70, reasoning="a"))
+
+        pipeline._rank_new_jobs()
+        upgrade.run_once(limit=5)  # must not raise
+
+        jobs, _ = db.query_jobs(window=None, statuses=None, entry_level=None)
+        assert jobs[0]["match_score"] is not None
+
+    def test_the_refresh_itself_never_embeds(self, tmp_db, monkeypatch):
+        """The relocation, pinned. Embedding inside the run would put three
+        minutes of inference back into a refresh that promises seconds."""
+        from engine import pipeline
+
+        db.save_profile(resume_text="fpga resume")
+        db.upsert_job(make_job(url="https://x/1", title="Role"))
+        with db._conn() as conn:
+            conn.execute("UPDATE jobs SET is_entry_level = 1")
+
+        monkeypatch.setattr(semantic, "available", lambda: True)
+        monkeypatch.setattr(semantic, "embed", lambda text: (
+            _ for _ in ()).throw(AssertionError("the refresh must not embed")))
+
+        pipeline._rank_new_jobs()
+
         jobs, _ = db.query_jobs(window=None, statuses=None, entry_level=None)
         assert jobs[0]["match_score"] is not None
 

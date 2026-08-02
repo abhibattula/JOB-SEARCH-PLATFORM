@@ -455,3 +455,106 @@ class TestGreenhouseNavigateApply019:
         time.sleep(3.0)  # give a wrong click every chance to happen
         assert not any(e.get("name") == "__gh_submitted"
                        for e in _Handler.echoes)
+
+
+class TestRichText020:
+    """020 US4: the COMPANION's rich-text write path, in a real browser.
+
+    The Playwright suite covers the fallback path (Playwright's own fill()
+    handles contenteditable). This covers the one that actually ships: the
+    filler.js branch, which has to select the region, insert text, and
+    dispatch a real input event — because React/ProseMirror/Quill discard a
+    silent DOM mutation on their next render, which would lose the
+    applicant's cover letter somewhere between filling and submitting.
+    """
+
+    def test_the_cover_letter_editor_is_written_by_the_companion(
+            self, context, app_server, fixture_server):
+        from engine.autofill import answer_bank
+
+        assert _wait_connected(app_server["port"])
+        answer_bank.save("Cover Letter",
+                         "I build embedded systems and want to do it here.")
+        _seed_and_queue_full(fixture_server, "richtext_cover_letter.html")
+
+        # ordinary fields first — proves the page is being filled at all
+        got = _echoed("first_name")
+        if got is None:
+            from engine.autofill import browser_controller as _bc
+            from engine import db as _db
+            from engine.autofill import ext_backend as _eb
+            print("DIAG echoes:", _Handler.echoes)
+            print("DIAG activity:", _bc.queue_snapshot().get("activity"))
+            print("DIAG counters:", _eb.counters())
+            print("DIAG watch:", _eb._watch)
+            print("DIAG jobs:", [(j["id"], j["url"])
+                                 for j in _db.list_all_jobs_minimal()])
+        assert got == "Abhinav"
+        landed = _echoed("cover_letter", timeout=20)
+        assert landed, (
+            "the rich-text cover letter never received a value. Before 020 "
+            "this element matched no selector at all, so it was not filled, "
+            "not counted and not flagged.")
+        assert "embedded systems" in landed
+
+    def test_the_write_arrives_as_a_real_input_event(
+            self, context, app_server, fixture_server):
+        """The echo mirror only fires on input/change. An echo existing at
+        all is the proof that a real event reached the editor — a silent
+        textContent write produces none, and a real ATS would discard it."""
+        from engine.autofill import answer_bank
+
+        answer_bank.save("Cover Letter", "Real input event please.")
+        assert _wait_connected(app_server["port"])
+        _seed_and_queue_full(fixture_server, "richtext_cover_letter.html")
+
+        assert _echoed("cover_letter", timeout=20) is not None
+
+    def test_a_readonly_editor_is_never_written(self, context, app_server,
+                                                fixture_server):
+        from engine.autofill import answer_bank
+
+        answer_bank.save("Why do you want to work here?",
+                         "Because of the hardware team.")
+        assert _wait_connected(app_server["port"])
+        _seed_and_queue_full(fixture_server, "lever_richtext.html")
+
+        assert _echoed("name") == "Abhinav Battula" or _echoed("name")
+        time.sleep(2.0)
+        assert not any(e.get("name") == "locked_note"
+                       for e in _Handler.echoes)
+
+    def test_the_submit_button_is_still_never_clicked(
+            self, context, app_server, fixture_server):
+        """FR-024: a new write path must not become a new click path."""
+        from engine.autofill import answer_bank
+
+        answer_bank.save("Cover Letter", "Anything.")
+        assert _wait_connected(app_server["port"])
+        _seed_and_queue_full(fixture_server, "richtext_cover_letter.html")
+        assert _echoed("first_name") == "Abhinav"
+        time.sleep(3.0)
+        assert not any(e.get("name") == "__submitted"
+                       for e in _Handler.echoes)
+
+
+class TestIdleBackoff020:
+    """020 US5 (FR-021): the backoff must not cost detection.
+
+    The optimisation is only acceptable if a form appearing on a page that
+    has gone quiet is still found promptly. That is the one regression
+    slowing the poll can cause, so it gets a real browser test rather than a
+    source-string assertion.
+    """
+
+    def test_a_form_mounting_after_the_poll_slows_is_still_filled(
+            self, context, app_server, fixture_server):
+        assert _wait_connected(app_server["port"])
+        _seed_and_queue_full(fixture_server, "late_form_after_idle.html")
+
+        # the form does not exist for the first 9 s — well past the point the
+        # discovery poll has widened — and must still fill once it appears
+        assert _echoed("lf_first", timeout=30) == "Abhinav", (
+            "the form was never filled after the poll backed off — the "
+            "MutationObserver waker is not doing its job")
+        assert _echoed("lf_email", timeout=15) == "abhi@example.com"

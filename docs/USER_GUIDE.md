@@ -46,9 +46,21 @@ This is the daily-use manual. For first-time setup, follow
 - **Match** — 0–100 resume fit, sorted best-first by default. `~62` (tilde) is
   the built-in **basic keyword match**; `•71` (dot) is the **bundled offline
   AI model** — both work with zero setup and upgrade automatically to a full
-  cloud score once you add a key. `—` means not scored yet (no resume
-  uploaded, or the model output failed validation — the job stays visible
-  either way).
+  cloud score once you add a key.
+
+  Since v2.0.0 **every eligible job gets a `~` score in the refresh that finds
+  it**, so the Match filter never silently hides jobs the AI has not reached
+  yet. The AI assessment then runs in the background, best matches first, and
+  upgrades jobs from `~` to `•` in place — you can watch it on the channel
+  strip as *AI-scoring n/40*. It takes about a minute a job on a laptop CPU,
+  and it stands down entirely while you are filling in an application.
+
+  A `~` score is a fast approximation, not a judgement — that is exactly what
+  the marker is there to tell you.
+
+  `—` now means only "not eligible or not yet ingested". A failed AI
+  assessment no longer leaves a job unscored: it keeps its `~` score and stays
+  in the queue for a later pass.
 
 ## Filters and views
 

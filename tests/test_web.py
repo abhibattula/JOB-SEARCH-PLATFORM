@@ -1,3 +1,4 @@
+import re
 import pytest
 
 """013/014: web-layer presentation helpers + app lifecycle."""
@@ -443,3 +444,133 @@ class TestJobDetailStartsInPlace018:
         assert 'id="assist-status"' in html
         assert "/api/autofill/apply/" in html
         assert "Switch to your browser" in html
+
+
+class TestFeedScoreKind020:
+    """020 (FR-003, guarantee P1): the feed must show whether a score is a
+    quick keyword match or a full AI assessment.
+
+    This rendering existed before 020 (partials/feed_table.html) but had no
+    test. It becomes load-bearing here: after this release MOST scores are
+    keyword-derived, so presenting one the way an AI judgement is presented
+    would be a quiet overclaim — and it is the reason ranking everything with
+    the keyword matcher is acceptable at all.
+    """
+
+    @staticmethod
+    def _seed_one(url, title, score, method):
+        import json
+
+        from engine import db
+
+        db.upsert_job({
+            "title": title, "company": f"Co {title}", "url": url,
+            "source": "greenhouse", "location": "Remote", "is_remote": True,
+            "description": "python c++", "posted_date": "2026-07-30",
+        })
+        with db._conn() as conn:
+            conn.execute("UPDATE jobs SET is_entry_level = 1,"
+                         " sponsorship = 'UNKNOWN', delisted = 0"
+                         " WHERE url = ?", (url,))
+            row = conn.execute("SELECT id FROM jobs WHERE url = ?",
+                               (url,)).fetchone()
+        db.set_match(row["id"], score,
+                     json.dumps({"match_score": score, "reasoning": "r",
+                                 "method": method}))
+        return row["id"]
+
+    @staticmethod
+    def _score_cells(html: str) -> list[str]:
+        """The rendered contents of every score cell, in order."""
+        import re
+
+        return [re.sub(r"<[^>]+>", "", cell).strip() for cell in
+                re.findall(r'<td class="data score"[^>]*>(.*?)</td>', html,
+                           re.S)]
+
+    def test_quick_and_ai_scores_are_visually_distinguishable(self, tmp_db):
+        from fastapi.testclient import TestClient
+
+        from web.main import create_app
+
+        self._seed_one("https://x.example/quick", "Engineer Quick", 61.0,
+                       "basic")
+        self._seed_one("https://x.example/assessed", "Engineer Assessed", 61.0,
+                       "local")
+
+        html = TestClient(create_app()).get("/?window=all").text
+        cells = self._score_cells(html)
+
+        assert len(cells) == 2, cells
+        # identical numbers, so any difference must come from the tier marker
+        assert cells[0] != cells[1], cells
+        assert {"~61", "•61"} == set(cells), cells
+
+    def test_the_marker_explains_itself_on_hover(self, tmp_db):
+        """A bare glyph is not an explanation — the cell has to say what it
+        means, or the distinction is decorative."""
+        from fastapi.testclient import TestClient
+
+        from web.main import create_app
+
+        self._seed_one("https://x.example/quick", "Engineer Quick", 61.0,
+                       "basic")
+        html = TestClient(create_app()).get("/?window=all").text
+
+        cell = re.search(r'<td class="data score"[^>]*>', html).group(0)
+        assert "title=" in cell
+        assert "keyword" in cell.lower()
+
+    def test_an_unscored_job_shows_a_dash_not_a_zero(self, tmp_db):
+        """Pre-020 behaviour that must survive: after this release an eligible
+        job should never be unscored, but an INELIGIBLE one still can be, and
+        it must not read as a score of 0."""
+        from fastapi.testclient import TestClient
+
+        from engine import db
+        from web.main import create_app
+
+        db.upsert_job({
+            "title": "Engineer Unscored", "company": "Co",
+            "url": "https://x.example/none", "source": "greenhouse",
+            "location": "Remote", "is_remote": True, "description": "d",
+            "posted_date": "2026-07-30",
+        })
+        with db._conn() as conn:
+            conn.execute("UPDATE jobs SET is_entry_level = 1,"
+                         " sponsorship = 'UNKNOWN', delisted = 0")
+
+        html = TestClient(create_app()).get("/?window=all").text
+        cells = self._score_cells(html)
+        assert cells, "the job did not reach the feed at all"
+        assert "—" in cells[0], cells
+
+
+def test_startup_does_not_start_an_assessment_pass_020(monkeypatch, tmp_db):
+    """020: the assessment pass is started by the REFRESH, never by startup.
+
+    A startup trigger was tried and removed. It made the frozen app fail
+    desktop.py's `wait_until_ready` — the packaged smoke reproduced it three
+    times and passed three times with the pass suppressed. Startup is the one
+    moment the app cannot afford extra contention, and nothing is lost: the
+    feed posts /api/refresh on every load, so the next refresh outside the
+    cooldown starts a pass.
+
+    Pinned so it does not get "helpfully" re-added.
+    """
+    from fastapi.testclient import TestClient
+
+    from engine import upgrade
+    from web import main as webmain
+
+    started = []
+    monkeypatch.setattr(upgrade, "start",
+                        lambda reason="refresh": started.append(reason))
+    monkeypatch.setattr(webmain, "_bootstrap_sponsorship", lambda: None)
+    from engine import updates
+    monkeypatch.setattr(updates, "startup_check", lambda: None)
+
+    with TestClient(webmain.create_app()):
+        pass
+
+    assert started == [], f"startup started an assessment pass: {started}"

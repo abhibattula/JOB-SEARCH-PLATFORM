@@ -375,6 +375,13 @@ def decide(ats: str | None, descriptor: dict, handled: dict, get_value) -> Decis
     # feed like any other answer.
     secret = tag in ("login_password", "signup_password")
     is_draft = isinstance(value, Draft)
-    return Decision("fill", tag=tag, kind="text", value=str(value),
+    # 020 (D1, W4): a rich-text editor takes the same answer as a textarea but
+    # a different write path — it has no .value and ignores a silent DOM
+    # mutation. A secret is never routed here: it would be typed into a
+    # contenteditable AND rendered in the on-page answer feed.
+    kind = "richtext" if (
+        (descriptor.get("type") or "") == "richtext" and not secret
+    ) else "text"
+    return Decision("fill", tag=tag, kind=kind, value=str(value),
                     preview="•••" if secret else str(value), secret=secret,
                     ai_draft=is_draft)

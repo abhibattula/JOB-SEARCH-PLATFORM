@@ -79,6 +79,14 @@
         <input type="checkbox" name="alerts_enabled" value="1" {{ 'checked' if settings.alerts_enabled }}>
         Desktop notification when a refresh finds new 70+ matches
       </label>
+      <label title="Every job gets a quick keyword score during the refresh (shown as ~). Afterwards, in the background, the best candidates are upgraded to a full AI assessment (shown as •). Each assessment takes about a minute on a laptop CPU, so this is how much background work one pass does.">
+        Jobs given a full AI assessment per background pass
+        <input type="number" name="max_score_per_run" min="0" max="500"
+               value="{{ settings.max_score_per_run }}">
+        <span class="muted">Every job is scored during the refresh regardless
+          — this is only how many get the slower, fuller AI assessment
+          afterwards. 0 turns AI assessment off.</span>
+      </label>
       <label class="check" title="Fully private and $0 — all AI features (matching, tailoring, resume import) run on the bundled model; your cloud key automatically takes over if the local model ever fails.">
         <input type="hidden" name="prefer_local_llm" value="0">
         <input type="checkbox" name="prefer_local_llm" value="1" {{ 'checked' if settings.prefer_local_llm }}>

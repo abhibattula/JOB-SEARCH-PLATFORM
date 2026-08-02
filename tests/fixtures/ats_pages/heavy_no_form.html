@@ -1,0 +1,33 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>Heavy page, no application form</title></head>
+<body>
+<h1>A big ordinary page</h1>
+<!-- 020 R6 fixture: an ordinary content-heavy page with NO application form
+     — a news site, a docs page, anything the applicant browses all day. The
+     companion inspects every frame of every page on a fixed interval
+     forever, and each tick walks the entire DOM hunting shadow roots and
+     forces layout per candidate. This page exists to MEASURE that cost
+     before any optimisation, per research R6. -->
+<div id="bulk"></div>
+<script>
+  // ~4000 elements, a realistic content page, plus a search box (the one
+  // input a page like this legitimately has — it must never look like an
+  // application form).
+  (function () {
+    var bulk = document.getElementById('bulk');
+    var html = [];
+    for (var i = 0; i < 800; i++) {
+      html.push(
+        '<section class="card"><h2>Story ' + i + '</h2>' +
+        '<p>Body text for story ' + i + ' with some length to it.</p>' +
+        '<a href="#s' + i + '">read more</a>' +
+        '<span class="meta">tag-' + i + '</span></section>');
+    }
+    bulk.innerHTML = html.join('');
+    var search = document.createElement('input');
+    search.type = 'search';
+    search.name = 'q';
+    search.placeholder = 'Search stories';
+    document.body.insertBefore(search, bulk);
+  })();
+</script>
+</body></html>

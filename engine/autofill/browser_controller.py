@@ -489,6 +489,23 @@ def on_draft_complete(job_id: int) -> None:
         _dispatch("FORCE_TICK")
 
 
+def session_is_live() -> bool:
+    """020 (FR-013): is the applicant filling an application right now?
+
+    The background AI assessment pass (engine/upgrade.py) checks this before
+    every job and stands down completely while it is True. Assessment and
+    Apply Assist drafting share ONE serialized on-device inference worker with
+    no priority ordering, so yielding is the whole mechanism — and finishing
+    an application always outranks ranking one.
+
+    Reads `_state.running` itself rather than tracking a parallel flag, so it
+    cannot drift out of step with the real session. Takes `_lock` briefly and
+    calls nothing while holding it.
+    """
+    with _lock:
+        return bool(_state.running)
+
+
 # --- queue state machine (public facade) -------------------------------------
 
 

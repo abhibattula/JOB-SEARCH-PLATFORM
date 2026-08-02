@@ -1,6 +1,6 @@
 {# Progress strip: the logic-analyzer channel readout for the active/last run #}
-{% if run.run_id %}
-<div class="channels {{ 'live' if run.active }}" title="Per-source status for the {{ 'current' if run.active else 'last' }} refresh">
+{% if run.run_id or (assessment and assessment.running) %}
+<div class="channels {{ 'live' if run.active or (assessment and assessment.running) }}" title="Per-source status for the {{ 'current' if run.active else 'last' }} refresh">
   {% for name, info in run.sources.items() if not name.startswith('_') %}
   <span class="channel {{ info.state }}">
     <span class="glyph">{%- if info.state == 'done' -%}✓{%- elif info.state == 'failed' -%}✕{%- elif info.state == 'running' -%}▸{%- else -%}·{%- endif -%}</span>
@@ -8,6 +8,17 @@
   </span>
   {% endfor %}
   {% if run.active %}<span class="channel note">refreshing…</span>{% endif %}
+  {#- 020 (FR-011): the refresh now finishes in seconds and the slow AI
+      assessment continues behind it. Without this the app would look idle
+      while it was still working — the pre-020 failure mode inverted. -#}
+  {% if assessment and assessment.running %}
+  <span class="channel running" title="Every job already has a quick keyword score (~). These are the best candidates being upgraded to a full AI assessment (•), about a minute each. You can keep working.">
+    <span class="glyph">▸</span>
+    {%- if assessment.paused_for_session %} AI-scoring paused — you're applying
+    {%- else %} AI-scoring {{ assessment.done }}/{{ assessment.total }}
+    {%- endif -%}
+  </span>
+  {% endif %}
 </div>
 {% endif %}
 

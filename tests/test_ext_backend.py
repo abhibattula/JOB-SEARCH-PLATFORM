@@ -1582,3 +1582,75 @@ class TestNoClickHosts019:
                     "https://co.wd5.myworkdayjobs.com/en-US/careers",
                     "https://notlinkedin.com/jobs"):
             assert ext_backend._clickable_host(url) is True, url
+
+
+class TestRichTextItem020:
+    """020 (FR-017): a rich-text decision must leave the app as its OWN kind.
+
+    This is pinned because the gap it covers was invisible to every fast
+    test. field_core produced kind="richtext" correctly and filler.js wrote
+    it correctly — but _handle_fields had no branch for it, so the item went
+    out as kind="text" and the companion called a native <input> value setter
+    on a <div>, which throws. Every rich-text cover letter reported
+    needs_manual with both halves working. Only a real-browser run showed it.
+    """
+
+    def test_a_rich_text_decision_emits_a_rich_text_item(self, queue, sent,
+                                                         monkeypatch):
+        from engine.autofill import answer_bank
+
+        monkeypatch.setattr(answer_bank, "lookup",
+                            lambda q: {"answer": "Dear hiring manager,"})
+        open_the_tab(queue, sent)
+        sent.clear()
+        ext_backend.handle_message(fields_msg(descriptors=[
+            descriptor(je_idx="21", tag="div", type="richtext",
+                       widget="richtext", name="", id="cover-editor",
+                       label_text="Cover Letter"),
+        ]))
+        fill = next(m for m in sent if m["type"] == "fill")
+        item = next(i for i in fill["items"] if i["je_idx"] == "21")
+        assert item["kind"] == "richtext", (
+            "a rich-text field must not be sent as plain text — the "
+            "companion would call a native input setter on a div")
+        assert item["value"] == "Dear hiring manager,"
+
+    def test_the_protocol_accepts_the_rich_text_widget(self):
+        """An unknown widget value makes pydantic reject the WHOLE fields
+        message, so one unrecognised field silently stops the entire page
+        from filling. That happened while building this feature."""
+        import json
+
+        from engine.autofill import ext_protocol
+
+        msg = ext_protocol.parse_inbound(json.dumps({
+            "v": ext_protocol.PROTOCOL_V,
+            "type": "fields", "tab_id": 1, "frame_id": 0, "doc": "d",
+            "url": "https://boards.greenhouse.io/x/jobs/1",
+            "descriptors": [{
+                "je_idx": "1", "doc": "d", "tag": "div", "type": "richtext",
+                "widget": "richtext", "label_text": "Cover Letter",
+            }],
+        }))
+        assert msg.descriptors[0].widget == "richtext"
+
+    def test_an_unknown_widget_still_rejects_the_message(self):
+        """The counterpart: the Literal is a real guard, not decoration —
+        proving the mechanism that bit us is genuinely there, and that it
+        rejects the ENTIRE message rather than dropping one field."""
+        import json
+
+        import pytest as _pytest
+
+        from engine.autofill import ext_protocol
+
+        with _pytest.raises(ext_protocol.ProtocolError):
+            ext_protocol.parse_inbound(json.dumps({
+                "v": ext_protocol.PROTOCOL_V,
+                "type": "fields", "tab_id": 1, "frame_id": 0, "doc": "d",
+                "url": "https://boards.greenhouse.io/x/jobs/1",
+                "descriptors": [{
+                    "je_idx": "1", "doc": "d", "tag": "div",
+                    "widget": "not_a_real_widget",
+                }],
+            }))

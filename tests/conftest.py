@@ -59,3 +59,26 @@ def _isolated_profile_import_state(monkeypatch):
     # fixture depends on `monkeypatch` precisely for that ordering) — a
     # leaked drafting thread outliving its stubs would see the real model.
     drafter.reset_for_tests()
+
+
+@pytest.fixture(autouse=True)
+def _isolated_upgrade_state(monkeypatch):
+    """020: engine.upgrade keeps its assessment-pass state in module-level
+    globals (one background pass per app, by design, like browser_controller's
+    session). Two things have to be true in tests:
+
+    1. State resets around every test and a live pass is JOINED first — a pass
+       leaked from one test would keep assessing against the next test's
+       database, which no longer contains those job ids.
+    2. A refresh must not auto-start a pass. Assessment runs real inference at
+       ~67 s a job and the bundled GGUF models are present in a dev checkout,
+       so an unguarded auto-start turns any pipeline test into a multi-hour
+       hang. Tests that want a pass call upgrade.run_once(), which is explicit
+       and ignores this switch.
+    """
+    from engine import upgrade
+
+    monkeypatch.setenv("JOBS_DISABLE_UPGRADE", "1")
+    upgrade.reset_for_tests()
+    yield
+    upgrade.reset_for_tests()

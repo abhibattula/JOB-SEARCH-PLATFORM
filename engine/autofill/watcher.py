@@ -91,9 +91,24 @@ SERIALIZE_JS = r"""
   window.__jeNext = window.__jeNext || 1;
   // 011: widget classification + displayed-value read, kept byte-parallel
   // with the extension's content/scanner.js jeWidget/jeValue helpers.
+  function jeIsRichText(el) {
+    var editable = el.getAttribute && el.getAttribute('contenteditable');
+    var r = (el.getAttribute && el.getAttribute('role') || '').toLowerCase();
+    if (editable === 'false') { return false; }
+    if (editable === '' || editable === 'true') { return true; }
+    var t = el.tagName.toLowerCase();
+    return r === 'textbox' && t !== 'input' && t !== 'textarea';
+  }
+  function jeRichTextWritable(el) {
+    if ((el.getAttribute('aria-readonly') || '').toLowerCase() === 'true') {
+      return false;
+    }
+    return (el.getAttribute('contenteditable') || '').toLowerCase() !== 'false';
+  }
   function jeWidget(el) {
     var tag = el.tagName.toLowerCase();
     if (tag === 'select') return 'native_select';
+    if (jeIsRichText(el)) return 'richtext';
     var role = (el.getAttribute('role') || '').toLowerCase();
     var ac = (el.getAttribute('aria-autocomplete') || '').toLowerCase();
     var isInput = tag === 'input' || tag === 'textarea';
@@ -118,6 +133,17 @@ SERIALIZE_JS = r"""
   function jeValue(el, widget) {
     if (el.type === 'checkbox' || el.type === 'radio') {
       return el.checked ? 'on' : '';
+    }
+    if (widget === 'richtext') {
+      var ph = el.querySelector && el.querySelector('[data-placeholder]');
+      var text = (el.innerText || el.textContent || '').trim();
+      if (ph) {
+        var phText = (ph.innerText || ph.textContent || '').trim();
+        if (phText && text.indexOf(phText) === 0) {
+          text = text.slice(phText.length).trim();
+        }
+      }
+      return jeIsPlaceholder(text) ? '' : text;
     }
     if (widget === 'native_select') {
       if (!el.value) { return ''; }
@@ -244,7 +270,9 @@ SERIALIZE_JS = r"""
                   style.display === 'none')) { return false; }
     return true;
   }
-  const els = document.querySelectorAll(selector);
+  const els = Array.from(document.querySelectorAll(selector)).filter(el => {
+    return !jeIsRichText(el) || jeRichTextWritable(el);
+  });
   const pairs = Array.from(els).map(el => {
     if (!el.dataset.jeIdx) { el.dataset.jeIdx = String(window.__jeNext++); }
     const widget = jeWidget(el);
@@ -252,7 +280,7 @@ SERIALIZE_JS = r"""
       doc: window.__jeDoc,
       je_idx: el.dataset.jeIdx,
       tag: el.tagName.toLowerCase(),
-      type: el.type || '',
+      type: widget === 'richtext' ? 'richtext' : (el.type || ''),
       name: el.name || '',
       id: el.id || '',
       label_text: jeLabelText(el),

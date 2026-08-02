@@ -149,11 +149,18 @@ def _check_scraped_liveness(limit: int = LIVENESS_CHECKS_PER_RUN) -> int:
 
 
 def _post_ingest(run_id: int) -> None:
-    """Post-ingest stages: delisting, sponsorship matching, classification,
-    scoring, liveness, prune, then fresh-match alerts."""
+    """Post-ingest stages: delisting, classification, RANKING, liveness,
+    prune, then fresh-match alerts.
+
+    020: every stage here is now fast and deterministic, so the run reaches
+    db.finish_run() in seconds. The AI assessment that used to sit between
+    ranking and liveness — holding the run open for 2 h 47 m and delaying
+    these alerts by the same amount — moved to engine/upgrade.py, which starts
+    only AFTER the run is closed (see _execute).
+    """
     delist_missing(run_id)
     _classify_new_jobs()
-    _score_new_jobs()
+    _rank_new_jobs()
     try:
         _check_scraped_liveness()
     except Exception:
@@ -168,6 +175,11 @@ def _post_ingest(run_id: int) -> None:
         count = alerts.process(since=status["started_at"])
         if count:
             db.update_run_source(run_id, "_alerts", state="done", found=count)
+    # 020 (FR-022): row counts just changed, and idx_jobs_sort_date is inert
+    # without current statistics — the index alone left the query plan
+    # completely unchanged when measured. ~31 ms over 22k rows, which is noise
+    # next to a refresh.
+    db.refresh_statistics()
 
 
 def _classify_new_jobs() -> None:
@@ -193,73 +205,74 @@ def _analyze(resume_text: str, title: str, company: str, description: str):
     return matcher.analyze_match(resume_text, title, company, description)
 
 
-def _score_new_jobs() -> None:
-    """Score unscored entry-level jobs against the resume (FR-012).
+# 020: ranking reads candidates in chunks so a large backlog never loads the
+# whole jobs table into memory at once. Sized well above a typical refresh's
+# intake and far below the applicant's 937-job eligible pool.
+_RANK_BATCH = 500
 
-    Three-tier precedence (005): cloud LLM key > bundled local model > the
-    deterministic basic matcher. Cloud/local calls are throttled + capped
-    for the free tier; basic is unlimited (no external cost). Whichever tier
-    just became available also upgrades jobs scored by a lower tier
-    (db.jobs_needing_score's upgrade_methods). Failures leave jobs visible
-    and unscored.
+
+def _rank_new_jobs() -> None:
+    """020 (FR-001/FR-002): give EVERY eligible unscored job a score, now.
+
+    Uses ONLY engine/basic_match.py — no cloud call, no on-device inference,
+    no cap. Measured at 0.0044 s a job, so the applicant's entire 627-job
+    backlog ranks in under three seconds.
+
+    This replaces the pre-020 stage that picked ONE tier for the whole run and
+    scored a capped slice with it. When the bundled model was present that tier
+    was "local" at ~67 s a job, so a 150-job cap held the refresh open for
+    2 h 47 m — longer than db.STALE_RUN_MINUTES, which meant the next feed page
+    load declared the run crashed and started a second scoring loop beside it.
+    Neither ever finished. The applicant's database sat at 310 of 937 eligible
+    jobs scored (specs/020-every-job-ranked/baseline.txt).
+
+    Full AI assessment still happens — it just happens in engine/upgrade.py,
+    outside the run, best-first, and only for jobs worth spending a minute on.
+
+    Embedding deliberately does NOT happen here. It costs 0.6 s a job and
+    exists to ORDER the assessment pass, so it belongs to that pass; running
+    its 300-job cap inline would add three minutes to every refresh.
     """
     import json
 
-    from . import basic_match, matcher, settings
-
-    from . import semantic
+    from . import basic_match
 
     profile = db.get_profile()
     if not profile or not profile.get("resume_text"):
         return
     resume_text = profile["resume_text"]
-    # 006-E: the user's explicit Profile skills list boosts basic-tier
-    # matching alongside whatever regex extraction finds in the raw resume
-    # text — matters most for no-cloud-key users.
+    # 006-E: the user's explicit Profile skills list boosts matching alongside
+    # whatever regex extraction finds in the raw resume text.
     profile_skills = set(profile.get("skills") or [])
-    tier = matcher.scoring_tier()  # "cloud" | "local" | "basic"
-    upgrade_methods = {"cloud": ("basic", "local"), "local": ("basic",), "basic": ()}[tier]
-    cap = int(settings.get("MAX_SCORE_PER_RUN") or "150") if tier != "basic" else 2000
 
-    # 008 (FR-029): embed new jobs + the resume, then spend the quota
-    # top-down by semantic similarity. Any failure degrades to date order.
-    resume_vec = None
-    try:
-        if semantic.available():
-            for row in db.jobs_needing_embedding():
-                vector = semantic.embed(
-                    f"{row['title']}\n{(row.get('description') or '')[:1000]}"
+    ranked = 0
+    while True:
+        candidates = db.jobs_needing_score(limit=_RANK_BATCH)
+        if not candidates:
+            break
+        writes: list[tuple[int, float, str]] = []
+        for job in candidates:
+            try:
+                analysis = basic_match.score(
+                    resume_text, job["title"], job.get("description") or "",
+                    extra_skills=profile_skills,
                 )
-                if vector:
-                    db.save_job_embedding(row["id"], semantic.pack(vector))
-            resume_vec = semantic.unpack(profile.get("resume_embedding"))
-            if resume_vec is None:
-                vector = semantic.embed(resume_text)
-                if vector:
-                    db.save_profile(resume_embedding=semantic.pack(vector))
-                    resume_vec = vector
-    except Exception:
-        log.warning("semantic ranking unavailable this run", exc_info=True)
-        resume_vec = None
-
-    fetch = cap * 4 if resume_vec else cap
-    candidates = db.jobs_needing_score(limit=fetch, upgrade_methods=upgrade_methods)
-    candidates = semantic.order_jobs(resume_vec, candidates)[:cap]
-    for job in candidates:
-        description = job.get("description") or ""
-        if tier in ("cloud", "local"):
-            analysis = _analyze(resume_text, job["title"], job["company"], description)
-            if analysis is None:
+            except Exception:  # noqa: BLE001 — one bad posting cannot stall the feed
+                log.warning("could not rank job %s", job["id"], exc_info=True)
                 continue
-            method = "llm" if tier == "cloud" else "local"
-        else:
-            analysis = basic_match.score(
-                resume_text, job["title"], description, extra_skills=profile_skills
-            )
-            method = "basic"
-        payload = analysis.model_dump()
-        payload["method"] = method
-        db.set_match(job["id"], analysis.match_score, json.dumps(payload))
+            payload = analysis.model_dump()
+            payload["method"] = "basic"
+            writes.append((job["id"], analysis.match_score, json.dumps(payload)))
+        db.set_matches(writes)  # one transaction per chunk, not per job
+        ranked += len(writes)
+        if not writes:
+            # every job in this chunk failed to rank; another pass would fetch
+            # the same rows forever
+            log.warning("ranking made no progress on %d candidates; stopping",
+                        len(candidates))
+            break
+    if ranked:
+        log.info("ranked %d job(s) with the keyword matcher", ranked)
 
 
 def _execute(run_id: int) -> dict:
@@ -281,6 +294,13 @@ def _execute(run_id: int) -> dict:
     except Exception:
         log.warning("post-ingest stage failed", exc_info=True)
     db.finish_run(run_id)
+    # 020 (guarantee L3): the AI assessment pass starts only once the run is
+    # CLOSED. Started any earlier, a slow or failing pass could hold the run
+    # open again — which is precisely the defect this feature removes. It is
+    # single-flight, so a second refresh cannot stack a second pass.
+    from . import upgrade
+
+    upgrade.start("refresh")
     status = db.get_run_status()
     return {"started": True, "run_id": run_id, "sources": status["sources"]}
 

@@ -314,6 +314,129 @@ class TestGroupingAssets016:
                 f"watcher SERIALIZE_JS missing {token!r}"
 
 
+class TestIdleBackoff020:
+    """020 US5 (FR-020/FR-021): the companion gets cheap on pages that are
+    not applications.
+
+    MEASURED first, per research R6 and the 019 lesson — scanner.probe()
+    walks the whole DOM for shadow roots and forces layout per candidate:
+    2.8 ms at 4k elements, 16.9 ms at 20k, 52 ms at 60k. A 52 ms main-thread
+    block every 1.5 s is visible jank on exactly the heavy pages an applicant
+    browses. (The original research claim that this ran in EVERY frame was
+    wrong — discovery.js is top-frame only; see the corrected R6.)
+
+    The behavioural half — a form appearing after backoff is still found —
+    is proven in the browser suite, not here.
+    """
+
+    def test_the_poll_backs_off_when_nothing_is_found(self):
+        js = (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
+        assert "IDLE_POLL_MS" in js
+        assert "IDLE_AFTER_TICKS" in js
+        assert "quietTicks" in js
+
+    def test_the_slow_poll_is_actually_slower(self):
+        import re
+
+        js = (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
+        fast = int(re.search(r"const POLL_MS = (\d+)", js).group(1))
+        idle = int(re.search(r"const IDLE_POLL_MS = (\d+)", js).group(1))
+        assert idle > fast, (fast, idle)
+        # SC-008 wants at least a halving of idle cost; the interval is the
+        # whole mechanism, so it has to at least double.
+        assert idle >= fast * 2
+
+    def test_a_dom_mutation_wakes_it_back_up(self):
+        """The backoff is only safe because something cheap notices change.
+        Without this a form appearing on a quiet page waits up to the slow
+        interval — and on an SPA, potentially forever."""
+        js = (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
+        assert "MutationObserver" in js
+        assert "wake()" in js
+
+    def test_the_waker_is_childlist_only(self):
+        """An attribute/characterData observer on a busy page costs more than
+        the poll it is protecting."""
+        js = (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
+        observe = js[js.index("waker.observe"):js.index("waker.observe") + 200]
+        assert "childList: true" in observe
+        assert "attributes" not in observe
+        assert "characterData" not in observe
+
+    def test_navigation_resets_to_full_speed(self):
+        js = (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
+        nav = js[js.index("SPA nav"):js.index("SPA nav") + 700]
+        assert "wake()" in nav
+
+    def test_finding_anything_resets_to_full_speed(self):
+        """A page that HAS a posting or a form must never poll slowly."""
+        js = (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
+        assert "wake();  // something is here" in js
+
+
+class TestRichTextAssets020:
+    """020 US4 (FR-016..FR-019): rich-text editors become real fields.
+
+    Before this, a repository-wide search for "contenteditable" across
+    engine/ and extension/ returned NOTHING. A rich-text cover letter — the
+    highest-value field on most applications — was not unfilled, it was
+    unseen: not counted, not flagged, no reason given.
+
+    Both halves of the selector must move together. The DOM behaviour is
+    proven by the browser suite; these fail fast on a missing half.
+    """
+
+    RICHTEXT_TOKENS = ("contenteditable", "role=textbox")
+
+    def test_the_canonical_selector_covers_rich_text(self):
+        from engine.autofill import fields
+
+        for token in self.RICHTEXT_TOKENS:
+            assert token in fields.FIELD_QUERY_SELECTOR, token
+
+    def test_scanner_selector_covers_rich_text(self):
+        js = (EXT / "content" / "scanner.js").read_text(encoding="utf-8")
+        for token in self.RICHTEXT_TOKENS:
+            assert token in js, f"scanner.js missing {token!r}"
+
+    def test_both_serializers_speak_richtext(self):
+        """Parity: scanner.js and watcher.SERIALIZE_JS must produce the same
+        descriptor for the same page. Drift here is what broke the whole
+        Playwright serializer in 019."""
+        from engine.autofill import watcher
+
+        js = (EXT / "content" / "scanner.js").read_text(encoding="utf-8")
+        for token in ("richtext", "innerText"):
+            assert token in js, f"scanner.js missing {token!r}"
+            assert token in watcher.SERIALIZE_JS, \
+                f"watcher SERIALIZE_JS missing {token!r}"
+
+    def test_readonly_editors_are_excluded_by_both(self):
+        """contenteditable=false / aria-readonly is display, not input."""
+        from engine.autofill import watcher
+
+        js = (EXT / "content" / "scanner.js").read_text(encoding="utf-8")
+        for token in ("aria-readonly",):
+            assert token in js, f"scanner.js missing {token!r}"
+            assert token in watcher.SERIALIZE_JS, \
+                f"watcher SERIALIZE_JS missing {token!r}"
+
+    def test_filler_has_a_rich_text_write_branch(self):
+        js = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
+        assert 'kind === "richtext"' in js
+        # a silent DOM write is discarded by React/ProseMirror/Quill on the
+        # next render — only a real input event makes the value stick
+        assert "InputEvent" in js or "insertText" in js
+        assert "input" in js
+
+    def test_filler_still_has_exactly_one_raw_click(self):
+        """The 016 pin. The rich-text branch types; it must not add a click,
+        and it must not be an excuse to loosen this."""
+        js = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
+        assert js.count(".click(") == 1, (
+            "filler.js must keep exactly one raw .click( site")
+
+
 class TestFillerUpgrades016:
     """016 (T013, R8): real radio branch, normalized select matching,
     widened combobox harvest — behavior is DOM-verified in the E2E; these

@@ -901,6 +901,14 @@ def _handle_fields(msg) -> None:
                 continue
             item.update(kind="radio", value=str(decision.value),
                         option_label=decision.option_label)
+        elif decision.kind == "richtext":
+            # 020 (FR-017): an editable region, not a control. Without this
+            # branch the decision fell through to kind="text" and the filler
+            # called a native <input> value setter on a <div> — which throws,
+            # so every rich-text cover letter reported needs_manual. The
+            # decision was right, the write path was right, and the answer
+            # still never landed; only a real-browser test showed it.
+            item.update(kind="richtext", value=str(decision.value))
         elif decision.kind == "checkbox":
             item.update(kind="checkbox", value="on")
             # 017 (C8): a merged checkbox group is one logical field but the
