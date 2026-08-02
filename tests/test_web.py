@@ -546,12 +546,17 @@ class TestFeedScoreKind020:
         assert "—" in cells[0], cells
 
 
-def test_startup_picks_up_the_assessment_backlog_020(monkeypatch, tmp_db):
-    """020 (FR-004): a bounded pass cannot clear a large backlog in one go,
-    so opening the app must start one too — not only a refresh.
+def test_startup_does_not_start_an_assessment_pass_020(monkeypatch, tmp_db):
+    """020: the assessment pass is started by the REFRESH, never by startup.
 
-    Without this, opening the app inside the 30-minute refresh cooldown would
-    start no pass at all and the backlog would simply sit there.
+    A startup trigger was tried and removed. It made the frozen app fail
+    desktop.py's `wait_until_ready` — the packaged smoke reproduced it three
+    times and passed three times with the pass suppressed. Startup is the one
+    moment the app cannot afford extra contention, and nothing is lost: the
+    feed posts /api/refresh on every load, so the next refresh outside the
+    cooldown starts a pass.
+
+    Pinned so it does not get "helpfully" re-added.
     """
     from fastapi.testclient import TestClient
 
@@ -568,4 +573,4 @@ def test_startup_picks_up_the_assessment_backlog_020(monkeypatch, tmp_db):
     with TestClient(webmain.create_app()):
         pass
 
-    assert "startup" in started
+    assert started == [], f"startup started an assessment pass: {started}"

@@ -228,3 +228,33 @@ class TestDoctorCounters016:
         client = TestClient(create_app())
         doctor = client.get("/api/companion/doctor").json()
         assert doctor["counters"]["scan_errors"] == 1
+
+
+class TestPairingFreshnessSlack020:
+    """020: the freshness window must tolerate a slow stamp.
+
+    desktop.py stamps the extension BEFORE importing web.main, and stamping
+    copies the whole extension folder. With a 1 s slack a perfectly good
+    launch on a loaded disk reported itself stale — it cost a false frozen
+    smoke failure while shipping 2.0.0. The check still has to catch a file
+    left over from a PREVIOUS session, which is minutes or hours old.
+    """
+
+    def test_a_stamp_slightly_before_import_is_still_fresh(self, tmp_db,
+                                                           monkeypatch):
+        import time as _time
+
+        from web import routes_bridge
+
+        # stamped 10 s before this process's reference — a slow copy, not a
+        # stale file. The old 1 s slack called this stale.
+        monkeypatch.setattr(routes_bridge, "_PROCESS_START_WALL",
+                            _time.time())
+        assert routes_bridge._STAMP_SLACK_S > 10
+
+    def test_a_previous_sessions_file_is_still_stale(self):
+        """The window must not be so wide it stops meaning anything."""
+        from web import routes_bridge
+
+        # a leftover from an earlier session is minutes or hours old
+        assert routes_bridge._STAMP_SLACK_S < 15 * 60

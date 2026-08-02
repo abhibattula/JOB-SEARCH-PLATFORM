@@ -544,16 +544,15 @@ def create_app() -> FastAPI:
 
         threading.Thread(target=_quiet_update_check, daemon=True).start()
 
-        # 020 (FR-004): pick the AI assessment backlog up on startup, not only
-        # after a refresh. Ranking gives every job a keyword score during the
-        # refresh that finds it, but the slower assessment is bounded per pass
-        # — so a large backlog needs several passes. Without this, opening the
-        # app inside the refresh cooldown would start no pass at all and the
-        # backlog would sit there. start() is single-flight, so this can never
-        # race the one a refresh kicks off.
-        from engine import upgrade as _upgrade
-
-        _upgrade.start("startup")
+        # 020: the AI assessment backlog is picked up by the REFRESH
+        # (pipeline._execute, after db.finish_run), never from here.
+        #
+        # A startup trigger was tried and removed: it made the frozen app fail
+        # `wait_until_ready` in desktop.py — the packaged smoke reproduced it
+        # three times and passed three times with the pass suppressed. Startup
+        # is the one moment the app cannot afford extra contention, and the
+        # backlog loses nothing by waiting: the feed posts /api/refresh on
+        # every load, so the next refresh outside the cooldown starts a pass.
 
     @asynccontextmanager
     async def _lifespan(app: FastAPI):

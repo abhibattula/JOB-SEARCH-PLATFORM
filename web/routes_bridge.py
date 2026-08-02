@@ -29,8 +29,19 @@ PING_INTERVAL_S = 20.0
 
 # 015 (FR-014): pairing freshness = "was pairing.json stamped by THIS app
 # process's launch?" — this module imports once at startup, so its import
-# time is the process-start reference (1s slack for filesystem timestamps).
+# time is the process-start reference.
 _PROCESS_START_WALL = time.time()
+
+# 020: the slack was 1 s and that is too tight to be true. desktop.py stamps
+# the extension BEFORE it imports web.main, and stamping copies the whole
+# extension folder — so on a slow or loaded disk pairing.json is legitimately
+# written more than a second before this module is imported, and a perfectly
+# good launch reported itself stale. It cost a false smoke failure on 2.0.0.
+#
+# The check's real intent is "not left over from a PREVIOUS session", and
+# those files are minutes or hours old, so a generous window keeps the
+# meaning while tolerating a slow copy.
+_STAMP_SLACK_S = 120.0
 
 
 @router.get("/api/bridge/info")
@@ -89,7 +100,8 @@ def companion_doctor() -> dict:
             pairing["port"] = pdata.get("port")
             pairing["protocol_v"] = pdata.get("protocol_v")
             pairing["fresh"] = (
-                pairing_path.stat().st_mtime >= _PROCESS_START_WALL - 1.0
+                pairing_path.stat().st_mtime
+                >= _PROCESS_START_WALL - _STAMP_SLACK_S
             )
         except Exception:
             log.debug("pairing.json unreadable for doctor", exc_info=True)
