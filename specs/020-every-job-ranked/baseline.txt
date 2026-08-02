@@ -222,3 +222,29 @@ Python:  3.12 (.venv)
     T064  manual: the automation line unchanged, INCLUDING 019's still
           outstanding T076 (real Workday sign-in + escort + stop at review)
     T065  tag v2.0.0 and verify BOTH installers by magic bytes + SHA-256
+
+
+== T065 RESULT: v2.0.0 SHIPPED AND VERIFIED (2026-08-02) ==
+
+  Both installers downloaded from the release and checked by magic bytes and
+  SHA-256 against the release body. Both match exactly.
+
+    JobEngine-Setup-2.0.0.exe   1,528,109,110 bytes  magic 4d5a (PE)
+      04c8b2fdeb582f8798d24b03bc053d878749bc718dcada0fcbe458926a565601
+
+    JobEngine-2.0.0.dmg         1,596,536,558 bytes  magic 7801 (zlib)
+      498738eb8231f14034913e2326f2fc22888c73ca8415d1000427e06d026e0f35
+
+  The tag was cut TWICE. The first v2.0.0 failed on the macOS runner's
+  browser suite with two real bugs Windows had passed (stripControls not
+  stripping rich-text editors; a racing ledger assertion). No release had
+  been published, so that run was cancelled before it could ship a
+  Windows-only half-release, and the tag was deleted and re-cut on the fix.
+
+  LESSON: run the browser suite on BOTH platforms before tagging, or expect
+  to re-cut the tag.
+
+  STILL THE APPLICANT'S (shipped at their explicit request without waiting):
+    T063  manual: one pass / no duplicates / resume; applying-beats-ranking;
+          rich text on a real Greenhouse or Lever form
+    T064  manual: the automation line unchanged, INCLUDING 019's T076

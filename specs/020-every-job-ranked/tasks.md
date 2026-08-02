@@ -350,9 +350,9 @@ without losing any detection.
       `chrome://extensions`, save a Workday login, run one real Workday
       application to Review and confirm Submit is never clicked; one real
       Greenhouse navigate-apply; one LinkedIn zero-click control
-- [ ] T065 Tag `v2.0.0`; verify **both** installers from the release body by
+- [x] T065 Tag `v2.0.0`; verify **both** installers from the release body by
       magic bytes (`4d5a` / `7801`) and SHA-256. A green build is not evidence
-- [ ] T066 Update memory files with the release outcome and any new lessons
+- [x] T066 Update memory files with the release outcome and any new lessons
 
 ---
 
