@@ -414,6 +414,17 @@ class TestICIMSAdvance020:
         _seed(fixture_server, "icims_step.html")
         assert _echoed("__icims_advanced")
 
-        trail = ext_backend.progression_clicks()
-        assert trail, "the advance was not recorded"
+        # The page echo proves the CLICK happened; the ledger entry is written
+        # when the companion's advance_result message gets back to the app, so
+        # it lands slightly later. Asserting immediately raced — it passed on
+        # Windows and failed on macOS CI.
+        deadline = time.time() + 15
+        trail = []
+        while time.time() < deadline:
+            trail = ext_backend.progression_clicks()
+            if any(e.get("status") == "clicked" for e in trail):
+                break
+            time.sleep(0.3)
+
+        assert trail, "the advance was never recorded in the ledger"
         assert any(entry.get("status") == "clicked" for entry in trail), trail

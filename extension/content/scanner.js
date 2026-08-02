@@ -173,8 +173,15 @@ window.jeScanner = (function () {
 
   function stripControls(node) {
     const clone = node.cloneNode(true);
+    // 020: rich-text editors belong here too. This is the 019 bug in a new
+    // place — a wrapping label's innerText includes the control's OWN
+    // rendered text, so a cover-letter editor made the question read
+    // "Why do you want to work here? Tell us why…" and no stored answer
+    // could ever match it. macOS CI caught it; Windows had passed.
     Array.prototype.forEach.call(
-      clone.querySelectorAll("input,select,textarea,button"),
+      clone.querySelectorAll(
+        "input,select,textarea,button," +
+        '[contenteditable=""],[contenteditable="true"],[role=textbox]'),
       function (child) { child.remove(); });
     return (clone.innerText || clone.textContent || "").trim();
   }

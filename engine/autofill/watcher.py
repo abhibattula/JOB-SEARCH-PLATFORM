@@ -234,8 +234,14 @@ SERIALIZE_JS = r"""
   }
   function jeStripControls(node) {
     const clone = node.cloneNode(true);
+    // 020: rich-text editors belong here too — a wrapping label's innerText
+    // includes the control's OWN rendered text, so a cover-letter editor
+    // made the question read "Why do you want to work here? Tell us why..."
+    // and no stored answer could match. The 019 <select> bug, new element.
     Array.prototype.forEach.call(
-      clone.querySelectorAll('input,select,textarea,button'),
+      clone.querySelectorAll(
+        'input,select,textarea,button,' +
+        '[contenteditable=""],[contenteditable="true"],[role=textbox]'),
       function (child) { child.remove(); });
     return (clone.innerText || clone.textContent || '').trim();
   }

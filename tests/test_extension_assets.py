@@ -421,6 +421,28 @@ class TestRichTextAssets020:
             assert token in watcher.SERIALIZE_JS, \
                 f"watcher SERIALIZE_JS missing {token!r}"
 
+    def test_both_label_strippers_remove_rich_text_editors(self):
+        """The 019 <select> bug, in a new element — caught by macOS CI.
+
+        A wrapping label's innerText includes the control's OWN rendered
+        text. With a rich-text editor inside one, the question read
+        "Why do you want to work here? Tell us why..." and no stored answer
+        could ever match it, so the field was silently skipped. Both
+        serializers must strip editors exactly as they strip inputs.
+        """
+        from engine.autofill import watcher
+
+        js = (EXT / "content" / "scanner.js").read_text(encoding="utf-8")
+        for source, fn, name in (
+                (js, "function stripControls", "scanner.js"),
+                (watcher.SERIALIZE_JS, "function jeStripControls",
+                 "watcher SERIALIZE_JS")):
+            start = source.index(fn)   # the DEFINITION, not a call site
+            block = source[start:start + 1200]
+            assert "contenteditable" in block, (
+                f"{name} strips inputs but not rich-text editors")
+            assert "role=textbox" in block, name
+
     def test_filler_has_a_rich_text_write_branch(self):
         js = (EXT / "content" / "filler.js").read_text(encoding="utf-8")
         assert 'kind === "richtext"' in js
