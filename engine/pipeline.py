@@ -149,8 +149,15 @@ def _check_scraped_liveness(limit: int = LIVENESS_CHECKS_PER_RUN) -> int:
 
 
 def _post_ingest(run_id: int) -> None:
-    """Post-ingest stages: delisting, sponsorship matching, classification,
-    scoring, liveness, prune, then fresh-match alerts."""
+    """Post-ingest stages: delisting, classification, RANKING, liveness,
+    prune, then fresh-match alerts.
+
+    020: every stage here is now fast and deterministic, so the run reaches
+    db.finish_run() in seconds. The AI assessment that used to sit between
+    ranking and liveness — holding the run open for 2 h 47 m and delaying
+    these alerts by the same amount — moved to engine/upgrade.py, which starts
+    only AFTER the run is closed (see _execute).
+    """
     delist_missing(run_id)
     _classify_new_jobs()
     _rank_new_jobs()
@@ -168,6 +175,11 @@ def _post_ingest(run_id: int) -> None:
         count = alerts.process(since=status["started_at"])
         if count:
             db.update_run_source(run_id, "_alerts", state="done", found=count)
+    # 020 (FR-022): row counts just changed, and idx_jobs_sort_date is inert
+    # without current statistics — the index alone left the query plan
+    # completely unchanged when measured. ~31 ms over 22k rows, which is noise
+    # next to a refresh.
+    db.refresh_statistics()
 
 
 def _classify_new_jobs() -> None:
@@ -282,6 +294,13 @@ def _execute(run_id: int) -> dict:
     except Exception:
         log.warning("post-ingest stage failed", exc_info=True)
     db.finish_run(run_id)
+    # 020 (guarantee L3): the AI assessment pass starts only once the run is
+    # CLOSED. Started any earlier, a slow or failing pass could hold the run
+    # open again — which is precisely the defect this feature removes. It is
+    # single-flight, so a second refresh cannot stack a second pass.
+    from . import upgrade
+
+    upgrade.start("refresh")
     status = db.get_run_status()
     return {"started": True, "run_id": run_id, "sources": status["sources"]}
 

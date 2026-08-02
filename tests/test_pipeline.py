@@ -451,3 +451,128 @@ class TestRankingThroughput020:
 
         # and it genuinely could not rank them — proving the guard was hit
         assert self._eligible_unscored() == 3
+
+
+class TestRunLifecycle020:
+    """020 US2 (FR-007, FR-008, guarantees L1-L4): the refresh finishes.
+
+    Pre-020 the AI scoring loop ran INSIDE _post_ingest, so db.finish_run()
+    was unreachable for the length of the pass — 2 h 47 m at the 150-job cap.
+    For all that time every source read "done", POST /api/refresh answered
+    {started: false, reason: "running"}, and alerts sat waiting behind
+    inference. See specs/020-every-job-ranked/research.md R2.
+    """
+
+    @pytest.fixture()
+    def source(self, monkeypatch, tmp_db):
+        jobs = [raw(f"Software Engineer, New Grad {i}",
+                    f"https://x.example/life/{i}", "good") for i in range(3)]
+        module = fake_source("good", jobs=jobs)
+        monkeypatch.setattr(pipeline, "_source_names", lambda: ["good"])
+        monkeypatch.setattr(pipeline, "_get_source", lambda name: module)
+        monkeypatch.setattr(pipeline, "load_companies", lambda: [])
+        db.save_profile(resume_text="python c++", resume_filename="r.pdf")
+        return module
+
+    def test_the_run_finishes_without_waiting_for_assessment(self, source,
+                                                             monkeypatch):
+        """L1/FR-007. The assessor here sleeps far longer than any acceptable
+        refresh; if the run still waited on it, this test would take minutes."""
+        import time
+
+        from engine import matcher, upgrade
+
+        def glacial(*_a, **_k):
+            time.sleep(30)
+            return matcher.MatchAnalysis(match_score=90, reasoning="slow")
+
+        monkeypatch.setattr(matcher, "analyze_match", glacial)
+        monkeypatch.setattr(pipeline, "_analyze", glacial)
+        started = time.monotonic()
+        pipeline.run_refresh(trigger="cli")
+        elapsed = time.monotonic() - started
+
+        assert elapsed < 20, f"the run waited on assessment ({elapsed:.1f}s)"
+        assert db.get_run_status()["active"] is False
+        assert upgrade.progress()["running"] is False  # conftest keeps it off
+
+    def test_alerts_fire_in_the_same_refresh(self, source, monkeypatch):
+        """L2/FR-008: a fresh-match alert must not queue behind hours of
+        inference."""
+        from engine import alerts, matcher
+
+        monkeypatch.setattr(matcher, "analyze_match", lambda *a: (
+            _ for _ in ()).throw(AssertionError("must not assess in the run")))
+        calls = []
+        monkeypatch.setattr(alerts, "process",
+                            lambda since=None: calls.append(since) or 0)
+
+        pipeline.run_refresh(trigger="cli")
+
+        assert calls, "alerts.process was never reached"
+
+    def test_ranking_happens_before_alerts(self, source, monkeypatch):
+        """Ordering matters: an alert about a fresh match should be able to
+        see the score that makes it a match."""
+        from engine import alerts
+
+        order = []
+        real_rank = pipeline._rank_new_jobs
+        monkeypatch.setattr(pipeline, "_rank_new_jobs",
+                            lambda: order.append("rank") or real_rank())
+        monkeypatch.setattr(alerts, "process",
+                            lambda since=None: order.append("alerts") or 0)
+
+        pipeline.run_refresh(trigger="cli")
+
+        assert order.index("rank") < order.index("alerts"), order
+
+    def test_the_assessment_pass_starts_after_the_run_is_closed(self, source,
+                                                                monkeypatch):
+        """L3. If the pass were started before finish_run, a slow or failing
+        pass could hold the run open again — the exact defect being removed."""
+        from engine import upgrade
+
+        events = []
+        real_finish = db.finish_run
+        monkeypatch.setattr(db, "finish_run",
+                            lambda rid: events.append("finish") or real_finish(rid))
+        monkeypatch.setattr(upgrade, "start",
+                            lambda reason="refresh": events.append("upgrade"))
+
+        pipeline.run_refresh(trigger="cli")
+
+        assert events == ["finish", "upgrade"], events
+
+    def test_a_second_refresh_is_accepted_under_the_ordinary_cooldown(
+            self, source, monkeypatch):
+        """The user-visible half of L1: pre-020 the second refresh was refused
+        as 'running' for hours."""
+        from engine import matcher
+
+        monkeypatch.setattr(matcher, "analyze_match", lambda *a: (
+            _ for _ in ()).throw(AssertionError("must not assess in the run")))
+        pipeline.run_refresh(trigger="cli")
+
+        second = pipeline.run_refresh(trigger="cli")
+        assert second["started"] is False
+        assert second["reason"] == "cooldown", (
+            "a finished run must block on cooldown, never on 'running'")
+        assert pipeline.run_refresh(trigger="cli", force=True)["started"] is True
+
+    def test_the_stale_window_is_still_thirty_minutes(self):
+        """L4. STALE_RUN_MINUTES is deliberately UNCHANGED. It was never the
+        wrong value — it was correct for a run that finishes in seconds, and
+        wrong only because scoring made the run outlive it. Pinned so a future
+        edit has to be deliberate."""
+        assert db.STALE_RUN_MINUTES == 30
+
+    def test_statistics_are_refreshed_so_the_feed_index_is_usable(self, source,
+                                                                  monkeypatch):
+        """The feed index is inert without ANALYZE (see TestFeedSortIndex020).
+        A refresh is where row counts change, so it is where stats belong."""
+        calls = []
+        monkeypatch.setattr(db, "refresh_statistics",
+                            lambda: calls.append(True))
+        pipeline.run_refresh(trigger="cli")
+        assert calls

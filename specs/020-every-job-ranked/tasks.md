@@ -134,49 +134,49 @@ assessment pass can exist.
 **Independent Test**: run a refresh with a deliberately slow `matcher` stub;
 the run still finishes promptly and alerts fire in the same refresh.
 
-- [ ] T013 [P] [US2] Failing tests `tests/test_upgrade.py::TestPassSelection020`
+- [x] T013 [P] [US2] Failing tests `tests/test_upgrade.py::TestPassSelection020`
       — candidates come from `jobs_needing_score(upgrade_methods=("basic",))`
       ordered by `semantic.order_jobs`, truncated to the per-pass limit
       (guarantee G1, FR-004); with no resume vector the incoming order is kept
-- [ ] T014 [P] [US2] Failing tests `tests/test_upgrade.py::TestSingleFlight020`
+- [x] T014 [P] [US2] Failing tests `tests/test_upgrade.py::TestSingleFlight020`
       — `start()` while a pass is running returns `False`, spawns no second
       thread, and leaves `progress()["total"]` unchanged (FR-009, SC-005)
-- [ ] T015 [P] [US2] Failing tests `tests/test_upgrade.py::TestFailureIsolation020`
+- [x] T015 [P] [US2] Failing tests `tests/test_upgrade.py::TestFailureIsolation020`
       — a job whose assessment raises keeps its `basic` score, increments
       `failed`, is not retried within the pass, and does not stop the pass
       (FR-012, guarantee G4)
-- [ ] T016 [P] [US2] Failing tests `tests/test_upgrade.py::TestResume020` —
+- [x] T016 [P] [US2] Failing tests `tests/test_upgrade.py::TestResume020` —
       no pass state is persisted; a fresh pass rebuilds candidates from the
       database and never re-assesses an already-assessed job (FR-010, G5)
-- [ ] T017 [US2] `engine/upgrade.py`: implement `start` and `run_once` on the
+- [x] T017 [US2] `engine/upgrade.py`: implement `start` and `run_once` on the
       T004 skeleton, per contracts/upgrade-api.md — T013–T016 green
-- [ ] T018 [P] [US2] Failing tests `tests/test_pipeline.py::TestRunLifecycle020`
+- [x] T018 [P] [US2] Failing tests `tests/test_pipeline.py::TestRunLifecycle020`
       — with a `matcher` stub that sleeps: (a) `db.finish_run()` is reached
       promptly (FR-007, L1); (b) `alerts.process()` runs in the same refresh
       that ingested the jobs (FR-008, L2); (c) `upgrade.start()` is called
       **after** `finish_run()` (L3); (d) a second refresh is accepted under the
       ordinary cooldown rather than refused as `running`
-- [ ] T019 [US2] `engine/pipeline.py`: reorder `_post_ingest` to
+- [x] T019 [US2] `engine/pipeline.py`: reorder `_post_ingest` to
       delist → classify → rank → liveness → prune → alerts, and start the
       assessment pass after `db.finish_run()` — T018 green. Delete the old
       inline AI scoring loop; **do not keep it behind a flag**
-- [ ] T020 [P] [US2] Failing test `tests/test_pipeline.py::TestStaleWindow020`
+- [x] T020 [P] [US2] Failing test `tests/test_pipeline.py::TestStaleWindow020`
       — a refresh no longer outlives `STALE_RUN_MINUTES`, so a run older than
       the window really has crashed (L4). `STALE_RUN_MINUTES` itself is
       unchanged — assert the value is still 30 so a future edit is deliberate
-- [ ] T021 [P] [US2] Failing tests `tests/test_settings.py::TestAssessmentLimit020`
+- [x] T021 [P] [US2] Failing tests `tests/test_settings.py::TestAssessmentLimit020`
       + `tests/test_api.py` — `MAX_SCORE_PER_RUN` now means AI assessments per
       pass, defaults to 40, is surfaced in Settings with copy that says so, and
       is read by `upgrade` rather than by ranking (FR-006)
-- [ ] T022 [US2] `web/templates/settings.html` + `engine/settings.py`: implement
+- [x] T022 [US2] `web/templates/settings.html` + `engine/settings.py`: implement
       the changed key's default and disclosure — T021 green
-- [ ] T023 [P] [US2] Failing tests `tests/test_api.py::TestAssessmentProgress020`
+- [x] T023 [P] [US2] Failing tests `tests/test_api.py::TestAssessmentProgress020`
       — the status payload carries the additive `assessment` object; absent or
       `running: false` renders nothing; the endpoint never blocks on the pass
       (FR-011)
-- [ ] T024 [US2] `web/routes_api.py` + `web/templates/feed.html`: expose and
+- [x] T024 [US2] `web/routes_api.py` + `web/templates/feed.html`: expose and
       render "AI-scoring _n_ / _total_" — T023 green
-- [ ] T025 [US2] `cli.py`: wire `upgrade.run_once()` for headless parity
+- [x] T025 [US2] `cli.py`: wire `upgrade.run_once()` for headless parity
       (constitution: the full pipeline MUST be runnable headless)
 
 **Checkpoint**: the refresh is honest and bounded; assessment runs in the
@@ -192,26 +192,26 @@ with Phase 4, not after it** — Phase 4 is what creates the risk.
 **Independent Test**: a drafter request issued during a live pass resolves
 inside its normal budget.
 
-- [ ] T026 [P] [US3] Failing test
+- [x] T026 [P] [US3] Failing test
       `tests/test_browser_controller.py::TestLiveSessionPredicate020` — a public
       predicate reports whether a fill session is live, reading `_state.running`
       under `_lock`, and never deadlocks against a status call
-- [ ] T027 [US3] `engine/autofill/browser_controller.py`: add the predicate —
+- [x] T027 [US3] `engine/autofill/browser_controller.py`: add the predicate —
       T026 green
-- [ ] T028 [P] [US3] Failing test `tests/test_upgrade.py::TestOneAtATime020` —
+- [x] T028 [P] [US3] Failing test `tests/test_upgrade.py::TestOneAtATime020` —
       with a stub executor recording queue depth, the pass never has more than
       one assessment request outstanding; it blocks on each result before
       selecting the next (FR-014, guarantee G2)
-- [ ] T029 [P] [US3] Failing test `tests/test_upgrade.py::TestStandDown020` —
+- [x] T029 [P] [US3] Failing test `tests/test_upgrade.py::TestStandDown020` —
       while a fill session is live the pass sets `paused_for_session`, submits
       nothing, and resumes when the session ends (FR-013, G3)
-- [ ] T030 [US3] `engine/upgrade.py`: implement one-at-a-time submission and the
+- [x] T030 [US3] `engine/upgrade.py`: implement one-at-a-time submission and the
       fill-session stand-down — T028, T029 green
-- [ ] T031 [P] [US3] Failing test `tests/test_inference.py::TestNoStarvation020`
+- [x] T031 [P] [US3] Failing test `tests/test_inference.py::TestNoStarvation020`
       — **the regression test that matters most**: a drafter request issued
       during a live pass resolves within its budget, and
       `inference.max_observed_concurrency()` is still `1` (FR-015, SC-006)
-- [ ] T032 [US3] Confirm T031 green with no change to `engine/inference.py` —
+- [x] T032 [US3] Confirm T031 green with no change to `engine/inference.py` —
       if the module needs editing, stop and re-read research R3, which rejected
       a priority queue for exactly this reason
 

@@ -158,3 +158,77 @@ class Test009OfflineFirstSetting:
         client = TestClient(create_app())
         resp = client.get("/settings")
         assert 'name="prefer_local_llm"' in resp.text
+
+
+class TestAssessmentLimit020:
+    """020 (FR-006): MAX_SCORE_PER_RUN changes MEANING.
+
+    Before: how many jobs a refresh scored, any tier, default 150.
+    After:  how many jobs one background AI assessment pass upgrades,
+            default 40 — because a unit of work here costs ~67 s on the
+            applicant's laptop, so 150 was a pass that never finished.
+
+    Ranking is uncapped and no longer consults this key at all. This is a
+    user-visible behaviour change and is why the release is a major version.
+    """
+
+    def test_the_default_is_forty(self, tmp_db):
+        assert settings.get("MAX_SCORE_PER_RUN") == "40"
+
+    def test_the_pass_reads_it(self, tmp_db, monkeypatch):
+        from engine import upgrade
+
+        settings.set("MAX_SCORE_PER_RUN", "7")
+        assert upgrade._limit() == 7
+
+    def test_a_nonsense_value_falls_back_to_the_default(self, tmp_db):
+        from engine import upgrade
+
+        settings.set("MAX_SCORE_PER_RUN", "not a number")
+        assert upgrade._limit() == upgrade.DEFAULT_LIMIT
+
+    def test_zero_means_no_assessment_not_a_crash(self, tmp_db):
+        from engine import upgrade
+
+        settings.set("MAX_SCORE_PER_RUN", "0")
+        assert upgrade._limit() == 0
+        assert upgrade.run_once(limit=0)["total"] == 0
+
+    def test_ranking_ignores_it_entirely(self, tmp_db):
+        """The half that must NOT be capped — capping ranking is what left
+        two-thirds of the feed unscored."""
+        import inspect
+
+        from engine import pipeline
+
+        source = inspect.getsource(pipeline._rank_new_jobs)
+        assert "MAX_SCORE_PER_RUN" not in source
+
+    def test_the_settings_page_offers_it_and_says_what_it_means(self, tmp_db):
+        from fastapi.testclient import TestClient
+
+        from web.main import create_app
+
+        html = TestClient(create_app()).get("/settings").text
+        assert 'name="max_score_per_run"' in html
+        # a number box with no explanation is not a user-visible setting
+        lowered = html.lower()
+        assert "assess" in lowered or "assessment" in lowered
+
+    def test_saving_it_round_trips_through_the_form(self, tmp_db):
+        from fastapi.testclient import TestClient
+
+        client = TestClient(__import__("web.main", fromlist=["create_app"])
+                            .create_app())
+        client.post("/api/settings", data={"max_score_per_run": "12"})
+        assert settings.get("MAX_SCORE_PER_RUN") == "12"
+
+    def test_a_hostile_value_is_rejected_not_stored(self, tmp_db):
+        from fastapi.testclient import TestClient
+
+        client = TestClient(__import__("web.main", fromlist=["create_app"])
+                            .create_app())
+        client.post("/api/settings", data={"max_score_per_run": "-5"})
+        assert settings.get("MAX_SCORE_PER_RUN") == "40"
+        client.post("/api/settings", data={"max_score_per_run": "banana"})
+        assert settings.get("MAX_SCORE_PER_RUN") == "40"

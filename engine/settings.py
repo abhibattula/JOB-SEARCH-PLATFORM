@@ -14,7 +14,12 @@ DEFAULTS = {
     "LLM_MODEL": "llama-3.3-70b-versatile",
     "JOBSPY_LINKEDIN": "0",
     "SCHEDULE_REFRESH": "0",
-    "MAX_SCORE_PER_RUN": "150",
+    # 020: MEANING CHANGED. Was "jobs scored per refresh, any tier" (150).
+    # Now "jobs upgraded to full AI assessment per background pass". Ranking
+    # is uncapped and ignores this key entirely. 40 rather than 150 because a
+    # unit of work here costs ~67 s on a laptop CPU — 40 is roughly 45 minutes
+    # of background work, i.e. a pass that actually finishes.
+    "MAX_SCORE_PER_RUN": "40",
     "ALERTS_ENABLED": "1",
     "UPDATE_CHECK": "1",
     # 008: freshness, sourcing knobs, model split, update/What's-New state

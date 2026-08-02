@@ -1234,3 +1234,74 @@ class TestProfile017Fields:
         assert profile_answers.answer_for("selfid_gender", profile) == "Man"
         assert profile_answers.answer_for("graduation_date", profile) == \
             "December 2025"
+
+
+class TestAssessmentProgress020:
+    """020 (FR-011): the applicant can see background AI assessment running.
+
+    Additive — the refresh-status payload gains one object and no existing
+    field changes meaning. It has to be a SEPARATE record from the refresh
+    run, because the pass deliberately outlives the run.
+    """
+
+    KEYS = {"running", "done", "total", "failed", "paused_for_session"}
+
+    def test_status_carries_the_assessment_object(self, client):
+        body = client.get("/api/refresh/status").json()
+        assert set(body["assessment"]) == self.KEYS
+
+    def test_it_reads_the_live_pass_state(self, client, monkeypatch):
+        from engine import upgrade
+
+        with upgrade._lock:
+            upgrade._state.update({"running": True, "done": 3, "total": 40})
+
+        body = client.get("/api/refresh/status").json()
+        assert body["assessment"]["running"] is True
+        assert body["assessment"]["done"] == 3
+        assert body["assessment"]["total"] == 40
+
+    def test_existing_status_fields_are_untouched(self, client):
+        """Additive means additive."""
+        body = client.get("/api/refresh/status").json()
+        for key in ("active", "sources"):
+            assert key in body
+
+    def test_the_endpoint_does_not_block_on_the_pass(self, client, monkeypatch):
+        """Status is polled every 5 s from the feed; it must never wait on a
+        ~67 s assessment."""
+        import time
+
+        from engine import upgrade
+
+        started = time.monotonic()
+        for _ in range(20):
+            client.get("/api/refresh/status")
+        assert time.monotonic() - started < 10
+        assert upgrade.progress()["running"] is False
+
+    def test_the_feed_shows_the_pass_while_it_runs(self, client):
+        from engine import upgrade
+
+        with upgrade._lock:
+            upgrade._state.update({"running": True, "done": 12, "total": 40})
+
+        html = client.get("/").text
+        assert "12" in html and "40" in html
+        assert "assess" in html.lower()
+
+    def test_the_feed_says_nothing_when_no_pass_is_running(self, client):
+        html = client.get("/").text
+        assert "AI-scoring" not in html
+
+    def test_the_feed_says_why_it_paused(self, client):
+        """A pass that stood down for a fill session must not read as a
+        stalled or broken one."""
+        from engine import upgrade
+
+        with upgrade._lock:
+            upgrade._state.update({"running": True, "done": 4, "total": 40,
+                                   "paused_for_session": True})
+
+        html = client.get("/").text
+        assert "paused" in html.lower()

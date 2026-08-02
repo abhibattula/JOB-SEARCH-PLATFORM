@@ -444,10 +444,14 @@ def _feed_context(
     jobs, total = db.query_jobs(**params)
     run = db.get_run_status()
     profile = db.get_profile()
-    from engine import matcher
+    from engine import matcher, upgrade
     from engine.ingest import SOURCE_ORDER, linkedin_linkout
 
     return {
+        # 020 (FR-011): the background assessment pass, shown in the channel
+        # strip beside the sources. It outlives the run, so it is its own
+        # value rather than another entry in run.sources.
+        "assessment": upgrade.progress(),
         "linkedin_search_url": linkedin_linkout.url_for_profile(profile),
         "has_llm_key": matcher.llm_available(),
         "request": request,

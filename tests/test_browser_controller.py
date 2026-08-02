@@ -953,3 +953,68 @@ class TestAdoptTab019:
         assert adopted == [(41, j1)]
         with bc._lock:
             assert bc._state.backend == "extension"
+
+
+class TestLiveSessionPredicate020:
+    """020 US3 (FR-013): the signal the background assessment pass uses to
+    stand down.
+
+    Applying always outranks ranking. Assessment and Apply Assist drafting
+    share ONE serialized on-device worker with no priority ordering, so the
+    only safe arrangement is for the pass to yield entirely while a fill
+    session is live.
+    """
+
+    def test_idle_before_any_session(self, tmp_db):
+        assert bc.session_is_live() is False
+
+    def test_live_while_a_queue_is_running(self, tmp_db, monkeypatch):
+        monkeypatch.setattr(bc, "_dispatch",
+                            lambda name, payload=None, wait=None: None)
+        bc.start_queue([seed_job("https://x.example/live-1")])
+        assert bc.session_is_live() is True
+
+    def test_idle_again_once_the_queue_stops(self, tmp_db, monkeypatch):
+        monkeypatch.setattr(bc, "_dispatch",
+                            lambda name, payload=None, wait=None: None)
+        bc.start_queue([seed_job("https://x.example/live-2")])
+        bc.stop_queue()
+        assert bc.session_is_live() is False
+
+    def test_it_reads_the_same_flag_the_session_sets(self, tmp_db, monkeypatch):
+        """Not a parallel bookkeeping variable that could drift out of step
+        with the real session."""
+        monkeypatch.setattr(bc, "_dispatch",
+                            lambda name, payload=None, wait=None: None)
+        bc.start_queue([seed_job("https://x.example/live-3")])
+        with bc._lock:
+            bc._state.running = False
+        assert bc.session_is_live() is False
+
+    def test_it_never_deadlocks_against_a_status_call(self, tmp_db, monkeypatch):
+        """The pass calls this between assessments while the web layer may be
+        rendering status. Taking the lock twice, or holding it across a call
+        that takes it again, would wedge both."""
+        import threading
+
+        monkeypatch.setattr(bc, "_dispatch",
+                            lambda name, payload=None, wait=None: None)
+        bc.start_queue([seed_job("https://x.example/live-4")])
+
+        errors = []
+
+        def hammer(fn):
+            try:
+                for _ in range(200):
+                    fn()
+            except BaseException as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        threads = [threading.Thread(target=hammer, args=(bc.session_is_live,)),
+                   threading.Thread(target=hammer, args=(bc.queue_snapshot,))]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join(timeout=15)
+            assert not t.is_alive(), "session_is_live deadlocked with status()"
+        assert not errors, errors
