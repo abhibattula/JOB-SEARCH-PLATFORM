@@ -342,10 +342,10 @@ without losing any detection.
       only against the HTTP surface and never import `engine`
 - [x] T062 Bump the version byte-safely in `engine/__init__.py`,
       `extension/manifest.json`, `packaging/windows.iss`
-- [ ] T063 Manual: quickstart §4 (one pass, no duplicates, resume), §5
+- [ ] T063 **APPLICANT'S** — Manual: quickstart §4 (one pass, no duplicates, resume), §5
       (**applying beats ranking** — the regression most likely to be caused by
       this release), §6 (rich-text on a real Greenhouse or Lever form)
-- [ ] T064 Manual: quickstart §10 — the automation line unchanged, **including
+- [ ] T064 **APPLICANT'S** — Manual: quickstart §10 — the automation line unchanged, **including
       019's still-outstanding T076**: install, press ↻ on the companion card at
       `chrome://extensions`, save a Workday login, run one real Workday
       application to Review and confirm Submit is never clicked; one real
