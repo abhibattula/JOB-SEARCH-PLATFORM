@@ -123,6 +123,36 @@ templates.env.globals["current_theme"] = _current_theme
 # 008 (FR-032): plain-language changelog behind the What's New overlay —
 # keyed by APP_VERSION, shown once per version.
 WHATS_NEW: dict[str, list[str]] = {
+    "2.0.0": [
+        "Every job in your feed now has a match score. Two-thirds of your "
+        "eligible jobs had none at all — the old scoring stage spent about a "
+        "minute of AI per job, ran inside the refresh, and was superseded "
+        "and restarted long before it could finish. Ranking is now instant "
+        "and uncapped, so nothing is left unranked, and the AI is spent "
+        "afterwards on the best candidates.",
+        "Two kinds of score, and the feed tells you which is which. A “~” "
+        "score is a quick keyword match against your resume; a “•” score is "
+        "a full AI assessment with skills and gap advice. Jobs upgrade from "
+        "one to the other in place, in the background, best matches first. "
+        "You are never shown an approximation as though it were a judgement.",
+        "The refresh finishes in seconds instead of hours. It used to hold "
+        "itself open for the entire scoring pass — every source reading "
+        "“done”, the Refresh button refusing as “running”, and new-match "
+        "alerts waiting behind it the whole time. Background AI scoring now "
+        "runs after the refresh closes, shows its progress, and can only "
+        "ever run once at a time.",
+        "Applying always beats ranking. Background scoring stands down "
+        "completely the moment you start filling in an application, so the "
+        "form in front of you is never slowed down by work on the feed.",
+        "Cover letters written in a rich-text box now fill. On forms that "
+        "use a styled editor rather than a plain text area, that box used to "
+        "be invisible to Apply Assist — not filled, not counted, and not "
+        "even flagged for you. It is now filled like any other answer, or "
+        "listed as needing you.",
+        "The companion is cheaper to keep installed: on ordinary pages with "
+        "no application form it now checks four times less often, and wakes "
+        "instantly the moment a form appears.",
+    ],
     "1.9.1": [
         "The companion no longer forgets what it filled. On the review page "
         "at the end of an escorted application — and when you paused or "

@@ -1,0 +1,57 @@
+<!DOCTYPE html><html><head><meta charset="utf-8"><title>iCIMS-style wizard step</title></head>
+<body>
+<h1>Apply — iCIMS</h1>
+<!-- 020 US6 fixture: 019 shipped iCIMS with only the generic Next/Continue
+     fallback, untested against any fixture. This is the allowlist-first
+     path: the control is recognised by its iCIMS id, not by its text.
+
+     It deliberately labels the advance control "Continue >>" rather than a
+     bare "Next", so a text-only matcher would be doing the work if the
+     selector were broken — and the terminal step's Submit must never be
+     clicked, which is what __icims_submitted proves. -->
+<div id="step1">
+  <form id="form">
+    <label>First Name<input id="firstname" name="firstname" type="text"></label>
+    <label>Last Name<input id="lastname" name="lastname" type="text"></label>
+    <label>Email<input id="email" name="email" type="email"></label>
+    <label>Phone<input id="phone" name="phone" type="tel"></label>
+  </form>
+  <button id="quickApplyNextButton" type="button">Continue &raquo;</button>
+</div>
+
+<div id="review" style="display:none">
+  <h2>Review your application</h2>
+  <form id="review-form">
+    <label>Additional notes<textarea name="notes" id="notes"></textarea></label>
+  </form>
+  <button id="icims-submit" class="iCIMS_SubmitButton" type="button">
+    Submit application
+  </button>
+</div>
+
+<script src="/_mirror.js"></script>
+<script>
+  (function () {
+    document.getElementById('quickApplyNextButton')
+      .addEventListener('click', function () {
+        document.getElementById('step1').style.display = 'none';
+        document.getElementById('review').style.display = '';
+        // echo so the test can see the advance really happened
+        fetch('/echo', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({name: '__icims_advanced', value: 'yes'}),
+        });
+      });
+
+    document.getElementById('icims-submit')
+      .addEventListener('click', function () {
+        fetch('/echo', {
+          method: 'POST',
+          headers: {'Content-Type': 'application/json'},
+          body: JSON.stringify({name: '__icims_submitted', value: 'yes'}),
+        });
+      });
+  })();
+</script>
+</body></html>

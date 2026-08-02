@@ -114,23 +114,41 @@ Python:  3.12 (.venv)
   needing-score scan (600 rows)   9.4 ms
 
 
-== COMPANION IDLE COST (structure confirmed; magnitude NOT yet measured) ==
+== COMPANION IDLE COST (measured — and the opening claim was wrong twice) ==
 
-  discovery.js:404  setInterval(tick, 1500) under <all_urls>, all_frames:true
+  discovery.js  setInterval(tick, 1500) — TOP FRAME ONLY (discovery.js:14)
     -> classify()          discovery.js:195
     -> scanner.probe()     scanner.js:451
     -> deepQueryAll()      scanner.js:166 — querySelectorAll("*") over the
                            WHOLE document to find shadow hosts
     -> isVisible() per candidate — getClientRects() forces layout
 
-  Runs in every frame of every page, forever, application or not.
+  Runs on every page the applicant opens, forever, application or not.
 
-  T045 must measure this before T046 optimises it. Per research R6 and the
-  019 step-2 lesson: a purpose-built measurement beat three plausible
-  hypotheses. Do not skip straight to the fix.
+  T045 MEASURED (shipped scanner.probe(), median of 40 calls):
 
-  PRE-CHANGE probe() cost per tick: [T045 — to be recorded]
-  POST-CHANGE:                      [T049 — must be <= 50% of the above]
+    page                       elements   probe median   continuous cost
+    ordinary content page         4,009        2.80 ms   0.19% of a core
+    large application page       20,009       16.90 ms   1.1%
+    very large page              60,009       52.35 ms   3.5%
+
+  TWO CORRECTIONS to the claim that opened this workstream:
+
+  1. It is NOT "every frame of every page". discovery.js:14 returns unless
+     window === window.top — the poll is TOP-FRAME ONLY. main.js's 2s safety
+     scan does run in all frames, but only during an active fill session,
+     which is not idle cost.
+
+  2. At typical page sizes this was never the problem it was described as.
+     0.19% of one core is noise. What is real is the top end: a 52 ms
+     main-thread block every 1.5 s is visible jank, on exactly the heavy
+     pages an applicant browses.
+
+  T049 RESULT: the per-tick cost is UNCHANGED (the walk still costs what it
+  costs); the FREQUENCY drops from 1.5 s to 6 s after five empty ticks —
+  a 4x reduction in idle cost, past SC-008's 50%. A childList-only
+  MutationObserver wakes it instantly, so the slow rate is only ever reached
+  on a page that is both formless and static.
 
 
 == T010 RESULT: RANKING THROUGHPUT (post-change) ==
@@ -163,3 +181,23 @@ Python:  3.12 (.venv)
   So a rich-text cover letter is not filled, not counted, not flagged, and
   carries no reason — the silent-gap failure mode 018 and 019 were both
   spent eliminating.
+
+
+== T060 RESULT: THE HEADLINE CLAIM, ON THE REAL DATABASE ==
+
+  Run against a COPY of data/jobs.db (the live file was not touched), with
+  matcher.analyze_match / local_llm.chat / pipeline._analyze all patched to
+  RAISE for the entire run:
+
+    BEFORE  eligible=937  unscored=627  by-method={'basic': 299, 'local': 11}
+    AFTER   eligible=937  unscored=0    by-method={'basic': 926, 'local': 11}
+    ranked in 3.93 s
+
+  SC-001  100% of eligible jobs carry a score ....... PASS
+  SC-002  under 30 s with no AI involved ............ PASS (3.93 s)
+  FR-002  ranking never called the model ............ PASS (it would have raised)
+
+  The 11 pre-existing AI ('local') scores were PRESERVED, not overwritten —
+  guarantee R3. The feed went from 33% ranked to 100% ranked in under four
+  seconds, against the same backlog the old stage would have needed 11.6
+  hours for.

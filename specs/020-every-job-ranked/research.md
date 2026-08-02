@@ -184,32 +184,56 @@ must fall back to `automation_id` and label text). Writing must dispatch real
 
 ## R6 — The companion's idle cost
 
-**Decision**: Measure first, then back off — and land the benchmark before any
-optimisation.
+> **CORRECTED during implementation, twice.** The measurement-first rule
+> earned its keep here: the original claim overstated this in one way and the
+> benchmark undercut it in another.
 
-**Evidence**: `discovery.js:404` starts `setInterval(tick, 1500)` under
-`<all_urls>` with `all_frames: true`. Each tick calls `classify()` →
-`scanner.probe()` → `deepQueryAll()`, which runs `querySelectorAll("*")` over
-the whole document to find shadow hosts (`scanner.js:171`) and then
-`isVisible()` per candidate, forcing layout via `getClientRects()`. This runs
-in every frame of every page, forever, whether or not the page is an
-application.
+**Original (wrong) claim**: "this runs in every frame of every page, forever."
 
-**Rationale**: The cost is structurally obvious but its *magnitude* is not, and
-this project has an explicit rule — a purpose-built measurement beat three
-plausible hypotheses when diagnosing the 019 step-2 stall. Optimising before
-measuring here would repeat exactly that mistake, so the benchmark is task
-number one of this workstream and the success criterion (SC-008, at least a
-50% reduction) is stated against it.
+**What was wrong**: `discovery.js:14` is `if (window !== window.top) return;` —
+the discovery poll is **top-frame only**. There is no per-iframe multiplier.
+`main.js`'s 2 s safety scan does run in all frames, but only while a fill
+session is active, which is not idle cost.
+
+**Then the benchmark undercut the rest of it.** Timing the shipped
+`scanner.probe()` (the whole-DOM shadow-root walk plus a forced layout per
+candidate) on real page sizes:
+
+| page | elements | probe, median | continuous cost |
+|---|---|---|---|
+| ordinary content page | 4,009 | **2.8 ms** | 0.19% of one core |
+| large app page | 20,009 | **16.9 ms** | 1.1% |
+| very large page | 60,009 | **52.4 ms** | 3.5% |
+
+At typical sizes this was **never the problem it was described as**. What is
+real is the top end: a 52 ms main-thread block every 1.5 s is visible jank,
+and it lands on exactly the heavy pages an applicant browses.
+
+**Decision**: keep the workstream, but as a small, safe change with an honest
+claim. The poll widens from 1.5 s to 6 s after five consecutive ticks that
+found nothing — a **4× reduction in idle cost**, comfortably past SC-008's
+50% — and a `childList`-only `MutationObserver` wakes it instantly. The
+per-tick cost is unchanged; only the frequency drops.
+
+**Why the waker makes the backoff safe**: a form cannot appear without the DOM
+changing. Any mutation, or an in-page navigation, returns the poll to full
+speed, so the slow rate is only ever reached on a page that is both formless
+and static. The regression this could cause — a form mounting after the poll
+widened — has its own browser test (`late_form_after_idle.html`), because a
+source-string assertion could not catch it.
 
 **Alternatives considered and rejected**:
 
 - **Narrow the manifest `matches` to known ATS hosts** — breaks the ad-hoc
   "fill any page" capability and the discovery badge on arbitrary postings,
   both deliberate 012/018 behaviours. **Rejected.**
-- **Drop the periodic poll and rely on `MutationObserver`** — the poll exists
-  to cover observer blind spots (value mutations that change no observed
-  attribute). **Rejected**; back it off instead of removing it.
+- **Drop the periodic poll and rely on `MutationObserver` alone** — the poll
+  covers observer blind spots (value mutations that change no observed
+  attribute). **Rejected**; backed off, not removed.
+- **Skip the `querySelectorAll("*")` shadow walk unless a shadow host
+  exists** — there is no cheap way to know that without the walk, and caching
+  it risks missing a late-mounted shadow form. **Rejected**: the interval
+  change gets 4× with none of that risk.
 
 ---
 

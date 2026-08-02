@@ -281,20 +281,20 @@ without losing any detection.
 
 **Independent Test**: the benchmark from T045, before and after.
 
-- [ ] T045 [US5] **Measure first.** Add a real-browser benchmark timing
+- [x] T045 [US5] **Measure first.** Add a real-browser benchmark timing
       `scanner.probe()` per tick on a large form-free fixture page; record the
       pre-change number in `baseline.txt`. No optimisation in this task
-- [ ] T046 [P] [US5] Failing tests `tests/test_extension_assets.py` +
+- [x] T046 [P] [US5] Failing tests `tests/test_extension_assets.py` +
       `tests/integration/` — after N consecutive `classify() === "none"` ticks
       the poll interval increases (FR-020), and the shadow-root
       `querySelectorAll("*")` walk is skipped when the page has no shadow host
       and no cheap selector hit
-- [ ] T047 [US5] `extension/content/discovery.js` + `scanner.js`: implement the
+- [x] T047 [US5] `extension/content/discovery.js` + `scanner.js`: implement the
       backoff and the shadow-walk skip — T046 green
-- [ ] T048 [P] [US5] Failing browser test — a form appearing after backoff,
+- [x] T048 [P] [US5] Failing browser test — a form appearing after backoff,
       **including after in-page navigation**, is still detected without a
       noticeable delay (FR-021). This is the regression the backoff could cause
-- [ ] T049 [US5] Verify T048 green and re-run T045's benchmark; assert at least
+- [x] T049 [US5] Verify T048 green and re-run T045's benchmark; assert at least
       a 50% reduction (SC-008) and record both numbers
 
 **Checkpoint**: the companion is cheap to keep installed.
@@ -305,18 +305,18 @@ without losing any detection.
 
 **Goal**: iCIMS advances allowlist-first like every other supported site.
 
-- [ ] T050 [P] [US6] Create fixture `tests/fixtures/ats_pages/icims_step.html`
+- [x] T050 [P] [US6] Create fixture `tests/fixtures/ats_pages/icims_step.html`
       with an iCIMS-shaped next control and a terminal submit step
-- [ ] T051 [P] [US6] Failing tests `tests/test_adapters.py` +
+- [x] T051 [P] [US6] Failing tests `tests/test_adapters.py` +
       `tests/test_extension_assets.py` — the iCIMS `ADVANCE_ALLOWLIST` entry is
       exercised and the `adapters.py` ↔ `advancer.js` parity assertion covers it
-- [ ] T052 [US6] `engine/autofill/adapters.py` + `extension/content/advancer.js`:
+- [x] T052 [US6] `engine/autofill/adapters.py` + `extension/content/advancer.js`:
       finalise the iCIMS selectors — T051 green
-- [ ] T053 [P] [US6] Failing browser test
+- [x] T053 [P] [US6] Failing browser test
       `tests/integration/test_escort_journeys.py::TestICIMSAdvance020` — the
       step advances by the iCIMS control, once per rendered step, and **stops at
       the final Submit with it provably un-clicked** (FR-023, FR-024)
-- [ ] T054 [US6] Verify T053 green; confirm the click is recorded in the
+- [x] T054 [US6] Verify T053 green; confirm the click is recorded in the
       activity ledger like every other progression click
 
 **Checkpoint**: iCIMS has parity with Workday and Greenhouse.

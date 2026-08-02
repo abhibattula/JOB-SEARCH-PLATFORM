@@ -368,3 +368,52 @@ class TestSignIn:
             "the generated password was not saved to the vault at fill time")
         assert _never_echoed("__create_account_clicked", settle=5.0), (
             "Create Account is final-class — the human presses it")
+
+
+class TestICIMSAdvance020:
+    """020 US6 (FR-023): iCIMS advances by its OWN recognised control.
+
+    019 shipped iCIMS with only the conservative generic Next/Continue
+    fallback, never exercised against a fixture — its spec records that
+    explicitly as an assumption. This gives it the same allowlist-first
+    coverage Workday and Greenhouse have, under every unchanged 019 safety
+    rule: one shot per rendered step, capped, and a hard stop at the final
+    Submit.
+
+    The fixture labels its advance control "Continue »" rather than a bare
+    "Next", so a broken selector cannot be rescued by the generic text
+    fallback without that being visible here.
+    """
+
+    def test_the_step_advances_by_the_icims_control(self, context,
+                                                    fixture_server):
+        assert _wait_connected()
+        _seed(fixture_server, "icims_step.html")
+
+        assert _echoed("firstname") == "Abhinav", "step 1 never filled"
+        assert _echoed("__icims_advanced"), (
+            "the iCIMS Continue control was never clicked — the escort "
+            "should recognise it by selector, not by its text")
+
+    def test_the_final_submit_is_never_clicked(self, context, fixture_server):
+        """FR-024, unchanged and non-negotiable: the human submits."""
+        assert _wait_connected()
+        _seed(fixture_server, "icims_step.html")
+
+        assert _echoed("__icims_advanced"), "never reached the review step"
+        assert _never_echoed("__icims_submitted", settle=6.0), (
+            "the escort clicked Submit on an iCIMS application")
+
+    def test_the_advance_is_recorded_in_the_ledger(self, context,
+                                                   fixture_server):
+        """Every progression click is ledger-recorded — a constitutional
+        condition of the 019 clarification, not an optional nicety."""
+        from engine.autofill import ext_backend
+
+        assert _wait_connected()
+        _seed(fixture_server, "icims_step.html")
+        assert _echoed("__icims_advanced")
+
+        trail = ext_backend.progression_clicks()
+        assert trail, "the advance was not recorded"
+        assert any(entry.get("status") == "clicked" for entry in trail), trail

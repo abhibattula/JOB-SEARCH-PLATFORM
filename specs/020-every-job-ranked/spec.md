@@ -148,10 +148,12 @@ answer or listed as needing them.
 As someone who browses the web all day with the companion installed, it costs
 me nothing noticeable on pages that have nothing to do with job applications.
 
-**Why this priority**: The companion inspects every frame of every page on a
-fixed interval, forever. It is a background tax on ordinary browsing rather
-than a defect in any single feature, so it ranks below correctness — but it is
-real, and it is paid on a low-power laptop.
+**Why this priority**: The companion inspects every page the applicant opens
+on a fixed interval, forever. It is a background tax on ordinary browsing
+rather than a defect in any single feature, so it ranks below correctness.
+(Measured during implementation: smaller than first claimed at ordinary page
+sizes — 0.19% of a core — but a 52 ms main-thread block every 1.5 s on a very
+large page is real jank. See the corrected research R6.)
 
 **Independent Test**: Measure the companion's periodic inspection cost on a
 large page with no application form, before and after, and confirm a
@@ -324,9 +326,11 @@ rather than the generic fallback.
 - **SC-007**: Rich-text cover-letter boxes on the covered fixture sites are
   discovered 100% of the time and are either filled or flagged — never
   silently absent.
-- **SC-008**: The companion's periodic inspection cost on a large
-  form-free page falls by at least half, with no detection regressions in the
-  browser suite.
+- **SC-008**: The companion's idle inspection cost on a form-free page falls
+  by at least half (achieved: 4x, by widening the poll from 1.5 s to 6 s),
+  with no detection regressions in the browser suite. Measured baseline:
+  2.8 ms per tick at 4k page elements, 16.9 ms at 20k, 52 ms at 60k — and,
+  contrary to the original plan, top-frame only rather than per-frame.
 - **SC-009**: The date-ordered all-jobs listing is at least 1.8× faster than
   the pre-change baseline (measured 329 ms → 153 ms), with no view regressing.
 - **SC-010**: Both existing gates stay green: the full unit battery and the

@@ -536,3 +536,25 @@ class TestRichText020:
         time.sleep(3.0)
         assert not any(e.get("name") == "__submitted"
                        for e in _Handler.echoes)
+
+
+class TestIdleBackoff020:
+    """020 US5 (FR-021): the backoff must not cost detection.
+
+    The optimisation is only acceptable if a form appearing on a page that
+    has gone quiet is still found promptly. That is the one regression
+    slowing the poll can cause, so it gets a real browser test rather than a
+    source-string assertion.
+    """
+
+    def test_a_form_mounting_after_the_poll_slows_is_still_filled(
+            self, context, app_server, fixture_server):
+        assert _wait_connected(app_server["port"])
+        _seed_and_queue_full(fixture_server, "late_form_after_idle.html")
+
+        # the form does not exist for the first 9 s — well past the point the
+        # discovery poll has widened — and must still fill once it appears
+        assert _echoed("lf_first", timeout=30) == "Abhinav", (
+            "the form was never filled after the poll backed off — the "
+            "MutationObserver waker is not doing its job")
+        assert _echoed("lf_email", timeout=15) == "abhi@example.com"

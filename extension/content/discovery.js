@@ -15,6 +15,15 @@
 
   const DESC_MAX = 20000;
   const POLL_MS = 1500;
+  // 020 (FR-020/FR-021): every tick calls scanner.probe(), which walks the
+  // whole DOM hunting shadow roots and forces layout per candidate.
+  // Measured: 2.8 ms on a 4k-element page, 16.9 ms at 20k, 52 ms at 60k —
+  // and 52 ms on the main thread every 1.5 s is visible jank on exactly the
+  // heavy pages an applicant browses. A page that has repeatedly shown no
+  // posting and no form is very unlikely to sprout one without SOME DOM
+  // change, so the poll slows down and any mutation wakes it back up.
+  const IDLE_POLL_MS = 6000;
+  const IDLE_AFTER_TICKS = 5;
   // Host affinity is a hint only — detection is by selector so fixtures/proxies
   // still resolve. LinkedIn: linkedin.com/jobs/view; Indeed: indeed.* /viewjob.
   const LINKEDIN_HOST = /(^|\.)linkedin\.com$/i;
@@ -379,6 +388,27 @@
 
   let lastHref = location.href;
   let pollTimer = null;
+
+  // 020 (FR-020/FR-021): idle backoff. `quietTicks` counts consecutive ticks
+  // that found nothing at all; past IDLE_AFTER_TICKS the interval widens.
+  // `wake()` puts it straight back to full speed, and it is called from the
+  // two things that can actually produce a form: a DOM mutation and an
+  // in-page navigation. So the slow poll is only ever reached on a page that
+  // is both formless AND static.
+  let quietTicks = 0;
+  let pollMs = POLL_MS;
+
+  function schedule(ms) {
+    if (pollTimer) { clearInterval(pollTimer); }
+    pollMs = ms;
+    pollTimer = setInterval(tick, ms);
+  }
+
+  function wake() {
+    quietTicks = 0;
+    if (pollMs !== POLL_MS) { schedule(POLL_MS); }
+  }
+
   function tick() {
     if (orphaned) { return; }
     if (location.href !== lastHref) {   // SPA nav → new posting, reset dismiss
@@ -390,18 +420,42 @@
       // previous page must not leave "Fill again" pointing at this one.
       if (window.jePanel) { window.jePanel.setSession("idle"); }
       removeBadge();
+      wake();                           // a new page deserves full attention
     }
     // 018: classify FIRST, then decide. A page with no posting metadata but a
     // real application form now qualifies — that is the Greenhouse
     // `…/application` case where the applicant previously saw nothing at all.
-    if (classify() === "none") { scoredFor = null; removeBadge(); return; }
+    if (classify() === "none") {
+      scoredFor = null;
+      removeBadge();
+      quietTicks += 1;
+      if (quietTicks >= IDLE_AFTER_TICKS && pollMs === POLL_MS) {
+        schedule(IDLE_POLL_MS);
+      }
+      return;
+    }
+    wake();  // something is here — never stay slow on a live page
     // A wall alone is enough to render — there is no posting to score.
     if (detection === "none" && wall) { render(); return; }
     if (dismissedFor === location.href) { return; }
     if (current) { requestScore(); }
     render();
   }
-  pollTimer = setInterval(tick, POLL_MS);
+
+  // A form cannot appear without the DOM changing, so this is the signal that
+  // makes the backoff safe: no polling work, just a flag flip on real change.
+  // childList-only (no attributes, no character data) keeps it cheap on the
+  // busy pages the backoff exists for.
+  try {
+    const waker = new MutationObserver(function () {
+      if (pollMs !== POLL_MS) { wake(); }
+      else { quietTicks = 0; }
+    });
+    waker.observe(document.documentElement,
+                  { childList: true, subtree: true });
+  } catch (_e) { /* no observer: the poll simply stays at its slow rate */ }
+
+  schedule(POLL_MS);
   // first pass after the page settles
   if (document.readyState === "complete") { tick(); }
   else { window.addEventListener("load", tick, { once: true }); }

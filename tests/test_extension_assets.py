@@ -314,6 +314,66 @@ class TestGroupingAssets016:
                 f"watcher SERIALIZE_JS missing {token!r}"
 
 
+class TestIdleBackoff020:
+    """020 US5 (FR-020/FR-021): the companion gets cheap on pages that are
+    not applications.
+
+    MEASURED first, per research R6 and the 019 lesson — scanner.probe()
+    walks the whole DOM for shadow roots and forces layout per candidate:
+    2.8 ms at 4k elements, 16.9 ms at 20k, 52 ms at 60k. A 52 ms main-thread
+    block every 1.5 s is visible jank on exactly the heavy pages an applicant
+    browses. (The original research claim that this ran in EVERY frame was
+    wrong — discovery.js is top-frame only; see the corrected R6.)
+
+    The behavioural half — a form appearing after backoff is still found —
+    is proven in the browser suite, not here.
+    """
+
+    def test_the_poll_backs_off_when_nothing_is_found(self):
+        js = (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
+        assert "IDLE_POLL_MS" in js
+        assert "IDLE_AFTER_TICKS" in js
+        assert "quietTicks" in js
+
+    def test_the_slow_poll_is_actually_slower(self):
+        import re
+
+        js = (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
+        fast = int(re.search(r"const POLL_MS = (\d+)", js).group(1))
+        idle = int(re.search(r"const IDLE_POLL_MS = (\d+)", js).group(1))
+        assert idle > fast, (fast, idle)
+        # SC-008 wants at least a halving of idle cost; the interval is the
+        # whole mechanism, so it has to at least double.
+        assert idle >= fast * 2
+
+    def test_a_dom_mutation_wakes_it_back_up(self):
+        """The backoff is only safe because something cheap notices change.
+        Without this a form appearing on a quiet page waits up to the slow
+        interval — and on an SPA, potentially forever."""
+        js = (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
+        assert "MutationObserver" in js
+        assert "wake()" in js
+
+    def test_the_waker_is_childlist_only(self):
+        """An attribute/characterData observer on a busy page costs more than
+        the poll it is protecting."""
+        js = (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
+        observe = js[js.index("waker.observe"):js.index("waker.observe") + 200]
+        assert "childList: true" in observe
+        assert "attributes" not in observe
+        assert "characterData" not in observe
+
+    def test_navigation_resets_to_full_speed(self):
+        js = (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
+        nav = js[js.index("SPA nav"):js.index("SPA nav") + 700]
+        assert "wake()" in nav
+
+    def test_finding_anything_resets_to_full_speed(self):
+        """A page that HAS a posting or a form must never poll slowly."""
+        js = (EXT / "content" / "discovery.js").read_text(encoding="utf-8")
+        assert "wake();  // something is here" in js
+
+
 class TestRichTextAssets020:
     """020 US4 (FR-016..FR-019): rich-text editors become real fields.
 
