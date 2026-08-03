@@ -1260,3 +1260,28 @@ class TestTheApplicantsTypingIsNeverDisturbed:
         """The v1.8.0 half, which must not be lost while fixing the other."""
         js = self._panel()
         assert "if (!holdsFocus(row.wrap)) { patchRow(row, item); }" in js
+
+
+class TestContentScriptsReferenceRealVariables022:
+    """022: a ReferenceError in a content script kills the WHOLE companion —
+    the widget never appears and every browser test times out with no clue.
+
+    This was found the expensive way. main.js names its message parameter
+    `message`, and a line added in Phase 7 said `msg.theme`. `node --check`
+    passed, 2184 unit tests passed, and fourteen browser tests failed on a
+    60-second timeout. Syntax validity is not reference validity.
+    """
+
+    def test_main_js_never_says_msg(self):
+        import re
+        from pathlib import Path
+
+        path = (Path(__file__).resolve().parents[1] / "extension" / "content"
+                / "main.js")
+        text = path.read_text(encoding="utf-8", errors="replace")
+        hits = [line.strip() for line in text.splitlines()
+                if re.search(r"\bmsg\s*\.", line)]
+        assert not hits, (
+            "main.js handles messages as `message`; `msg.` is undefined "
+            "there and throws at runtime, killing the companion:\n  "
+            + "\n  ".join(hits))
