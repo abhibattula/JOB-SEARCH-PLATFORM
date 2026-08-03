@@ -1127,6 +1127,114 @@ filling is unchanged.
 
 ---
 
+## 26. What changed in v2.2.0 (The Case File)
+
+This release is about how the app looks and behaves, not what it knows.
+It started with an audit rather than a mood board, and the audit found
+that large parts of the interface had never been styled at all: roughly
+35 class names were used in the pages and defined in no stylesheet. The
+Apply Assist review list — the screen you read *during* a live employer
+application — was unstyled markup.
+
+### A score now shows how it was produced
+
+Every match score renders as a stamp whose **ring** says where the
+number came from:
+
+| Ring | Meaning |
+|---|---|
+| dashed | keyword match — a guess, not an assessment |
+| solid | scored by the offline model on this computer |
+| double | full analysis |
+| dotted, empty | not scored yet |
+
+It used to be a `~` or a `•` in front of the number, visible only if you
+hovered. The ring carries the signal, so it still reads in greyscale and
+without colour vision, and the provenance is spoken aloud by a screen
+reader. The same stamp appears in the feed, on the job page, on the home
+strip and in the browser panel — so the same job can never look like two
+different things.
+
+**This also fixed an overclaim.** The badge on a job posting you are
+browsing has always been a keyword guess, but it rendered in confident
+colour bands that read like a real assessment. It now shows a dashed
+ring, like the guess it is.
+
+### The feed stops moving under you
+
+The feed used to replace its whole table every five seconds whether
+anything had changed or not — twelve times a minute, losing your scroll
+position and whatever you were hovering. It now sends nothing when
+nothing has changed, so the page simply stays still.
+
+### More jobs on screen
+
+The home dashboard was three tall cards taking about 315 pixels of a
+768-pixel screen. It is one strip now, with the same information: your
+top three matches, your application counts, and what needs you next.
+
+**Measured on a 1366×768 laptop: 6 jobs visible before, 13 after.** You
+can also hide the strip entirely, and there is always a link to bring it
+back.
+
+### Navigation you can find your way around
+
+Fourteen links in one bar that wrapped onto two rows became four tabs —
+**Search, Pipeline, Apply, Setup** — with that section's views on a
+second row. Both the section and the view are marked, so you always know
+where you are. It never wraps.
+
+### Profile and Settings
+
+Profile declared a two-column layout in five places and it had never
+rendered — about 50 fields were in one long stacked column. Field hints
+looked exactly like field labels. The escort control in Settings was a
+bare checkbox.
+
+All three are fixed, and Profile gained the thing it most needed: a
+**section index with live counts**. "Contact & address 0/10" tells you
+exactly where the next application will stall, because a blank field
+here is a field Apply Assist has to hand back to you on the employer's
+form. The counts update as you type, and a save bar appears only once
+you have actually changed something.
+
+### The browser panel matches the app
+
+The panel that sits over an employer's form was a separate dark design
+that ignored your light/dark choice entirely. It now uses the same
+colours, the same type and the same stamp, and follows your theme. Your
+saved panel position, dragging and edge-clamping all behave exactly as
+before.
+
+### Your PDFs
+
+The resume and cover letter have real typographic hierarchy now — your
+name is clearly the largest thing on the page, section headings are
+distinct from body text. **Nothing about ATS-safety changed**: still a
+single column, still selectable text, still no tables or images or
+headers. Accented and non-Latin characters still render.
+
+### Smaller things
+
+- The release-notes panel used to fill the whole screen on a new
+  version, so a fresh install showed no jobs until you dismissed it. It
+  is a readable column now.
+- Every feed load raised a "Saved" notification for something you never
+  did. It doesn't any more.
+- The sticky Apply Assist control bar had been rendering white in dark
+  mode since v1.7.0.
+- Choose **Compact** or **Comfortable** row density from the feed
+  toolbar; the choice is remembered.
+- Everything respects your system's "reduce motion" setting, including
+  the places that previously ignored it.
+
+### What did not change
+
+No new subscription, no account, nothing new leaves your machine, and
+the app still works offline with no key. The typefaces are bundled in
+the installer — no font is ever fetched from the internet.
+
+
 ## 25. What changed in v2.1.0 (The Real Application)
 
 *(feature 021)*

@@ -15,6 +15,24 @@ and scores every posting against **your resume** with actionable gap analysis �
 the things tools like Simplify and Jobright charge subscriptions for, running
 entirely on your machine for $0.
 
+### v2.2.0 — The Case File
+
+One design system across the app, the browser panel and the generated
+PDFs. The headline is that **a match score now shows how it was
+produced** — a dashed ring for a keyword guess, solid for the offline
+model, double for a full analysis — so a guess can never be mistaken for
+an assessment.
+
+The feed stops replacing itself every five seconds, the home dashboard
+went from three tall cards to one strip (**6 jobs visible per screen
+became 13**, measured), navigation became four tabs that never wrap, and
+Profile gained per-section counts telling you exactly how much Apply
+Assist will still have to hand back to you on a real form.
+
+It began as an audit, not a restyle: roughly 35 class names were used in
+the pages and defined in no stylesheet, including the entire Apply
+Assist review list. A test now fails the build if that ever recurs.
+
 ## What it does
 
 - **Open the app → see fresh, genuine jobs.** The feed renders instantly

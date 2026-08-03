@@ -123,6 +123,45 @@ templates.env.globals["current_theme"] = _current_theme
 # 008 (FR-032): plain-language changelog behind the What's New overlay —
 # keyed by APP_VERSION, shown once per version.
 WHATS_NEW: dict[str, list[str]] = {
+    "2.2.0": [
+        "Every match score now shows how it was produced. A dashed ring "
+        "means a keyword guess, a solid ring means the offline model scored "
+        "it on this computer, and a double ring means a full analysis. It "
+        "used to be a tilde or a dot you could only decode by hovering. The "
+        "badge on job postings you browse was always a keyword guess but "
+        "looked like a real assessment — it now shows a dashed ring too.",
+        "The feed stops moving under you. It was replacing the whole table "
+        "every five seconds whether anything had changed or not, twelve "
+        "times a minute, losing your place each time. It now sends nothing "
+        "when nothing has changed.",
+        "You see twice as many jobs at once. The three tall cards at the top "
+        "of the home page were taking about a third of the screen; they are "
+        "one strip now with the same information. Measured on a laptop: six "
+        "jobs before, thirteen after. You can hide the strip too.",
+        "Navigation is four tabs — Search, Pipeline, Apply, Setup — with "
+        "that section's views underneath. Fourteen links used to wrap onto "
+        "two rows on a laptop.",
+        "Profile tells you how much is left. Each section shows a count like "
+        "“Contact & address 0/10”, because every blank field here is a field "
+        "Apply Assist has to hand back to you on the employer's form. The "
+        "counts update as you type. Its two-column layout also works now — "
+        "it never had, so fifty fields sat in one long column.",
+        "The Apply Assist review list is readable. It is the screen you look "
+        "at during a real application and it had no styling at all: the "
+        "question, the answer and the reason ran together. They are now "
+        "clearly separate, and colour-coded by whether you confirmed it, the "
+        "AI drafted it, or it needs you.",
+        "The panel in your browser matches the app and follows your light or "
+        "dark setting. It used to be a separate dark design that ignored it. "
+        "Dragging and its saved position work exactly as before.",
+        "Your resume and cover letter PDFs have real hierarchy — your name "
+        "is clearly the largest thing on the page. Nothing about how "
+        "applicant tracking systems read them changed.",
+        "Smaller fixes: the release-notes panel no longer fills the entire "
+        "screen on a new version; the feed stopped announcing “Saved” for "
+        "something you never did; the Apply Assist control bar is no longer "
+        "white in dark mode; and you can pick Compact or Comfortable rows.",
+    ],
     "2.1.0": [
         "Apply Assist is readable on a real application. On a Workday form "
         "it was listing 149 things needing you, most of them blank rows, and "

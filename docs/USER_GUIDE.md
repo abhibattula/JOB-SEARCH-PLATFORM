@@ -332,3 +332,26 @@ safe to send on as-is.
 Drag the Apply Assist panel by its header. It stays where you put it on every
 page and every session, and is pulled back into view on a smaller screen. The
 ↺ button in its header returns it to the corner.
+
+## Finding your way around (v2.2.0)
+
+The top bar has four tabs — **Search**, **Pipeline**, **Apply**,
+**Setup** — and the row underneath shows that section's views. Both are
+marked, so you always know where you are.
+
+**Reading a match score.** The ring around the number tells you where it
+came from: dashed is a keyword guess, solid means the offline model
+scored it here, double means a full analysis, dotted-and-empty means it
+has not been scored yet. Hover for the longer explanation.
+
+**Feed density.** Compact or Comfortable, from the feed's own toolbar.
+Compact is the default and fits the most jobs on screen.
+
+**The home strip.** Your top three matches, your application counts and
+what needs you next. Press *Hide* to give the space to the feed; a link
+to bring it back always stays.
+
+**Profile counts.** Each section shows something like "0/10". That is
+how many fields are filled — and a blank one here is a field Apply
+Assist has to leave for you on the employer's form. The index down the
+left jumps between sections, and the counts update as you type.
