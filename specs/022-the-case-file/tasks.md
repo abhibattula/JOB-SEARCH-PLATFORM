@@ -42,12 +42,12 @@ plus all of US2, US3 and US4 — and Phases 4–6 finish US1 screen by screen.
 
 ### Provenance stamp (US2, P1)
 
-- [ ] T012 [US2] Write `tests/test_provenance_stamp.py` asserting contract S1–S5 for all four `match_method` values, using `basic` / `local` / `llm` / absent — **watch it fail** *(FR-016, FR-019, SC-005)*
-- [ ] T013 [US2] Build the stamp component in `web/static/styles.css` at three sizes, with ring style (not colour) as the differentiator *(FR-015, FR-016, FR-019)*
-- [ ] T014 [US2] Render the stamp in `web/templates/partials/feed_table.html`, replacing the `~`/`•` prefix at lines 63-67; keep the explanatory `title` *(FR-015, FR-018)*
-- [ ] T015 [P] [US2] Render the `lg` stamp in `web/templates/job_detail.html` (replacing `.score-big` at lines 85-93) *(FR-018)*
-- [ ] T016 [P] [US2] Render the `sm` stamp in `web/templates/partials/dashboard.html` (replacing `.score-chip`) *(FR-018)*
-- [ ] T017 [US2] Add the visually-hidden provenance phrase for assistive technology (FR-017); confirm T012 green *(FR-017, SC-005)*
+- [X] T012 [US2] Write `tests/test_provenance_stamp.py` asserting contract S1–S5 for all four `match_method` values, using `basic` / `local` / `llm` / absent — **watch it fail** *(FR-016, FR-019, SC-005)*
+- [X] T013 [US2] Build the stamp component in `web/static/styles.css` at three sizes, with ring style (not colour) as the differentiator *(FR-015, FR-016, FR-019)*
+- [X] T014 [US2] Render the stamp in `web/templates/partials/feed_table.html`, replacing the `~`/`•` prefix at lines 63-67; keep the explanatory `title` *(FR-015, FR-018)*
+- [X] T015 [P] [US2] Render the `lg` stamp in `web/templates/job_detail.html` (replacing `.score-big` at lines 85-93) *(FR-018)*
+- [X] T016 [P] [US2] Render the `sm` stamp in `web/templates/partials/dashboard.html` (replacing `.score-chip`) *(FR-018)*
+- [X] T017 [US2] Add the visually-hidden provenance phrase for assistive technology (FR-017); confirm T012 green *(FR-017, SC-005)*
 
 ### Feed stays still (US3, P2)
 

@@ -681,8 +681,13 @@ def create_app() -> FastAPI:
                                        entry_level=None)
         context["dashboard"] = {
             "top_matches": [
+                # 022 (FR-018): match_method travels too. Without it the
+                # dashboard's stamp falls through to "full analysis" for
+                # every job, so a keyword guess would read as a real
+                # assessment on the home screen.
                 {"id": j["id"], "title": j["title"], "company": j["company"],
-                 "match_score": j.get("match_score")}
+                 "match_score": j.get("match_score"),
+                 "match_method": j.get("match_method")}
                 for j in top_matches if j.get("match_score") is not None
             ],
             "stats": {

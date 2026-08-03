@@ -646,3 +646,37 @@ td.barcell { min-width: 120px; }
   background: var(--paper);
   border-bottom: 1px solid var(--rule);
 }
+
+/* ============================================================
+   022 — the provenance stamp (US2, contract provenance-stamp.md)
+
+   Ring style, not colour, is the differentiator: dashed = a guess,
+   solid = scored here, double = a full analysis, dotted+empty =
+   never scored. Greyscale-safe by construction.
+   ============================================================ */
+.stamp {
+  display: inline-flex; align-items: center; justify-content: center;
+  border-radius: 50%; font-family: var(--mono); font-weight: 600;
+  font-variant-numeric: tabular-nums; line-height: 1; flex: none;
+  border: 2px solid currentColor; background: var(--leaf);
+}
+.stamp-why {
+  position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0;
+}
+/* keyword guess — a pencil mark, not ink */
+.stamp--pencil { color: var(--pencil); border-style: dashed;
+  background: var(--pencil-tint); }
+/* scored on this computer — inked */
+.stamp--ink { color: var(--ink); border-style: solid; }
+/* full analysis — inked and sealed */
+.stamp--sealed { color: var(--seal); border-style: double; border-width: 4px;
+  background: var(--seal-tint); }
+/* never scored — an empty impression */
+.stamp--unscored { color: var(--ink-soft); border-style: dotted;
+  background: transparent; }
+
+.stamp--sm { width: 2.1rem; height: 2.1rem; font-size: var(--fs-sm); }
+.stamp--lg { width: 4.6rem; height: 4.6rem; font-size: 1.6rem;
+  border-width: 3px; }
+.stamp--lg.stamp--sealed { border-width: 6px; }

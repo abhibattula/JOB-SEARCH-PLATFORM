@@ -1,4 +1,5 @@
 {% extends "base.html" %}
+{% from "partials/stamp.html" import stamp %}
 {% block title %}{{ job.title }} · {{ job.company }}{% endblock %}
 {% block content %}
 <article class="job-detail">
@@ -82,7 +83,10 @@
       <section>
         <h2>Match analysis</h2>
         {% if match %}
-        <p class="score-big data">{{ '~' if match.method == 'basic' }}{{ '•' if match.method == 'local' }}{{ '%d' % match.match_score }}<span>/100</span></p>
+        <p class="score-line">
+          {{ stamp(match.match_score, match.method, 'lg') }}
+          <span class="muted">/100</span>
+        </p>
         {% if match.method == 'basic' %}
         <p class="muted">Basic keyword match. Add a free AI key in
           <a href="/settings">Settings</a> for full analysis and better gap advice.</p>
@@ -109,6 +113,7 @@
         {% endif %}
         {% if match.reasoning %}<p class="muted">{{ match.reasoning }}</p>{% endif %}
         {% else %}
+        <p class="score-line">{{ stamp(none, none, 'lg') }}</p>
         <p class="muted">Not scored yet. Scores appear after a refresh once your resume is on the
           <a href="/profile">Profile</a> page.</p>
         {% endif %}

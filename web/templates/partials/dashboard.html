@@ -1,3 +1,4 @@
+{% from "partials/stamp.html" import stamp %}
 {# 010 FR-017: the home lead — top matches, application stats, next actions.
    Rendered above the feed on the home page. #}
 {% if dashboard %}
@@ -9,9 +10,7 @@
       {% for m in dashboard.top_matches %}
       <div class="match-row">
         <a href="/jobs/{{ m.id }}">{{ m.title }} <span class="muted">— {{ m.company }}</span></a>
-        {% if m.match_score is not none %}
-        <span class="score-chip {{ 'high' if m.match_score >= 80 }}">{{ m.match_score | round | int }}</span>
-        {% endif %}
+        {{ stamp(m.match_score, m.match_method, 'sm') }}
       </div>
       {% endfor %}
       {% else %}

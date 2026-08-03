@@ -1,0 +1,34 @@
+{# 022 US2 — the provenance stamp.
+
+   ONE macro, used by the feed, the job page, the dashboard and (in its own
+   form) the browser panel. The treatment is a pure function of `method`, so
+   the surfaces cannot drift apart and disagree about the same job.
+
+   Stored values, verified in research R2 — these are what the database
+   holds, NOT what scoring_tier() returns:
+     "basic"  pipeline.py:270            a keyword guess
+     "local"  upgrade.py:288 (non-cloud) scored by the on-device model
+     "llm"    upgrade.py:288 (cloud)     a full analysis
+     absent                              never scored
+
+   Colour is never the only signal (FR-016): the ring style carries the same
+   information, so the stamp survives greyscale and colour-blindness. And the
+   provenance is real text (FR-017), not a title attribute — the tooltip is
+   kept as well, because it tells the applicant what to DO about a weak score.
+#}
+{% macro stamp(score, method, size='sm') -%}
+{%- if score is none -%}
+  {%- set ring, phrase = 'unscored', 'not scored yet' -%}
+{%- elif method == 'basic' -%}
+  {%- set ring, phrase = 'pencil', 'keyword match' -%}
+{%- elif method == 'local' -%}
+  {%- set ring, phrase = 'ink', 'scored on this computer' -%}
+{%- else -%}
+  {%- set ring, phrase = 'sealed', 'full analysis' -%}
+{%- endif -%}
+<span class="stamp stamp--{{ ring }} stamp--{{ size }}"
+      title="{% if ring == 'pencil' %}Keyword match only — add a free AI key in Settings for a full analysis{% elif ring == 'ink' %}Scored by the bundled offline model on this computer{% elif ring == 'sealed' %}Full analysis{% else %}Not scored yet — scores appear after a refresh once your resume is on the Profile page{% endif %}">
+  <span class="stamp-value">{% if score is none %}—{% else %}{{ '%d' % score }}{% endif %}</span>
+  <span class="stamp-why">{{ phrase }}</span>
+</span>
+{%- endmacro %}
