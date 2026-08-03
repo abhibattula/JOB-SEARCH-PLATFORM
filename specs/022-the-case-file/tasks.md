@@ -27,14 +27,14 @@ plus all of US2, US3 and US4 — and Phases 4–6 finish US1 screen by screen.
 
 ## Phase 2: Foundational (BLOCKING — nothing below starts until this is green)
 
-- [ ] T005 Write `tests/test_design_system.py` implementing contract assertions T1–T7 from `contracts/design-tokens.md`, including in-test WCAG luminance arithmetic and an assertion that every font stack ends in a system fallback (FR-007). **Run it and watch T1 fail with ~35 undefined classes and T2 fail on raw hex** — that failure is the audit reproduced as a gate. *(FR-002, FR-005, FR-007, FR-009, SC-002, SC-007)*
-- [ ] T005a Implement T1 as a **shrinking allowlist** (analysis C1): the test carries the set of classes still known to be undefined and asserts that set never *grows*. Without this the suite is red from Phase 2 to Phase 6 and a genuinely new breakage cannot be told from the expected one. T056 empties the allowlist
-- [ ] T006 Write the nine-token block plus `-tint` companions in `web/static/styles.css` `:root`, preserving the existing `[data-theme]` / `prefers-color-scheme` cascade structure at `styles.css:70-119` *(FR-001)*
-- [ ] T007 Add the dark binding for every token; assert both themes declare the identical name set (T4) *(FR-001, FR-004, FR-005)*
-- [ ] T008 Add `@font-face` declarations with relative `url()` and a system fallback in every stack; retune the type scale to the new faces *(FR-006, FR-007, FR-008)*
-- [ ] T009 Add the global `@media (prefers-reduced-motion: reduce)` override that neutralises animation and transition app-wide (R8 — `styles.css:475-479` is currently ungated) *(FR-032, SC-009)*
-- [ ] T010 Delete the undefined `--bg` / `--border` references at `styles.css:563-564` and point `.autofill-controls` at real tokens (R10 — the dark-mode white bar) *(FR-014)*
-- [ ] T011 Run T005's test: T2–T7 must now pass. T1 still fails — that is expected until Phases 3–6 build the classes *(FR-002, FR-005)*
+- [X] T005 Write `tests/test_design_system.py` implementing contract assertions T1–T7 from `contracts/design-tokens.md`, including in-test WCAG luminance arithmetic and an assertion that every font stack ends in a system fallback (FR-007). **Run it and watch T1 fail with ~35 undefined classes and T2 fail on raw hex** — that failure is the audit reproduced as a gate. *(FR-002, FR-005, FR-007, FR-009, SC-002, SC-007)*
+- [X] T005a Implement T1 as a **shrinking allowlist** (analysis C1): the test carries the set of classes still known to be undefined and asserts that set never *grows*. Without this the suite is red from Phase 2 to Phase 6 and a genuinely new breakage cannot be told from the expected one. T056 empties the allowlist
+- [X] T006 Write the nine-token block plus `-tint` companions in `web/static/styles.css` `:root`, preserving the existing `[data-theme]` / `prefers-color-scheme` cascade structure at `styles.css:70-119` *(FR-001)*
+- [X] T007 Add the dark binding for every token; assert both themes declare the identical name set (T4) *(FR-001, FR-004, FR-005)*
+- [X] T008 Add `@font-face` declarations with relative `url()` and a system fallback in every stack; retune the type scale to the new faces *(FR-006, FR-007, FR-008)*
+- [X] T009 Add the global `@media (prefers-reduced-motion: reduce)` override that neutralises animation and transition app-wide (R8 — `styles.css:475-479` is currently ungated) *(FR-032, SC-009)*
+- [X] T010 Delete the undefined `--bg` / `--border` references at `styles.css:563-564` and point `.autofill-controls` at real tokens (R10 — the dark-mode white bar) *(FR-014)*
+- [X] T011 Run T005's test: T2–T7 must now pass. T1 still fails — that is expected until Phases 3–6 build the classes *(FR-002, FR-005)*
 
 ## Phase 3: US2 + US3 + US4 + the Feed's share of US1 → **APPROVAL GATE**
 

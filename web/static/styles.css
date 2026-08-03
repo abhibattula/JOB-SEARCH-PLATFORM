@@ -1,93 +1,165 @@
 /* ============================================================
-   Job Engine — "Instrument, evolved" design system (feature 007)
+   Job Engine — "The Case File" design system (feature 022)
 
-   Light (default): datasheet on paper — cool paper, ink text,
-   monospace wherever a value is data.
-   Dark: scope screen — deep instrument glass, phosphor status
-   colors reserved for traces/lamps, quiet neutral text.
+   Nine semantic tokens, named for what they MEAN in this product
+   rather than for hue:
 
-   All colors flow from the token block; components never use
-   raw hex. Contrast targets WCAG 2.1 AA in both themes.
+     ink    — a fact the applicant confirmed
+     pencil — provisional; the AI drafted it, nobody has checked it
+     flag   — this needs the applicant
+     seal   — done
+
+   That vocabulary is not invented here. The protocol already speaks
+   it: FillItem.flag is Literal["ai_draft", "needs_you"]
+   (engine/autofill/ext_protocol.py). This gives it a visual form.
+
+   Type: Archivo for display and body, IBM Plex Mono for machine
+   truth ONLY — scores, ids, dates, counts, versions, paths, form
+   field names. Nowhere else. Diluting that was why the previous
+   system stopped signalling anything.
+
+   Every colour lives in this block. Components never write one.
+   Enforced by tests/test_design_system.py.
    ============================================================ */
 
+/* Bundled, never fetched: the app works with no network (Principle II). */
+@font-face {
+  font-family: "Archivo"; font-style: normal; font-weight: 100 900;
+  font-stretch: 62% 125%; font-display: swap;
+  src: url("fonts/archivo-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
+    U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122,
+    U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Archivo"; font-style: normal; font-weight: 100 900;
+  font-stretch: 62% 125%; font-display: swap;
+  src: url("fonts/archivo-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7,
+    U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F,
+    U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F,
+    U+A720-A7FF;
+}
+@font-face {
+  font-family: "Plex Mono"; font-style: normal; font-weight: 400;
+  font-display: swap;
+  src: url("fonts/plexmono-400-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
+    U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Plex Mono"; font-style: normal; font-weight: 400;
+  font-display: swap;
+  src: url("fonts/plexmono-400-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB,
+    U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+@font-face {
+  font-family: "Plex Mono"; font-style: normal; font-weight: 600;
+  font-display: swap;
+  src: url("fonts/plexmono-600-latin.woff2") format("woff2");
+  unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6,
+    U+02DA, U+02DC, U+2000-206F, U+2074, U+20AC, U+2122, U+2191, U+2193,
+    U+2212, U+2215, U+FEFF, U+FFFD;
+}
+@font-face {
+  font-family: "Plex Mono"; font-style: normal; font-weight: 600;
+  font-display: swap;
+  src: url("fonts/plexmono-600-latin-ext.woff2") format("woff2");
+  unicode-range: U+0100-024F, U+0259, U+1E00-1EFF, U+2020, U+20A0-20AB,
+    U+20AD-20CF, U+2113, U+2C60-2C7F, U+A720-A7FF;
+}
+
 :root {
-  /* surfaces */
-  --surface: #fafbfc;          /* page paper */
-  --surface-raised: #ffffff;   /* cards, inputs */
-  --surface-sunken: #eff2f6;   /* wells, code strips */
-  /* text */
-  --ink: #1a2129;
-  --muted: #505b67;            /* AA on --surface at small sizes */
-  /* structure */
-  --line: #e3e8ee;
-  --line-strong: var(--ink);
-  /* action */
-  --accent: #175cd3;
-  --accent-tint: #eef4ff;
-  --on-emphasis: #ffffff;      /* text atop ink/accent fills */
-  /* status (instrument lamps) */
-  --ok: #0b6b4f;
-  --ok-tint: #ecf7f2;
-  --warn: #8a5a12;             /* darkened amber: AA on its tint */
-  --warn-tint: #fdf6ea;
-  --danger: #b3382d;
-  --danger-tint: #fbeeec;
-  --new-tint: #f4faf7;
-  /* 010: AI draft accent (distinct from status lamps — it's an action cue) */
-  --draft: #6b3fa0;
-  --draft-tint: #f3eefb;
-  /* type */
-  --mono: "Cascadia Mono", Consolas, ui-monospace, monospace;
-  --sans: "Segoe UI", system-ui, sans-serif;
+  /* --- the nine, light --- */
+  --paper: #f6f7f5;
+  --leaf: #ffffff;
+  --ink: #12211c;
+  --ink-soft: #4a5b53;
+  --rule: #dfe4e0;
+  --edge: #76857d;
+  --seal: #1f6f5c;
+  --pencil: #4a5f7a;
+  --flag: #9a6116;
+  --stop: #a63a2e;
+  --paper-sunken: #eceeea;
+  --seal-tint: #e8f2ee;
+  --pencil-tint: #eef2f7;
+  --flag-tint: #fbf3e7;
+  --stop-tint: #f9ece9;
+  --on-ink: #f6f7f5;
+
+  /* --- transitional aliases (feature 022, removed at T056) ---
+     The system lands over six phases. Until every screen is migrated,
+     the old names resolve to the new ones so no screen renders
+     unstyled mid-rollout. Delete these once nothing references them. */
+  --surface: var(--paper);
+  --surface-raised: var(--leaf);
+  --surface-sunken: var(--paper-sunken);
+  --muted: var(--ink-soft);
+  --line: var(--rule);
+  --line-strong: var(--edge);
+  --accent: var(--seal);
+  --accent-tint: var(--seal-tint);
+  --on-emphasis: var(--on-ink);
+  --ok: var(--seal);
+  --ok-tint: var(--seal-tint);
+  --warn: var(--flag);
+  --warn-tint: var(--flag-tint);
+  --danger: var(--stop);
+  --danger-tint: var(--stop-tint);
+  --draft: var(--pencil);
+  --draft-tint: var(--pencil-tint);
+  --new-tint: var(--seal-tint);
+
+  /* --- type --- */
+  --display: "Archivo", "Segoe UI", system-ui, sans-serif;
+  --sans: "Archivo", "Segoe UI", system-ui, sans-serif;
+  --mono: "Plex Mono", "Cascadia Mono", Consolas, ui-monospace, monospace;
   --fs-xs: 0.72rem;
-  --fs-sm: 0.8rem;
+  --fs-sm: 0.82rem;
   --fs-md: 15px;
   --fs-lg: 1.05rem;
-  --fs-xl: 1.35rem;
+  --fs-xl: 1.4rem;
   --fs-2xl: 2.4rem;
-  /* space */
+
+  /* --- space, shape, elevation, motion (theme-independent) --- */
   --s1: 0.25rem;
   --s2: 0.5rem;
   --s3: 0.75rem;
   --s4: 1rem;
   --s5: 1.5rem;
   --s6: 2.5rem;
-  /* shape */
   --r-sm: 3px;
-  --r-md: 5px;
-  --r-lg: 8px;
-  /* elevation (014: one shared system — cards/toasts/palette derive from it) */
+  --r-md: 6px;
+  --r-lg: 10px;
   --shadow-1: 0 1px 2px rgba(16, 24, 32, .05), 0 1px 3px rgba(16, 24, 32, .08);
   --shadow-2: 0 2px 6px rgba(16, 24, 32, .07), 0 8px 20px rgba(16, 24, 32, .10);
   --shadow-3: 0 16px 40px rgba(16, 24, 32, .18);
-  /* motion (014: gated by prefers-reduced-motion at every use site) */
   --ease: cubic-bezier(.2, .6, .2, 1);
   --dur-1: .12s;
   --dur-2: .2s;
 }
 
-/* Dark "scope screen" — explicit choice wins… */
+/* Dark — an explicit choice always wins. */
 [data-theme="dark"] {
-  --surface: #0e1412;
-  --surface-raised: #151c19;
-  --surface-sunken: #0a0f0d;
-  --ink: #d9e2dc;
-  --muted: #98a39c;
-  --line: #24312a;
-  --line-strong: #43524a;
-  --accent: #7ab3ff;
-  --accent-tint: #14202e;
-  --on-emphasis: #0e1412;
-  --ok: #37c78f;               /* phosphor trace green */
-  --ok-tint: #10261d;
-  --warn: #e0a53c;
-  --warn-tint: #2a2110;
-  --danger: #ef7367;
-  --danger-tint: #2d1512;
-  --new-tint: #12211a;
-  --draft: #c9a6f0;
-  --draft-tint: #1e1630;
-  /* deeper shadows read on the dark scope glass */
+  --paper: #12160f;
+  --leaf: #1a1f18;
+  --ink: #dfe6dd;
+  --ink-soft: #9aa89e;
+  --rule: #2b332a;
+  --edge: #697665;
+  --seal: #4fc4a1;
+  --pencil: #8fa8c4;
+  --flag: #e0a53c;
+  --stop: #ef7367;
+  --paper-sunken: #0d100b;
+  --seal-tint: #10261d;
+  --pencil-tint: #161d27;
+  --flag-tint: #2a2110;
+  --stop-tint: #2d1512;
+  --on-ink: #12160f;
   --shadow-1: 0 1px 2px rgba(0, 0, 0, .3);
   --shadow-2: 0 3px 10px rgba(0, 0, 0, .35), 0 10px 28px rgba(0, 0, 0, .4);
   --shadow-3: 0 18px 44px rgba(0, 0, 0, .55);
@@ -96,25 +168,36 @@
 /* …and the OS preference decides only when no explicit choice is set. */
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]):not([data-theme="dark"]) {
-    --surface: #0e1412;
-    --surface-raised: #151c19;
-    --surface-sunken: #0a0f0d;
-    --ink: #d9e2dc;
-    --muted: #98a39c;
-    --line: #24312a;
-    --line-strong: #43524a;
-    --accent: #7ab3ff;
-    --accent-tint: #14202e;
-    --on-emphasis: #0e1412;
-    --ok: #37c78f;
-    --ok-tint: #10261d;
-    --warn: #e0a53c;
-    --warn-tint: #2a2110;
-    --danger: #ef7367;
-    --danger-tint: #2d1512;
-    --new-tint: #12211a;
-    --draft: #c9a6f0;
-    --draft-tint: #1e1630;
+    --paper: #12160f;
+    --leaf: #1a1f18;
+    --ink: #dfe6dd;
+    --ink-soft: #9aa89e;
+    --rule: #2b332a;
+    --edge: #697665;
+    --seal: #4fc4a1;
+    --pencil: #8fa8c4;
+    --flag: #e0a53c;
+    --stop: #ef7367;
+    --paper-sunken: #0d100b;
+    --seal-tint: #10261d;
+    --pencil-tint: #161d27;
+    --flag-tint: #2a2110;
+    --stop-tint: #2d1512;
+    --on-ink: #12160f;
+  }
+}
+
+/* 022 (FR-032): ONE global override. styles.css previously transitioned
+   `button` and `.feed tr` with no reduced-motion gate at all, and gated
+   only the no-preference direction for view transitions — so a system
+   asking for less motion still got some. This closes it once, for
+   everything, including rules written later. */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+    scroll-behavior: auto !important;
   }
 }
 
@@ -341,10 +424,10 @@ a.tailor-btn:hover, a.tailor-btn:focus-visible { text-decoration: none; filter: 
 .flash-attention { animation: je-flash 0.8s ease-in-out 3; }
 @keyframes je-flash {
   0%, 100% { box-shadow: 0 0 0 0 transparent; }
-  50% { box-shadow: 0 0 0 4px var(--accent, #2757a8); }
+  50% { box-shadow: 0 0 0 4px var(--accent); }
 }
 .watch-activity { letter-spacing: 0.01em; }
-.watch-guidance { border-left: 3px solid var(--accent, #2757a8);
+.watch-guidance { border-left: 3px solid var(--accent);
   padding: 0.6rem 0.9rem; margin: 0.6rem 0; }
 
 /* ---------- 010: Copilot Release components ---------- */
@@ -456,7 +539,7 @@ a.tailor-btn:hover, a.tailor-btn:focus-visible { text-decoration: none; filter: 
 
 /* 013 (FR-011): Back control on the job detail page */
 .job-detail .back { display: inline-block; margin-bottom: .6rem;
-  color: var(--accent, #2757a8); text-decoration: none; font-size: .9rem; }
+  color: var(--accent); text-decoration: none; font-size: .9rem; }
 .job-detail .back:hover { text-decoration: underline; }
 
 /* ============================================================
@@ -560,6 +643,6 @@ td.barcell { min-width: 120px; }
   z-index: 5;
   padding: 0.5rem 0;
   margin-bottom: 0.25rem;
-  background: var(--bg, #fff);
-  border-bottom: 1px solid var(--border, #e3e3e3);
+  background: var(--paper);
+  border-bottom: 1px solid var(--rule);
 }

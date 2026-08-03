@@ -9,8 +9,10 @@
    nine semantic tokens or its `-tint`. A component never writes a colour
    literal.
 
-2. **Two bindings.** Every token has a light value and a dark value. The dark
-   binding is a remap of the same names — no token exists in one theme only.
+2. **Two bindings.** Every *colour* token has a light value and a dark value;
+   the dark binding remaps the same names, so no colour token exists in one
+   theme only. Non-colour tokens (spacing, type scale, radii, motion) are
+   theme-independent and are declared once.
 
 3. **Explicit choice wins.** `[data-theme="light"|"dark"]` overrides the OS.
    `@media (prefers-color-scheme: dark)` applies **only** when neither
@@ -59,7 +61,7 @@ layout (FR-007).
 | T1 | Every class used in `web/templates/**` resolves to a selector in the stylesheet |
 | T2 | Zero colour literals outside `:root` / `[data-theme]` blocks, in the stylesheet and in `panel.js` |
 | T3 | Every `var(--x)` reference resolves to a defined token |
-| T4 | Both themes define the identical token name set |
+| T4 | Every **colour** token declared in `:root` is re-bound in the dark block. Spacing, type, radii and motion are theme-independent and legitimately live in `:root` alone — requiring them to be repeated would be noise, not a contract. |
 | T5 | Every declared fg/bg pairing meets AA in both themes (luminance computed in-test) |
 | T6 | No external URL in any CSS or template; every `@font-face` src exists on disk |
 | T7 | The panel's injected token names match the app's exactly |
