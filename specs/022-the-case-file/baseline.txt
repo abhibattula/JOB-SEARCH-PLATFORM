@@ -159,3 +159,31 @@ validity. A test now fails if `msg.` appears anywhere in main.js.
 Second finding from the same run: extension/manifest.json still declared
 2.1.0 after APP_VERSION moved to 2.2.0 — the same shape as the
 packaging/windows.iss slip that nearly shipped v2.1.0 broken.
+
+v2.2.0 SHIPPED                                     2026-08-03T23:01:46Z
+---------------------------------------------------------------------
+  release      v2.2.0  draft=false  pre=false
+  run          30859435494  SUCCESS
+  windows-installer  success
+  mac-dmg            success   <- includes the macOS BROWSER SUITE and
+                                  the frozen-build smoke, the two gates
+                                  that could not run locally, and the
+                                  ones that forced v2.0.0's tag to be
+                                  cut twice. Both passed first time.
+
+  JobEngine-Setup-2.2.0.exe  1,528,496,577 bytes  magic 4d5a
+    sha256 c8a1a551d2b91c568810a156f0ac4165cf53e0f20abd4ccf7216519aa14d5c09  MATCH
+  JobEngine-2.2.0.dmg        1,594,337,507 bytes  magic 7801
+    sha256 ef0c347dde94c37bb1a3a088d828b3d99e65678b6dac0d83e10df0182f673d6a  MATCH
+
+STILL THE APPLICANT'S
+---------------------------------------------------------------------
+  - install v2.2.0 and walk the nine screens in light and dark
+  - press the reload arrow at chrome://extensions (the companion is
+    v2.2.0 now)
+  - T012/021  "Save page report" on the real Intel Workday form
+  - T047/021  re-run Apply Assist there; filled/needs-you/seen against
+              5 / 149 / 156
+  - T061/021  save a free Groq key; time one tailoring request per tier
+  - T076/019  save a Workday login, escort to Review, confirm Submit is
+              never pressed
