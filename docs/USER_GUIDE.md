@@ -114,14 +114,20 @@ This is the daily-use manual. For first-time setup, follow
    standard EEO gender/race/veteran/disability questions) so Apply Assist
    has answers ready instead of pausing to ask on your first few
    applications.
-4. Optional: get a free API key at **console.groq.com** (no card required),
+4. **Work history & education** (v2.1) — the employment and education
+   entries read out of your resume, in the order applications ask for them.
+   The second employment block on a form gets your second job here. Correct
+   them once: a small on-device model read them out of a PDF, and they are
+   about to be typed into an employer's form. Anything you leave blank is
+   handed to you on the form rather than guessed at.
+5. Optional: get a free API key at **console.groq.com** (no card required),
    then open **Settings**, paste it, and click **Test key** to confirm it
    works. (Advanced: the Settings page can point at any OpenAI-compatible
    provider — e.g., local Ollama at `http://localhost:11434/v1`.) A `.env`
    file still works as a developer override. This upgrades every score to
    full cloud-quality analysis automatically — you don't lose anything by
    adding a key later.
-5. Scoring is throttled (~28 calls/min for the cloud tier) and capped per
+6. Scoring is throttled (~28 calls/min for the cloud tier) and capped per
    refresh to stay inside the free tier. Use the **Best matches** tab (or
    the "Match: 70+" toolbar filter) to browse only strong fits.
 
@@ -275,3 +281,54 @@ itself.
 | Apply Assist opened a job but nothing filled yet | The engine keeps watching the page every ~2s — if no form is visible it says so and tells you to click the site's own Apply button; fields fill the moment the form appears |
 | Resume import seems slow | On the offline model a long resume takes a few minutes — the progress banner on Profile shows exactly which part it's on; flip "Prefer the bundled offline model" off in Settings to use your Groq key instead (much faster) |
 | Something else misbehaves | Open **Diagnostics** (top nav): run the self-checks and use **Export logs** |
+
+## Learned answers (v2.1)
+
+Fill in something Apply Assist left to you, and it keeps the answer — so the
+same question fills itself on the next application.
+
+**Apply → Learned answers** shows everything it has learned, with the
+application each came from. Edit any of them, delete one, or press **Forget
+everything learned** to clear the lot (your own answers, typed in the app,
+are left alone).
+
+It **never** keeps passwords or logins, self-identification answers, date of
+birth, national or government ID numbers, or anything to do with a bank
+account or card. Those are refused before the value is copied anywhere.
+
+When a learned answer is a fact about you rather than a one-off — a notice
+period, a phone country code — it offers **Save to profile**. That is a
+click, never automatic.
+
+## Choosing what runs the AI (v2.1)
+
+**Settings → AI matching** asks which tier serves the work you sit and wait
+for: tailored resumes, cover letters, drafted answers.
+
+- **Free cloud tier** (recommended, needs a free key): seconds instead of
+  minutes. Sends your **resume text and the job description** — never a
+  password, never a saved login, never a self-identification answer. Falls
+  back to the offline model on its own when you are offline or rate-limited.
+- **Always offline**: nothing leaves the machine. Expect a few minutes per
+  tailored resume.
+
+Either way, **bulk background scoring always runs offline** — the free tiers
+allow about a thousand requests a day and that budget belongs to what you're
+waiting on. The whole app works with no key and no internet.
+
+## When something doesn't fill (v2.1)
+
+Press **Save page report** in the Apply Assist panel. It writes a description
+of that page — what fields it has, what the app called them, and what it
+decided about each one — to `data/reports/`, downloadable from
+**Diagnostics**.
+
+It records shape only: nothing you typed, no password, and only the host of
+the address (a real application URL often carries a session token). It is
+safe to send on as-is.
+
+## Moving the panel (v2.1)
+
+Drag the Apply Assist panel by its header. It stays where you put it on every
+page and every session, and is pulled back into view on a smaller screen. The
+↺ button in its header returns it to the corner.

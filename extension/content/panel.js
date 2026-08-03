@@ -851,6 +851,21 @@ window.jePanel = (function () {
                      : item.section_label;
   }
 
+  // 021: move a node ONLY when it is genuinely out of position.
+  //
+  // The old code called `refs.body.appendChild(row.wrap)` on every reconcile
+  // and relied on appendChild's reordering side-effect. Re-inserting a node
+  // BLURS any focused element inside it — so the moment a payload actually
+  // changed, focus was stolen from the box the applicant was typing in. Until
+  // 021 the digest's send-nothing-if-unchanged rule hid that; the browser
+  // suite caught it as soon as the payload gained new fields.
+  function placeAt(parent, node, index) {
+    if (parent.children[index] === node) { return; }
+    // Never reorder under the applicant's fingers.
+    if (holdsFocus(node)) { return; }
+    parent.insertBefore(node, parent.children[index] || null);
+  }
+
   function sectionBody(item) {
     const refs = groupEls.get(item.group);
     if (!refs) { return null; }
@@ -869,8 +884,10 @@ window.jePanel = (function () {
       wrap.appendChild(body);
       sections.set(key, sec);
     }
-    sec.head.textContent = sectionTitle(item);
-    refs.body.appendChild(sec.wrap);   // also reorders, keeping feed order
+    if (sec.head.textContent !== sectionTitle(item)) {
+      sec.head.textContent = sectionTitle(item);
+    }
+    if (sec.wrap.parentNode !== refs.body) { refs.body.appendChild(sec.wrap); }
     return sec.body;
   }
 
@@ -878,6 +895,7 @@ window.jePanel = (function () {
     ensureGroups();
     const seen = new Set();
     const liveSections = new Set();
+    const placed = new Map();   // container -> how many rows placed in it
     state.answers.forEach(function (item) {
       const key = item.key || item.question || "";
       if (!key) { return; }
@@ -888,10 +906,13 @@ window.jePanel = (function () {
         rows.set(key, row);
       }
       const body = sectionBody(item);
-      // appendChild also REORDERS an existing child, which keeps the rows in
-      // feed order without ever detaching and recreating them.
       if (body) {
-        body.appendChild(row.wrap);
+        // Placed by INDEX, and only when actually out of position — see
+        // placeAt. Blindly re-appending steals focus from a box the
+        // applicant is typing in.
+        const at = placed.get(body) || 0;
+        placed.set(body, at + 1);
+        placeAt(body, row.wrap, at);
         if (item.section_label) {
           liveSections.add(item.group + " " + item.section_label
                            + " " + (item.section_index || 0));

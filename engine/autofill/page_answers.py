@@ -52,6 +52,18 @@ def _normalize(question: str) -> str:
     return " ".join((question or "").split()).casefold()
 
 
+def _row_key(section_label: str, section_index: int, question: str) -> str:
+    """A row's identity in the panel, stable across scans.
+
+    Must be a STRING: panel.js keys its row Map on this, and a tuple
+    serializes to a JSON array whose `Map.get()` can never match. Must also be
+    independent of which ELEMENT won the de-duplication, or the identity
+    changes between scans and the panel rebuilds the row the applicant is
+    typing into.
+    """
+    return f"{section_label} | {section_index} | {_normalize(question)}"
+
+
 def _profile_field(tag: str | None) -> str:
     """021 (FR-032): the profile field that would answer this question.
 
@@ -133,9 +145,19 @@ def build(entries, drafter_records=None) -> list[dict]:
         if existing is None:
             ordered.append(key)
             by_key[key] = {
-                # The stable ledger key of the first element, kept because the
-                # panel uses it as a row identity across scans.
-                "key": item.get("key") or question,
+                # 021: the row's identity, as a STABLE STRING.
+                #
+                # This used to be `field_core.key(descriptor)` — a TUPLE, which
+                # serializes to a JSON array, and panel.js keys its row Map on
+                # it. `Map.get()` on a fresh array instance can never match, so
+                # every push recreated every row; only the digest's
+                # send-nothing-if-unchanged rule was hiding it. Caught by the
+                # browser suite: the input the applicant was typing into was
+                # destroyed.
+                #
+                # The de-duplication key is the right identity anyway — it does
+                # not depend on WHICH element happened to win this scan.
+                "key": _row_key(section_label, section_index, question),
                 "je_idx": je_idx,
                 # FR-005: every element behind this row, so "Show me" can
                 # reach each one. `je_idx` STAYS A STRING — panel.js uses it
@@ -166,7 +188,10 @@ def build(entries, drafter_records=None) -> list[dict]:
         if not answer and existing["answer"]:
             continue
         existing.update({
-            "key": item.get("key") or existing["key"],
+            # `key` is deliberately NOT updated: it is derived from the
+            # section and the question, both of which are already equal here,
+            # and a row identity that changes between scans is a row the
+            # panel rebuilds under the applicant's fingers.
             "je_idx": existing["je_idx"] or je_idx,
             "question": question or existing["question"],
             "answer": answer or existing["answer"],

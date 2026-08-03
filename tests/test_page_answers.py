@@ -132,11 +132,19 @@ class TestSecretsNeverReachThePage:
 class TestFieldIdentity:
     def test_every_item_carries_its_key_and_field(self):
         """R4: without `je_idx` the panel cannot offer Insert or Show me —
-        which is why neither button rendered even once in v1.7.0."""
+        which is why neither button rendered even once in v1.7.0.
+
+        021 changed what `key` IS. It was the caller's ledger key — a tuple,
+        which serializes to a JSON array, and panel.js keys its row Map on it,
+        so `Map.get()` could never match and every push recreated every row.
+        It is now derived from the section and the question: a string, stable
+        across scans, and independent of which element won the de-duplication.
+        """
         items = page_answers.build([
             entry(key="k1", je_idx="12", question="Email", answer="a@b.com"),
         ])
-        assert items[0]["key"] == "k1"
+        assert isinstance(items[0]["key"], str)
+        assert "email" in items[0]["key"]
         assert items[0]["je_idx"] == "12"
 
     def test_a_missing_field_id_is_tolerated(self):
@@ -318,3 +326,87 @@ class TestOneRowPerQuestion:
         items = page_answers.build(entries)
         assert len(entries) == 144
         assert len(items) == 72   # one row per question per section
+
+
+class TestARowKeepsItsIdentityBetweenScans:
+    """021 — the defect the browser suite caught: "the input the applicant was
+    typing into was destroyed".
+
+    panel.js keys its row Map on `item.key`. That used to be
+    `field_core.key(descriptor)` — a TUPLE, which serializes to a JSON array,
+    and `Map.get()` on a fresh array instance can NEVER match. Every push
+    therefore recreated every row; only the digest's send-nothing-if-unchanged
+    rule was hiding it.
+    """
+
+    def test_the_key_is_a_string(self):
+        items = page_answers.build([
+            sectioned("Address", key=("docA", "4"), je_idx="4",
+                      question="City", action="fill", answer="Austin"),
+        ])
+        assert isinstance(items[0]["key"], str)
+
+    def test_the_key_is_json_round_trippable_as_a_map_key(self):
+        import json
+
+        items = page_answers.build([
+            sectioned("Address", key=("docA", "4"), je_idx="4",
+                      question="City", action="fill", answer="Austin"),
+        ])
+        assert json.loads(json.dumps(items[0]["key"])) == items[0]["key"]
+
+    def test_it_does_not_depend_on_which_element_won(self):
+        """The exact failure: on scan 2 a different element arrives first, the
+        surviving row adopts ITS ledger key, the identity changes, and the
+        panel rebuilds the row under the applicant's fingers."""
+        first = page_answers.build([
+            sectioned("Address", key=("docA", "4"), je_idx="4",
+                      question="Start date", action="fill", answer="x"),
+            sectioned("Address", key=("docA", "5"), je_idx="5",
+                      question="Start date", action="fill", answer="x"),
+        ])
+        second = page_answers.build([
+            sectioned("Address", key=("docA", "5"), je_idx="5",
+                      question="Start date", action="fill", answer="x"),
+            sectioned("Address", key=("docA", "4"), je_idx="4",
+                      question="Start date", action="fill", answer="x"),
+        ])
+        assert first[0]["key"] == second[0]["key"]
+
+    def test_a_remount_does_not_change_the_identity(self):
+        """React replaces the element, so je_idx changes. The question and
+        its section do not — and neither may the row."""
+        before = page_answers.build([
+            sectioned("Work Experience", 1, key=("docA", "7"), je_idx="7",
+                      question="Company", action="fill", answer="Acme"),
+        ])
+        after = page_answers.build([
+            sectioned("Work Experience", 1, key=("docA", "91"), je_idx="91",
+                      question="Company", action="fill", answer="Acme"),
+        ])
+        assert before[0]["key"] == after[0]["key"]
+
+    def test_different_sections_still_get_different_identities(self):
+        items = page_answers.build([
+            sectioned("Work Experience", 0, key=("docA", "1"), je_idx="1",
+                      question="From", action="fill", answer="a"),
+            sectioned("Work Experience", 1, key=("docA", "2"), je_idx="2",
+                      question="From", action="fill", answer="b"),
+        ])
+        assert items[0]["key"] != items[1]["key"]
+
+    def test_the_digest_is_unchanged_by_a_remount(self):
+        """The digest is what decides whether to push at all. If a remount
+        changes it, the panel rebuilds every row for no reason."""
+        before = page_answers.build([
+            sectioned("Address", key=("docA", "4"), je_idx="4",
+                      question="City", action="fill", answer="Austin"),
+        ])
+        after = page_answers.build([
+            sectioned("Address", key=("docA", "77"), je_idx="77",
+                      question="City", action="fill", answer="Austin"),
+        ])
+        # je_idx legitimately differs (Show me has to reach the new element),
+        # so the digests differ — but the row IDENTITY must not.
+        assert before[0]["key"] == after[0]["key"]
+        assert page_answers.digest(before) != page_answers.digest(after)

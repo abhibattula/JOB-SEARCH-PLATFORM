@@ -382,3 +382,48 @@ class TestTheLearnedAnswersPage:
             "/api/autofill/answers/observed/forget").json()["removed"] == 1
         assert stored("Typed in the app") is not None
         assert stored("Read off a page") is None
+
+
+class TestAnAdHocSessionDoesNotHalfWrite:
+    """021 — found by the browser suite, in the log rather than the assertion.
+
+    `application_answers.job_id` is a REAL foreign key, but an ad-hoc "Fill
+    this page" or practice session carries a sentinel job id with no `jobs`
+    row. Writing it raised IntegrityError AFTER the answer_bank row had
+    already been inserted, so the answer was stored but the link was not —
+    surfaced only as a warning nobody would read.
+    """
+
+    def test_an_unknown_job_id_still_stores_the_answer(self, tmp_db):
+        assert answer_bank.record_observed(
+            question="Why us?", answer="Because.", tag="free_text_unknown",
+            job_id=999_999) is not None
+        assert stored("Why us?")["answer"] == "Because."
+
+    def test_an_unknown_job_id_writes_no_application_row(self, tmp_db):
+        answer_bank.record_observed(question="Why us?", answer="Because.",
+                                    tag="free_text_unknown", job_id=999_999)
+        with db._conn() as conn:
+            rows = conn.execute(
+                "SELECT COUNT(*) c FROM application_answers").fetchone()
+        assert rows["c"] == 0
+
+    def test_a_real_job_id_still_links(self, tmp_db):
+        """The paired half — the guard must not disable the feature."""
+        db.upsert_job({"title": "RTL", "company": "Intel",
+                       "url": "https://x/1", "source": "workday",
+                       "description": "d", "posted_date": None})
+        with db._conn() as conn:
+            job_id = conn.execute("SELECT id FROM jobs").fetchone()["id"]
+        answer_bank.record_observed(question="Why us?", answer="Because.",
+                                    tag="free_text_unknown", job_id=job_id)
+        with db._conn() as conn:
+            rows = conn.execute(
+                "SELECT COUNT(*) c FROM application_answers").fetchone()
+        assert rows["c"] == 1
+
+    def test_it_raises_nothing(self, tmp_db, caplog):
+        caplog.set_level(logging.WARNING)
+        answer_bank.record_observed(question="Why us?", answer="Because.",
+                                    tag="free_text_unknown", job_id=999_999)
+        assert "could not record an observed answer" not in caplog.text

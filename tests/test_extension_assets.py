@@ -1208,3 +1208,55 @@ class TestThePanelCanBeMoved:
         js = self._panel()
         assert "function resetPos" in js
         assert 'id="resetpos"' in js
+
+
+class TestTheApplicantsTypingIsNeverDisturbed:
+    """021 — the regression the browser suite caught twice.
+
+    v1.8.0's guarantee is that a row the applicant is typing into is never
+    rebuilt. `patchRow` was guarded, but PLACEMENT was not: reconcile called
+    `appendChild` on every pass and relied on its reordering side-effect, and
+    re-inserting a node BLURS any focused element inside it.
+
+    Until 021 the digest's send-nothing-if-unchanged rule hid that — the
+    payload simply never changed, so reconcile never ran twice with the same
+    rows. The moment the payload gained new fields, focus started being stolen.
+    """
+
+    def _panel(self):
+        return (EXT / "content" / "panel.js").read_text(encoding="utf-8")
+
+    def test_placement_only_moves_a_node_that_is_out_of_position(self):
+        js = self._panel()
+        start = js.index("function placeAt")
+        block = js[start:start + 400]
+        assert "parent.children[index] === node" in block, (
+            "placeAt moves unconditionally — re-inserting a node blurs a "
+            "focused element inside it")
+        assert "return;" in block
+
+    def test_placement_refuses_to_move_a_focused_row(self):
+        js = self._panel()
+        start = js.index("function placeAt")
+        block = js[start:start + 400]
+        assert "holdsFocus(node)" in block, (
+            "placeAt reorders under the applicant's fingers")
+
+    def test_reconcile_no_longer_blind_appends_rows(self):
+        js = self._panel()
+        start = js.index("function reconcile")
+        block = js[start:start + 1800]
+        assert "placeAt(" in block
+        assert "body.appendChild(row.wrap)" not in block, (
+            "reconcile still re-appends every row on every pass")
+
+    def test_a_section_header_is_only_written_when_it_changes(self):
+        js = self._panel()
+        start = js.index("function sectionBody")
+        block = js[start:start + 900]
+        assert "sec.head.textContent !== sectionTitle(item)" in block
+
+    def test_the_focus_guard_on_patching_is_still_there(self):
+        """The v1.8.0 half, which must not be lost while fixing the other."""
+        js = self._panel()
+        assert "if (!holdsFocus(row.wrap)) { patchRow(row, item); }" in js

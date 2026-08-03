@@ -23,8 +23,8 @@ entirely on your machine for $0.
   postings in live. Sort by match score or newest in one click; page through
   everything; filter by source.
 - **Aggregates real sources, no scraping fights**: Greenhouse, Lever, Ashby,
-  SmartRecruiters, and Workable public JSON APIs across **450+ validated
-  company career boards** (user-editable watchlist in Settings), Hacker News
+  SmartRecruiters, Workable, Recruitee, Teamtailor, Personio, Breezy and
+  JazzHR public JSON APIs across **450+ validated company career boards** (user-editable watchlist in Settings), Hacker News
   "Who is hiring" threads, and Indeed + Google Jobs via python-jobspy — with
   a one-click "Search on LinkedIn" link-out built from your own terms.
   Postings that vanish from their company's board are **auto-delisted**, so
@@ -76,6 +76,14 @@ entirely on your machine for $0.
   profile*, each with **Copy**, **Insert** and **Show me**. Answer a declined
   question right there and it fills immediately and is remembered. A whole
   application takes no switching back to the app. `Alt+J` opens it.
+- **Readable on a real application (v2.1)**: each question appears once,
+  named, grouped under the part of the form it belongs to ("Work Experience 2",
+  "Education 1"). Your parsed **work history and education fill themselves**,
+  block by block — and where you have fewer entries than the form has blocks,
+  the extras are left for you rather than filled from the wrong job. Answers
+  you type by hand are **learned** for next time, with passwords,
+  self-identification, date of birth, government ID and bank details refused
+  outright. The panel **drags** anywhere you like.
 - **Apply Assist — truthful by design (v1.0, rebuilt in v1.6, made truthful
   in v1.7)**: it answers from what *you* told it, or it leaves the question for
   you. Anything it cannot ground in your profile or resume — whether you

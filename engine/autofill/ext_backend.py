@@ -1029,6 +1029,16 @@ def _handle_fields(msg) -> None:
                 del _inflight[fkey]  # lost fill_result — re-decide (T007)
         decision = field_core.decide(ats, raw, ledger, get_value)
         note_shape(raw, decision=decision.action, tag=decision.tag or "")
+        # 021 (FR-009): this scan SAW the field, whichever branch it takes
+        # below — and `settle` takes none of them, so a field we already
+        # filled would have gone three scans without a touch and been pruned.
+        # That both loses the v1.8.0 guarantee that a filled field stays in
+        # the review list, and changes the feed, which makes the panel rebuild
+        # rows the applicant may be typing into. Caught by the browser suite.
+        seen_entry = (_page_entries.get(job_id) or {}).get(
+            field_core.key(raw))
+        if seen_entry is not None:
+            seen_entry["last_seen_scan"] = _scan_seq
         if decision.action == "ignore":
             continue
         _learn_if_the_applicant_typed_it(raw, decision, ledger, job_id,

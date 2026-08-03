@@ -353,7 +353,21 @@ def record_observed(*, question: str, answer: str, tag: str | None = None,
             "SELECT id FROM answer_bank WHERE question_normalized = ?",
             (normalized,)).fetchone()
     if job_id is not None and row is not None:
-        record_application_answer(job_id, question_raw, row["id"], reply)
+        # `application_answers.job_id` is a REAL foreign key, and an ad-hoc
+        # "Fill this page" or practice session carries a sentinel job id with
+        # no `jobs` row. Writing it raised IntegrityError AFTER the answer_bank
+        # row had already been inserted — a half-write, surfaced only as a
+        # warning in the log. Found by the browser suite.
+        try:
+            with db._conn() as conn:
+                known = conn.execute(
+                    "SELECT 1 FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            if known:
+                record_application_answer(job_id, question_raw, row["id"],
+                                          reply)
+        except Exception:  # noqa: BLE001 — the answer is saved either way
+            log.debug("could not link the learned answer to a job",
+                      exc_info=True)
     log.info("learned an answer from an application (tag=%s)", tag or "-")
     return row["id"] if row else None
 
