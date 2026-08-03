@@ -162,8 +162,21 @@ differently depending on how it was produced.**
 | `•72` + a `title` tooltip | **ink stamp** — solid ring, `--ink` — scored on-device |
 | `72` + a `title` tooltip | **sealed stamp** — double ring, `--seal` — full cloud analysis |
 
-The data already exists: `job.match_method` is `basic` / `local` / else, and is
-currently expressed as a one-character prefix plus a hover tooltip
+The data already exists as `match_json.method`, surfaced to the feed by
+`engine/db.py:635`. Research pinned the exact values, and **this corrected the
+design**: the third state is stored as **`"llm"`**, not `"cloud"` —
+`scoring_tier()` returns `"cloud"` but `upgrade.py:288` maps it to
+`method = "llm"` before storing. Reading the tier name into a template would
+have produced a stamp that never rendered.
+
+| stored value | written at | stamp |
+|---|---|---|
+| `basic` | `pipeline.py:270` | pencil |
+| `local` | `upgrade.py:288` | ink |
+| `llm` | `upgrade.py:288` | sealed |
+| absent | — | explicit "not scored yet" |
+
+It is currently expressed as a one-character prefix plus a hover tooltip
 (`partials/feed_table.html:63-67`, `job_detail.html:85-93`). Provenance is
 invisible unless you hover, on the number the applicant makes decisions with.
 
