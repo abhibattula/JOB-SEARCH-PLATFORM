@@ -404,6 +404,22 @@ def _value_for_tag(tag: str, raw: dict, profile: dict, job_id: int):
     answered = profile_answers.answer_for(tag, profile)
     if answered is not None:
         return answered
+
+    # 021 (FR-011/FR-012/FR-013): a repeated work-history or education block,
+    # answered from the resume the applicant already uploaded. Selection is by
+    # the SECTION INDEX carried on the descriptor, so the second employment
+    # block uses the second stored role.
+    #
+    # Consulted here — after the profile, before the answer bank and the
+    # drafter — because a corrected profile must win, and because a question
+    # about a specific employer must never be GENERATED. None means flag it;
+    # three blocks against two stored roles leave the third blank.
+    from . import history_answers
+
+    if tag in history_answers.HISTORY_TAGS:
+        return history_answers.value_for(
+            tag, int(raw.get("section_index") or 0),
+            (profile or {}).get("resume_sections"))
     # Everything else goes: answer bank → profile facts → drafter cache.
     # 016 (fill-first, FR-003/FR-012/FR-019): decide NEVER generates and
     # NEVER parks — unknown questions are scheduled on the background

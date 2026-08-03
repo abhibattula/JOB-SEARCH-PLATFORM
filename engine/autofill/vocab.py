@@ -156,6 +156,10 @@ _TAG_FAMILY: dict[str, str] = {
     "non_compete": "yes_no",
     "security_clearance": "yes_no",
     "currently_employed": "yes_no",
+    # 021 (FR-011): "I currently work here" on a repeated employment block.
+    # Answered from the stored role's is_current flag, so it needs the same
+    # yes/no option family every other checkbox question uses.
+    "exp_current": "yes_no",
     "relocate": "yes_no",
     "travel": "yes_no",
     "applied_before": "yes_no",

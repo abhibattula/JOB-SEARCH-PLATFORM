@@ -2041,3 +2041,107 @@ class TestStaleFramesStopCounting:
         assert reported["seen_all_frames"] == 2
         assert reported["frames_live"] == 1
         assert reported["frames_all"] == 2
+
+
+class TestWorkHistoryAndEducationFillThemselves:
+    """021 US2 (FR-011/FR-012/FR-013), end to end through the real decision
+    loop. The applicant's parsed resume was sitting unused while every
+    employer, title, date, school and GPA came back as "needs you"."""
+
+    SECTIONS = {
+        "experience": [
+            {"title": "Verification Intern", "organization": "Acme",
+             "start": "2024-05", "end": "2024-08", "location": "Austin, TX",
+             "is_current": False, "bullets": []},
+            {"title": "RTL Design Intern", "organization": "Globex",
+             "start": "2025-01", "end": "", "location": "Remote",
+             "is_current": True, "bullets": []},
+        ],
+        "education": [
+            {"degree": "B.S. Computer Engineering", "institution": "UT Austin",
+             "start": "2021-08", "end": "2025-05", "details": "",
+             "field_of_study": "Computer Engineering", "gpa": "3.6"},
+        ],
+    }
+
+    def _fill_values(self, queue, sent, descriptors):
+        db.save_profile(resume_sections=self.SECTIONS)
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(descriptors=descriptors))
+        out = {}
+        for message in sent:
+            if message["type"] != "fill":
+                continue
+            for item in message["items"]:
+                out[item["je_idx"]] = item.get("value")
+        return out
+
+    def block(self, idx, label, index=0, section="Work Experience"):
+        return descriptor(je_idx=idx, label_text=label, name=f"f{idx}",
+                          id=f"f{idx}", section_label=section,
+                          section_index=index)
+
+    def test_the_second_block_fills_from_the_second_role(self, queue, sent):
+        values = self._fill_values(queue, sent, [
+            self.block("1", "Company", 0),
+            self.block("2", "Company", 1),
+        ])
+        assert values["1"] == "Acme"
+        assert values["2"] == "Globex"
+
+    def test_a_block_with_no_stored_role_is_left_for_the_applicant(
+            self, queue, sent):
+        """FR-013 — the rule 017 was spent establishing. Three blocks against
+        two stored roles: the third is NOT filled from either."""
+        values = self._fill_values(queue, sent, [
+            self.block("1", "Company", 0),
+            self.block("2", "Company", 1),
+            self.block("3", "Company", 2),
+        ])
+        assert "3" not in values
+
+    def test_education_fills_from_its_own_block(self, queue, sent):
+        values = self._fill_values(queue, sent, [
+            self.block("1", "School or University", 0, "Education"),
+            self.block("2", "Overall Result (GPA)", 0, "Education"),
+            self.block("3", "Field of Study", 0, "Education"),
+        ])
+        assert values["1"] == "UT Austin"
+        assert values["2"] == "3.6"
+        assert values["3"] == "Computer Engineering"
+
+    def test_a_current_role_answers_i_currently_work_here(self, queue, sent):
+        values = self._fill_values(queue, sent, [
+            self.block("1", "I currently work here", 0),
+            self.block("2", "I currently work here", 1),
+        ])
+        assert values["1"] == "No"
+        assert values["2"] == "Yes"
+
+    def test_a_current_role_leaves_its_end_date_alone(self, queue, sent):
+        values = self._fill_values(queue, sent, [
+            self.block("1", "To", 1),
+        ])
+        assert "1" not in values
+
+    def test_a_field_outside_any_section_is_never_answered_from_history(
+            self, queue, sent):
+        """No section means the scan could not place it. Answering from
+        entry 0 would type a specific employer into an unknown box."""
+        values = self._fill_values(queue, sent, [
+            descriptor(je_idx="1", label_text="Company", name="c", id="c"),
+        ])
+        assert values.get("1") != "Acme"
+
+    def test_a_correction_in_the_profile_is_what_gets_typed(self, queue, sent):
+        """FR-014: the parsed entry is a 1.5B model's reading of a PDF. What
+        the applicant corrected is what reaches the employer's form."""
+        corrected = json.loads(json.dumps(self.SECTIONS))
+        corrected["experience"][0]["organization"] = "Acme Semiconductors Inc."
+        db.save_profile(resume_sections=corrected)
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(
+            descriptors=[self.block("1", "Company", 0)]))
+        values = {i["je_idx"]: i.get("value")
+                  for m in sent if m["type"] == "fill" for i in m["items"]}
+        assert values["1"] == "Acme Semiconductors Inc."

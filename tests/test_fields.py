@@ -616,3 +616,105 @@ class TestCredentialFormClassification019:
         assert fields.classify(self._field(
             type="password", autocomplete="new-password",
             form_context="registration")) == "signup_password"
+
+
+class TestHistorySectionClassification:
+    """021 US2 (FR-011): inside a work-history or education block, questions
+    are about THAT block — so they resolve to indexed history tags rather
+    than the profile-level ones.
+
+    The gate is the section. Outside one, every existing tag is unchanged:
+    a bare "School" is still `school`, a bare "GPA" is still `gpa`. A field
+    the app cannot place in a block must NEVER be answered from a block,
+    because it has no way to know which employer it belongs to.
+    """
+
+    def work(self, index=0, **kw):
+        return field(section_label="Work Experience", section_index=index, **kw)
+
+    def edu(self, index=0, **kw):
+        return field(section_label="Education", section_index=index, **kw)
+
+    @pytest.mark.parametrize("label,expected", [
+        ("Company", "exp_employer"),
+        ("Employer", "exp_employer"),
+        ("Organization", "exp_employer"),
+        ("Job Title", "exp_title"),
+        ("Position Title", "exp_title"),
+        ("Location", "exp_location"),
+        ("From", "exp_start"),
+        ("To", "exp_end"),
+        ("I currently work here", "exp_current"),
+    ])
+    def test_a_work_block_question_is_about_that_role(self, label, expected):
+        assert fields.classify(self.work(label_text=label)) == expected
+
+    @pytest.mark.parametrize("label,expected", [
+        ("School or University", "edu_school"),
+        ("Degree", "edu_degree"),
+        ("Field of Study", "edu_field"),
+        ("Major", "edu_field"),
+        ("Overall Result (GPA)", "edu_gpa"),
+        ("GPA", "edu_gpa"),
+        ("From", "edu_start"),
+        ("To", "edu_end"),
+    ])
+    def test_an_education_block_question_is_about_that_school(self, label,
+                                                              expected):
+        assert fields.classify(self.edu(label_text=label)) == expected
+
+    def test_the_section_index_does_not_change_the_tag(self):
+        """The tag says WHAT is being asked; the index says WHICH block. They
+        are separate, and conflating them would need one tag per block."""
+        assert fields.classify(self.work(2, label_text="Company")) == \
+            "exp_employer"
+
+    @pytest.mark.parametrize("label,expected", [
+        ("School or University", "school"),
+        ("GPA", "gpa"),
+        # A bare "Degree" has ALWAYS been free_text_unknown: `_DEGREE_RE`
+        # deliberately means the profile-level "highest level of education",
+        # not a degree earned at one school. Pinned so history routing can be
+        # seen not to have changed it.
+        ("Degree", "free_text_unknown"),
+        ("Highest level of education", "degree"),
+    ])
+    def test_outside_a_section_the_existing_tags_are_unchanged(self, label,
+                                                               expected):
+        assert fields.classify(field(label_text=label)) == expected
+
+    def test_an_unrecognised_section_does_not_route_to_history(self):
+        """`section_label` of "Websites and Skills" is a real section, but not
+        a history one. Answering "Location" there from an employment entry
+        would type a previous employer's city into an unrelated box."""
+        assert fields.classify(field(
+            section_label="Websites and Skills",
+            label_text="Location")) != "exp_location"
+
+    def test_an_undetermined_section_never_routes_to_history(self):
+        """"" means the scan could not place the field. A field with no block
+        has no way to know WHICH employer it is about — answering it from
+        entry 0 is the 017 substitution bug with extra steps."""
+        assert fields.classify(field(section_label="", label_text="Company")) \
+            != "exp_employer"
+
+    @pytest.mark.parametrize("section", [
+        "Work Experience", "Employment History", "Professional Experience",
+        "WORK HISTORY", "Work Experience 2",
+    ])
+    def test_real_section_names_are_recognised_as_employment(self, section):
+        assert fields.classify(field(section_label=section,
+                                     label_text="Company")) == "exp_employer"
+
+    @pytest.mark.parametrize("section", [
+        "Education", "Education 1", "Academic History", "Qualifications",
+        "EDUCATION",
+    ])
+    def test_real_section_names_are_recognised_as_education(self, section):
+        assert fields.classify(field(section_label=section,
+                                     label_text="Degree")) == "edu_degree"
+
+    def test_a_resume_upload_inside_a_section_is_still_a_resume_upload(self):
+        """History routing must not swallow the tags that matter more."""
+        assert fields.classify(self.work(
+            type="file", label_text="Resume")) == "resume_upload"

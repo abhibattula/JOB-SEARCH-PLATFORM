@@ -431,5 +431,121 @@
 
     <button type="submit">Save profile</button>
   </form>
+
+  <!-- 021 (FR-014): the parsed work history and education. Applications ask
+       for these block by block, and until now the app could not fill them
+       even though your resume had already been read into this shape. It was
+       read by a small on-device model, so check it before it is typed into
+       an employer's form. -->
+  <h2>Work history &amp; education</h2>
+  <p class="muted">Applications ask for these one block at a time — the second
+    employer box gets your second job here, in this order. Anything left blank
+    is handed to you on the form rather than guessed at.</p>
+
+  <div id="history-editor" data-sections="{{ (profile.resume_sections or {}) | tojson | forceescape }}">
+    <h3>Employment <button type="button" class="ghost" data-add="experience">+ Add</button></h3>
+    <div id="exp-rows"></div>
+    <h3>Education <button type="button" class="ghost" data-add="education">+ Add</button></h3>
+    <div id="edu-rows"></div>
+    <p class="settings-actions">
+      <button type="button" id="save-history">Save work history &amp; education</button>
+      <span id="history-result" class="data"></span>
+    </p>
+  </div>
+
+  <script>
+    (function () {
+      const root = document.getElementById('history-editor');
+      let sections = {};
+      try { sections = JSON.parse(root.dataset.sections || '{}') || {}; }
+      catch (e) { sections = {}; }
+      const EXP = [['organization', 'Employer'], ['title', 'Job title'],
+                   ['location', 'Location'], ['start', 'From'], ['end', 'To']];
+      const EDU = [['institution', 'School'], ['degree', 'Degree'],
+                   ['field_of_study', 'Field of study'], ['gpa', 'GPA'],
+                   ['start', 'From'], ['end', 'To']];
+
+      function row(kind, fieldSpec, entry, index) {
+        const wrap = document.createElement('div');
+        wrap.className = 'grid-2';
+        wrap.dataset.kind = kind;
+        wrap.dataset.index = index;
+        fieldSpec.forEach(function (pair) {
+          const label = document.createElement('label');
+          label.textContent = pair[1] + ' ' + (index + 1);
+          const input = document.createElement('input');
+          input.type = 'text';
+          input.dataset.field = pair[0];
+          input.value = entry[pair[0]] == null ? '' : String(entry[pair[0]]);
+          label.appendChild(input);
+          wrap.appendChild(label);
+        });
+        if (kind === 'experience') {
+          const label = document.createElement('label');
+          const box = document.createElement('input');
+          box.type = 'checkbox';
+          box.dataset.field = 'is_current';
+          box.checked = !!entry.is_current;
+          label.appendChild(box);
+          label.appendChild(document.createTextNode(' I currently work here'));
+          wrap.appendChild(label);
+        }
+        return wrap;
+      }
+
+      function render() {
+        const exp = document.getElementById('exp-rows');
+        const edu = document.getElementById('edu-rows');
+        exp.textContent = '';
+        edu.textContent = '';
+        (sections.experience || []).forEach(function (e, i) {
+          exp.appendChild(row('experience', EXP, e || {}, i));
+        });
+        (sections.education || []).forEach(function (e, i) {
+          edu.appendChild(row('education', EDU, e || {}, i));
+        });
+      }
+
+      root.querySelectorAll('[data-add]').forEach(function (btn) {
+        btn.addEventListener('click', function () {
+          const kind = btn.dataset.add;
+          sections[kind] = (sections[kind] || []).concat([{}]);
+          render();
+        });
+      });
+
+      document.getElementById('save-history').addEventListener('click',
+        async function () {
+          const out = document.getElementById('history-result');
+          ['experience', 'education'].forEach(function (kind) {
+            const rows = root.querySelectorAll('[data-kind="' + kind + '"]');
+            const list = [];
+            rows.forEach(function (r) {
+              // Start from what is stored so fields this editor does not
+              // show (bullets, details) survive a save untouched.
+              const base = Object.assign({},
+                (sections[kind] || [])[Number(r.dataset.index)] || {});
+              r.querySelectorAll('[data-field]').forEach(function (input) {
+                base[input.dataset.field] = input.type === 'checkbox'
+                  ? input.checked : input.value.trim();
+              });
+              list.push(base);
+            });
+            sections[kind] = list;
+          });
+          const resp = await fetch('/api/profile/resume-sections', {
+            method: 'PUT',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(sections),
+          });
+          out.textContent = resp.ok
+            ? '✓ saved — applications fill from this now'
+            : '✕ ' + ((await resp.json()).detail || 'failed');
+          render();
+        });
+
+      render();
+    }());
+  </script>
 </article>
 {% endblock %}
