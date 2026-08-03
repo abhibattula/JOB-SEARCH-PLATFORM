@@ -122,6 +122,15 @@
                   email: identifier, password: password });
         });
       }
+      // 021 (FR-001): ask the app to write a description of this page.
+      // location.href, not a stored URL — the app reduces it to a bare host
+      // before anything is written, because a real ATS URL carries a
+      // session or candidate token in its query string.
+      if (window.jePanel && window.jePanel.onReport) {
+        window.jePanel.onReport(function () {
+          toApp({ type: "page_report", url: location.href });
+        });
+      }
       // 017 (FR-036): scroll to a field that needs them.
       if (window.jeOverlay.onJump) {
         window.jeOverlay.onJump(function (jeIdx) {
@@ -213,6 +222,15 @@
         if (window.jeAdvancer) { window.jeAdvancer.perform(message); }
         break;
       // 019 (FR-017): the app saved the login; the wall gets another go.
+      // 021 (FR-001): the report landed. Name the file so the applicant can
+      // find it — Diagnostics lists them for download.
+      case "page_report_saved":
+        if (isTop && window.jePanel) {
+          window.jePanel.notice(
+            "Page report saved (" + (message.fields || 0)
+            + " fields) — download it from Diagnostics in the app.");
+        }
+        break;
       case "credential_saved":
         if (isTop && window.jePanel) {
           window.jePanel.setCredentialNeeded(false);

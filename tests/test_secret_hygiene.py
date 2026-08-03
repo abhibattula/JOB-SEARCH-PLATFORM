@@ -195,3 +195,81 @@ class TestCredentialSaveDoesNotEcho:
         assert not _scan(caplog.text)
         assert EMAIL not in json.dumps(sent), (
             "the identifier is credential material too")
+
+
+class TestThePageReportCarriesNoSecret:
+    """021 (FR-002): a new surface, so a new hunt.
+
+    A page report is meant to be attached to a bug report unmodified. That is
+    only safe if it is provably free of what the applicant typed — including
+    the password that was in the very field being described.
+    """
+
+    def test_the_report_never_carries_the_secret(self, credential_session,
+                                                 tmp_path, monkeypatch):
+        from engine import paths
+
+        monkeypatch.setattr(paths, "data_dir", lambda: tmp_path)
+        ext_backend.handle_message(ext_protocol.PageReport(
+            tab_id=40, frame_id=0, url=f"https://{DOMAIN}/en-US/login"))
+
+        written = list((tmp_path / "reports").glob("page-*.json"))
+        assert written, "no report was written — this test proves nothing"
+        assert _scan(written[0].read_text(encoding="utf-8")) == []
+
+    def test_the_report_still_describes_the_credential_fields(
+            self, credential_session, tmp_path, monkeypatch):
+        """The paired half. Without it, the test above passes against a
+        report that describes nothing at all."""
+        from engine import paths
+
+        monkeypatch.setattr(paths, "data_dir", lambda: tmp_path)
+        ext_backend.handle_message(ext_protocol.PageReport(
+            tab_id=40, frame_id=0, url=f"https://{DOMAIN}/en-US/login"))
+
+        report = json.loads(
+            list((tmp_path / "reports").glob("page-*.json"))[0]
+            .read_text(encoding="utf-8"))
+        types = [f["type"] for f in report["fields"]]
+        assert "password" in types, "the password FIELD must still be visible"
+        password_field = next(f for f in report["fields"]
+                              if f["type"] == "password")
+        assert password_field["label_text"] == "Password"
+        # It was empty when scanned — that is WHY it was filled. `has_value`
+        # reports the scan, not the fill, and reporting otherwise would send
+        # a reader hunting for a value that was never on the page.
+        assert password_field["has_value"] is False
+        assert password_field["decision"] == "fill"
+        assert password_field["tag_classified"] == "login_password"
+
+    def test_the_saved_notice_carries_no_secret(self, credential_session,
+                                                tmp_path, monkeypatch):
+        """Scoped to the report's own message. The secret legitimately
+        travels in the `fill` message — that is how it reaches the field —
+        and `test_it_is_filled_into_the_page_and_nowhere_else` above is what
+        guards that path."""
+        from engine import paths
+
+        monkeypatch.setattr(paths, "data_dir", lambda: tmp_path)
+        ext_backend.handle_message(ext_protocol.PageReport(
+            tab_id=40, frame_id=0, url=f"https://{DOMAIN}/en-US/login"))
+        notices = [m for m in credential_session["sent"]
+                   if m["type"] == "page_report_saved"]
+        assert notices, "the applicant must hear back"
+        assert _scan(notices) == []
+
+    def test_writing_a_report_logs_no_secret(self, credential_session,
+                                             tmp_path, monkeypatch):
+        from engine import paths
+
+        monkeypatch.setattr(paths, "data_dir", lambda: tmp_path)
+        ext_backend.handle_message(ext_protocol.PageReport(
+            tab_id=40, frame_id=0, url=f"https://{DOMAIN}/en-US/login"))
+        assert _scan(credential_session["caplog"].text) == []
+
+    def test_the_in_memory_shape_index_is_dropped_with_the_session(
+            self, credential_session, tmp_path, monkeypatch):
+        """The report is built from `_page_shape`, which holds raw descriptors
+        — values and all. It must not outlive the session that made it."""
+        ext_backend.reset_for_tests()
+        assert ext_backend._page_shape == {}

@@ -1,0 +1,155 @@
+Baseline evidence — feature 021 "The Real Application" (T001)
+Recorded 2026-08-02 on branch 021-the-real-application, tip 6263513 (v2.0.0),
+before any 021 change.
+
+Machine: Intel(R) Core(TM) i5-10210U @ 1.60GHz — 4 physical / 8 logical cores
+OS:      Windows 11 Home 10.0.26200
+Python:  3.12 (.venv — the system Python cannot collect the suite, no fitz)
+
+
+== THE REPORT THIS FEATURE EXISTS FOR ==
+
+  Real session, v2.0.0, Intel Corporation "RTL Design Engineer" on Workday.
+  Apply with autofill reported:
+
+    Filled       5
+    Needs you  149
+    Seen       156
+
+  Panel groups shown:  Needs you (153) · AI drafts — review (13)
+                       From your profile (4)
+
+  Note the disagreement: header "Needs you 149" vs group header "(153)".
+  Those are two different sources — the header comes from the per-scan fill
+  counters, the group count from the accumulated page-answer feed. That
+  disagreement is itself evidence for the accumulation defect (R1.3).
+
+  Labels the applicant could actually read in the flood (everything else
+  rendered blank):
+    Country/Region*            -> profile_fact_missing
+    State                      -> profile_fact_missing
+    Country/Region Phone Code* -> profile_fact_missing (NO tag exists for it)
+    Location                   -> profile_fact_missing
+    I currently work here      -> "Only you know this one."
+    Overall Result (GPA) x2    -> profile_fact_missing
+
+  Every other visible row showed only a reason and an input, with NO
+  question text.
+
+
+== TEST GATES (pre-change, carried from the v2.0.0 tag) ==
+
+  unit battery    1731 passed    .venv\Scripts\python.exe -m pytest -q
+  browser suite    104 passed    .venv\Scripts\python.exe -m pytest -m browser -q
+  secret hygiene    13 passed
+  frozen smoke      PASS
+
+  Post-change counts must EXCEED these, never fall below.
+
+  Run the browser suite ALONE — not in the background while other browser
+  tests run in the foreground. And run it on macOS as well as Windows: the
+  v2.0.0 tag had to be cut TWICE because macOS caught two real bugs Windows
+  passed.
+
+
+== CAUSES READ FROM SOURCE (certain, not inferred) ==
+
+  1. De-duplication is per ELEMENT, not per question.
+     page_answers.build keys rows on field_core.key(descriptor)
+     = (descriptor["doc"], descriptor["je_idx"]) — a per-element stamp.
+     Two elements serving one question => two rows. A Workday dropdown is a
+     trigger with aria-haspopup=listbox PLUS the listbox, both matched by
+     FIELD_SELECTOR, so this is guaranteed on every dropdown.
+
+  2. A whitespace label is accepted as a question.
+     ext_backend.question_of() is
+       label_text or placeholder or aria_label or ""
+     with NO .strip(). " " is truthy in Python, so the row is created and
+     panel.js renders it blank. There is also no automation_id fallback,
+     even though scanner.js describe() already captures data-automation-id
+     — which is exactly where Workday puts a field's stable identity.
+
+  3. The index is never pruned.
+     _page_entries[job_id] is cleared only in _start_answer_feed. Keys are
+     (doc, je_idx). je_idx lives in a DOM attribute, so a React remount
+     gives fresh stamps and NEW entries while the old ones stay. The doc
+     token is on documentElement and does not change. A multi-step Workday
+     application therefore accumulates monotonically.
+
+  OPEN until the real capture (T012): is "Seen 156" one scan genuinely
+  seeing 156 descriptors, or _frame_seen summing stale frames?
+  _frame_seen[frame_id] = seen is an ASSIGNMENT (per-scan per-frame), but
+  the dict is cleared only at session start, so a frame that disappears
+  leaves its count in the sum forever.
+
+
+== THE UNUSED DATA ==
+
+  engine/resume_extract.py already defines and populates:
+    ExperienceEntry(title, organization, start, end, bullets)
+    EducationEntry(degree, institution, start, end, details)
+  persisted as user_profile.resume_sections.
+
+  profile_answers._DIRECT maps NONE of them. job_detail.html already
+  renders from "your Resume builder sections", so the data is real,
+  populated and user-visible — it has simply never reached the fill layer.
+
+  Gaps found: EducationEntry has no gpa and no field_of_study;
+  ExperienceEntry has no location and no is_current.
+
+
+== AI SPEED: TWO HYPOTHESES TESTED AND DISCARDED ==
+
+  1. "GPU offload is silently hurting."  NO.
+     .venv llama_cpp 0.3.34 ships exactly:
+       ggml-base.dll  ggml-cpu.dll  ggml.dll  llama.dll  mtmd.dll
+     No CUDA, Vulkan, SYCL or Metal backend. n_gpu_layers=-1 is INERT on
+     this install. Not a lever.
+
+  2. "Thread misconfiguration."  Already measured in 020:
+     8/4/3 threads -> 22.9 / 23.2 / 24.0 s. Flat. Memory-bandwidth-bound.
+     Not a lever. Do not re-attempt.
+
+  Carried from 020, treated as fixed constants:
+    generation      ~5-6 tok/s
+    prompt eval     ~42 tok/s
+    one AI analysis ~66.8 s
+
+  Tailoring cost, derived: summary + 4-6 bullets + ~180-word cover letter +
+  keywords ~= 500-700 output tokens = 100-140 s of generation ALONE, plus
+  ~36 s prompt eval. So 2.5-3 minutes on-device, inside its 300 s budget
+  ONLY when nothing is queued ahead of it — and upgrade.py stands down for
+  fill sessions but NOT for a tailor request.
+
+  THE ACTUAL LEVER, already shipped and switched off:
+    matcher.DEFAULT_BASE_URL = https://api.groq.com/openai/v1
+    matcher.DEFAULT_MODEL    = llama-3.3-70b-versatile
+    _min_interval() = 2.2 s  (~28 req/min, under the free tier's 30 RPM)
+  But scoring_tier() returns "local" whenever local_llm.available() and
+  PREFER_LOCAL_LLM != "0" — and it defaults ON. Saving a key changes
+  NOTHING today, and nothing in the UI says so.
+
+  Free tier is also ~1K requests/day, so bulk work must stay local. 020
+  already made bulk ranking model-free, so there is nothing to lose.
+
+
+== MEASUREMENTS OWED BEFORE THEY ARE CLAIMED ==
+
+  Recorded here so the tasks enforce it. This project has killed three
+  approved plan claims by measurement (CPU threads, the "slow" feed query,
+  companion idle cost). These are this feature's equivalents.
+
+  [ ] T012  real per-scan field count, and the _frame_seen question
+  [ ] T012  section-detection coverage on the real capture
+  [ ] T034  reconcile() cost on the 150-field fixture
+  [ ] T047  needs-you recount after US2  (SC-002: >= 60% below 149)
+  [ ] T059  cover-letter generation time before/after the token cut
+  [ ] T060  KV-cache quantization + n_ctx — adopt ONLY if measurably
+            faster, else record as a dead end like the thread test
+  [ ] T061  tailoring time per tier      (SC-006: >= 10x)
+  [ ] T106  assembled extraction prompt length vs the documented safe band
+
+
+== RESULTS (filled in as tasks complete) ==
+
+  (nothing yet)

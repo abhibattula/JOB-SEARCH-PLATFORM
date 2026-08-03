@@ -1018,6 +1018,62 @@ def local_llm_selftest():
         return {"ok": False, "reply": ""}
 
 
+_REPORT_NAME_OK = __import__("re").compile(r"^page-[0-9TZ]+\.json$")
+
+
+def _reports_dir():
+    from engine import paths
+
+    return paths.data_dir() / "reports"
+
+
+@router.get("/reports")
+def list_page_reports():
+    """021 (FR-002): the page reports the companion has written.
+
+    Newest first. These describe SHAPE only — no field value, no secret, no
+    full URL — so they are safe to attach to a bug report unmodified.
+    """
+    directory = _reports_dir()
+    if not directory.is_dir():
+        return {"reports": []}
+    rows = []
+    for path in directory.glob("page-*.json"):
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        fields = None
+        try:
+            fields = len(json.loads(path.read_text(encoding="utf-8"))["fields"])
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+        rows.append({"filename": path.name, "bytes": stat.st_size,
+                     "modified_at": stat.st_mtime, "fields": fields})
+    rows.sort(key=lambda r: r["modified_at"], reverse=True)
+    return {"reports": rows}
+
+
+@router.get("/reports/{filename}")
+def download_page_report(filename: str):
+    """One report, as a download.
+
+    The name is matched against a strict pattern rather than sanitized.
+    Sanitizing invites an encoding that slips through; an allowlist of the
+    exact shape this app writes cannot.
+    """
+    if not _REPORT_NAME_OK.match(filename):
+        raise HTTPException(status_code=404, detail="no such report")
+    path = _reports_dir() / filename
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="no such report")
+    return Response(
+        content=path.read_bytes(),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
+
+
 @router.get("/diagnostics/tailor-selftest")
 def tailor_selftest():
     """016 (T023, RC5): the app's riskiest generation — grammar-constrained

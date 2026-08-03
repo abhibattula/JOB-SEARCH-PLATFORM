@@ -195,6 +195,11 @@ _frame_seen: dict[int, int] = {}
 # questions the AI drafter touched, and it is where `je_idx` finally travels
 # with the answer so Insert and Show me can exist.
 _page_entries: dict[int, dict[str, dict]] = {}
+# 021 (FR-001): the SHAPE of the last scan of each frame — every descriptor,
+# including the ones `_page_entries` deliberately drops (no question, ignored).
+# A field the app cannot name is precisely what needs diagnosing, so the report
+# must see more than the review feed does. job_id -> frame_id -> [records]
+_page_shape: dict[int, dict[int, list[dict]]] = {}
 # The digest of the last `answers` payload pushed per tab. An unchanged scan
 # sends nothing at all (FR-027) — this payload used to go out every ~2s and
 # every push rebuilt the panel, destroying half-typed answers.
@@ -340,6 +345,8 @@ def handle_message(msg) -> None:
         _handle_advance_result(msg)
     elif isinstance(msg, ext_protocol.CredentialSave):
         _handle_credential_save(msg)
+    elif isinstance(msg, ext_protocol.PageReport):
+        _handle_page_report(msg)
     # Pong: heartbeat only (touch() above)
 
 
@@ -671,6 +678,64 @@ def _handle_credential_save(msg) -> None:
     send(_outbound("rescan", reason="credential_saved"))
 
 
+def _handle_page_report(msg) -> None:
+    """021 (FR-001/FR-002): write a shareable description of this page.
+
+    v2.0.0's first real Workday application reported Filled 5 / Needs you 149
+    / Seen 156 with most rows blank. Three causes were readable from source.
+    One was not — is 156 a single scan genuinely seeing 156 fields, or
+    `_frame_seen` summing frames that no longer exist? The suite's Workday
+    fixtures hold 9 and 2 fields, so nothing here could answer it and a guess
+    would have been the fourth plan claim this project killed by measurement.
+
+    So the file carries BOTH numbers: `counts` derived from the descriptors
+    actually held right now, and `counts_reported` as the panel header
+    computed it. A gap between them IS the accumulation, made visible.
+
+    Never a value, never a full URL. See contracts/page_report.md.
+    """
+    import json as _json
+    from datetime import datetime, timezone
+
+    from .. import APP_VERSION, paths
+    from . import adapters, page_report
+
+    with _lock:
+        job_id = _watch["job_id"]
+        records: list[dict] = []
+        for frame_records in (_page_shape.get(job_id) or {}).values():
+            records.extend(frame_records)
+        reported = {"seen": sum(_frame_seen.values()),
+                    "frames": len(_frame_seen)}
+
+    report = page_report.build(
+        records,
+        captured_at=datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ"),
+        app_version=APP_VERSION,
+        ats=adapters.ats_from_url(msg.url) or "",
+        url_host=page_report.safe_host(msg.url),
+    )
+    report["counts_reported"] = reported
+
+    directory = paths.data_dir() / "reports"
+    try:
+        directory.mkdir(parents=True, exist_ok=True)
+        stamp = report["captured_at"].replace(":", "").replace("-", "")
+        filename = f"page-{stamp}.json"
+        (directory / filename).write_text(
+            _json.dumps(report, indent=2, ensure_ascii=False),
+            encoding="utf-8")
+    except OSError:
+        log.warning("could not write the page report", exc_info=True)
+        send(_outbound("error", code="page_report_failed", tab_id=msg.tab_id,
+                       message="Couldn't write the page report."))
+        return
+    log.info("page report written: %s (%d fields)", filename,
+             len(report["fields"]))
+    send(_outbound("page_report_saved", tab_id=msg.tab_id, filename=filename,
+                   fields=len(report["fields"])))
+
+
 def _handle_fields(msg) -> None:
     from . import adapters, browser_controller as bc, field_core
 
@@ -753,6 +818,27 @@ def _handle_fields(msg) -> None:
     raws = [desc.as_watcher_dict() for desc in msg.descriptors]
     name_overrides = field_core.name_layout(raws, ats)
 
+    # 021 (FR-001): every descriptor this scan saw, in document order, with
+    # whatever the app decided about it. Keyed so a reason discovered later
+    # (no_saved_login, version_mismatch) can patch the entry it belongs to.
+    shape: dict[str, dict] = {}
+
+    def note_shape(descriptor: dict, *, decision: str = "", tag: str = "",
+                   reason: str = "") -> None:
+        entry = shape.get(descriptor.get("je_idx") or "")
+        if entry is None:
+            shape[descriptor.get("je_idx") or ""] = {
+                "descriptor": descriptor, "decision": decision,
+                "tag": tag, "reason": reason,
+            }
+            return
+        if decision:
+            entry["decision"] = decision
+        if tag:
+            entry["tag"] = tag
+        if reason:
+            entry["reason"] = reason
+
     def question_of(descriptor: dict) -> str:
         return (descriptor.get("label_text") or descriptor.get("placeholder")
                 or descriptor.get("aria_label") or "")
@@ -768,6 +854,9 @@ def _handle_fields(msg) -> None:
         questions the drafter touched.
         """
         question = question_of(descriptor)
+        # 021: the report records the field regardless — an unnameable field
+        # is exactly what a diagnostic is for. The review feed still skips it.
+        note_shape(descriptor, decision=action, tag=tag, reason=reason)
         if not question:
             return
         index = _page_entries.setdefault(job_id, {})
@@ -816,6 +905,7 @@ def _handle_fields(msg) -> None:
                     continue
                 del _inflight[fkey]  # lost fill_result — re-decide (T007)
         decision = field_core.decide(ats, raw, ledger, get_value)
+        note_shape(raw, decision=decision.action, tag=decision.tag or "")
         if decision.action == "ignore":
             continue
         seen += 1
@@ -946,6 +1036,11 @@ def _handle_fields(msg) -> None:
     with _lock:
         _frame_seen[msg.frame_id] = seen
         total_seen = sum(_frame_seen.values())
+        # 021 (FR-001): replaced, never accumulated — the report describes the
+        # page as it is NOW. Accumulating is what made the review feed
+        # unreadable in the first place (R1.3); the diagnostic must not
+        # inherit that defect or it cannot be used to measure it.
+        _page_shape.setdefault(job_id, {})[msg.frame_id] = list(shape.values())
 
     with bc._lock:
         filled_total = bc._state.activity.get("fields_filled", 0)
@@ -1046,6 +1141,7 @@ def _start_answer_feed(tab_id: int, job_id: int) -> None:
     to read.
     """
     _page_entries.clear()
+    _page_shape.clear()
     _page_entries[job_id] = {}
     _answers_digest.clear()
     _answers_force.add(tab_id)
@@ -1379,6 +1475,7 @@ def reset_for_tests() -> None:
         _quiet_since.clear()
         globals()["_escort"] = None
         _page_entries.clear()
+        _page_shape.clear()
         _answers_digest.clear()
         _answers_force.clear()
         _counters.update(dropped_fields=0, scan_errors=0)

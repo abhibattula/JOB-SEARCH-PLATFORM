@@ -317,6 +317,11 @@ window.jePanel = (function () {
         </div>
         <div class="notice" id="notice" hidden role="status"></div>
         <div id="answers"></div>
+        <!-- 021 (FR-001): what this page ACTUALLY looks like, written to a
+             file the applicant can hand back. Shape only — never a value,
+             never a full URL. It is the artifact behind every future
+             "it didn't fill" report. -->
+        <button class="act ghost" id="report">Save page report</button>
       </div>
       <div class="foot">You press the final Submit — never us.</div>
     </div>
@@ -349,6 +354,7 @@ window.jePanel = (function () {
       primary: root.getElementById("primary"),
       next: root.getElementById("next"),
       save: root.getElementById("save"),
+      report: root.getElementById("report"),
       prog: root.getElementById("prog"),
       pFilled: root.getElementById("p-filled"),
       pNeeds: root.getElementById("p-needs"),
@@ -372,6 +378,10 @@ window.jePanel = (function () {
     });
     els.save.addEventListener("click", function () {
       if (handlers.save) { handlers.save(); }
+    });
+    els.report.addEventListener("click", function () {
+      if (handlers.report) { handlers.report(); }
+      setNotice("Saving a page report…");
     });
     // 019 (FR-017/FR-018): the login goes to the app, which puts it in the
     // OS keychain. The password is cleared from the DOM on the next line —
@@ -913,6 +923,8 @@ window.jePanel = (function () {
     onInsert: function (fn) { handlers.insert = fn; },
     onJump: function (fn) { handlers.jump = fn; },
     onCredential: function (fn) { handlers.credential = fn; },
+    // 021 (FR-001): the applicant asks the app to write a page report.
+    onReport: function (fn) { handlers.report = fn; },
     // pure, exported for the state-machine tests
     primaryFor, mergeCounts,
   };

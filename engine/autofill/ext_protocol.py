@@ -262,8 +262,26 @@ class AdvanceStep(_Strict):
     step_key: str
 
 
+class PageReport(_Strict):
+    """021 (FR-001): the applicant asks for a shareable description of this
+    page.
+
+    v2.0.0 met a real Workday application and reported Seen 156 with most
+    rows blank, and the suite's two Workday fixtures (9 and 2 fields) could
+    not tell us whether that was one scan or an accumulation. This is how the
+    question gets answered with evidence rather than a guess.
+
+    `url` is reduced to a bare host before anything is written — a real ATS
+    URL routinely carries a session or candidate token in its query string.
+    """
+    tab_id: int
+    frame_id: int
+    url: str = ""
+
+
 _INBOUND: dict[str, type[_Strict]] = {
     "hello": Hello,
+    "page_report": PageReport,
     "tab_opened": TabOpened,
     "fields": Fields,
     "fill_result": FillResult,

@@ -769,6 +769,7 @@ def create_app() -> FastAPI:
             tail = "\n".join(
                 log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-40:]
             )
+        from .routes_api import list_page_reports
         from .routes_bridge import companion_doctor
 
         return templates.TemplateResponse(
@@ -779,6 +780,8 @@ def create_app() -> FastAPI:
                 "legacy_bytes": browser_setup.legacy_size_bytes(),
                 # 015 (FR-014): the pairing chain, human-readable
                 "doctor": companion_doctor(),
+                # 021 (FR-002): value-free page captures, newest first
+                "page_reports": list_page_reports()["reports"],
             },
         )
 

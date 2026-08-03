@@ -1654,3 +1654,111 @@ class TestRichTextItem020:
                     "widget": "not_a_real_widget",
                 }],
             }))
+
+
+class TestPageReport:
+    """021 (FR-001/FR-002, Workstream A): the applicant can hand back what is
+    actually on the page — which means the file has to be safe to hand back.
+
+    v2.0.0 met a real Workday application and reported Seen 156 with most rows
+    blank. The two Workday fixtures in this suite hold 9 and 2 fields, so
+    nothing here could tell us whether 156 was one scan or an accumulation.
+    This is how that gets answered with evidence instead of a guess.
+    """
+
+    def _scan_then_report(self, job_id, sent, descriptors, url=None):
+        open_the_tab(job_id, sent)
+        ext_backend.handle_message(fields_msg(descriptors=descriptors))
+        ext_backend.handle_message(ext_protocol.PageReport(
+            tab_id=40, frame_id=0,
+            url=url or "https://boards.greenhouse.io/figma/jobs/77",
+        ))
+
+    def test_it_writes_a_report_the_app_can_list(self, queue, sent, tmp_path,
+                                                 monkeypatch):
+        from engine import paths
+
+        monkeypatch.setattr(paths, "data_dir", lambda: tmp_path)
+        self._scan_then_report(queue, sent, [descriptor()])
+
+        written = list((tmp_path / "reports").glob("page-*.json"))
+        assert len(written) == 1
+        report = json.loads(written[0].read_text(encoding="utf-8"))
+        assert report["fields"], "a report with no fields is not a diagnostic"
+        assert report["fields"][0]["label_text"] == "First name"
+
+    def test_a_value_the_applicant_typed_never_reaches_the_file(
+            self, queue, sent, tmp_path, monkeypatch):
+        from engine import paths
+
+        monkeypatch.setattr(paths, "data_dir", lambda: tmp_path)
+        self._scan_then_report(queue, sent, [
+            descriptor(je_idx="1", value="Bengaluru-Karnataka-560001"),
+            descriptor(je_idx="2", name="ssn", label_text="SSN",
+                       value="123-45-6789"),
+        ])
+
+        blob = (tmp_path / "reports").glob("page-*.json").__next__().read_text(
+            encoding="utf-8")
+        assert "Bengaluru" not in blob
+        assert "123-45-6789" not in blob
+
+    def test_the_url_is_reduced_to_a_host(self, queue, sent, tmp_path,
+                                          monkeypatch):
+        from engine import paths
+
+        monkeypatch.setattr(paths, "data_dir", lambda: tmp_path)
+        self._scan_then_report(
+            queue, sent, [descriptor()],
+            url="https://boards.greenhouse.io/figma/jobs/77?token=SECRETTOK")
+
+        blob = (tmp_path / "reports").glob("page-*.json").__next__().read_text(
+            encoding="utf-8")
+        assert "SECRETTOK" not in blob
+        assert "boards.greenhouse.io" in blob
+
+    def test_the_panel_is_told_where_it_landed(self, queue, sent, tmp_path,
+                                               monkeypatch):
+        from engine import paths
+
+        monkeypatch.setattr(paths, "data_dir", lambda: tmp_path)
+        self._scan_then_report(queue, sent, [descriptor()])
+
+        saved = [m for m in sent if m["type"] == "page_report_saved"]
+        assert saved, "the applicant pressed a button and must hear back"
+        assert saved[-1]["filename"].startswith("page-")
+
+    def test_a_report_with_no_scan_yet_still_answers(self, queue, sent,
+                                                     tmp_path, monkeypatch):
+        """Pressing the button before anything is scanned must not raise —
+        an empty report is itself the diagnostic (nothing was seen)."""
+        from engine import paths
+
+        monkeypatch.setattr(paths, "data_dir", lambda: tmp_path)
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(ext_protocol.PageReport(
+            tab_id=40, frame_id=0,
+            url="https://boards.greenhouse.io/figma/jobs/77"))
+
+        written = list((tmp_path / "reports").glob("page-*.json"))
+        assert len(written) == 1
+        assert json.loads(written[0].read_text(encoding="utf-8"))["fields"] == []
+
+    def test_every_scanned_field_is_reported_not_just_the_decided_ones(
+            self, queue, sent, tmp_path, monkeypatch):
+        """`note_answer` skips fields with no question — the report must not.
+        A field the app cannot name is exactly what needs diagnosing."""
+        from engine import paths
+
+        monkeypatch.setattr(paths, "data_dir", lambda: tmp_path)
+        self._scan_then_report(queue, sent, [
+            descriptor(je_idx="1"),
+            descriptor(je_idx="2", name="", id="", label_text="  ",
+                       automation_id="mysteryWidget"),
+        ])
+
+        report = json.loads(
+            (tmp_path / "reports").glob("page-*.json").__next__().read_text(
+                encoding="utf-8"))
+        automation_ids = [f["automation_id"] for f in report["fields"]]
+        assert "mysteryWidget" in automation_ids
