@@ -43,8 +43,8 @@ ITEM_NEEDS_YOU_REASONS = ("version_mismatch", "no_saved_login")
 
 # The fields the panel renders. The digest is taken over exactly these, so a
 # change the applicant cannot see never causes a re-render.
-_RENDERED = ("key", "je_idx", "question", "answer", "group", "state", "reason",
-             "askable")
+_RENDERED = ("key", "je_idx", "je_idx_all", "question", "answer", "group",
+             "state", "reason", "askable", "section_label", "section_index")
 
 
 def _normalize(question: str) -> str:
@@ -87,8 +87,8 @@ def build(entries, drafter_records=None) -> list[dict]:
     for question, rec in (drafter_records or {}).items():
         records[_normalize(question)] = rec
 
-    ordered: list[str] = []
-    by_key: dict[str, dict] = {}
+    ordered: list[tuple] = []
+    by_key: dict[tuple, dict] = {}
 
     for item in entries:
         # FR-037: a secret is fill-and-forget. It goes into the field and is
@@ -103,20 +103,58 @@ def build(entries, drafter_records=None) -> list[dict]:
         answer = item.get("answer") or ""
         if not answer and record is not None:
             answer = record.get("answer") or ""
-        key = item.get("key") or question
-        if key not in by_key:
+        section_label = item.get("section_label") or ""
+        section_index = int(item.get("section_index") or 0)
+        je_idx = item.get("je_idx") or ""
+        # 021 (FR-004/FR-010): the key is the QUESTION within its section, not
+        # the element. A Workday prompt is a button plus its listbox and
+        # FIELD_SELECTOR matches both, so keying on (doc, je_idx) — as v2.0.0
+        # did — made every dropdown two identical rows. Scoping to the section
+        # is what keeps this safe: two employment blocks both asking "From"
+        # are two real questions, and merging them would be worse than the
+        # flood it fixes.
+        key = (section_label, section_index, _normalize(question))
+        existing = by_key.get(key)
+        if existing is None:
             ordered.append(key)
-        by_key[key] = {
-            "key": key,
-            "je_idx": item.get("je_idx") or "",
-            "question": question,
-            "answer": answer,
+            by_key[key] = {
+                # The stable ledger key of the first element, kept because the
+                # panel uses it as a row identity across scans.
+                "key": item.get("key") or question,
+                "je_idx": je_idx,
+                # FR-005: every element behind this row, so "Show me" can
+                # reach each one. `je_idx` STAYS A STRING — panel.js uses it
+                # as one in five places and it feeds the render digest.
+                "je_idx_all": [je_idx] if je_idx else [],
+                "question": question,
+                "answer": answer,
+                "group": group,
+                "state": state,
+                "reason": item.get("reason")
+                          or (record.get("reason") if record else None),
+                "askable": askable,
+                "section_label": section_label,
+                "section_index": section_index,
+            }
+            continue
+        if je_idx and je_idx not in existing["je_idx_all"]:
+            existing["je_idx_all"].append(je_idx)
+        # An answerless later decision never displaces one that carries a
+        # value — what the applicant needs to review is precisely the value
+        # we put there (the v1.8.0 rule, preserved through collapsing).
+        if not answer and existing["answer"]:
+            continue
+        existing.update({
+            "key": item.get("key") or existing["key"],
+            "je_idx": existing["je_idx"] or je_idx,
+            "question": question or existing["question"],
+            "answer": answer or existing["answer"],
             "group": group,
             "state": state,
             "reason": item.get("reason")
                       or (record.get("reason") if record else None),
             "askable": askable,
-        }
+        })
 
     items = [by_key[k] for k in ordered]
     # needs-you first: it is the only group with anything to do in it.

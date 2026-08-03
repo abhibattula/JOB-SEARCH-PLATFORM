@@ -1762,3 +1762,282 @@ class TestPageReport:
                 encoding="utf-8"))
         automation_ids = [f["automation_id"] for f in report["fields"]]
         assert "mysteryWidget" in automation_ids
+
+
+class TestAFieldWithNoRealQuestion:
+    """021 US1 (FR-006/FR-007).
+
+    `question_of()` was `label_text or placeholder or aria_label or ""` with
+    NO .strip(). A label of " " is truthy in Python, so a row was created and
+    panel.js rendered `row.q.textContent = " "` — visually blank. That is what
+    most of the applicant's 149 rows were.
+
+    It also never looked at `data-automation-id`, which scanner.js already
+    captures and which is exactly where Workday puts a field's identity.
+    """
+
+    def _feed(self, queue, sent, descriptors):
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(descriptors=descriptors))
+        payloads = [m for m in sent if m["type"] == "answers"]
+        return payloads[-1]["items"] if payloads else []
+
+    def test_a_whitespace_label_does_not_become_a_blank_row(self, queue, sent):
+        items = self._feed(queue, sent, [
+            descriptor(je_idx="1", label_text="   ", name="", id="",
+                       automation_id=""),
+        ])
+        assert [i for i in items if not (i["question"] or "").strip()] == []
+
+    def test_an_automation_id_names_the_field_when_the_label_cannot(
+            self, queue, sent, tmp_path, monkeypatch):
+        """Asserted through the page report, not the answers feed.
+
+        A skip with no drafter record is deliberately never listed in the
+        feed ("a field we deliberately ignored is not an unanswered
+        question"), so the feed cannot show whether the field was NAMED. The
+        report records every field, which is what it is for.
+        """
+        from engine import paths
+
+        monkeypatch.setattr(paths, "data_dir", lambda: tmp_path)
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(descriptors=[
+            descriptor(je_idx="1", label_text="  ", name="", id="",
+                       automation_id="countryRegionPhoneCode")]))
+        ext_backend.handle_message(ext_protocol.PageReport(
+            tab_id=40, frame_id=0,
+            url="https://boards.greenhouse.io/figma/jobs/77"))
+
+        report = json.loads(
+            list((tmp_path / "reports").glob("page-*.json"))[0]
+            .read_text(encoding="utf-8"))
+        assert report["fields"][0]["automation_id"] == "countryRegionPhoneCode"
+
+    def test_a_name_is_the_next_fallback(self):
+        from engine.autofill import field_core
+
+        assert field_core.humanize_identifier(
+            "overall_result_gpa") == "Overall Result Gpa"
+
+    def test_an_id_is_the_last_fallback(self, queue, sent):
+        items = self._feed(queue, sent, [
+            descriptor(je_idx="1", label_text="", name="", id="phone-number",
+                       automation_id=""),
+        ])
+        assert "Phone Number" in [i["question"] for i in items]
+
+    def test_a_real_label_always_wins_over_every_fallback(self, queue, sent):
+        items = self._feed(queue, sent, [
+            descriptor(je_idx="1", label_text="Country/Region",
+                       name="wd_country", id="c1",
+                       automation_id="countryDropdown"),
+        ])
+        assert "Country/Region" in [i["question"] for i in items]
+        assert "Country Dropdown" not in [i["question"] for i in items]
+
+    def test_a_field_with_no_identity_at_all_is_not_listed(self, queue, sent):
+        """A blank row is worse than no row. If nothing names it, it belongs
+        in the page report, not in the review list."""
+        items = self._feed(queue, sent, [
+            descriptor(je_idx="1", label_text=" ", name="", id="",
+                       automation_id="", placeholder="", aria_label=""),
+        ])
+        assert items == [] or all(
+            (i["question"] or "").strip() for i in items)
+
+    def test_an_opaque_generated_id_is_not_used_as_a_question(self, queue,
+                                                              sent):
+        """React and Workday both emit ids like `input-23` and
+        `:r1a:`. Naming a question after one is noise dressed up as
+        information — worse than admitting we could not name it."""
+        items = self._feed(queue, sent, [
+            descriptor(je_idx="1", label_text=" ", name="", automation_id="",
+                       id="input-23"),
+            descriptor(je_idx="2", label_text=" ", name="", automation_id="",
+                       id="react-select-4-input"),
+        ])
+        assert items == [] or all(
+            "input-23" not in (i["question"] or "") for i in items)
+
+
+class TestTheIndexForgetsWhatIsGone:
+    """021 US1 (FR-009, analysis A10).
+
+    `_page_entries` was cleared only at session start, and its keys are
+    (doc, je_idx). `je_idx` lives in a DOM attribute, so a React remount or a
+    wizard step gives every field a FRESH stamp and therefore a NEW entry,
+    while the old ones stay. On a multi-step Workday application that
+    accumulates monotonically — a large part of how the applicant's page
+    reached 149 outstanding rows.
+    """
+
+    def _feed(self, sent):
+        payloads = [m for m in sent if m["type"] == "answers"]
+        return payloads[-1]["items"] if payloads else []
+
+    def test_a_field_gone_for_three_scans_stops_being_listed(self, queue, sent):
+        open_the_tab(queue, sent)
+        step_one = [descriptor(je_idx="1", label_text="First name"),
+                    descriptor(je_idx="2", label_text="Last name",
+                               name="last_name", id="last_name")]
+        ext_backend.handle_message(fields_msg(descriptors=step_one))
+        assert len(self._feed(sent)) == 2
+
+        # The wizard advances: same document, entirely new elements.
+        step_two = [descriptor(je_idx="9", label_text="Email",
+                               name="email", id="email")]
+        for _ in range(ext_backend.PRUNE_AFTER_SCANS):
+            ext_backend.handle_message(fields_msg(descriptors=step_two))
+
+        questions = [i["question"] for i in self._feed(sent)]
+        assert "First name" not in questions
+        assert "Email" in questions
+
+    def test_one_missed_scan_does_not_evict_a_live_field(self, queue, sent):
+        """A single miss is a re-render, not a removal. Evicting on the first
+        miss would make live fields flicker out of the review list exactly
+        when the page is busiest."""
+        open_the_tab(queue, sent)
+        both = [descriptor(je_idx="1", label_text="First name"),
+                descriptor(je_idx="2", label_text="Email", name="email",
+                           id="email")]
+        ext_backend.handle_message(fields_msg(descriptors=both))
+        # One scan mid-remount sees only half the form.
+        ext_backend.handle_message(fields_msg(descriptors=[both[1]]))
+        ext_backend.handle_message(fields_msg(descriptors=both))
+
+        assert "First name" in [i["question"] for i in self._feed(sent)]
+
+    def test_a_different_document_does_not_prune_this_one(self, queue, sent):
+        """Pruning counts scans of THIS document. A second document must not
+        evict the first one's fields — that is a navigation, and the session
+        boundary already handles it."""
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(
+            doc="docA", descriptors=[descriptor(je_idx="1",
+                                                label_text="First name")]))
+        for _ in range(ext_backend.PRUNE_AFTER_SCANS + 2):
+            ext_backend.handle_message(fields_msg(
+                doc="docB", frame_id=1,
+                descriptors=[descriptor(je_idx="1", doc="docB",
+                                        label_text="Email", name="email",
+                                        id="email")]))
+
+        assert "First name" in [i["question"] for i in self._feed(sent)]
+
+
+class TestTheEntryCapIsNotSilent:
+    """021 (analysis A8): a review surface that quietly stops listing fields
+    reads as "that is everything" — the exact failure 018 and 019 were spent
+    eliminating."""
+
+    def test_exceeding_the_cap_says_so(self, queue, sent, monkeypatch):
+        monkeypatch.setattr(ext_backend, "MAX_PAGE_ENTRIES", 5)
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(descriptors=[
+            descriptor(je_idx=str(n), label_text=f"Question {n}",
+                       name=f"q{n}", id=f"q{n}")
+            for n in range(20)]))
+
+        payloads = [m for m in sent if m["type"] == "answers"]
+        assert payloads[-1]["truncated"] is True
+        assert ext_backend.counters()["page_entries_truncated"] > 0
+
+    def test_a_page_inside_the_cap_does_not_claim_truncation(self, queue,
+                                                             sent):
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(descriptors=[
+            descriptor(je_idx="1", label_text="First name")]))
+        payloads = [m for m in sent if m["type"] == "answers"]
+        assert payloads[-1]["truncated"] is False
+
+
+class TestStaleFramesStopCounting:
+    """021 US1 (FR-009, research R1 open question).
+
+    `_frame_seen` was frame_id -> count, cleared only at session start. An
+    iframe that navigated away or was removed left its count in the sum
+    forever, so the panel's "Seen 156" could be several dead frames added
+    together. PageEvent carries no frame_id — and defaulting one to 0 would
+    wrongly clear the TOP frame — so staleness is judged by time.
+    """
+
+    def _seen(self, sent):
+        states = [m for m in sent if m["type"] == "overlay_state"]
+        return states[-1]["summary"]["seen"]
+
+    def test_two_live_frames_are_added_together(self, queue, sent):
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(
+            frame_id=0, descriptors=[descriptor(je_idx="1")]))
+        ext_backend.handle_message(fields_msg(
+            frame_id=1, doc="docB",
+            descriptors=[descriptor(je_idx="1", doc="docB"),
+                         descriptor(je_idx="2", doc="docB", name="last_name",
+                                    id="last_name", label_text="Last name")]))
+        assert self._seen(sent) == 3
+
+    def test_a_frame_that_went_quiet_stops_counting(self, queue, sent,
+                                                    monkeypatch):
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(
+            frame_id=1, doc="docB",
+            descriptors=[descriptor(je_idx=str(n), doc="docB",
+                                    name=f"f{n}", id=f"f{n}",
+                                    label_text=f"Field {n}")
+                         for n in range(50)]))
+        assert self._seen(sent) == 50
+
+        # That iframe is gone. Nothing tells us so; it simply stops scanning.
+        with ext_backend._lock:
+            count, at = ext_backend._frame_seen[1]
+            ext_backend._frame_seen[1] = (
+                count, at - ext_backend.FRAME_STALE_S - 1)
+
+        ext_backend.handle_message(fields_msg(
+            frame_id=0, descriptors=[descriptor(je_idx="1")]))
+        assert self._seen(sent) == 1, (
+            "a dead frame's 50 fields are still being counted")
+
+    def test_a_frame_rescanning_keeps_counting(self, queue, sent):
+        """The paired half: staleness must not evict a frame that is simply
+        slower than the top one."""
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(
+            frame_id=1, doc="docB",
+            descriptors=[descriptor(je_idx="1", doc="docB")]))
+        for _ in range(3):
+            ext_backend.handle_message(fields_msg(
+                frame_id=0, descriptors=[descriptor(je_idx="1")]))
+        assert self._seen(sent) == 2
+
+    def test_the_report_exposes_the_gap(self, queue, sent, tmp_path,
+                                        monkeypatch):
+        """The whole point of Workstream A: the file shows BOTH numbers, so
+        stale-frame inflation is visible rather than argued about."""
+        from engine import paths
+
+        monkeypatch.setattr(paths, "data_dir", lambda: tmp_path)
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(
+            frame_id=1, doc="docB",
+            descriptors=[descriptor(je_idx="1", doc="docB")]))
+        with ext_backend._lock:
+            count, at = ext_backend._frame_seen[1]
+            ext_backend._frame_seen[1] = (
+                count, at - ext_backend.FRAME_STALE_S - 1)
+        ext_backend.handle_message(fields_msg(
+            frame_id=0, descriptors=[descriptor(je_idx="1")]))
+        ext_backend.handle_message(ext_protocol.PageReport(
+            tab_id=40, frame_id=0,
+            url="https://boards.greenhouse.io/figma/jobs/77"))
+
+        report = json.loads(
+            list((tmp_path / "reports").glob("page-*.json"))[0]
+            .read_text(encoding="utf-8"))
+        reported = report["counts_reported"]
+        assert reported["seen"] == 1
+        assert reported["seen_all_frames"] == 2
+        assert reported["frames_live"] == 1
+        assert reported["frames_all"] == 2

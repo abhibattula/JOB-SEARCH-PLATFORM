@@ -1,6 +1,8 @@
 """010 T004: transport-agnostic per-field decision rules, extracted from
 watcher._process_field so the Playwright watcher and the extension backend
 share ONE implementation of the safety-critical fill logic."""
+import pytest
+
 from engine.autofill import field_core
 
 
@@ -545,3 +547,42 @@ class TestRichText020:
                              type="richtext"),
                    value="hunter2")
         assert d.kind != "richtext" or not d.secret
+
+
+class TestHumanizeIdentifier:
+    """021 (FR-007): a field the label ladder cannot name usually still has a
+    stable identity. scanner.js has captured `data-automation-id` since 011;
+    the panel threw it away, so the row rendered blank."""
+
+    @pytest.mark.parametrize("raw,expected", [
+        ("countryRegionPhoneCode", "Country Region Phone Code"),
+        ("overall_result_gpa", "Overall Result Gpa"),
+        ("phone-number", "Phone Number"),
+        ("legalNameSection_firstName", "Legal Name Section First Name"),
+        ("school", "School"),
+        ("wd_first", "Wd First"),
+    ])
+    def test_an_identifier_becomes_a_readable_question(self, raw, expected):
+        assert field_core.humanize_identifier(raw) == expected
+
+    @pytest.mark.parametrize("raw", [
+        "", "   ",
+        "input-23",              # the form-library default
+        "react-select-4-input",  # react-select
+        ":r1a:",                 # React 18 useId
+        "field_7", "textbox-2", "control12",
+        "a3f9c2b18e4d",          # a generated hex handle
+        "42",
+    ])
+    def test_a_generated_identifier_names_nothing(self, raw):
+        """Naming a question `input-23` is noise dressed up as information —
+        worse than admitting the field could not be named, because the
+        applicant cannot tell the two apart on the page."""
+        assert field_core.humanize_identifier(raw) == ""
+
+    def test_a_trailing_repeat_index_is_dropped(self):
+        """`gpa-1` is "Overall Result (GPA)" in the SECOND education block.
+        The section index already says which block; repeating it in the
+        question text would defeat the de-duplication it feeds."""
+        assert field_core.humanize_identifier("gpa-1") == "Gpa"
+        assert field_core.humanize_identifier("jobTitle-3") == "Job Title"

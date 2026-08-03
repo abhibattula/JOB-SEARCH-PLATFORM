@@ -77,6 +77,13 @@ class Descriptor(_Strict):
     # both; defaults keep their payloads valid.
     members: list[Member] = []
     required: bool = False
+    # 021 (FR-008, additive — PROTOCOL_V stays 1): which region of the form
+    # this field sits in, and which repeat of that region. `section_label`
+    # is "" when UNDETERMINED, which means the app groups flat rather than
+    # guessing — a wrong grouping is worse than none. An older companion
+    # omits both and behaves exactly as v2.0.0 did.
+    section_label: str = ""
+    section_index: int = 0
     # 019 (T003, additive — PROTOCOL_V stays 1): which kind of credential
     # form the field sits in, judged by the serializer that can see the form
     # ("login": one password input; "registration": two / create-account

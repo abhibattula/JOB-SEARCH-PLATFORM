@@ -186,3 +186,135 @@ class TestDeduplication:
         ])
         assert len(items) == 1
         assert items[0]["answer"] == "new@b.com"
+
+
+def sectioned(section, index=0, **kw):
+    """A decision that knows which region of the form it came from."""
+    return entry(section_label=section, section_index=index, **kw)
+
+
+class TestOneRowPerQuestion:
+    """021 US1 (FR-004/FR-005/FR-010).
+
+    v2.0.0 keyed rows on `field_core.key(descriptor)` = (doc, je_idx) — a
+    per-ELEMENT stamp. A Workday prompt is a button with aria-haspopup=listbox
+    PLUS its listbox, and FIELD_SELECTOR matches both, so every dropdown
+    produced two identical rows. On the applicant's real page that was part of
+    149 rows, most of them blank.
+    """
+
+    def test_two_elements_one_question_collapse_to_one_row(self):
+        items = page_answers.build([
+            sectioned("Address", key="a", je_idx="4", question="Country/Region",
+                      action="skip", tag="location_country"),
+            sectioned("Address", key="b", je_idx="5", question="Country/Region",
+                      action="skip", tag="location_country"),
+        ], {"Country/Region": {"state": "failed",
+                               "reason": "profile_fact_missing"}})
+        assert len(items) == 1
+
+    def test_the_same_question_in_two_sections_stays_two_rows(self):
+        """The guard against over-collapsing. Two employment blocks each ask
+        "From" and they are two real questions — merging them would be worse
+        than the flood it fixes."""
+        records = {"From": {"state": "failed", "reason": "cannot_answer"}}
+        items = page_answers.build([
+            sectioned("Work Experience", 0, key="a", je_idx="1",
+                      question="From", action="skip"),
+            sectioned("Work Experience", 1, key="b", je_idx="2",
+                      question="From", action="skip"),
+        ], records)
+        assert len(items) == 2
+        assert {i["section_index"] for i in items} == {0, 1}
+
+    def test_a_collapsed_row_keeps_every_element_behind_it(self):
+        """FR-005: "Show me" must still reach each one."""
+        items = page_answers.build([
+            sectioned("Address", key="a", je_idx="4", question="State",
+                      action="skip"),
+            sectioned("Address", key="b", je_idx="5", question="State",
+                      action="skip"),
+            sectioned("Address", key="c", je_idx="6", question="State",
+                      action="skip"),
+        ], {"State": {"state": "failed", "reason": "profile_fact_missing"}})
+        assert items[0]["je_idx_all"] == ["4", "5", "6"]
+
+    def test_je_idx_stays_a_string(self):
+        """analysis A3. panel.js uses `item.je_idx` as a string in five
+        places (Insert, Show me, the ask input and two hidden flags) and it
+        feeds the render digest. A list here breaks all of them."""
+        items = page_answers.build([
+            sectioned("Address", key="a", je_idx="4", question="State",
+                      action="skip"),
+            sectioned("Address", key="b", je_idx="5", question="State",
+                      action="skip"),
+        ], {"State": {"state": "failed", "reason": "profile_fact_missing"}})
+        assert items[0]["je_idx"] == "4"
+        assert isinstance(items[0]["je_idx"], str)
+
+    def test_a_single_element_still_lists_itself(self):
+        items = page_answers.build([
+            sectioned("Address", key="a", je_idx="9", question="City",
+                      action="fill", answer="Austin"),
+        ])
+        assert items[0]["je_idx"] == "9"
+        assert items[0]["je_idx_all"] == ["9"]
+
+    def test_a_filled_answer_outranks_a_bare_skip_for_the_same_question(self):
+        """The v1.8.0 rule, preserved through de-duplication: what the
+        applicant needs to review is the value we put there."""
+        items = page_answers.build([
+            sectioned("Address", key="a", je_idx="1", question="City",
+                      action="fill", answer="Austin"),
+            sectioned("Address", key="b", je_idx="2", question="City",
+                      action="skip"),
+        ])
+        assert len(items) == 1
+        assert items[0]["answer"] == "Austin"
+
+    def test_collapsing_is_case_and_whitespace_insensitive(self):
+        items = page_answers.build([
+            sectioned("Address", key="a", je_idx="1", question="Country/Region",
+                      action="skip"),
+            sectioned("Address", key="b", je_idx="2",
+                      question="  country/region  ", action="skip"),
+        ], {"Country/Region": {"state": "failed",
+                               "reason": "profile_fact_missing"}})
+        assert len(items) == 1
+
+    def test_an_undetermined_section_does_not_merge_unrelated_questions(self):
+        """`section_label: ""` means UNDETERMINED. Two different questions
+        must never merge just because neither resolved a section."""
+        items = page_answers.build([
+            entry(key="a", je_idx="1", question="Additional Information",
+                  action="fill", answer="x"),
+            entry(key="b", je_idx="2", question="Something Else",
+                  action="fill", answer="y"),
+        ])
+        assert len(items) == 2
+
+    def test_the_section_travels_to_the_panel(self):
+        """FR-008: the panel groups by it, so it has to arrive."""
+        items = page_answers.build([
+            sectioned("Work Experience", 1, key="a", je_idx="1",
+                      question="Company", action="fill", answer="Acme"),
+        ])
+        assert items[0]["section_label"] == "Work Experience"
+        assert items[0]["section_index"] == 1
+
+    def test_a_hundred_and_fifty_field_page_stays_readable(self):
+        """The headline: the applicant's page, in the shape that produced
+        149 rows. 12 sections x 6 questions, each served by two elements."""
+        entries = []
+        n = 0
+        for section in range(12):
+            for question in range(6):
+                for _element in range(2):
+                    n += 1
+                    entries.append(sectioned(
+                        "Work Experience", section, key=f"k{n}",
+                        je_idx=str(n), question=f"Question {question}",
+                        action="fill", answer="x"))
+        items = page_answers.build(entries)
+        assert len(entries) == 144
+        assert len(items) == 72   # one row per question per section

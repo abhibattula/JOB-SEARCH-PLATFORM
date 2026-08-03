@@ -244,6 +244,10 @@ window.jePanel = (function () {
     .grph[aria-expanded="true"]{color:#e6edf3}
     .grpn{color:#8b949e;font-weight:600}
     .grpb{margin-top:5px}
+    .sec{margin:0 0 8px}
+    .sech{font-size:11px;text-transform:uppercase;letter-spacing:.04em;
+      color:#8b949e;margin:6px 0 4px;padding-bottom:2px;
+      border-bottom:1px solid #21262d}
     .qa{margin:0 0 9px;padding-bottom:7px;border-bottom:1px solid #21262d}
     .qa:last-child{border-bottom:0;margin-bottom:0}
     .q{font-size:12px;color:#c9d1d9;margin-bottom:3px}
@@ -732,9 +736,45 @@ window.jePanel = (function () {
     paint();
   }
 
+  // 021 (FR-008): rows are grouped by the region of the form they came from.
+  // A flat list of 149 rows is not a review surface. `section_label` of ""
+  // means UNDETERMINED — those rows sit directly in the group exactly as they
+  // did in v2.0.0, because a wrong grouping is worse than no grouping.
+  const sections = new Map();  // group\0label\0index -> {wrap, body, count}
+
+  function sectionTitle(item) {
+    const index = item.section_index || 0;
+    return index > 0 ? item.section_label + " " + (index + 1)
+                     : item.section_label;
+  }
+
+  function sectionBody(item) {
+    const refs = groupEls.get(item.group);
+    if (!refs) { return null; }
+    if (!item.section_label) { return refs.body; }
+    const key = item.group + " " + item.section_label + " "
+      + (item.section_index || 0);
+    let sec = sections.get(key);
+    if (!sec) {
+      const wrap = document.createElement("div");
+      wrap.className = "sec";
+      const head = document.createElement("div");
+      head.className = "sech";
+      const body = document.createElement("div");
+      sec = { wrap: wrap, head: head, body: body, key: key };
+      wrap.appendChild(head);
+      wrap.appendChild(body);
+      sections.set(key, sec);
+    }
+    sec.head.textContent = sectionTitle(item);
+    refs.body.appendChild(sec.wrap);   // also reorders, keeping feed order
+    return sec.body;
+  }
+
   function reconcile() {
     ensureGroups();
     const seen = new Set();
+    const liveSections = new Set();
     state.answers.forEach(function (item) {
       const key = item.key || item.question || "";
       if (!key) { return; }
@@ -744,11 +784,23 @@ window.jePanel = (function () {
         row = createRow(item);
         rows.set(key, row);
       }
-      const refs = groupEls.get(item.group);
+      const body = sectionBody(item);
       // appendChild also REORDERS an existing child, which keeps the rows in
       // feed order without ever detaching and recreating them.
-      if (refs) { refs.body.appendChild(row.wrap); }
+      if (body) {
+        body.appendChild(row.wrap);
+        if (item.section_label) {
+          liveSections.add(item.group + " " + item.section_label
+                           + " " + (item.section_index || 0));
+        }
+      }
       if (!holdsFocus(row.wrap)) { patchRow(row, item); }
+    });
+    sections.forEach(function (sec, key) {
+      if (liveSections.has(key)) { return; }
+      if (holdsFocus(sec.wrap)) { return; }
+      if (sec.wrap.parentNode) { sec.wrap.parentNode.removeChild(sec.wrap); }
+      sections.delete(key);
     });
     rows.forEach(function (row, key) {
       if (seen.has(key)) { return; }
@@ -784,8 +836,17 @@ window.jePanel = (function () {
         handlers.insert(row.item.je_idx, row.item.answer);
       }
     });
+    // 021 (FR-005): one row can stand for several elements — a Workday
+    // prompt is a button plus its listbox, and both are real fields. Pressing
+    // "Show me" again walks to the next one instead of parking on the first.
     const jump = smallButton("Show me", function () {
-      if (handlers.jump && row.item.je_idx) { handlers.jump(row.item.je_idx); }
+      if (!handlers.jump) { return; }
+      const all = (row.item.je_idx_all && row.item.je_idx_all.length)
+        ? row.item.je_idx_all
+        : (row.item.je_idx ? [row.item.je_idx] : []);
+      if (!all.length) { return; }
+      row.jumpAt = (row.jumpAt + 1) % all.length;  // starts at -1 → first
+      handlers.jump(all[row.jumpAt]);
     });
     acts.appendChild(copy);
     acts.appendChild(insert);
@@ -811,7 +872,8 @@ window.jePanel = (function () {
     wrap.appendChild(input);
 
     const row = { wrap: wrap, q: q, a: a, acts: acts, insert: insert,
-                  jump: jump, why: why, input: input, item: item };
+                  jump: jump, why: why, input: input, item: item,
+                  jumpAt: -1 };
     return row;
   }
 

@@ -369,6 +369,78 @@ SERIALIZE_JS = r"""
     });
     idxs.slice(1).forEach(function (i) { drop.add(i); });
   }
+  // 021 (FR-008, contracts/section_context.md): which region of the form each
+  // field belongs to, and which repeat of that region — kept byte-parallel
+  // with content/scanner.js sectionOf/assignSections. Recomputed every scan,
+  // never stamped onto the DOM: a stamped index drifts on exactly the
+  // re-renders that made the v2.0.0 panel unreadable.
+  var _JE_SECTION_SEL = 'fieldset,[role=group],[role=region],' +
+    '[data-automation-id$="Section"],[data-automation-id$="Panel"]';
+  var _JE_HEADING_SEL = 'h1,h2,h3,h4,h5,h6,legend';
+  function jeSectionNameOf(node) {
+    if (!node) { return ''; }
+    if (node.tagName.toLowerCase() === 'fieldset') {
+      var legend = node.querySelector('legend');
+      if (legend) {
+        var lt = jeStripControls(legend);
+        if (lt) { return lt; }
+      }
+    }
+    var aria = (node.getAttribute('aria-label') || '').trim();
+    if (aria) { return aria; }
+    var ref = jeReferencedText(node);
+    if (ref) { return ref; }
+    var heading = node.querySelector(_JE_HEADING_SEL);
+    if (heading) {
+      var ht = jeStripControls(heading);
+      if (ht) { return ht; }
+    }
+    return '';
+  }
+  function jePrecedingHeading(el) {
+    var node = el;
+    var hops = 0;
+    while (node && hops < 12) {
+      var prev = node.previousElementSibling;
+      var sideways = 0;
+      while (prev && sideways < 4) {
+        if (/^h[1-6]$/.test(prev.tagName.toLowerCase())) {
+          var t = jeStripControls(prev);
+          if (t) { return { label: t, node: prev }; }
+        }
+        prev = prev.previousElementSibling;
+        sideways += 1;
+      }
+      node = node.parentElement;
+      hops += 1;
+    }
+    return { label: '', node: null };
+  }
+  function jeSectionOf(el) {
+    var node = el.closest ? el.closest(_JE_SECTION_SEL) : null;
+    while (node) {
+      var label = jeSectionNameOf(node);
+      if (label) { return { label: label, node: node }; }
+      node = node.parentElement
+        ? node.parentElement.closest(_JE_SECTION_SEL) : null;
+    }
+    return jePrecedingHeading(el);
+  }
+  var _jeSectionOrder = new Map();
+  pairs.forEach(function (pair) {
+    var found = jeSectionOf(pair.el);
+    if (!found.label) {
+      pair.desc.section_label = '';
+      pair.desc.section_index = 0;
+      return;
+    }
+    var nodes = _jeSectionOrder.get(found.label);
+    if (!nodes) { nodes = []; _jeSectionOrder.set(found.label, nodes); }
+    var index = nodes.indexOf(found.node);
+    if (index === -1) { nodes.push(found.node); index = nodes.length - 1; }
+    pair.desc.section_label = found.label;
+    pair.desc.section_index = index;
+  });
   // 017 (C6): a nested search input inside a captured choice widget is part
   // of that widget, not a second question — mirrors scanner.js
   // dropNestedChoiceControls.

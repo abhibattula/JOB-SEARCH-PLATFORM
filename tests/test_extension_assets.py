@@ -1034,3 +1034,113 @@ class TestAdvancerAssets019:
         scanner = (EXT / "content" / "scanner.js").read_text(encoding="utf-8")
         code = "\n".join(line.split("//")[0] for line in scanner.splitlines())
         assert ".click(" not in code
+
+
+class TestSectionContextParity:
+    """021 (FR-008, contracts/section_context.md).
+
+    Section context is what makes de-duplicating by question SAFE — two
+    "Start date" fields in two employment blocks are two real questions, and
+    collapsing them would be worse than the flood it fixes. So both
+    serializers have to resolve it the same way, or the escort path and the
+    companion path silently disagree about which employer a date belongs to.
+
+    Token presence alone is NOT this feature's coverage: the real behaviour
+    is asserted against a live DOM in
+    tests/integration/test_extension_fixture_pages.py. These are the cheap
+    drift alarms that run on every commit.
+    """
+
+    def test_both_serializers_resolve_a_section(self):
+        from engine.autofill import watcher
+
+        js = (EXT / "content" / "scanner.js").read_text(encoding="utf-8")
+        for source, name in ((js, "scanner.js"),
+                             (watcher.SERIALIZE_JS, "watcher SERIALIZE_JS")):
+            for token in ("section_label", "section_index",
+                          "role=group", "role=region",
+                          'data-automation-id$="Section"'):
+                assert token in source, f"{name} missing {token!r}"
+
+    def test_neither_serializer_stamps_the_section_onto_the_dom(self):
+        """A stamped index would drift on exactly the React remounts that
+        made the v2.0.0 panel unreadable. It must be recomputed per scan."""
+        from engine.autofill import watcher
+
+        js = (EXT / "content" / "scanner.js").read_text(encoding="utf-8")
+        for source, name in ((js, "scanner.js"),
+                             (watcher.SERIALIZE_JS, "watcher SERIALIZE_JS")):
+            for forbidden in ("dataset.jeSection", "data-je-section",
+                              "setAttribute('data-je-section'",
+                              'setAttribute("data-je-section"'):
+                assert forbidden not in source, (
+                    f"{name} persists the section index — it must not")
+
+    def test_both_section_namers_strip_controls(self):
+        """A section container that also renders a control's own text would
+        otherwise be named after the applicant's answer. That is the
+        019/020 label bug, in a third place — pinned before it happens."""
+        from engine.autofill import watcher
+
+        js = (EXT / "content" / "scanner.js").read_text(encoding="utf-8")
+        for source, fn, name in (
+                (js, "function sectionNameOf", "scanner.js"),
+                (watcher.SERIALIZE_JS, "function jeSectionNameOf",
+                 "watcher SERIALIZE_JS")):
+            start = source.index(fn)   # the DEFINITION, not a call site
+            block = source[start:start + 900]
+            assert "tripControls(" in block, (
+                f"{name} names a section with raw text instead of "
+                f"stripControls()")
+
+
+class TestTheProtocolStaysAdditive:
+    """021: PROTOCOL_V stays 1. Both directions, because the 020 bug was a
+    Literal that rejected an ENTIRE fields message over one unknown value —
+    the scan was perfect, the tab opened, and nothing filled."""
+
+    def _fields(self, descriptor):
+        import json
+
+        from engine.autofill import ext_protocol
+
+        return ext_protocol.parse_inbound(json.dumps({
+            "v": ext_protocol.PROTOCOL_V,
+            "type": "fields", "tab_id": 1, "frame_id": 0, "doc": "d",
+            "url": "https://boards.greenhouse.io/x/jobs/1",
+            "descriptors": [descriptor],
+        }))
+
+    def test_protocol_version_is_still_one(self):
+        from engine.autofill import bridge_const
+
+        assert bridge_const.PROTOCOL_V == 1, (
+            "021 is additive; bumping this breaks every installed companion")
+
+    def test_an_older_companion_omitting_the_section_still_validates(self):
+        msg = self._fields({"je_idx": "1", "doc": "d", "tag": "input"})
+        assert msg.descriptors[0].section_label == ""
+        assert msg.descriptors[0].section_index == 0
+
+    def test_a_newer_companion_sending_unknown_keys_is_not_rejected(self):
+        """A newer companion talking to an older app must not take the whole
+        page down. `extra="ignore"` is the guarantee — pinned here so nobody
+        tightens it to "forbid" without meeting this test."""
+        msg = self._fields({
+            "je_idx": "1", "doc": "d", "tag": "input",
+            "section_label": "Work Experience", "section_index": 2,
+            "some_future_key": {"nested": [1, 2, 3]},
+        })
+        assert msg.descriptors[0].section_label == "Work Experience"
+        assert msg.descriptors[0].section_index == 2
+
+    def test_the_section_survives_into_the_watcher_dict(self):
+        """field_core reads descriptors through as_watcher_dict(); a field
+        dropped there is a field the history layer can never index."""
+        msg = self._fields({
+            "je_idx": "1", "doc": "d", "tag": "input",
+            "section_label": "Education", "section_index": 1,
+        })
+        raw = msg.descriptors[0].as_watcher_dict()
+        assert raw["section_label"] == "Education"
+        assert raw["section_index"] == 1

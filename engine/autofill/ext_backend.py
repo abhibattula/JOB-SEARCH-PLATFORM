@@ -165,7 +165,11 @@ OPEN_TAB_ACK_S = 5.0
 # 019 (FR-002): version_mismatch_fills counts fills withheld from a stale
 # companion — each one is ALSO visible on the page as needs-you.
 _counters: dict = {"dropped_fields": 0, "scan_errors": 0,
-                   "version_mismatch_fills": 0}
+                   "version_mismatch_fills": 0,
+                   # 021 (analysis A8): fields the page-entry cap refused.
+                   # Silent truncation on a review surface reads as "that is
+                   # everything" — the failure 018/019 were spent removing.
+                   "page_entries_truncated": 0}
 
 
 def counters() -> dict:
@@ -186,8 +190,23 @@ def version_ok() -> bool:
 # must not block its field for the life of the document.
 _inflight: dict[tuple, tuple] = {}
 INFLIGHT_TTL_S = 20.0
-# per-frame seen counts for the watched tab (overlay + activity aggregation)
-_frame_seen: dict[int, int] = {}
+# per-frame seen counts for the watched tab (overlay + activity aggregation).
+# 021 (FR-009): frame_id -> (count, monotonic of the scan that reported it).
+# This was frame_id -> count, cleared only at session start — so an iframe
+# that navigated away or was removed left its count in the sum FOREVER, and
+# "Seen 156" could be several dead frames added together. PageEvent carries no
+# frame_id (and defaulting one to 0 would wrongly clear the TOP frame), so
+# staleness is judged by time instead: a frame stops counting once it has gone
+# quiet for longer than any live frame's scan cadence.
+_frame_seen: dict[int, tuple[int, float]] = {}
+FRAME_STALE_S = 30.0
+
+
+def _total_seen_locked() -> int:
+    """Fields across every frame still reporting. Caller holds `_lock`."""
+    now = time.monotonic()
+    return sum(count for count, at in _frame_seen.values()
+               if now - at <= FRAME_STALE_S)
 
 # 018 (US3): the page-answer index — every decision this session made, keyed by
 # the stable ledger key, in the order the fields were first seen. This is what
@@ -195,6 +214,13 @@ _frame_seen: dict[int, int] = {}
 # questions the AI drafter touched, and it is where `je_idx` finally travels
 # with the answer so Insert and Show me can exist.
 _page_entries: dict[int, dict[str, dict]] = {}
+# 021 (FR-009): how many scans of each (job, document) have been processed,
+# and how many consecutive misses evict a page-answer entry. THREE, not one:
+# a single missed scan is a re-render, and evicting on the first miss would
+# make live fields flicker out of the review list exactly when the page is
+# busiest.
+_scan_counts: dict[tuple, int] = {}
+PRUNE_AFTER_SCANS = 3
 # 021 (FR-001): the SHAPE of the last scan of each frame — every descriptor,
 # including the ones `_page_entries` deliberately drops (no question, ignored).
 # A field the app cannot name is precisely what needs diagnosing, so the report
@@ -705,8 +731,17 @@ def _handle_page_report(msg) -> None:
         records: list[dict] = []
         for frame_records in (_page_shape.get(job_id) or {}).values():
             records.extend(frame_records)
-        reported = {"seen": sum(_frame_seen.values()),
-                    "frames": len(_frame_seen)}
+        # BOTH numbers, deliberately: `seen` is what the panel header shows
+        # (live frames only), `frames_all` counts every frame that ever
+        # reported. A gap between them is stale-frame inflation, made visible
+        # in the file rather than argued about.
+        reported = {"seen": _total_seen_locked(),
+                    "frames_live": sum(
+                        1 for _c, at in _frame_seen.values()
+                        if time.monotonic() - at <= FRAME_STALE_S),
+                    "frames_all": len(_frame_seen),
+                    "seen_all_frames": sum(c for c, _at in
+                                           _frame_seen.values())}
 
     report = page_report.build(
         records,
@@ -818,6 +853,16 @@ def _handle_fields(msg) -> None:
     raws = [desc.as_watcher_dict() for desc in msg.descriptors]
     name_overrides = field_core.name_layout(raws, ats)
 
+    # 021 (FR-009): a monotonic scan counter per (job, document). Pruning is
+    # by "absent from the last PRUNE_AFTER_SCANS scans of THIS document" —
+    # a document token is what changes on a real navigation, and a count that
+    # ignored it would evict a whole page's fields the moment a second
+    # document appeared.
+    with _lock:
+        doc_key = (job_id, msg.doc)
+        _scan_seq = _scan_counts.get(doc_key, 0) + 1
+        _scan_counts[doc_key] = _scan_seq
+
     # 021 (FR-001): every descriptor this scan saw, in document order, with
     # whatever the app decided about it. Keyed so a reason discovered later
     # (no_saved_login, version_mismatch) can patch the entry it belongs to.
@@ -840,8 +885,27 @@ def _handle_fields(msg) -> None:
             entry["reason"] = reason
 
     def question_of(descriptor: dict) -> str:
-        return (descriptor.get("label_text") or descriptor.get("placeholder")
-                or descriptor.get("aria_label") or "")
+        # 021 (FR-006/FR-007): .strip() is the whole first half of this fix.
+        # This was `label_text or placeholder or aria_label or ""`, and a
+        # label of " " is TRUTHY in Python — so a row was created and the
+        # panel rendered it visually blank. Most of the applicant's 149 rows
+        # on a real Workday page were exactly that.
+        for source in ("label_text", "placeholder", "aria_label"):
+            text = (descriptor.get(source) or "").strip()
+            if text:
+                return text
+        # The second half: a field the label ladder cannot name usually still
+        # has a stable identity, and scanner.js has been capturing it since
+        # 011 while the panel threw it away. Workday puts it in
+        # data-automation-id.
+        for source in ("automation_id", "name", "id"):
+            humanized = field_core.humanize_identifier(
+                descriptor.get(source) or "")
+            if humanized:
+                return humanized
+        # Nothing names it. A blank row is worse than no row — it belongs in
+        # the page report, which records every field regardless.
+        return ""
 
     def note_answer(descriptor: dict, *, action: str, answer: str = "",
                     tag: str = "", ai_draft: bool = False,
@@ -862,6 +926,12 @@ def _handle_fields(msg) -> None:
         index = _page_entries.setdefault(job_id, {})
         key = field_core.key(descriptor)
         if key not in index and len(index) >= MAX_PAGE_ENTRIES:
+            # 021 (analysis A8): this used to drop silently. A review surface
+            # that quietly stops listing fields reads as "that is everything",
+            # which is the exact failure 018 and 019 were spent eliminating.
+            # The panel already has a `truncated` channel — use it.
+            with _lock:
+                _counters["page_entries_truncated"] += 1
             return
         # A field we filled stays in the feed once it is filled. On the NEXT
         # scan that field is no longer empty, so `decide` returns "skip" —
@@ -871,10 +941,22 @@ def _handle_fields(msg) -> None:
         # the value we put there, so an answerless skip never displaces it.
         previous = index.get(key)
         if action == "skip" and previous and previous.get("answer"):
+            # Still present on this scan, so it must not be pruned — even
+            # though the record itself is left alone.
+            previous["last_seen_scan"] = _scan_seq
             return
         index[key] = {
             "key": key,
             "je_idx": descriptor.get("je_idx") or "",
+            # 021 (FR-004/FR-010): without these, page_answers would collapse
+            # every same-named question on the page into ONE row — the
+            # over-collapse that would be worse than the flood it fixes.
+            "section_label": descriptor.get("section_label") or "",
+            "section_index": int(descriptor.get("section_index") or 0),
+            # 021 (FR-009): which scan last saw this field. A wizard step or a
+            # React remount replaces the elements, and v2.0.0 never pruned —
+            # so every step's fields stayed listed as outstanding forever.
+            "last_seen_scan": _scan_seq,
             "question": question,
             "answer": answer,
             "action": action,
@@ -1034,13 +1116,27 @@ def _handle_fields(msg) -> None:
                        items=[item]))
 
     with _lock:
-        _frame_seen[msg.frame_id] = seen
-        total_seen = sum(_frame_seen.values())
+        _frame_seen[msg.frame_id] = (seen, time.monotonic())
+        total_seen = _total_seen_locked()
         # 021 (FR-001): replaced, never accumulated — the report describes the
         # page as it is NOW. Accumulating is what made the review feed
         # unreadable in the first place (R1.3); the diagnostic must not
         # inherit that defect or it cannot be used to measure it.
         _page_shape.setdefault(job_id, {})[msg.frame_id] = list(shape.values())
+        # 021 (FR-009): forget the fields this document no longer has. v2.0.0
+        # cleared this index only at session start, and its keys are
+        # (doc, je_idx) — so every wizard step and every React remount added
+        # fresh entries while the old ones stayed. That accumulation is a
+        # large part of how a page reached 149 outstanding rows.
+        entries = _page_entries.get(job_id) or {}
+        stale = [k for k, entry in entries.items()
+                 if k[0] == msg.doc
+                 and _scan_seq - entry.get("last_seen_scan", _scan_seq)
+                 >= PRUNE_AFTER_SCANS]
+        for k in stale:
+            del entries[k]
+        if stale:
+            log.debug("pruned %d field(s) no longer on the page", len(stale))
 
     with bc._lock:
         filled_total = bc._state.activity.get("fields_filled", 0)
@@ -1142,6 +1238,7 @@ def _start_answer_feed(tab_id: int, job_id: int) -> None:
     """
     _page_entries.clear()
     _page_shape.clear()
+    _scan_counts.clear()
     _page_entries[job_id] = {}
     _answers_digest.clear()
     _answers_force.add(tab_id)
@@ -1161,8 +1258,11 @@ def _push_answers(tab_id: int, job_id: int) -> None:
         entries = list((_page_entries.get(job_id) or {}).values())
         forced = tab_id in _answers_force
         _answers_force.discard(tab_id)
+        # 021 (analysis A8): the entry cap refused fields. Say so — the panel
+        # already renders this as "not every answer fits here".
+        capped = _counters["page_entries_truncated"] > 0
     items = page_answers.build(entries, drafter.records_for_job(job_id))
-    truncated = False
+    truncated = capped
     # Stay well inside MAX_MESSAGE_BYTES on a very large form; the app's own
     # view stays complete either way (FR-029).
     while len(items) > 1 and len(str(items)) > 400_000:
@@ -1476,6 +1576,7 @@ def reset_for_tests() -> None:
         globals()["_escort"] = None
         _page_entries.clear()
         _page_shape.clear()
+        _scan_counts.clear()
         _answers_digest.clear()
         _answers_force.clear()
         _counters.update(dropped_fields=0, scan_errors=0)

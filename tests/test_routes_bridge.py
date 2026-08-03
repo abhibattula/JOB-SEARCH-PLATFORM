@@ -213,8 +213,13 @@ class TestDoctorCounters016:
         ext_backend.record_reject("auth")  # unrelated counters still work
         client = TestClient(create_app())
         doctor = client.get("/api/companion/doctor").json()
+        # 021 (analysis A8): page_entries_truncated joins the tripwires. A
+        # review surface that quietly stops listing fields reads as "that is
+        # everything" — so the cap being hit has to be visible somewhere the
+        # applicant or a diagnosis can find it.
         assert doctor["counters"] == {"dropped_fields": 0, "scan_errors": 0,
-                                      "version_mismatch_fills": 0}
+                                      "version_mismatch_fills": 0,
+                                      "page_entries_truncated": 0}
 
     def test_doctor_counters_track_drops(self, tmp_db):
         from fastapi.testclient import TestClient
