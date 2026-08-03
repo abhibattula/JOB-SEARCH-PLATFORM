@@ -125,11 +125,11 @@ plus all of US2, US3 and US4 — and Phases 4–6 finish US1 screen by screen.
 
 ## Phase 8: US6 — generated PDFs
 
-- [ ] T065 [US6] Write a test asserting single column, selectable text, no table or image, and that an accented name renders without a placeholder glyph — **watch the glyph assertion fail if the fallback is not wired** *(FR-039, FR-040, SC-008)*
-- [ ] T066 [US6] Register Archivo TTF for name and headings in `engine/resume_pdf.py`, keeping DejaVu for body
-- [ ] T067 [US6] Wire `set_fallback_fonts()` with DejaVu so Unicode coverage survives (R6) *(FR-040)*
-- [ ] T068 [US6] Rework hierarchy and spacing: name, section rules, body metrics *(FR-038)*
-- [ ] T069 [US6] Apply the same treatment to the cover letter; confirm both remain ATS-safe *(FR-039, SC-008)*
+- [X] T065 [US6] Write a test asserting single column, selectable text, no table or image, and that an accented name renders without a placeholder glyph — **watch the glyph assertion fail if the fallback is not wired** *(FR-039, FR-040, SC-008)*
+- [X] T066 [US6] Register Archivo TTF for name and headings in `engine/resume_pdf.py`, keeping DejaVu for body
+- [X] T067 [US6] Wire `set_fallback_fonts()` with DejaVu so Unicode coverage survives (R6) *(FR-040)*
+- [X] T068 [US6] Rework hierarchy and spacing: name, section rules, body metrics *(FR-038)*
+- [X] T069 [US6] Apply the same treatment to the cover letter; confirm both remain ATS-safe *(FR-039, SC-008)*
 
 ## Phase 9: Verification, documentation, and the held gate
 

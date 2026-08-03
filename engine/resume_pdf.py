@@ -23,8 +23,9 @@ from . import db, paths
 _MARGIN = 18  # mm
 _BODY = 10.5  # pt
 _SMALL = 9.0
-_H1 = 16.0
-_H2 = 11.5
+_H1 = 20.0    # 022 (FR-038): was 16.0 — the name outranks everything
+_H2 = 12.0   # 022: 11.0 left only a 0.5pt step over body — not a hierarchy
+_LETTER_SPACING_H2 = 0.6  # mm of tracking on the uppercase section rules
 
 
 def _fonts_dir() -> Path:
@@ -40,27 +41,53 @@ class _Doc(FPDF):
         self.add_font("DejaVu", "", str(fonts / "DejaVuSans.ttf"))
         self.add_font("DejaVu", "B", str(fonts / "DejaVuSans-Bold.ttf"))
         self.add_font("DejaVu", "I", str(fonts / "DejaVuSans-Oblique.ttf"))
+        # 022 (FR-038): the app's display face for the name and section
+        # headings. Body stays DejaVu, and DejaVu is ALSO registered as the
+        # fallback so any glyph Archivo lacks still renders — that coverage
+        # is the reason DejaVu was bundled here in the first place, and a
+        # font change is the likeliest way to lose it silently.
+        #
+        # STATIC weights, not the variable file: fpdf2 accepts a variable TTF
+        # registered as style "B" but renders its default instance, so bold
+        # would have looked identical to regular and the hierarchy this task
+        # exists to create would have quietly vanished.
+        self._display = "DejaVu"
+        try:
+            self.add_font("Archivo", "", str(fonts / "Archivo-Regular.ttf"))
+            self.add_font("Archivo", "B", str(fonts / "Archivo-Bold.ttf"))
+            self.set_fallback_fonts(["DejaVu"])
+            self._display = "Archivo"
+        except Exception:  # noqa: BLE001 - a missing face must not stop a PDF
+            pass
         self.add_page()
 
     def line_out(self, text: str, size: float = _BODY, style: str = "",
-                 gap: float = 1.4) -> None:
-        self.set_font("DejaVu", style, size)
+                 gap: float = 1.4, display: bool = False) -> None:
+        self.set_font(self._display if display else "DejaVu", style, size)
         self.multi_cell(0, size * 0.55, text)
         self.ln(gap)
 
     def heading(self, text: str) -> None:
-        self.ln(2.2)
-        self.set_font("DejaVu", "B", _H2)
+        """022: more air above than below, so a heading reads as belonging to
+        what FOLLOWS it rather than floating between two blocks."""
+        self.ln(4.0)
+        self.set_font(self._display, "B", _H2)
+        self.set_char_spacing(_LETTER_SPACING_H2)
         self.cell(0, _H2 * 0.55, text.upper(), new_x="LMARGIN", new_y="NEXT")
-        y = self.get_y() + 0.8
+        self.set_char_spacing(0)
+        y = self.get_y() + 1.0
+        self.set_line_width(0.35)
         self.line(_MARGIN, y, self.w - _MARGIN, y)
-        self.ln(2.6)
+        self.ln(3.2)
 
 
 def _identity_header(pdf: _Doc, identity: dict) -> None:
     name = f"{identity.get('first_name') or ''} {identity.get('last_name') or ''}".strip()
     if name:
-        pdf.line_out(name, size=_H1, style="B", gap=0.6)
+        # 022: the name is the one place the display face earns
+        # its keep — it is what a human sees first.
+        pdf.line_out(name, size=_H1, style="B", gap=1.2,
+                     display=True)
     contact = " · ".join(
         v for v in (
             identity.get("email"), identity.get("phone"),
@@ -68,7 +95,7 @@ def _identity_header(pdf: _Doc, identity: dict) -> None:
         ) if v
     )
     if contact:
-        pdf.line_out(contact, size=_SMALL, gap=1.8)
+        pdf.line_out(contact, size=_SMALL, gap=2.6)
 
 
 def render_resume(sections: dict | None, identity: dict,
