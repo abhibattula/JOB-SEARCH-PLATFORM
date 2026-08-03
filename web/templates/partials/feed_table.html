@@ -1,4 +1,7 @@
 {% from "partials/stamp.html" import stamp %}
+{# 022 (FR-027): the client echoes this back on the next poll;
+   an identical view then answers 204 and nothing is swapped. #}
+<span id="feed-fingerprint" hidden data-fp="{{ feed_fp }}"></span>
 {# Progress strip: the logic-analyzer channel readout for the active/last run #}
 {% if run.run_id or (assessment and assessment.running) %}
 <div class="channels {{ 'live' if run.active or (assessment and assessment.running) }}" title="Per-source status for the {{ 'current' if run.active else 'last' }} refresh">

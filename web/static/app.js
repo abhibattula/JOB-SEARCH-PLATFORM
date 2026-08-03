@@ -164,6 +164,20 @@
     });
   };
 
+  /* ---------- 022 (FR-027): tell the server what we already have ----------
+     The feed polls every 5s. Before this it re-swapped an identical table
+     twelve times a minute, resetting scroll position and hover each time.
+     We echo the fingerprint the last render published; an unchanged view
+     answers 204 and htmx performs no swap at all. */
+  document.addEventListener("htmx:configRequest", function (evt) {
+    var path = evt.detail.path || "";
+    if (path.indexOf("/partials/feed") === -1) { return; }
+    var marker = document.getElementById("feed-fingerprint");
+    if (marker && marker.dataset.fp) {
+      evt.detail.headers["X-Feed-Fingerprint"] = marker.dataset.fp;
+    }
+  });
+
   /* ---------- htmx feedback hooks ---------- */
   document.addEventListener("htmx:beforeRequest", function (evt) {
     const el = evt.detail.elt;
@@ -172,8 +186,17 @@
   document.addEventListener("htmx:afterRequest", function (evt) {
     const el = evt.detail.elt;
     if (el && el.tagName === "BUTTON") { el.classList.remove("is-loading"); }
-    // Visible confirmation for fire-and-forget actions (hx-swap="none")
-    if (el && el.getAttribute && el.getAttribute("hx-swap") === "none") {
+    // Visible confirmation for fire-and-forget actions (hx-swap="none").
+    //
+    // 022: only for controls a PERSON operated. feed.html kicks a background
+    // refresh with `<div hx-post="/api/refresh" hx-trigger="load"
+    // hx-swap="none">`, which fell into this branch and toasted "Saved" on
+    // every single feed load — a confirmation for something the applicant
+    // never did. Found in the Phase 1 gate screenshots, where two of them
+    // are sitting in the corner of a page nobody had touched.
+    var OPERABLE = ["BUTTON", "A", "FORM", "INPUT", "SELECT", "TEXTAREA"];
+    if (el && el.getAttribute && el.getAttribute("hx-swap") === "none"
+        && OPERABLE.indexOf(el.tagName) !== -1) {
       if (evt.detail.successful) {
         window.toast(el.getAttribute("data-toast") || "Saved");
       } else {

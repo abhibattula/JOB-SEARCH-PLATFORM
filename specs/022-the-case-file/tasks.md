@@ -51,32 +51,32 @@ plus all of US2, US3 and US4 — and Phases 4–6 finish US1 screen by screen.
 
 ### Feed stays still (US3, P2)
 
-- [ ] T018 [US3] Write `tests/test_feed_fingerprint.py`: identical data → same fingerprint; each mutable field from `data-model.md` §4 → different fingerprint; note edit changes it; invisible field does not — **watch it fail** *(FR-027)*
-- [ ] T019 [US3] Implement the fingerprint helper over the rendered row tuple plus `total`, `page` and query signature *(FR-027)*
-- [ ] T020 [US3] Wire the `204 No Content` short-circuit into `feed_partial` (`web/main.py:705-728`) when the client's fingerprint matches *(FR-027)*
-- [ ] T021 [US3] Add a route test asserting first request 200, repeat request 204, and 200 again after a status change *(FR-028, FR-029, SC-003)*
-- [ ] T022 [US3] Confirm `pollingAllowed()` mid-edit suppression (`app.js:144`) still works alongside the 204 path *(FR-030)*
+- [X] T018 [US3] Write `tests/test_feed_fingerprint.py`: identical data → same fingerprint; each mutable field from `data-model.md` §4 → different fingerprint; note edit changes it; invisible field does not — **watch it fail** *(FR-027)*
+- [X] T019 [US3] Implement the fingerprint helper over the rendered row tuple plus `total`, `page` and query signature *(FR-027)*
+- [X] T020 [US3] Wire the `204 No Content` short-circuit into `feed_partial` (`web/main.py:705-728`) when the client's fingerprint matches *(FR-027)*
+- [X] T021 [US3] Add a route test asserting first request 200, repeat request 204, and 200 again after a status change *(FR-028, FR-029, SC-003)*
+- [X] T022 [US3] Confirm `pollingAllowed()` mid-edit suppression (`app.js:144`) still works alongside the 204 path *(FR-030)*
 
 ### Navigation (US4, P2)
 
-- [ ] T023 [US4] Write a test asserting the primary row renders four groups, the active group and active view are both marked current, and no `flex-wrap` is applied to the primary row — **watch it fail** *(FR-020, FR-022, SC-004)*
-- [ ] T024 [US4] Rebuild the nav in `web/templates/base.html:17-43` as two tiers, promoting the four existing `aria-label` groups to visible tabs *(FR-020)*
-- [ ] T025 [US4] Style the index tabs — active tab drops its bottom rule and merges into the page surface; second row scrolls horizontally when narrow *(FR-021)*
-- [ ] T026 [US4] Add `main.py` context for which group is active, so the second row renders that group's views *(FR-022)*
+- [X] T023 [US4] Write a test asserting the primary row renders four groups, the active group and active view are both marked current, and no `flex-wrap` is applied to the primary row — **watch it fail** *(FR-020, FR-022, SC-004)*
+- [X] T024 [US4] Rebuild the nav in `web/templates/base.html:17-43` as two tiers, promoting the four existing `aria-label` groups to visible tabs *(FR-020)*
+- [X] T025 [US4] Style the index tabs — active tab drops its bottom rule and merges into the page surface; second row scrolls horizontally when narrow *(FR-021)*
+- [X] T026 [US4] Add `main.py` context for which group is active, so the second row renders that group's views *(FR-022)*
 
 ### Feed styling and density (US1 share, P1)
 
-- [ ] T027 Write a test asserting `data-density` renders from `settings.get("FEED_DENSITY")`, defaults to `compact`, and that compact emits one row element per job — **watch it fail** *(FR-026, FR-026a)*
-- [ ] T028 Restyle the feed table on the new tokens: sponsorship and grade as quiet marks, `.is-new` tint, flags
-- [ ] T029 Implement compact (one line per job) and comfortable (two lines) as CSS over one template, keyed by `data-density` *(FR-026a, FR-026b)*
-- [ ] T030 Add the density toggle to the feed toolbar in `web/templates/feed.html`, persisting via `settings.set` *(FR-026)*
-- [ ] T031 Add the stacked-record fallback below the table's minimum width (FR-025) *(FR-025)*
-- [ ] T032 Define `.export-link` and `.pager`, and put `.skeleton` to work on the first feed paint and the next-actions list (FR-031) *(FR-031)*
-- [ ] T033 **Count jobs visible per screen at compact density and compare against v2.1.0** — SC-012 is a measurement, not an assumption *(FR-026a, SC-012)*
+- [X] T027 Write a test asserting `data-density` renders from `settings.get("FEED_DENSITY")`, defaults to `compact`, and that compact emits one row element per job — **watch it fail** *(FR-026, FR-026a)*
+- [X] T028 Restyle the feed table on the new tokens: sponsorship and grade as quiet marks, `.is-new` tint, flags
+- [X] T029 Implement compact (one line per job) and comfortable (two lines) as CSS over one template, keyed by `data-density` *(FR-026a, FR-026b)*
+- [X] T030 Add the density toggle to the feed toolbar in `web/templates/feed.html`, persisting via `settings.set` *(FR-026)*
+- [X] T031 Add the stacked-record fallback below the table's minimum width (FR-025) *(FR-025)*
+- [X] T032 Define `.export-link` and `.pager`, and put `.skeleton` to work on the first feed paint and the next-actions list (FR-031) *(FR-031)*
+- [X] T033 **Count jobs visible per screen at compact density and compare against v2.1.0** — SC-012 is a measurement, not an assumption *(FR-026a, SC-012)*
 
 ### GATE
 
-- [ ] T034 Run the app, capture the Feed in light and dark at all three provenance levels plus the unscored state
+- [X] T034 Run the app, capture the Feed in light and dark at all three provenance levels plus the unscored state
 - [ ] T035 **Send screenshots to the applicant. STOP. Do not begin Phase 4 until they approve or redirect** (SC-011, CHK061–CHK062) *(SC-011)*
 
 ---

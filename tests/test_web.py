@@ -481,11 +481,19 @@ class TestFeedScoreKind020:
 
     @staticmethod
     def _score_cells(html: str) -> list[str]:
-        """The rendered contents of every score cell, in order."""
+        """The rendered contents of every score cell, in order.
+
+        022: the cell became `.score-cell` holding the provenance stamp. The
+        `~`/`•` prefix these tests were written against is gone, replaced by
+        a ring style plus a readable phrase — a stronger version of the same
+        guarantee. The assertions below are re-pointed at the new mechanism;
+        every guarantee they made is still made.
+        """
         import re
 
-        return [re.sub(r"<[^>]+>", "", cell).strip() for cell in
-                re.findall(r'<td class="data score"[^>]*>(.*?)</td>', html,
+        return [re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", cell)).strip()
+                for cell in
+                re.findall(r'<td class="score-cell"[^>]*>(.*?)</td>', html,
                            re.S)]
 
     def test_quick_and_ai_scores_are_visually_distinguishable(self, tmp_db):
@@ -504,7 +512,9 @@ class TestFeedScoreKind020:
         assert len(cells) == 2, cells
         # identical numbers, so any difference must come from the tier marker
         assert cells[0] != cells[1], cells
-        assert {"~61", "•61"} == set(cells), cells
+        assert {"61 keyword match", "61 scored on this computer"}             == set(cells), cells
+        # and the difference is not colour alone (022 FR-016)
+        assert "stamp--pencil" in html and "stamp--ink" in html
 
     def test_the_marker_explains_itself_on_hover(self, tmp_db):
         """A bare glyph is not an explanation — the cell has to say what it
@@ -517,7 +527,8 @@ class TestFeedScoreKind020:
                        "basic")
         html = TestClient(create_app()).get("/?window=all").text
 
-        cell = re.search(r'<td class="data score"[^>]*>', html).group(0)
+        cell = re.search(r'<td class="score-cell".*?</td>', html,
+                         re.S).group(0)
         assert "title=" in cell
         assert "keyword" in cell.lower()
 

@@ -680,3 +680,103 @@ td.barcell { min-width: 120px; }
 .stamp--lg { width: 4.6rem; height: 4.6rem; font-size: 1.6rem;
   border-width: 3px; }
 .stamp--lg.stamp--sealed { border-width: 6px; }
+
+/* ============================================================
+   022 — two-tier index tabs (US4)
+
+   The active tab drops its bottom rule and merges into the view
+   row below it: a literal file tab. The primary row can never
+   wrap; the view row scrolls.
+   ============================================================ */
+.topbar { gap: var(--s5); padding: 0.4rem var(--s5) 0; }
+.tabs { display: flex; flex-wrap: nowrap; gap: 0.15rem; align-items: stretch;
+  margin-left: auto; }
+.tabs a { font-family: var(--display); font-weight: 600;
+  font-stretch: 112%; letter-spacing: 0.01em; color: var(--ink-soft);
+  padding: 0.42rem var(--s4) 0.38rem; border: 1px solid transparent;
+  border-bottom: 0; border-radius: var(--r-md) var(--r-md) 0 0;
+  white-space: nowrap; position: relative; top: 1px; }
+.tabs a:hover { color: var(--ink); text-decoration: none; background: var(--paper); }
+.tabs a[aria-current="page"] {
+  color: var(--ink); background: var(--paper);
+  border-color: var(--rule); text-decoration: none; }
+
+.views { display: flex; gap: var(--s4); align-items: baseline;
+  overflow-x: auto; overflow-y: hidden; white-space: nowrap;
+  padding: 0.3rem var(--s5); background: var(--paper);
+  border-bottom: 1px solid var(--rule);
+  scrollbar-width: thin; }
+.views a { color: var(--ink-soft); font-size: var(--fs-sm); }
+.views a:hover { color: var(--ink); text-decoration: none; }
+.views a[aria-current="page"] { color: var(--ink); font-weight: 600;
+  text-decoration: none; box-shadow: 0 2px 0 var(--seal); }
+.stamp-value { display: block; }
+.score-cell { text-align: right; width: 1%; white-space: nowrap; }
+.score-line { display: flex; align-items: baseline; gap: var(--s2);
+  margin: var(--s2) 0; }
+
+/* ============================================================
+   022 — feed density (FR-026a/b). ONE template, two rule sets.
+   Compact is the default and stays one line per job; comfortable
+   gives the same rows more room. Density never changes WHICH
+   jobs appear.
+   ============================================================ */
+.density { display: inline-flex; border: 1px solid var(--edge);
+  border-radius: var(--r-md); overflow: hidden; }
+.density a { padding: 0.3rem var(--s3); font-size: var(--fs-sm);
+  color: var(--ink); border-right: 1px solid var(--rule); }
+.density a:last-child { border-right: 0; }
+.density a.on { background: var(--ink); color: var(--on-ink);
+  text-decoration: none; }
+.density a:hover { text-decoration: none; background: var(--paper-sunken); }
+.density a.on:hover { background: var(--ink); }
+
+[data-density="comfortable"] .feed td { padding: 0.72rem var(--s2); }
+[data-density="comfortable"] .feed .role a { font-size: var(--fs-lg); }
+[data-density="comfortable"] .feed td { line-height: 1.5; }
+
+/* ============================================================
+   022 — feed table restyle + responsive fallback (T028/T031/T032)
+   ============================================================ */
+.feed th { font-family: var(--mono); font-weight: 600; }
+.feed .role a { font-family: var(--sans); }
+.export-link { font-size: var(--fs-sm); color: var(--ink-soft);
+  white-space: nowrap; }
+.export-link:hover { color: var(--ink); }
+.pager { justify-content: center; margin-top: var(--s4); }
+
+/* Below the table's minimum, rows become stacked records rather than
+   a horizontally scrolling table — there was no fallback at all before,
+   at 7-9 columns. */
+@media (max-width: 900px) {
+  .feed thead { position: absolute; width: 1px; height: 1px;
+    overflow: hidden; clip: rect(0 0 0 0); }
+  .feed, .feed tbody, .feed tr, .feed td { display: block; width: 100%; }
+  .feed tr { border: 1px solid var(--rule); border-radius: var(--r-lg);
+    background: var(--leaf); padding: var(--s3); margin-bottom: var(--s2);
+    position: relative; }
+  .feed td { border: 0; padding: 0.1rem 0; }
+  .feed .role a { font-size: var(--fs-lg); }
+  .feed .score-cell { position: absolute; top: var(--s3); right: var(--s3);
+    width: auto; }
+  .feed .actions { margin-top: var(--s2); }
+}
+
+/* 022 (SC-012): compact must not cost throughput. Measured: the sm stamp at
+   2.1rem pushed the feed row from 40.1px to 48.5px and, with the second nav
+   tier, dropped visible jobs from 6 to 3. Compact therefore gets a smaller
+   stamp and tighter rows; comfortable keeps the roomy one. */
+[data-density="compact"] .feed td { padding: 0.22rem var(--s2); }
+[data-density="compact"] .stamp--sm {
+  width: 1.55rem; height: 1.55rem; font-size: 0.68rem; border-width: 1.5px; }
+[data-density="compact"] .stamp--sm.stamp--sealed { border-width: 3px; }
+[data-density="compact"] .feed th { padding: 0.2rem var(--s2); }
+
+/* 022 (SC-012): reclaim the chrome between the filters and the first job.
+   The two-tier nav is a net saving (45.4px -> 39.2px measured), but the gap
+   under the toolbar was pure spacing. */
+main { padding-top: var(--s3); }
+.toolbar { margin: 0.4rem 0 0.5rem; }
+.channels { margin-bottom: 0.4rem; }
+.dashboard { gap: var(--s4); }
+.dash-card { padding: var(--s3) var(--s4); }

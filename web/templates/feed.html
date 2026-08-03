@@ -65,12 +65,21 @@
           hx-on::after-request="htmx.trigger('#feed-region','refresh-feed')">
     Refresh now
   </button>
+  {# 022 (FR-026): density lives beside the filters that shape the same view #}
+  <span class="density" role="group" aria-label="Row density">
+    <a class="{{ 'on' if density == 'compact' }}"
+       href="/api/feed-density?value=compact&amp;back={{ query_string | urlencode }}"
+       title="One line per job — the most jobs per screen">Compact</a>
+    <a class="{{ 'on' if density == 'comfortable' }}"
+       href="/api/feed-density?value=comfortable&amp;back={{ query_string | urlencode }}"
+       title="Two lines per job — easier to read, fewer per screen">Comfortable</a>
+  </span>
   <a class="export-link data" href="/api/export?{{ query_string }}" title="Download the current view as CSV">CSV ↓</a>
   <a class="export-link data" href="{{ linkedin_search_url }}" target="_blank" rel="noopener"
      title="Opens a LinkedIn search for your terms (last 14 days) in your own browser — always genuine, no scraping">Search on LinkedIn ↗</a>
 </form>
 
-<div id="feed-region" aria-live="polite"
+<div id="feed-region" aria-live="polite" data-density="{{ density }}"
      hx-get="/partials/feed?{{ query_string }}"
      hx-trigger="every 5s [pollingAllowed()], refresh-feed from:body"
      hx-swap="innerHTML">

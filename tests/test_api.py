@@ -87,10 +87,24 @@ class TestPages:
         assert "/static/app.js" in resp.text
 
     def test_nav_marks_current_page(self, client):
-        """007-T009 (FR-022): grouped nav with aria-current active state."""
+        """007-T009 (FR-022): grouped nav with aria-current active state.
+
+        022 made the nav two tiers, so BOTH the section tab and the view
+        inside it are marked — that is the requirement (FR-022), not a
+        regression: one mark would tell the applicant the section but not
+        which view. Asserting the exact pair is stricter than the old
+        count-of-one, which any single mark anywhere would have satisfied.
+        """
+        import re
+
         resp = client.get("/profile")
-        assert 'aria-current="page"' in resp.text
-        assert resp.text.count('aria-current="page"') == 1
+        tabs = re.search(r'<nav class="tabs".*?</nav>', resp.text,
+                         re.S).group(0)
+        views = re.search(r'<nav class="views".*?</nav>', resp.text,
+                          re.S).group(0)
+        assert re.findall(r'aria-current="page"[^>]*>([^<]+)<', tabs)             == ["Setup"]
+        assert re.findall(r'aria-current="page"[^>]*>([^<]+)<', views)             == ["Profile"]
+        assert resp.text.count('aria-current="page"') == 2
 
     def test_profile_page_renders_resume_builder(self, client):
         """007-T015: the Resume builder section renders populated

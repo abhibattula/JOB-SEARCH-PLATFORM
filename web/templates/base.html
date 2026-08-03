@@ -14,33 +14,46 @@
   {% set path = request.url.path if request is defined else "/" %}
   {% set qp = request.query_params if request is defined else {} %}
   {% set feed_view = path == "/" %}
+  {# 022 (FR-020/021/022): two tiers. The four groups already existed here as
+     aria-labels, so sighted use got fourteen undifferentiated links that
+     wrapped to two rows on a laptop — and .grouplabel had been styled since
+     007 while nothing ever rendered it. The primary row cannot wrap; the
+     view row scrolls instead. #}
+  {% set pipeline_view = feed_view and qp.get("status") in ("saved", "applied", "hidden") %}
+  {% set group = "Pipeline" if (pipeline_view or path == "/analytics")
+     else ("Apply" if path in ("/autofill", "/companion", "/learned-answers")
+     else ("Setup" if path in ("/profile", "/settings", "/diagnostics")
+     else "Search")) %}
   <header class="topbar">
     <a class="brand" href="/">Job&nbsp;Engine</a>
-    <nav aria-label="Primary">
-      <div class="navgroup" aria-label="Search">
-        <a href="/" {% if feed_view and not qp.get("status") and not qp.get("seen") and not qp.get("min_score") and not qp.get("ineligible") %}aria-current="page"{% endif %}>Feed</a>
-        <a href="/?seen=24h&sort=score" title="Jobs the engine discovered in the last 24 hours" {% if feed_view and qp.get("seen") == "24h" %}aria-current="page"{% endif %}>New today</a>
-        <a href="/?min_score=70&sort=score" title="Scored jobs matching your resume at 70+" {% if feed_view and qp.get("min_score") %}aria-current="page"{% endif %}>Best matches</a>
-        <a href="/?ineligible=1" title="Sponsorship-ineligible jobs (clearance / citizens-only / ITAR) hidden from the feed" {% if feed_view and qp.get("ineligible") %}aria-current="page"{% endif %}>Ineligible</a>
-      </div>
-      <div class="navgroup" aria-label="Pipeline">
-        <a href="/?status=saved" {% if feed_view and qp.get("status") == "saved" %}aria-current="page"{% endif %}>Saved</a>
-        <a href="/?status=applied" {% if feed_view and qp.get("status") == "applied" %}aria-current="page"{% endif %}>Applied</a>
-        <a href="/?status=hidden" {% if feed_view and qp.get("status") == "hidden" %}aria-current="page"{% endif %}>Hidden</a>
-        <a href="/analytics" {% if path == "/analytics" %}aria-current="page"{% endif %}>Analytics</a>
-      </div>
-      <div class="navgroup" aria-label="Apply">
-        <a href="/autofill" {% if path == "/autofill" %}aria-current="page"{% endif %}>Apply Assist</a>
-        <a href="/companion" {% if path == "/companion" %}aria-current="page"{% endif %}>Companion</a>
-        <a href="/learned-answers" {% if path == "/learned-answers" %}aria-current="page"{% endif %}>Learned answers</a>
-      </div>
-      <div class="navgroup" aria-label="Setup">
-        <a href="/profile" {% if path == "/profile" %}aria-current="page"{% endif %}>Profile</a>
-        <a href="/settings" {% if path == "/settings" %}aria-current="page"{% endif %}>Settings</a>
-        <a href="/diagnostics" {% if path == "/diagnostics" %}aria-current="page"{% endif %}>Diagnostics</a>
-      </div>
+    <nav class="tabs" aria-label="Sections">
+      <a href="/" {% if group == "Search" %}aria-current="page"{% endif %}>Search</a>
+      <a href="/?status=saved" {% if group == "Pipeline" %}aria-current="page"{% endif %}>Pipeline</a>
+      <a href="/autofill" {% if group == "Apply" %}aria-current="page"{% endif %}>Apply</a>
+      <a href="/profile" {% if group == "Setup" %}aria-current="page"{% endif %}>Setup</a>
     </nav>
   </header>
+  <nav class="views" aria-label="{{ group }} views">
+    {% if group == "Search" %}
+      <a href="/" {% if feed_view and not qp.get("status") and not qp.get("seen") and not qp.get("min_score") and not qp.get("ineligible") %}aria-current="page"{% endif %}>Feed</a>
+      <a href="/?seen=24h&sort=score" title="Jobs the engine discovered in the last 24 hours" {% if feed_view and qp.get("seen") == "24h" %}aria-current="page"{% endif %}>New today</a>
+      <a href="/?min_score=70&sort=score" title="Scored jobs matching your resume at 70+" {% if feed_view and qp.get("min_score") %}aria-current="page"{% endif %}>Best matches</a>
+      <a href="/?ineligible=1" title="Sponsorship-ineligible jobs (clearance / citizens-only / ITAR) hidden from the feed" {% if feed_view and qp.get("ineligible") %}aria-current="page"{% endif %}>Ineligible</a>
+    {% elif group == "Pipeline" %}
+      <a href="/?status=saved" {% if feed_view and qp.get("status") == "saved" %}aria-current="page"{% endif %}>Saved</a>
+      <a href="/?status=applied" {% if feed_view and qp.get("status") == "applied" %}aria-current="page"{% endif %}>Applied</a>
+      <a href="/?status=hidden" {% if feed_view and qp.get("status") == "hidden" %}aria-current="page"{% endif %}>Hidden</a>
+      <a href="/analytics" {% if path == "/analytics" %}aria-current="page"{% endif %}>Analytics</a>
+    {% elif group == "Apply" %}
+      <a href="/autofill" {% if path == "/autofill" %}aria-current="page"{% endif %}>Apply Assist</a>
+      <a href="/companion" {% if path == "/companion" %}aria-current="page"{% endif %}>Companion</a>
+      <a href="/learned-answers" {% if path == "/learned-answers" %}aria-current="page"{% endif %}>Learned answers</a>
+    {% else %}
+      <a href="/profile" {% if path == "/profile" %}aria-current="page"{% endif %}>Profile</a>
+      <a href="/settings" {% if path == "/settings" %}aria-current="page"{% endif %}>Settings</a>
+      <a href="/diagnostics" {% if path == "/diagnostics" %}aria-current="page"{% endif %}>Diagnostics</a>
+    {% endif %}
+  </nav>
   {# 014 (CLS fix): render these server-side inline instead of injecting them
      on load. They're usually empty (no pending update / already-seen), so this
      removes the layout shift AND leaves no reserved gap. #}

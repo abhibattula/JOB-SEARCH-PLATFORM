@@ -349,6 +349,23 @@ async def set_job_status(job_id: int, request: Request, status: str | None = Non
     return job_summary(db.get_job(job_id))
 
 
+@router.get("/feed-density")
+def set_feed_density(value: str = "compact", back: str = ""):
+    """022 (FR-026): remember the applicant's row density.
+
+    A GET so the control is a plain link that works with no JavaScript, and
+    so it survives the feed's own polling without a form round-trip.
+    """
+    from fastapi.responses import RedirectResponse
+
+    from engine import settings
+
+    settings.set("FEED_DENSITY",
+                 value if value in ("compact", "comfortable") else "compact")
+    target = f"/?{back}" if back else "/"
+    return RedirectResponse(target, status_code=303)
+
+
 @router.get("/export")
 def export_csv(
     window: str = "14d",

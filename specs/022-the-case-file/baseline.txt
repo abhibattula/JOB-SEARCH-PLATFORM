@@ -79,3 +79,31 @@ STILL OUTSTANDING (the applicant's, carried from 019/021)
   T076/019  install, press the reload arrow at chrome://extensions,
             save a Workday login, escort to Review, confirm Submit is
             never pressed
+
+T033 — FEED THROUGHPUT AFTER (SC-012)              measured 2026-08-03
+---------------------------------------------------------------------
+Same harness, same viewport, same 60 seeded jobs.
+
+  build                       fully   partly   row h   nav h
+  --------------------------  -----   ------   -----   -----
+  v2.1.0 baseline               6       7      40.1    45.4
+  022 first attempt             3       4      48.5    59.2   REGRESSION
+  022 after compact stamp       5       6      36.0    59.2
+  022 after nav trim            5       6      36.0    39.2
+  022 final                     6       7      36.0    39.2   MET
+
+SC-012 MET: 6 fully visible, equal to the baseline, with headroom in
+hand — rows are 4.1 px shorter and the two-tier nav is 6.2 px SHORTER
+than the single wrapping bar it replaced.
+
+The first attempt was a genuine regression and was measured, not
+assumed: the 2.1 rem stamp pushed the row from 40.1 px to 48.5 px and
+halved what fits on screen. Compact now uses a 1.55 rem stamp and
+tighter rows; comfortable keeps the roomy one.
+
+FOUND IN THE GATE SCREENSHOTS, not by any test:
+  F-D  Every feed load raised a "Saved" toast. feed.html kicks a
+       background refresh with hx-swap="none", and app.js toasted for
+       ANY such element — so the applicant got a confirmation for
+       something they never did, on every single page load. Fixed:
+       only controls a person operates now toast.

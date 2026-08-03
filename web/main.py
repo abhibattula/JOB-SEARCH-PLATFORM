@@ -8,7 +8,7 @@ import sys
 from pathlib import Path
 
 from fastapi import FastAPI, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
 
@@ -497,6 +497,42 @@ def _replace_query(request: Request, **overrides) -> str:
     return f"/?{query}" if query else "/"
 
 
+def feed_fingerprint(jobs: list, total: int, page: int, query: str) -> str:
+    """022 (FR-027): a short digest of exactly what the feed will render.
+
+    The feed polls every 5 seconds. Before this, it re-sent and re-swapped an
+    identical table twelve times a minute, discarding scroll position and
+    hover state each time. Now an unchanged view answers 204 and htmx leaves
+    the DOM alone.
+
+    Everything the applicant can SEE is hashed; nothing they cannot is. That
+    cuts both ways — `notes` contributes its rendered summary rather than a
+    presence flag, because editing a note from "call back" to "sent email"
+    changes what is on screen while presence stays true, and the row would
+    otherwise never refresh.
+    """
+    import hashlib
+
+    parts = [query, str(total), str(page)]
+    for job in jobs:
+        notes = job.get("notes") or ""
+        parts.append("\x1f".join((
+            str(job.get("id")),
+            str(job.get("status") or ""),
+            str(job.get("stage") or ""),
+            str(job.get("match_score")),
+            str(job.get("match_method") or ""),
+            str(job.get("sponsorship") or ""),
+            str(job.get("sponsor_grade") or ""),
+            "1" if job.get("is_new") else "",
+            "1" if job.get("delisted") else "",
+            "1" if job.get("follow_up") else "",
+            notes[:18],
+        )))
+    digest = hashlib.sha256("\x1e".join(parts).encode("utf-8")).hexdigest()
+    return digest[:16]
+
+
 def _feed_context(
     request: Request,
     window: str = "14d",
@@ -524,7 +560,19 @@ def _feed_context(
     from engine import matcher, upgrade
     from engine.ingest import SOURCE_ORDER, linkedin_linkout
 
+    from engine import settings as _settings
+    density = _settings.get("FEED_DENSITY") or "compact"
+    if density not in ("compact", "comfortable"):
+        density = "compact"
+
     return {
+        # 022 (FR-026a): compact by default and one line per job. A card
+        # layout would cut what fits on screen from ~28 to ~8, and the
+        # applicant works through hundreds of postings.
+        "density": density,
+        # 022 (FR-027): what the client compares against on the next poll.
+        "feed_fp": feed_fingerprint(
+            jobs, total, page, str(request.url.query or "")),
         # 020 (FR-011): the background assessment pass, shown in the channel
         # strip beside the sources. It outlives the run, so it is its own
         # value rather than another entry in run.sources.
@@ -730,6 +778,10 @@ def create_app() -> FastAPI:
             ineligible, min_score, seen, strong_sponsors, page, source, limit,
         )
         context["board_view"] = view == "board"
+        # 022 (FR-027): send nothing when nothing changed. htmx does not swap
+        # on a 204, so scroll position, hover and focus all survive the poll.
+        if request.headers.get("X-Feed-Fingerprint") == context["feed_fp"]:
+            return Response(status_code=204)
         return templates.TemplateResponse(request, "partials/feed_table.html", context)
 
     @app.get("/jobs/{job_id}", response_class=HTMLResponse)

@@ -44,8 +44,6 @@ EXCLUDED_TEMPLATES = {
 # point the assertion becomes the plain "zero undefined" gate (SC-001).
 # ---------------------------------------------------------------------------
 KNOWN_UNDEFINED: frozenset[str] = frozenset({
-    # Phase 3 — feed
-    "export-link", "pager",
     # Phase 4 — profile / settings / job detail
     "grid-2", "hint", "switch", "jd", "job-url", "profile",
     # Phase 5 — Apply Assist
