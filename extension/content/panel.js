@@ -64,6 +64,8 @@ window.jePanel = (function () {
     answers: [],
     truncated: false,
     notice: "",
+    // 021 (FR-032): where the app is, so a needs-you row can link into it.
+    appOrigin: "http://127.0.0.1:8756",
     // Auto-expand fires ONCE per condition. After the applicant collapses the
     // card we do not keep re-opening it at them.
     autoExpanded: { session: false, needs: false },
@@ -144,12 +146,102 @@ window.jePanel = (function () {
   // rendered at the bottom of the document instead of the corner of the
   // screen. `!important` because a plain inline declaration loses to a page
   // rule like `div { position: static !important }`.
+  // 021 (FR-027..FR-030): the applicant drags the panel out of the way.
+  //
+  // Offsets from the RIGHT and BOTTOM, not page coordinates: it keeps the
+  // existing `inset` idiom, behaves correctly when the window is resized,
+  // and does not scroll away from the form.
+  //
+  // Every declaration stays `!important`. A drag implementation that wrote
+  // `style.left` normally would resurrect the exact bug documented above —
+  // a page rule like `div { position: static !important }` outranks a plain
+  // inline declaration.
+  const DEFAULT_POS = { right: 16, bottom: 16 };
+  const POS_KEY = "je_panel_pos";
+  let pos = { right: DEFAULT_POS.right, bottom: DEFAULT_POS.bottom };
+
+  function clampPos(candidate) {
+    // FR-028: a position saved on a large monitor must not strand the panel
+    // off-screen on a laptop. Keep a usable amount of it reachable.
+    const width = host ? host.offsetWidth || 340 : 340;
+    const height = host ? host.offsetHeight || 120 : 120;
+    const maxRight = Math.max(0, window.innerWidth - 60);
+    const maxBottom = Math.max(0, window.innerHeight - 40);
+    return {
+      right: Math.min(Math.max(candidate.right, 60 - width), maxRight),
+      bottom: Math.min(Math.max(candidate.bottom, 40 - height), maxBottom),
+    };
+  }
+
+  function applyPos(el) {
+    el.style.setProperty(
+      "inset", "auto " + pos.right + "px " + pos.bottom + "px auto",
+      "important");
+  }
+
   function pin(el) {
     el.style.cssText = "all:initial";
     el.style.setProperty("position", "fixed", "important");
-    el.style.setProperty("inset", "auto 16px 16px auto", "important");
     el.style.setProperty("z-index", "2147483647", "important");
     el.style.setProperty("display", "block", "important");
+    applyPos(el);
+  }
+
+  function savePos() {
+    try {
+      if (chrome && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.set({ [POS_KEY]: pos });
+      }
+    } catch (e) { /* storage unavailable — the panel still moves */ }
+  }
+
+  function restorePos() {
+    try {
+      if (!chrome || !chrome.storage || !chrome.storage.local) { return; }
+      chrome.storage.local.get(POS_KEY, function (stored) {
+        const saved = stored && stored[POS_KEY];
+        if (!saved || typeof saved.right !== "number") { return; }
+        pos = clampPos(saved);
+        if (host) { applyPos(host); }
+      });
+    } catch (e) { /* first run, or a context that has no storage */ }
+  }
+
+  function resetPos() {
+    pos = { right: DEFAULT_POS.right, bottom: DEFAULT_POS.bottom };
+    if (host) { applyPos(host); }
+    savePos();
+  }
+
+  function startDrag(evt) {
+    if (!host || evt.button !== 0) { return; }
+    // Not from a control — the header carries Collapse and Dismiss.
+    if (evt.target.closest && evt.target.closest("button")) { return; }
+    evt.preventDefault();
+    const startX = evt.clientX;
+    const startY = evt.clientY;
+    const from = { right: pos.right, bottom: pos.bottom };
+
+    function move(e) {
+      // Dragging right REDUCES the right offset; dragging down reduces
+      // bottom. Clamped live so it can never be dragged out of reach.
+      pos = clampPos({ right: from.right - (e.clientX - startX),
+                       bottom: from.bottom - (e.clientY - startY) });
+      applyPos(host);
+    }
+    function done() {
+      window.removeEventListener("mousemove", move, true);
+      window.removeEventListener("mouseup", done, true);
+      savePos();
+    }
+    window.addEventListener("mousemove", move, true);
+    window.addEventListener("mouseup", done, true);
+  }
+
+  function onViewportResize() {
+    if (!host) { return; }
+    pos = clampPos(pos);
+    applyPos(host);
   }
 
   const STYLE = `
@@ -244,6 +336,12 @@ window.jePanel = (function () {
     .grph[aria-expanded="true"]{color:#e6edf3}
     .grpn{color:#8b949e;font-weight:600}
     .grpb{margin-top:5px}
+    .hd{cursor:move;user-select:none}
+    .hd button{cursor:pointer}
+    .sec{margin:0 0 8px}
+    .sech{font-size:11px;text-transform:uppercase;letter-spacing:.04em;
+      color:#8b949e;margin:6px 0 4px;padding-bottom:2px;
+      border-bottom:1px solid #21262d}
     .qa{margin:0 0 9px;padding-bottom:7px;border-bottom:1px solid #21262d}
     .qa:last-child{border-bottom:0;margin-bottom:0}
     .q{font-size:12px;color:#c9d1d9;margin-bottom:3px}
@@ -255,6 +353,7 @@ window.jePanel = (function () {
       border:1px solid #30363d;border-radius:5px;cursor:pointer}
     .sm:hover{background:#30363d}
     .why{font-size:11px;color:#d29922;margin-top:3px}
+    .plink{color:#58a6ff}
     .ask{width:100%;margin-top:4px;padding:5px 7px;font:12px system-ui;
       background:#0d1117;color:#e6edf3;border:1px solid #30363d;
       border-radius:5px}
@@ -274,6 +373,8 @@ window.jePanel = (function () {
       <div class="hd">
         <span class="dot" id="dot"></span>
         <span class="tag">Job Engine</span><span class="sp"></span>
+        <button class="icon" id="resetpos" title="Reset position"
+                aria-label="Reset position">↺</button>
         <button class="icon" id="collapse" title="Collapse"
                 aria-label="Collapse">▁</button>
         <button class="icon" id="dismiss" title="Dismiss"
@@ -317,6 +418,11 @@ window.jePanel = (function () {
         </div>
         <div class="notice" id="notice" hidden role="status"></div>
         <div id="answers"></div>
+        <!-- 021 (FR-001): what this page ACTUALLY looks like, written to a
+             file the applicant can hand back. Shape only — never a value,
+             never a full URL. It is the artifact behind every future
+             "it didn't fill" report. -->
+        <button class="act ghost" id="report">Save page report</button>
       </div>
       <div class="foot">You press the final Submit — never us.</div>
     </div>
@@ -349,6 +455,7 @@ window.jePanel = (function () {
       primary: root.getElementById("primary"),
       next: root.getElementById("next"),
       save: root.getElementById("save"),
+      report: root.getElementById("report"),
       prog: root.getElementById("prog"),
       pFilled: root.getElementById("p-filled"),
       pNeeds: root.getElementById("p-needs"),
@@ -365,6 +472,11 @@ window.jePanel = (function () {
     });
     root.getElementById("collapse").addEventListener(
       "click", function () { setCollapsed(true); });
+    // 021 (FR-027/FR-030): drag by the header; reset to the corner.
+    root.getElementById("resetpos").addEventListener("click", resetPos);
+    root.querySelector(".hd").addEventListener("mousedown", startDrag);
+    els.pill.addEventListener("mousedown", startDrag);
+    window.addEventListener("resize", onViewportResize);
     root.getElementById("dismiss").addEventListener("click", onDismiss);
     els.primary.addEventListener("click", onPrimary);
     els.next.addEventListener("click", function () {
@@ -372,6 +484,10 @@ window.jePanel = (function () {
     });
     els.save.addEventListener("click", function () {
       if (handlers.save) { handlers.save(); }
+    });
+    els.report.addEventListener("click", function () {
+      if (handlers.report) { handlers.report(); }
+      setNotice("Saving a page report…");
     });
     // 019 (FR-017/FR-018): the login goes to the app, which puts it in the
     // OS keychain. The password is cleared from the DOM on the next line —
@@ -390,6 +506,7 @@ window.jePanel = (function () {
       setNotice("Saved. Signing you in…");
     });
     (document.body || document.documentElement).appendChild(host);
+    restorePos();
     paint();
     return true;
   }
@@ -722,9 +839,63 @@ window.jePanel = (function () {
     paint();
   }
 
+  // 021 (FR-008): rows are grouped by the region of the form they came from.
+  // A flat list of 149 rows is not a review surface. `section_label` of ""
+  // means UNDETERMINED — those rows sit directly in the group exactly as they
+  // did in v2.0.0, because a wrong grouping is worse than no grouping.
+  const sections = new Map();  // group\0label\0index -> {wrap, body, count}
+
+  function sectionTitle(item) {
+    const index = item.section_index || 0;
+    return index > 0 ? item.section_label + " " + (index + 1)
+                     : item.section_label;
+  }
+
+  // 021: move a node ONLY when it is genuinely out of position.
+  //
+  // The old code called `refs.body.appendChild(row.wrap)` on every reconcile
+  // and relied on appendChild's reordering side-effect. Re-inserting a node
+  // BLURS any focused element inside it — so the moment a payload actually
+  // changed, focus was stolen from the box the applicant was typing in. Until
+  // 021 the digest's send-nothing-if-unchanged rule hid that; the browser
+  // suite caught it as soon as the payload gained new fields.
+  function placeAt(parent, node, index) {
+    if (parent.children[index] === node) { return; }
+    // Never reorder under the applicant's fingers.
+    if (holdsFocus(node)) { return; }
+    parent.insertBefore(node, parent.children[index] || null);
+  }
+
+  function sectionBody(item) {
+    const refs = groupEls.get(item.group);
+    if (!refs) { return null; }
+    if (!item.section_label) { return refs.body; }
+    const key = item.group + " " + item.section_label + " "
+      + (item.section_index || 0);
+    let sec = sections.get(key);
+    if (!sec) {
+      const wrap = document.createElement("div");
+      wrap.className = "sec";
+      const head = document.createElement("div");
+      head.className = "sech";
+      const body = document.createElement("div");
+      sec = { wrap: wrap, head: head, body: body, key: key };
+      wrap.appendChild(head);
+      wrap.appendChild(body);
+      sections.set(key, sec);
+    }
+    if (sec.head.textContent !== sectionTitle(item)) {
+      sec.head.textContent = sectionTitle(item);
+    }
+    if (sec.wrap.parentNode !== refs.body) { refs.body.appendChild(sec.wrap); }
+    return sec.body;
+  }
+
   function reconcile() {
     ensureGroups();
     const seen = new Set();
+    const liveSections = new Set();
+    const placed = new Map();   // container -> how many rows placed in it
     state.answers.forEach(function (item) {
       const key = item.key || item.question || "";
       if (!key) { return; }
@@ -734,11 +905,26 @@ window.jePanel = (function () {
         row = createRow(item);
         rows.set(key, row);
       }
-      const refs = groupEls.get(item.group);
-      // appendChild also REORDERS an existing child, which keeps the rows in
-      // feed order without ever detaching and recreating them.
-      if (refs) { refs.body.appendChild(row.wrap); }
+      const body = sectionBody(item);
+      if (body) {
+        // Placed by INDEX, and only when actually out of position — see
+        // placeAt. Blindly re-appending steals focus from a box the
+        // applicant is typing in.
+        const at = placed.get(body) || 0;
+        placed.set(body, at + 1);
+        placeAt(body, row.wrap, at);
+        if (item.section_label) {
+          liveSections.add(item.group + " " + item.section_label
+                           + " " + (item.section_index || 0));
+        }
+      }
       if (!holdsFocus(row.wrap)) { patchRow(row, item); }
+    });
+    sections.forEach(function (sec, key) {
+      if (liveSections.has(key)) { return; }
+      if (holdsFocus(sec.wrap)) { return; }
+      if (sec.wrap.parentNode) { sec.wrap.parentNode.removeChild(sec.wrap); }
+      sections.delete(key);
     });
     rows.forEach(function (row, key) {
       if (seen.has(key)) { return; }
@@ -774,8 +960,17 @@ window.jePanel = (function () {
         handlers.insert(row.item.je_idx, row.item.answer);
       }
     });
+    // 021 (FR-005): one row can stand for several elements — a Workday
+    // prompt is a button plus its listbox, and both are real fields. Pressing
+    // "Show me" again walks to the next one instead of parking on the first.
     const jump = smallButton("Show me", function () {
-      if (handlers.jump && row.item.je_idx) { handlers.jump(row.item.je_idx); }
+      if (!handlers.jump) { return; }
+      const all = (row.item.je_idx_all && row.item.je_idx_all.length)
+        ? row.item.je_idx_all
+        : (row.item.je_idx ? [row.item.je_idx] : []);
+      if (!all.length) { return; }
+      row.jumpAt = (row.jumpAt + 1) % all.length;  // starts at -1 → first
+      handlers.jump(all[row.jumpAt]);
     });
     acts.appendChild(copy);
     acts.appendChild(insert);
@@ -801,7 +996,8 @@ window.jePanel = (function () {
     wrap.appendChild(input);
 
     const row = { wrap: wrap, q: q, a: a, acts: acts, insert: insert,
-                  jump: jump, why: why, input: input, item: item };
+                  jump: jump, why: why, input: input, item: item,
+                  jumpAt: -1 };
     return row;
   }
 
@@ -831,6 +1027,19 @@ window.jePanel = (function () {
     row.input.hidden = !item.askable;
     if (item.askable && !row.input.disabled) {
       row.why.textContent = reasonText(item.reason);
+      // 021 (FR-032): "Add it to your profile" was a dead instruction that
+      // never said WHICH field. On the applicant's real page it appeared on
+      // Country/Region and State - fields the app already knows about and
+      // they had simply not filled in.
+      if (item.reason === "profile_fact_missing" && item.profile_field) {
+        const link = document.createElement("a");
+        link.className = "plink";
+        link.textContent = " Open that field →";
+        link.href = state.appOrigin + "/profile#field-" + item.profile_field;
+        link.target = "_blank";
+        link.rel = "noopener";
+        row.why.appendChild(link);
+      }
     }
   }
 
@@ -913,6 +1122,8 @@ window.jePanel = (function () {
     onInsert: function (fn) { handlers.insert = fn; },
     onJump: function (fn) { handlers.jump = fn; },
     onCredential: function (fn) { handlers.credential = fn; },
+    // 021 (FR-001): the applicant asks the app to write a page report.
+    onReport: function (fn) { handlers.report = fn; },
     // pure, exported for the state-machine tests
     primaryFor, mergeCounts,
   };

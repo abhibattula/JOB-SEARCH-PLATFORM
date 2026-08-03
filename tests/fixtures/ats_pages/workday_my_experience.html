@@ -1,0 +1,463 @@
+<!DOCTYPE html><html><head><meta charset="utf-8">
+<title>My Experience — Workday</title></head>
+<body>
+<h1>My Experience</h1>
+<form id="form">
+  <section role="group" aria-label="Contact Information"
+           data-automation-id="contactInformationSection">
+    <h2>Contact Information</h2>
+      <label>First Name*<input type="text" name="firstName"
+             data-automation-id="firstName" aria-required="true"></label>
+      <label>Last Name*<input type="text" name="lastName"
+             data-automation-id="lastName" aria-required="true"></label>
+      <label>Email Address*<input type="text" name="email"
+             data-automation-id="email" aria-required="true"></label>
+      <div class="fieldset-wrap">
+        <label id="lbl-phoneCountryCode">Country/Region Phone Code</label>
+        <button type="button" aria-haspopup="listbox" aria-expanded="false"
+                aria-labelledby="lbl-phoneCountryCode"
+                data-automation-id="phoneCountryCode">Select One</button>
+        <div role="listbox" aria-labelledby="lbl-phoneCountryCode"
+             data-automation-id="phoneCountryCodeListbox"><div role="option" data-automation-id="promptOption">+1</div><div role="option" data-automation-id="promptOption">+91</div></div>
+        <input type="text" name="phoneCountryCode" data-automation-id="phoneCountryCodeInput">
+      </div>
+      <label>Phone Number*<input type="text" name="phoneNumber"
+             data-automation-id="phoneNumber" aria-required="true"></label>
+      <label> <input type="text" name="contactExtra"
+             data-automation-id="contactExtra"></label>
+  </section>
+
+  <section role="group" aria-label="Address"
+           data-automation-id="addressSection">
+    <h2>Address</h2>
+      <label>Address Line 1*<input type="text" name="addressLine1"
+             data-automation-id="addressLine1" aria-required="true"></label>
+      <label>Address Line 2<input type="text" name="addressLine2"
+             data-automation-id="addressLine2"></label>
+      <label>City*<input type="text" name="city"
+             data-automation-id="city" aria-required="true"></label>
+      <div class="fieldset-wrap">
+        <label id="lbl-countryRegion">Country/Region</label>
+        <button type="button" aria-haspopup="listbox" aria-expanded="false"
+                aria-labelledby="lbl-countryRegion"
+                data-automation-id="countryRegion">Select One</button>
+        <div role="listbox" aria-labelledby="lbl-countryRegion"
+             data-automation-id="countryRegionListbox"><div role="option" data-automation-id="promptOption">United States of America</div><div role="option" data-automation-id="promptOption">India</div></div>
+        <input type="text" name="countryRegion" data-automation-id="countryRegionInput">
+      </div>
+      <div class="fieldset-wrap">
+        <label id="lbl-state">State</label>
+        <button type="button" aria-haspopup="listbox" aria-expanded="false"
+                aria-labelledby="lbl-state"
+                data-automation-id="state">Select One</button>
+        <div role="listbox" aria-labelledby="lbl-state"
+             data-automation-id="stateListbox"><div role="option" data-automation-id="promptOption">Texas</div><div role="option" data-automation-id="promptOption">California</div><div role="option" data-automation-id="promptOption">Karnataka</div></div>
+        <input type="text" name="state" data-automation-id="stateInput">
+      </div>
+      <label>Postal Code*<input type="text" name="postalCode"
+             data-automation-id="postalCode" aria-required="true"></label>
+  </section>
+
+    <section role="group" aria-label="Work Experience"
+             data-automation-id="workExperienceSection">
+      <h3>Work Experience 1</h3>
+      
+      <label>Job Title<input type="text" name="jobTitle-1"
+             data-automation-id="jobTitle-1"></label>
+      
+      <label>Company<input type="text" name="company-1"
+             data-automation-id="company-1"></label>
+      
+      <label>Location<input type="text" name="location-1"
+             data-automation-id="location-1"></label>
+      
+      <label><input type="checkbox" name="currentlyWorkHere-1"
+             data-automation-id="currentlyWorkHere-1">I currently work here</label>
+      
+      <label>From<input type="text" name="startDate-1"
+             data-automation-id="startDate-1"></label>
+      
+      <label>To<input type="text" name="endDate-1"
+             data-automation-id="endDate-1"></label>
+      
+      <label>Role Description<input type="text" name="roleDescription-1"
+             data-automation-id="roleDescription-1"></label>
+      
+      <label> <input type="text" name="workExtra-1"
+             data-automation-id="workExtra-1"></label>
+    </section>
+    <section role="group" aria-label="Work Experience"
+             data-automation-id="workExperienceSection">
+      <h3>Work Experience 2</h3>
+      
+      <label>Job Title<input type="text" name="jobTitle-2"
+             data-automation-id="jobTitle-2"></label>
+      
+      <label>Company<input type="text" name="company-2"
+             data-automation-id="company-2"></label>
+      
+      <label>Location<input type="text" name="location-2"
+             data-automation-id="location-2"></label>
+      
+      <label><input type="checkbox" name="currentlyWorkHere-2"
+             data-automation-id="currentlyWorkHere-2">I currently work here</label>
+      
+      <label>From<input type="text" name="startDate-2"
+             data-automation-id="startDate-2"></label>
+      
+      <label>To<input type="text" name="endDate-2"
+             data-automation-id="endDate-2"></label>
+      
+      <label>Role Description<input type="text" name="roleDescription-2"
+             data-automation-id="roleDescription-2"></label>
+      
+      <label> <input type="text" name="workExtra-2"
+             data-automation-id="workExtra-2"></label>
+    </section>
+    <section role="group" aria-label="Work Experience"
+             data-automation-id="workExperienceSection">
+      <h3>Work Experience 3</h3>
+      
+      <label>Job Title<input type="text" name="jobTitle-3"
+             data-automation-id="jobTitle-3"></label>
+      
+      <label>Company<input type="text" name="company-3"
+             data-automation-id="company-3"></label>
+      
+      <label>Location<input type="text" name="location-3"
+             data-automation-id="location-3"></label>
+      
+      <label><input type="checkbox" name="currentlyWorkHere-3"
+             data-automation-id="currentlyWorkHere-3">I currently work here</label>
+      
+      <label>From<input type="text" name="startDate-3"
+             data-automation-id="startDate-3"></label>
+      
+      <label>To<input type="text" name="endDate-3"
+             data-automation-id="endDate-3"></label>
+      
+      <label>Role Description<input type="text" name="roleDescription-3"
+             data-automation-id="roleDescription-3"></label>
+      
+      <label> <input type="text" name="workExtra-3"
+             data-automation-id="workExtra-3"></label>
+    </section>
+    <section role="group" aria-label="Education"
+             data-automation-id="educationSection">
+      <h3>Education 1</h3>
+      
+      <label>School or University<input type="text" name="school-1"
+             data-automation-id="school-1"></label>
+      
+      <div class="fieldset-wrap">
+        <label id="lbl-degree-1">Degree</label>
+        <button type="button" aria-haspopup="listbox" aria-expanded="false"
+                aria-labelledby="lbl-degree-1"
+                data-automation-id="degree-1">Select One</button>
+        <div role="listbox" aria-labelledby="lbl-degree-1"
+             data-automation-id="degree-1Listbox"><div role="option" data-automation-id="promptOption">Bachelor's Degree</div><div role="option" data-automation-id="promptOption">Master's Degree</div></div>
+        <input type="text" name="degree-1" data-automation-id="degree-1Input">
+      </div>
+      
+      <label>Field of Study<input type="text" name="fieldOfStudy-1"
+             data-automation-id="fieldOfStudy-1"></label>
+      
+      <label>Overall Result (GPA)<input type="text" name="gpa-1"
+             data-automation-id="gpa-1"></label>
+      
+      <label>From<input type="text" name="eduFrom-1"
+             data-automation-id="eduFrom-1"></label>
+      
+      <label>To<input type="text" name="eduTo-1"
+             data-automation-id="eduTo-1"></label>
+      
+      <label> <input type="text" name="eduExtra-1"
+             data-automation-id="eduExtra-1"></label>
+    </section>
+    <section role="group" aria-label="Education"
+             data-automation-id="educationSection">
+      <h3>Education 2</h3>
+      
+      <label>School or University<input type="text" name="school-2"
+             data-automation-id="school-2"></label>
+      
+      <div class="fieldset-wrap">
+        <label id="lbl-degree-2">Degree</label>
+        <button type="button" aria-haspopup="listbox" aria-expanded="false"
+                aria-labelledby="lbl-degree-2"
+                data-automation-id="degree-2">Select One</button>
+        <div role="listbox" aria-labelledby="lbl-degree-2"
+             data-automation-id="degree-2Listbox"><div role="option" data-automation-id="promptOption">Bachelor's Degree</div><div role="option" data-automation-id="promptOption">Master's Degree</div></div>
+        <input type="text" name="degree-2" data-automation-id="degree-2Input">
+      </div>
+      
+      <label>Field of Study<input type="text" name="fieldOfStudy-2"
+             data-automation-id="fieldOfStudy-2"></label>
+      
+      <label>Overall Result (GPA)<input type="text" name="gpa-2"
+             data-automation-id="gpa-2"></label>
+      
+      <label>From<input type="text" name="eduFrom-2"
+             data-automation-id="eduFrom-2"></label>
+      
+      <label>To<input type="text" name="eduTo-2"
+             data-automation-id="eduTo-2"></label>
+      
+      <label> <input type="text" name="eduExtra-2"
+             data-automation-id="eduExtra-2"></label>
+    </section>
+  <section role="group" aria-label="Websites and Skills"
+           data-automation-id="websitesSection">
+    <h2>Websites and Skills</h2>
+      <label>URL<input type="text" name="websiteUrl-1"
+             data-automation-id="websiteUrl-1"></label>
+      <label>URL<input type="text" name="websiteUrl-2"
+             data-automation-id="websiteUrl-2"></label>
+      <label>URL<input type="text" name="websiteUrl-3"
+             data-automation-id="websiteUrl-3"></label>
+      <label>URL<input type="text" name="websiteUrl-4"
+             data-automation-id="websiteUrl-4"></label>
+      <label>URL<input type="text" name="websiteUrl-5"
+             data-automation-id="websiteUrl-5"></label>
+      <label>URL<input type="text" name="websiteUrl-6"
+             data-automation-id="websiteUrl-6"></label>
+      <label>URL<input type="text" name="websiteUrl-7"
+             data-automation-id="websiteUrl-7"></label>
+      <label>URL<input type="text" name="websiteUrl-8"
+             data-automation-id="websiteUrl-8"></label>
+      <label>URL<input type="text" name="websiteUrl-9"
+             data-automation-id="websiteUrl-9"></label>
+      <label>URL<input type="text" name="websiteUrl-10"
+             data-automation-id="websiteUrl-10"></label>
+      <label>URL<input type="text" name="websiteUrl-11"
+             data-automation-id="websiteUrl-11"></label>
+      <label>URL<input type="text" name="websiteUrl-12"
+             data-automation-id="websiteUrl-12"></label>
+      <label>URL<input type="text" name="websiteUrl-13"
+             data-automation-id="websiteUrl-13"></label>
+      <label>URL<input type="text" name="websiteUrl-14"
+             data-automation-id="websiteUrl-14"></label>
+      <label>URL<input type="text" name="websiteUrl-15"
+             data-automation-id="websiteUrl-15"></label>
+      <label>URL<input type="text" name="websiteUrl-16"
+             data-automation-id="websiteUrl-16"></label>
+      <div class="fieldset-wrap">
+        <label id="lbl-language-1">Language</label>
+        <button type="button" aria-haspopup="listbox" aria-expanded="false"
+                aria-labelledby="lbl-language-1"
+                data-automation-id="language-1">Select One</button>
+        <div role="listbox" aria-labelledby="lbl-language-1"
+             data-automation-id="language-1Listbox"><div role="option" data-automation-id="promptOption">English</div><div role="option" data-automation-id="promptOption">Hindi</div><div role="option" data-automation-id="promptOption">Telugu</div></div>
+        <input type="text" name="language-1" data-automation-id="language-1Input">
+      </div>
+      <div class="fieldset-wrap">
+        <label id="lbl-language-2">Language</label>
+        <button type="button" aria-haspopup="listbox" aria-expanded="false"
+                aria-labelledby="lbl-language-2"
+                data-automation-id="language-2">Select One</button>
+        <div role="listbox" aria-labelledby="lbl-language-2"
+             data-automation-id="language-2Listbox"><div role="option" data-automation-id="promptOption">English</div><div role="option" data-automation-id="promptOption">Hindi</div><div role="option" data-automation-id="promptOption">Telugu</div></div>
+        <input type="text" name="language-2" data-automation-id="language-2Input">
+      </div>
+      <div class="fieldset-wrap">
+        <label id="lbl-language-3">Language</label>
+        <button type="button" aria-haspopup="listbox" aria-expanded="false"
+                aria-labelledby="lbl-language-3"
+                data-automation-id="language-3">Select One</button>
+        <div role="listbox" aria-labelledby="lbl-language-3"
+             data-automation-id="language-3Listbox"><div role="option" data-automation-id="promptOption">English</div><div role="option" data-automation-id="promptOption">Hindi</div><div role="option" data-automation-id="promptOption">Telugu</div></div>
+        <input type="text" name="language-3" data-automation-id="language-3Input">
+      </div>
+      <div class="fieldset-wrap">
+        <label id="lbl-language-4">Language</label>
+        <button type="button" aria-haspopup="listbox" aria-expanded="false"
+                aria-labelledby="lbl-language-4"
+                data-automation-id="language-4">Select One</button>
+        <div role="listbox" aria-labelledby="lbl-language-4"
+             data-automation-id="language-4Listbox"><div role="option" data-automation-id="promptOption">English</div><div role="option" data-automation-id="promptOption">Hindi</div><div role="option" data-automation-id="promptOption">Telugu</div></div>
+        <input type="text" name="language-4" data-automation-id="language-4Input">
+      </div>
+      <div class="fieldset-wrap">
+        <label id="lbl-language-5">Language</label>
+        <button type="button" aria-haspopup="listbox" aria-expanded="false"
+                aria-labelledby="lbl-language-5"
+                data-automation-id="language-5">Select One</button>
+        <div role="listbox" aria-labelledby="lbl-language-5"
+             data-automation-id="language-5Listbox"><div role="option" data-automation-id="promptOption">English</div><div role="option" data-automation-id="promptOption">Hindi</div><div role="option" data-automation-id="promptOption">Telugu</div></div>
+        <input type="text" name="language-5" data-automation-id="language-5Input">
+      </div>
+      <div class="fieldset-wrap">
+        <label id="lbl-language-6">Language</label>
+        <button type="button" aria-haspopup="listbox" aria-expanded="false"
+                aria-labelledby="lbl-language-6"
+                data-automation-id="language-6">Select One</button>
+        <div role="listbox" aria-labelledby="lbl-language-6"
+             data-automation-id="language-6Listbox"><div role="option" data-automation-id="promptOption">English</div><div role="option" data-automation-id="promptOption">Hindi</div><div role="option" data-automation-id="promptOption">Telugu</div></div>
+        <input type="text" name="language-6" data-automation-id="language-6Input">
+      </div>
+      <div class="fieldset-wrap">
+        <label id="lbl-language-7">Language</label>
+        <button type="button" aria-haspopup="listbox" aria-expanded="false"
+                aria-labelledby="lbl-language-7"
+                data-automation-id="language-7">Select One</button>
+        <div role="listbox" aria-labelledby="lbl-language-7"
+             data-automation-id="language-7Listbox"><div role="option" data-automation-id="promptOption">English</div><div role="option" data-automation-id="promptOption">Hindi</div><div role="option" data-automation-id="promptOption">Telugu</div></div>
+        <input type="text" name="language-7" data-automation-id="language-7Input">
+      </div>
+      <div class="fieldset-wrap">
+        <label id="lbl-language-8">Language</label>
+        <button type="button" aria-haspopup="listbox" aria-expanded="false"
+                aria-labelledby="lbl-language-8"
+                data-automation-id="language-8">Select One</button>
+        <div role="listbox" aria-labelledby="lbl-language-8"
+             data-automation-id="language-8Listbox"><div role="option" data-automation-id="promptOption">English</div><div role="option" data-automation-id="promptOption">Hindi</div><div role="option" data-automation-id="promptOption">Telugu</div></div>
+        <input type="text" name="language-8" data-automation-id="language-8Input">
+      </div>
+      <div class="fieldset-wrap">
+        <label id="lbl-language-9">Language</label>
+        <button type="button" aria-haspopup="listbox" aria-expanded="false"
+                aria-labelledby="lbl-language-9"
+                data-automation-id="language-9">Select One</button>
+        <div role="listbox" aria-labelledby="lbl-language-9"
+             data-automation-id="language-9Listbox"><div role="option" data-automation-id="promptOption">English</div><div role="option" data-automation-id="promptOption">Hindi</div><div role="option" data-automation-id="promptOption">Telugu</div></div>
+        <input type="text" name="language-9" data-automation-id="language-9Input">
+      </div>
+      <div class="fieldset-wrap">
+        <label id="lbl-language-10">Language</label>
+        <button type="button" aria-haspopup="listbox" aria-expanded="false"
+                aria-labelledby="lbl-language-10"
+                data-automation-id="language-10">Select One</button>
+        <div role="listbox" aria-labelledby="lbl-language-10"
+             data-automation-id="language-10Listbox"><div role="option" data-automation-id="promptOption">English</div><div role="option" data-automation-id="promptOption">Hindi</div><div role="option" data-automation-id="promptOption">Telugu</div></div>
+        <input type="text" name="language-10" data-automation-id="language-10Input">
+      </div>
+      <div class="fieldset-wrap">
+        <label id="lbl-language-11">Language</label>
+        <button type="button" aria-haspopup="listbox" aria-expanded="false"
+                aria-labelledby="lbl-language-11"
+                data-automation-id="language-11">Select One</button>
+        <div role="listbox" aria-labelledby="lbl-language-11"
+             data-automation-id="language-11Listbox"><div role="option" data-automation-id="promptOption">English</div><div role="option" data-automation-id="promptOption">Hindi</div><div role="option" data-automation-id="promptOption">Telugu</div></div>
+        <input type="text" name="language-11" data-automation-id="language-11Input">
+      </div>
+      <div class="fieldset-wrap">
+        <label id="lbl-language-12">Language</label>
+        <button type="button" aria-haspopup="listbox" aria-expanded="false"
+                aria-labelledby="lbl-language-12"
+                data-automation-id="language-12">Select One</button>
+        <div role="listbox" aria-labelledby="lbl-language-12"
+             data-automation-id="language-12Listbox"><div role="option" data-automation-id="promptOption">English</div><div role="option" data-automation-id="promptOption">Hindi</div><div role="option" data-automation-id="promptOption">Telugu</div></div>
+        <input type="text" name="language-12" data-automation-id="language-12Input">
+      </div>
+      <label> <input type="text" name="skillChip-1"
+             data-automation-id="skillChip-1"></label>
+      <label> <input type="text" name="skillChip-2"
+             data-automation-id="skillChip-2"></label>
+      <label> <input type="text" name="skillChip-3"
+             data-automation-id="skillChip-3"></label>
+      <label> <input type="text" name="skillChip-4"
+             data-automation-id="skillChip-4"></label>
+      <label> <input type="text" name="skillChip-5"
+             data-automation-id="skillChip-5"></label>
+      <label> <input type="text" name="skillChip-6"
+             data-automation-id="skillChip-6"></label>
+      <label> <input type="text" name="skillChip-7"
+             data-automation-id="skillChip-7"></label>
+      <label> <input type="text" name="skillChip-8"
+             data-automation-id="skillChip-8"></label>
+      <label> <input type="text" name="skillChip-9"
+             data-automation-id="skillChip-9"></label>
+      <label> <input type="text" name="skillChip-10"
+             data-automation-id="skillChip-10"></label>
+      <label> <input type="text" name="skillChip-11"
+             data-automation-id="skillChip-11"></label>
+      <label> <input type="text" name="skillChip-12"
+             data-automation-id="skillChip-12"></label>
+      <label> <input type="text" name="skillChip-13"
+             data-automation-id="skillChip-13"></label>
+      <label> <input type="text" name="skillChip-14"
+             data-automation-id="skillChip-14"></label>
+      <label> <input type="text" name="skillChip-15"
+             data-automation-id="skillChip-15"></label>
+      <label> <input type="text" name="skillChip-16"
+             data-automation-id="skillChip-16"></label>
+      <label> <input type="text" name="skillChip-17"
+             data-automation-id="skillChip-17"></label>
+      <label> <input type="text" name="skillChip-18"
+             data-automation-id="skillChip-18"></label>
+      <label> <input type="text" name="skillChip-19"
+             data-automation-id="skillChip-19"></label>
+      <label> <input type="text" name="skillChip-20"
+             data-automation-id="skillChip-20"></label>
+      <label> <input type="text" name="skillChip-21"
+             data-automation-id="skillChip-21"></label>
+      <label> <input type="text" name="skillChip-22"
+             data-automation-id="skillChip-22"></label>
+      <label> <input type="text" name="skillChip-23"
+             data-automation-id="skillChip-23"></label>
+      <label> <input type="text" name="skillChip-24"
+             data-automation-id="skillChip-24"></label>
+      <label> <input type="text" name="skillChip-25"
+             data-automation-id="skillChip-25"></label>
+      <label> <input type="text" name="skillChip-26"
+             data-automation-id="skillChip-26"></label>
+      <label> <input type="text" name="skillChip-27"
+             data-automation-id="skillChip-27"></label>
+      <label> <input type="text" name="skillChip-28"
+             data-automation-id="skillChip-28"></label>
+      <label> <input type="text" name="skillChip-29"
+             data-automation-id="skillChip-29"></label>
+      <label> <input type="text" name="skillChip-30"
+             data-automation-id="skillChip-30"></label>
+      <label> <input type="text" name="skillChip-31"
+             data-automation-id="skillChip-31"></label>
+      <label> <input type="text" name="skillChip-32"
+             data-automation-id="skillChip-32"></label>
+      <label> <input type="text" name="skillChip-33"
+             data-automation-id="skillChip-33"></label>
+      <label> <input type="text" name="skillChip-34"
+             data-automation-id="skillChip-34"></label>
+      <label> <input type="text" name="skillChip-35"
+             data-automation-id="skillChip-35"></label>
+      <label> <input type="text" name="skillChip-36"
+             data-automation-id="skillChip-36"></label>
+      <label> <input type="text" name="skillChip-37"
+             data-automation-id="skillChip-37"></label>
+      <label> <input type="text" name="skillChip-38"
+             data-automation-id="skillChip-38"></label>
+      <label> <input type="text" name="skillChip-39"
+             data-automation-id="skillChip-39"></label>
+      <label> <input type="text" name="skillChip-40"
+             data-automation-id="skillChip-40"></label>
+  </section>
+
+  <!-- Deliberately OUTSIDE every section container: the undetermined case.
+       The app must degrade to a flat group here, never guess a section. -->
+  <label>Additional Information<textarea name="additionalInfo"
+    data-automation-id="additionalInfo"></textarea></label>
+
+  <button type="button" id="wd-next">Save and Continue</button>
+</form>
+<script src="/_mirror.js"></script>
+<script>
+  // Workday's prompts open on click. The listbox is present in the DOM
+  // either way — which is precisely why one question arrives as two
+  // descriptors, and why de-duplicating by ELEMENT produced the flood.
+  document.querySelectorAll('[aria-haspopup="listbox"]').forEach(function (b) {
+    var box = b.parentElement.querySelector('[role="listbox"]');
+    var mirror = b.parentElement.querySelector('input');
+    b.addEventListener('click', function () {
+      b.setAttribute('aria-expanded', 'true');
+    });
+    box.querySelectorAll('[role="option"]').forEach(function (o) {
+      o.addEventListener('click', function () {
+        b.textContent = o.textContent;
+        if (mirror) {
+          mirror.value = o.textContent;
+          mirror.dispatchEvent(new Event('input', { bubbles: true }));
+        }
+      });
+    });
+  });
+</script>
+</body></html>

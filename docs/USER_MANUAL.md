@@ -1124,3 +1124,132 @@ boxes, and saves it to your keychain the moment it uses it. You press
 
 **Settings → Saved logins → Escort**. Off means you press every button; the
 filling is unchanged.
+
+---
+
+## 25. What changed in v2.1.0 (The Real Application)
+
+*(feature 021)*
+
+v2.0.0 met a real Intel Workday application and came back **Filled 5 · Needs
+you 149 · Seen 156** — a review list too crowded to read, most rows carrying
+no question at all. This release is that report, worked through.
+
+### The panel is readable again
+
+Three separate defects were producing that 149:
+
+1. **Rows were de-duplicated by element, not by question.** A Workday
+   dropdown is a button *plus* its listbox, and the scanner matches both, so
+   every dropdown became two identical rows. Rows are now keyed by
+   `(section, section index, question)`.
+2. **A whitespace label was accepted as a question.** The code read
+   `label_text or placeholder or aria_label` with no `.strip()`, and in
+   Python `" "` is true — so a row was created and rendered blank. Questions
+   are now stripped, and fall back to the field's `data-automation-id`, name
+   or id (humanised). A field nothing can name is left out entirely: a blank
+   row is worse than no row.
+3. **The index was never pruned.** It was cleared only when a session
+   started, and its keys include a DOM stamp — so every wizard step and every
+   React re-render added entries while the old ones stayed. Fields absent for
+   three consecutive scans are now forgotten. Three, not one: a single miss
+   is a re-render, and evicting on the first would make live fields flicker
+   out exactly when the page is busiest.
+
+Rows are also **grouped by the part of the form they came from** — "Work
+Experience 2", "Education 1". Where a section cannot be determined the list
+stays flat, because a wrong grouping is worse than none.
+
+### Work history and education fill themselves
+
+Your resume has been parsed into structured employment and education entries
+since v0.8.0. The fill layer had never read them. Now:
+
+- the **second** employment block on a form gets your **second** stored job;
+- more blocks than entries leaves the extra ones for you — never filled from
+  a different job;
+- a missing GPA is handed to you, never borrowed from another school;
+- "I currently work here" comes from the stored flag, never guessed from a
+  blank end date.
+
+**Profile → Work history & education** lets you correct any of it. Worth
+doing once: it was read out of a PDF by a small on-device model, and it is
+about to be typed into an employer's form.
+
+### The app learns what you type
+
+Fill in something Apply Assist left to you, and it keeps the answer. The same
+question fills itself on the next application.
+
+**Apply → Learned answers** lists everything it has learned, with the
+application each came from. Every one is editable and deletable, and
+**Forget everything learned** clears the lot — leaving answers you wrote in
+the app untouched.
+
+It **never** keeps: passwords and logins, voluntary self-identification,
+date of birth, national or government ID numbers, or anything to do with a
+bank account or card. Those are refused before the value is copied anywhere.
+
+An answer that maps to a profile fact offers a one-click **Save to profile**.
+That is a click, never automatic — reading a value off a page is not you
+telling the app a fact about yourself.
+
+### The AI can be fast
+
+The app has always been able to use a free cloud tier. It was switched off in
+a way nobody could find: saving a key changed nothing, and nothing said so.
+
+**Settings → AI matching** now asks outright, and states what each choice
+sends. The cloud tier gets your **resume text and the job description** — and
+never a password, a saved login, or a self-identification answer. It falls
+back to the bundled offline model on its own when you are offline,
+rate-limited, or the provider errors.
+
+**Bulk background scoring always stays offline**, whichever you pick: the
+free tiers allow roughly a thousand requests a day, and that budget belongs
+to whatever you are actually waiting for.
+
+Everything still works with no key and no internet.
+
+Measured on the reference machine (i5-10210U, CPU-only build): shrinking the
+model's context makes generation *slower*, not faster (10.0 → 9.4 → 8.7
+tokens/sec at 8192 → 4096 → 2048), and KV-cache quantisation cannot build a
+context at all. There is no on-device multiplier available. The cloud tier
+is the lever.
+
+### "Generate a tailored resume" tells you what happened
+
+It was failing two ways at once. The page's error handler parsed the
+response as JSON, which **throws** on an empty body — so a request that got
+dropped killed the handler and you saw nothing at all. And the request queued
+behind background scoring in a strict first-in-first-out queue.
+
+Now: the handler always writes a message, and **anything you are waiting on
+takes priority over background work**.
+
+### The panel goes where you put it
+
+Drag it by its header. It stays there, on every page and every session, and
+is clamped back into view if you later use a smaller screen. The ↺ button in
+its header returns it to the corner.
+
+### More boards, more facts
+
+Five more free job boards — **Recruitee, Teamtailor, Personio, Breezy,
+JazzHR** — all official public endpoints that reach the employer's own
+careers page, so the apply link is the real one.
+
+New profile fields: **phone country code**, **security clearance**,
+**driving licence**. And when a field is missing, the panel now links
+straight to it instead of only naming it.
+
+### Page reports
+
+**Save page report** in the panel writes a description of the application
+page to `data/reports/`, listed for download on **Diagnostics**.
+
+It records *shape*: what fields exist, what the app called them, which
+section they are in, and what it decided about each one. It records **no
+value you typed, no password, and only the host** of the page address — a
+real ATS URL often carries a session token in its query string. It is safe to
+send on when something does not fill.

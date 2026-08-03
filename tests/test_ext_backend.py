@@ -1654,3 +1654,494 @@ class TestRichTextItem020:
                     "widget": "not_a_real_widget",
                 }],
             }))
+
+
+class TestPageReport:
+    """021 (FR-001/FR-002, Workstream A): the applicant can hand back what is
+    actually on the page — which means the file has to be safe to hand back.
+
+    v2.0.0 met a real Workday application and reported Seen 156 with most rows
+    blank. The two Workday fixtures in this suite hold 9 and 2 fields, so
+    nothing here could tell us whether 156 was one scan or an accumulation.
+    This is how that gets answered with evidence instead of a guess.
+    """
+
+    def _scan_then_report(self, job_id, sent, descriptors, url=None):
+        open_the_tab(job_id, sent)
+        ext_backend.handle_message(fields_msg(descriptors=descriptors))
+        ext_backend.handle_message(ext_protocol.PageReport(
+            tab_id=40, frame_id=0,
+            url=url or "https://boards.greenhouse.io/figma/jobs/77",
+        ))
+
+    def test_it_writes_a_report_the_app_can_list(self, queue, sent, tmp_path,
+                                                 monkeypatch):
+        from engine import paths
+
+        monkeypatch.setattr(paths, "data_dir", lambda: tmp_path)
+        self._scan_then_report(queue, sent, [descriptor()])
+
+        written = list((tmp_path / "reports").glob("page-*.json"))
+        assert len(written) == 1
+        report = json.loads(written[0].read_text(encoding="utf-8"))
+        assert report["fields"], "a report with no fields is not a diagnostic"
+        assert report["fields"][0]["label_text"] == "First name"
+
+    def test_a_value_the_applicant_typed_never_reaches_the_file(
+            self, queue, sent, tmp_path, monkeypatch):
+        from engine import paths
+
+        monkeypatch.setattr(paths, "data_dir", lambda: tmp_path)
+        self._scan_then_report(queue, sent, [
+            descriptor(je_idx="1", value="Bengaluru-Karnataka-560001"),
+            descriptor(je_idx="2", name="ssn", label_text="SSN",
+                       value="123-45-6789"),
+        ])
+
+        blob = (tmp_path / "reports").glob("page-*.json").__next__().read_text(
+            encoding="utf-8")
+        assert "Bengaluru" not in blob
+        assert "123-45-6789" not in blob
+
+    def test_the_url_is_reduced_to_a_host(self, queue, sent, tmp_path,
+                                          monkeypatch):
+        from engine import paths
+
+        monkeypatch.setattr(paths, "data_dir", lambda: tmp_path)
+        self._scan_then_report(
+            queue, sent, [descriptor()],
+            url="https://boards.greenhouse.io/figma/jobs/77?token=SECRETTOK")
+
+        blob = (tmp_path / "reports").glob("page-*.json").__next__().read_text(
+            encoding="utf-8")
+        assert "SECRETTOK" not in blob
+        assert "boards.greenhouse.io" in blob
+
+    def test_the_panel_is_told_where_it_landed(self, queue, sent, tmp_path,
+                                               monkeypatch):
+        from engine import paths
+
+        monkeypatch.setattr(paths, "data_dir", lambda: tmp_path)
+        self._scan_then_report(queue, sent, [descriptor()])
+
+        saved = [m for m in sent if m["type"] == "page_report_saved"]
+        assert saved, "the applicant pressed a button and must hear back"
+        assert saved[-1]["filename"].startswith("page-")
+
+    def test_a_report_with_no_scan_yet_still_answers(self, queue, sent,
+                                                     tmp_path, monkeypatch):
+        """Pressing the button before anything is scanned must not raise —
+        an empty report is itself the diagnostic (nothing was seen)."""
+        from engine import paths
+
+        monkeypatch.setattr(paths, "data_dir", lambda: tmp_path)
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(ext_protocol.PageReport(
+            tab_id=40, frame_id=0,
+            url="https://boards.greenhouse.io/figma/jobs/77"))
+
+        written = list((tmp_path / "reports").glob("page-*.json"))
+        assert len(written) == 1
+        assert json.loads(written[0].read_text(encoding="utf-8"))["fields"] == []
+
+    def test_every_scanned_field_is_reported_not_just_the_decided_ones(
+            self, queue, sent, tmp_path, monkeypatch):
+        """`note_answer` skips fields with no question — the report must not.
+        A field the app cannot name is exactly what needs diagnosing."""
+        from engine import paths
+
+        monkeypatch.setattr(paths, "data_dir", lambda: tmp_path)
+        self._scan_then_report(queue, sent, [
+            descriptor(je_idx="1"),
+            descriptor(je_idx="2", name="", id="", label_text="  ",
+                       automation_id="mysteryWidget"),
+        ])
+
+        report = json.loads(
+            (tmp_path / "reports").glob("page-*.json").__next__().read_text(
+                encoding="utf-8"))
+        automation_ids = [f["automation_id"] for f in report["fields"]]
+        assert "mysteryWidget" in automation_ids
+
+
+class TestAFieldWithNoRealQuestion:
+    """021 US1 (FR-006/FR-007).
+
+    `question_of()` was `label_text or placeholder or aria_label or ""` with
+    NO .strip(). A label of " " is truthy in Python, so a row was created and
+    panel.js rendered `row.q.textContent = " "` — visually blank. That is what
+    most of the applicant's 149 rows were.
+
+    It also never looked at `data-automation-id`, which scanner.js already
+    captures and which is exactly where Workday puts a field's identity.
+    """
+
+    def _feed(self, queue, sent, descriptors):
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(descriptors=descriptors))
+        payloads = [m for m in sent if m["type"] == "answers"]
+        return payloads[-1]["items"] if payloads else []
+
+    def test_a_whitespace_label_does_not_become_a_blank_row(self, queue, sent):
+        items = self._feed(queue, sent, [
+            descriptor(je_idx="1", label_text="   ", name="", id="",
+                       automation_id=""),
+        ])
+        assert [i for i in items if not (i["question"] or "").strip()] == []
+
+    def test_an_automation_id_names_the_field_when_the_label_cannot(
+            self, queue, sent, tmp_path, monkeypatch):
+        """Asserted through the page report, not the answers feed.
+
+        A skip with no drafter record is deliberately never listed in the
+        feed ("a field we deliberately ignored is not an unanswered
+        question"), so the feed cannot show whether the field was NAMED. The
+        report records every field, which is what it is for.
+        """
+        from engine import paths
+
+        monkeypatch.setattr(paths, "data_dir", lambda: tmp_path)
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(descriptors=[
+            descriptor(je_idx="1", label_text="  ", name="", id="",
+                       automation_id="countryRegionPhoneCode")]))
+        ext_backend.handle_message(ext_protocol.PageReport(
+            tab_id=40, frame_id=0,
+            url="https://boards.greenhouse.io/figma/jobs/77"))
+
+        report = json.loads(
+            list((tmp_path / "reports").glob("page-*.json"))[0]
+            .read_text(encoding="utf-8"))
+        assert report["fields"][0]["automation_id"] == "countryRegionPhoneCode"
+
+    def test_a_name_is_the_next_fallback(self):
+        from engine.autofill import field_core
+
+        assert field_core.humanize_identifier(
+            "overall_result_gpa") == "Overall Result Gpa"
+
+    def test_an_id_is_the_last_fallback(self, queue, sent):
+        items = self._feed(queue, sent, [
+            descriptor(je_idx="1", label_text="", name="", id="phone-number",
+                       automation_id=""),
+        ])
+        assert "Phone Number" in [i["question"] for i in items]
+
+    def test_a_real_label_always_wins_over_every_fallback(self, queue, sent):
+        items = self._feed(queue, sent, [
+            descriptor(je_idx="1", label_text="Country/Region",
+                       name="wd_country", id="c1",
+                       automation_id="countryDropdown"),
+        ])
+        assert "Country/Region" in [i["question"] for i in items]
+        assert "Country Dropdown" not in [i["question"] for i in items]
+
+    def test_a_field_with_no_identity_at_all_is_not_listed(self, queue, sent):
+        """A blank row is worse than no row. If nothing names it, it belongs
+        in the page report, not in the review list."""
+        items = self._feed(queue, sent, [
+            descriptor(je_idx="1", label_text=" ", name="", id="",
+                       automation_id="", placeholder="", aria_label=""),
+        ])
+        assert items == [] or all(
+            (i["question"] or "").strip() for i in items)
+
+    def test_an_opaque_generated_id_is_not_used_as_a_question(self, queue,
+                                                              sent):
+        """React and Workday both emit ids like `input-23` and
+        `:r1a:`. Naming a question after one is noise dressed up as
+        information — worse than admitting we could not name it."""
+        items = self._feed(queue, sent, [
+            descriptor(je_idx="1", label_text=" ", name="", automation_id="",
+                       id="input-23"),
+            descriptor(je_idx="2", label_text=" ", name="", automation_id="",
+                       id="react-select-4-input"),
+        ])
+        assert items == [] or all(
+            "input-23" not in (i["question"] or "") for i in items)
+
+
+class TestTheIndexForgetsWhatIsGone:
+    """021 US1 (FR-009, analysis A10).
+
+    `_page_entries` was cleared only at session start, and its keys are
+    (doc, je_idx). `je_idx` lives in a DOM attribute, so a React remount or a
+    wizard step gives every field a FRESH stamp and therefore a NEW entry,
+    while the old ones stay. On a multi-step Workday application that
+    accumulates monotonically — a large part of how the applicant's page
+    reached 149 outstanding rows.
+    """
+
+    def _feed(self, sent):
+        payloads = [m for m in sent if m["type"] == "answers"]
+        return payloads[-1]["items"] if payloads else []
+
+    def test_a_field_gone_for_three_scans_stops_being_listed(self, queue, sent):
+        open_the_tab(queue, sent)
+        step_one = [descriptor(je_idx="1", label_text="First name"),
+                    descriptor(je_idx="2", label_text="Last name",
+                               name="last_name", id="last_name")]
+        ext_backend.handle_message(fields_msg(descriptors=step_one))
+        assert len(self._feed(sent)) == 2
+
+        # The wizard advances: same document, entirely new elements.
+        step_two = [descriptor(je_idx="9", label_text="Email",
+                               name="email", id="email")]
+        for _ in range(ext_backend.PRUNE_AFTER_SCANS):
+            ext_backend.handle_message(fields_msg(descriptors=step_two))
+
+        questions = [i["question"] for i in self._feed(sent)]
+        assert "First name" not in questions
+        assert "Email" in questions
+
+    def test_one_missed_scan_does_not_evict_a_live_field(self, queue, sent):
+        """A single miss is a re-render, not a removal. Evicting on the first
+        miss would make live fields flicker out of the review list exactly
+        when the page is busiest."""
+        open_the_tab(queue, sent)
+        both = [descriptor(je_idx="1", label_text="First name"),
+                descriptor(je_idx="2", label_text="Email", name="email",
+                           id="email")]
+        ext_backend.handle_message(fields_msg(descriptors=both))
+        # One scan mid-remount sees only half the form.
+        ext_backend.handle_message(fields_msg(descriptors=[both[1]]))
+        ext_backend.handle_message(fields_msg(descriptors=both))
+
+        assert "First name" in [i["question"] for i in self._feed(sent)]
+
+    def test_a_different_document_does_not_prune_this_one(self, queue, sent):
+        """Pruning counts scans of THIS document. A second document must not
+        evict the first one's fields — that is a navigation, and the session
+        boundary already handles it."""
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(
+            doc="docA", descriptors=[descriptor(je_idx="1",
+                                                label_text="First name")]))
+        for _ in range(ext_backend.PRUNE_AFTER_SCANS + 2):
+            ext_backend.handle_message(fields_msg(
+                doc="docB", frame_id=1,
+                descriptors=[descriptor(je_idx="1", doc="docB",
+                                        label_text="Email", name="email",
+                                        id="email")]))
+
+        assert "First name" in [i["question"] for i in self._feed(sent)]
+
+
+class TestTheEntryCapIsNotSilent:
+    """021 (analysis A8): a review surface that quietly stops listing fields
+    reads as "that is everything" — the exact failure 018 and 019 were spent
+    eliminating."""
+
+    def test_exceeding_the_cap_says_so(self, queue, sent, monkeypatch):
+        monkeypatch.setattr(ext_backend, "MAX_PAGE_ENTRIES", 5)
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(descriptors=[
+            descriptor(je_idx=str(n), label_text=f"Question {n}",
+                       name=f"q{n}", id=f"q{n}")
+            for n in range(20)]))
+
+        payloads = [m for m in sent if m["type"] == "answers"]
+        assert payloads[-1]["truncated"] is True
+        assert ext_backend.counters()["page_entries_truncated"] > 0
+
+    def test_a_page_inside_the_cap_does_not_claim_truncation(self, queue,
+                                                             sent):
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(descriptors=[
+            descriptor(je_idx="1", label_text="First name")]))
+        payloads = [m for m in sent if m["type"] == "answers"]
+        assert payloads[-1]["truncated"] is False
+
+
+class TestStaleFramesStopCounting:
+    """021 US1 (FR-009, research R1 open question).
+
+    `_frame_seen` was frame_id -> count, cleared only at session start. An
+    iframe that navigated away or was removed left its count in the sum
+    forever, so the panel's "Seen 156" could be several dead frames added
+    together. PageEvent carries no frame_id — and defaulting one to 0 would
+    wrongly clear the TOP frame — so staleness is judged by time.
+    """
+
+    def _seen(self, sent):
+        states = [m for m in sent if m["type"] == "overlay_state"]
+        return states[-1]["summary"]["seen"]
+
+    def test_two_live_frames_are_added_together(self, queue, sent):
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(
+            frame_id=0, descriptors=[descriptor(je_idx="1")]))
+        ext_backend.handle_message(fields_msg(
+            frame_id=1, doc="docB",
+            descriptors=[descriptor(je_idx="1", doc="docB"),
+                         descriptor(je_idx="2", doc="docB", name="last_name",
+                                    id="last_name", label_text="Last name")]))
+        assert self._seen(sent) == 3
+
+    def test_a_frame_that_went_quiet_stops_counting(self, queue, sent,
+                                                    monkeypatch):
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(
+            frame_id=1, doc="docB",
+            descriptors=[descriptor(je_idx=str(n), doc="docB",
+                                    name=f"f{n}", id=f"f{n}",
+                                    label_text=f"Field {n}")
+                         for n in range(50)]))
+        assert self._seen(sent) == 50
+
+        # That iframe is gone. Nothing tells us so; it simply stops scanning.
+        with ext_backend._lock:
+            count, at = ext_backend._frame_seen[1]
+            ext_backend._frame_seen[1] = (
+                count, at - ext_backend.FRAME_STALE_S - 1)
+
+        ext_backend.handle_message(fields_msg(
+            frame_id=0, descriptors=[descriptor(je_idx="1")]))
+        assert self._seen(sent) == 1, (
+            "a dead frame's 50 fields are still being counted")
+
+    def test_a_frame_rescanning_keeps_counting(self, queue, sent):
+        """The paired half: staleness must not evict a frame that is simply
+        slower than the top one."""
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(
+            frame_id=1, doc="docB",
+            descriptors=[descriptor(je_idx="1", doc="docB")]))
+        for _ in range(3):
+            ext_backend.handle_message(fields_msg(
+                frame_id=0, descriptors=[descriptor(je_idx="1")]))
+        assert self._seen(sent) == 2
+
+    def test_the_report_exposes_the_gap(self, queue, sent, tmp_path,
+                                        monkeypatch):
+        """The whole point of Workstream A: the file shows BOTH numbers, so
+        stale-frame inflation is visible rather than argued about."""
+        from engine import paths
+
+        monkeypatch.setattr(paths, "data_dir", lambda: tmp_path)
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(
+            frame_id=1, doc="docB",
+            descriptors=[descriptor(je_idx="1", doc="docB")]))
+        with ext_backend._lock:
+            count, at = ext_backend._frame_seen[1]
+            ext_backend._frame_seen[1] = (
+                count, at - ext_backend.FRAME_STALE_S - 1)
+        ext_backend.handle_message(fields_msg(
+            frame_id=0, descriptors=[descriptor(je_idx="1")]))
+        ext_backend.handle_message(ext_protocol.PageReport(
+            tab_id=40, frame_id=0,
+            url="https://boards.greenhouse.io/figma/jobs/77"))
+
+        report = json.loads(
+            list((tmp_path / "reports").glob("page-*.json"))[0]
+            .read_text(encoding="utf-8"))
+        reported = report["counts_reported"]
+        assert reported["seen"] == 1
+        assert reported["seen_all_frames"] == 2
+        assert reported["frames_live"] == 1
+        assert reported["frames_all"] == 2
+
+
+class TestWorkHistoryAndEducationFillThemselves:
+    """021 US2 (FR-011/FR-012/FR-013), end to end through the real decision
+    loop. The applicant's parsed resume was sitting unused while every
+    employer, title, date, school and GPA came back as "needs you"."""
+
+    SECTIONS = {
+        "experience": [
+            {"title": "Verification Intern", "organization": "Acme",
+             "start": "2024-05", "end": "2024-08", "location": "Austin, TX",
+             "is_current": False, "bullets": []},
+            {"title": "RTL Design Intern", "organization": "Globex",
+             "start": "2025-01", "end": "", "location": "Remote",
+             "is_current": True, "bullets": []},
+        ],
+        "education": [
+            {"degree": "B.S. Computer Engineering", "institution": "UT Austin",
+             "start": "2021-08", "end": "2025-05", "details": "",
+             "field_of_study": "Computer Engineering", "gpa": "3.6"},
+        ],
+    }
+
+    def _fill_values(self, queue, sent, descriptors):
+        db.save_profile(resume_sections=self.SECTIONS)
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(descriptors=descriptors))
+        out = {}
+        for message in sent:
+            if message["type"] != "fill":
+                continue
+            for item in message["items"]:
+                out[item["je_idx"]] = item.get("value")
+        return out
+
+    def block(self, idx, label, index=0, section="Work Experience"):
+        return descriptor(je_idx=idx, label_text=label, name=f"f{idx}",
+                          id=f"f{idx}", section_label=section,
+                          section_index=index)
+
+    def test_the_second_block_fills_from_the_second_role(self, queue, sent):
+        values = self._fill_values(queue, sent, [
+            self.block("1", "Company", 0),
+            self.block("2", "Company", 1),
+        ])
+        assert values["1"] == "Acme"
+        assert values["2"] == "Globex"
+
+    def test_a_block_with_no_stored_role_is_left_for_the_applicant(
+            self, queue, sent):
+        """FR-013 — the rule 017 was spent establishing. Three blocks against
+        two stored roles: the third is NOT filled from either."""
+        values = self._fill_values(queue, sent, [
+            self.block("1", "Company", 0),
+            self.block("2", "Company", 1),
+            self.block("3", "Company", 2),
+        ])
+        assert "3" not in values
+
+    def test_education_fills_from_its_own_block(self, queue, sent):
+        values = self._fill_values(queue, sent, [
+            self.block("1", "School or University", 0, "Education"),
+            self.block("2", "Overall Result (GPA)", 0, "Education"),
+            self.block("3", "Field of Study", 0, "Education"),
+        ])
+        assert values["1"] == "UT Austin"
+        assert values["2"] == "3.6"
+        assert values["3"] == "Computer Engineering"
+
+    def test_a_current_role_answers_i_currently_work_here(self, queue, sent):
+        values = self._fill_values(queue, sent, [
+            self.block("1", "I currently work here", 0),
+            self.block("2", "I currently work here", 1),
+        ])
+        assert values["1"] == "No"
+        assert values["2"] == "Yes"
+
+    def test_a_current_role_leaves_its_end_date_alone(self, queue, sent):
+        values = self._fill_values(queue, sent, [
+            self.block("1", "To", 1),
+        ])
+        assert "1" not in values
+
+    def test_a_field_outside_any_section_is_never_answered_from_history(
+            self, queue, sent):
+        """No section means the scan could not place it. Answering from
+        entry 0 would type a specific employer into an unknown box."""
+        values = self._fill_values(queue, sent, [
+            descriptor(je_idx="1", label_text="Company", name="c", id="c"),
+        ])
+        assert values.get("1") != "Acme"
+
+    def test_a_correction_in_the_profile_is_what_gets_typed(self, queue, sent):
+        """FR-014: the parsed entry is a 1.5B model's reading of a PDF. What
+        the applicant corrected is what reaches the employer's form."""
+        corrected = json.loads(json.dumps(self.SECTIONS))
+        corrected["experience"][0]["organization"] = "Acme Semiconductors Inc."
+        db.save_profile(resume_sections=corrected)
+        open_the_tab(queue, sent)
+        ext_backend.handle_message(fields_msg(
+            descriptors=[self.block("1", "Company", 0)]))
+        values = {i["je_idx"]: i.get("value")
+                  for m in sent if m["type"] == "fill" for i in m["items"]}
+        assert values["1"] == "Acme Semiconductors Inc."

@@ -322,6 +322,68 @@ def purge_learned_answers():
             "removed_drafts": drafts.purge_unconfirmed()}
 
 
+@router.get("/answers/observed")
+def list_observed_answers():
+    """021 (FR-018): everything the app read off a real application, with the
+    job it came from. Editable and deletable — nothing is trapped."""
+    from engine import db
+    from engine.autofill import answer_bank, profile_answers
+
+    rows = []
+    for entry in answer_bank.list_all():
+        if entry.get("source") != "observed":
+            continue
+        job = db.get_job(entry["source_job_id"]) if entry.get("source_job_id") \
+            else None
+        rows.append({
+            "id": entry["id"],
+            "question": entry["question_raw"],
+            "answer": entry["answer"],
+            "tag": entry.get("category") or "",
+            "updated_at": entry.get("updated_at"),
+            "from_job": (f'{job["title"]} · {job["company"]}' if job else ""),
+            # FR-020: SUGGESTED, never written. Reading a value off a page is
+            # not the applicant asserting it as a stored fact about
+            # themselves — that stays a deliberate click.
+            "profile_fact": (entry.get("category") or "") in
+                            profile_answers.PROFILE_ANSWER_TAGS,
+        })
+    return {"entries": rows}
+
+
+@router.post("/answers/observed/forget")
+def forget_observed_answers():
+    """021 (FR-018): delete every answer read off a page, and nothing else."""
+    from engine.autofill import answer_bank
+
+    return {"removed": answer_bank.forget_observed()}
+
+
+class ObservedToProfile(BaseModel):
+    id: int
+
+
+@router.post("/answers/observed/to-profile")
+def save_observed_to_profile(body: ObservedToProfile):
+    """021 (FR-020): one explicit click promotes a learned answer to a stored
+    profile fact. Never automatic."""
+    from engine import db
+    from engine.autofill import answer_bank, profile_answers
+
+    entry = next((e for e in answer_bank.list_all() if e["id"] == body.id),
+                 None)
+    if entry is None or entry.get("source") != "observed":
+        raise HTTPException(status_code=404, detail="no such learned answer")
+    tag = entry.get("category") or ""
+    field = profile_answers.profile_field_for(tag)
+    if not field:
+        raise HTTPException(
+            status_code=409,
+            detail="That answer doesn't map to a profile field.")
+    db.save_profile(**{field: entry["answer"]})
+    return {"saved": True, "field": field}
+
+
 @router.delete("/answers/{bank_id}")
 def delete_answer_bank_entry(bank_id: int):
     from engine.autofill import answer_bank

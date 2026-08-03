@@ -107,6 +107,17 @@ _AGE_18_RE = re.compile(
     re.IGNORECASE)
 _NON_COMPETE_RE = re.compile(r"non[\s_-]*compete", re.IGNORECASE)
 _CLEARANCE_RE = re.compile(r"security\s+clearance|\bclearance\b", re.IGNORECASE)
+# 021 (FR-031): "Country/Region Phone Code*" was one of the few rows the
+# applicant could even READ in the 149-row flood, and the profile had no fact
+# behind it. It must be matched BEFORE the bare-country rule, or it is
+# answered with a country name.
+_PHONE_CODE_RE = re.compile(
+    r"(country|region|dial|area)[\s_/-]*code|phone[\s_-]*code", re.IGNORECASE)
+# The licence QUESTION ("do you hold one?"), never the licence NUMBER — that
+# is a government identifier and is on the never-observe list.
+_DRIVERS_LICENCE_RE = re.compile(
+    r"driver'?s?[\s_-]*(licen[cs]e|permit)(?![\s_-]*(number|no\b|#))",
+    re.IGNORECASE)
 _BACKGROUND_CHECK_RE = re.compile(r"background\s+check", re.IGNORECASE)
 _DRUG_TEST_RE = re.compile(r"drug\s+(test|screen)", re.IGNORECASE)
 _RELOCATE_RE = re.compile(r"\brelocat", re.IGNORECASE)
@@ -153,6 +164,80 @@ _SCHOOL_RE = re.compile(
     r"\bschool\b|\buniversity\b|\bcollege\b|\binstitution\b|alma[\s_-]*mater",
     re.IGNORECASE,
 )
+
+# 021 (FR-011): repeated work-history and education blocks. On a real Workday
+# application these were the single largest share of the fields handed back to
+# the applicant — while their parsed resume held every answer.
+#
+# The GATE is the section. Outside a recognised block every existing tag is
+# unchanged, and a field the scan could NOT place in a block is never routed
+# here at all: it has no way to know WHICH employer it is about, and answering
+# it from entry 0 is the 017 substitution bug with extra steps.
+_WORK_SECTION_RE = re.compile(
+    r"work\s*(experience|history)|employment|professional\s*experience"
+    r"|previous\s*(job|employer|position)", re.IGNORECASE)
+_EDU_SECTION_RE = re.compile(
+    r"\beducation\b|\bacademic|\bqualification|\bschooling\b", re.IGNORECASE)
+
+_EXP_EMPLOYER_RE = re.compile(
+    r"\bcompany\b|\bemployer\b|\borgani[sz]ation\b|\bfirm\b", re.IGNORECASE)
+_EXP_TITLE_RE = re.compile(
+    r"job\s*title|\bposition\b|\btitle\b|\brole\b(?!\s*description)",
+    re.IGNORECASE)
+_EXP_CURRENT_RE = re.compile(
+    r"currently\s*(work|employed)|\bi\s*currently\b|current\s*(role|position)"
+    r"|present(ly)?\s*employed", re.IGNORECASE)
+_EDU_FIELD_RE = re.compile(
+    r"field\s*of\s*study|\bmajor\b|\bdiscipline\b|\bconcentration\b"
+    r"|area\s*of\s*study", re.IGNORECASE)
+# `_DEGREE_RE` is deliberately narrow — it means the profile-level "highest
+# level of education". A bare "Degree" box inside an education block is the
+# degree earned at THAT school, which is a different question. This broader
+# pattern is only ever consulted inside a recognised education section.
+_EDU_DEGREE_RE = re.compile(
+    r"\bdegree\b|\bqualification\b|\bcredential\b", re.IGNORECASE)
+# "From"/"To" are how Workday labels a date range inside a repeated block.
+_RANGE_START_RE = re.compile(
+    r"^\s*from\s*\*?\s*$|start\s*(date|month|year)?\b|\bbegan\b", re.IGNORECASE)
+_RANGE_END_RE = re.compile(
+    r"^\s*to\s*\*?\s*$|end\s*(date|month|year)?\b|\bthrough\b", re.IGNORECASE)
+
+
+def _classify_history(text: str, section_label: str) -> str:
+    """A question inside a repeated history block, or "" when it is not one."""
+    if not section_label:
+        return ""
+    if _WORK_SECTION_RE.search(section_label):
+        if _EXP_CURRENT_RE.search(text):
+            return "exp_current"
+        if _EXP_EMPLOYER_RE.search(text):
+            return "exp_employer"
+        if _EXP_TITLE_RE.search(text):
+            return "exp_title"
+        if _RANGE_START_RE.search(text) or _GRADUATION_RE.search(text):
+            return "exp_start"
+        if _RANGE_END_RE.search(text):
+            return "exp_end"
+        if _LOCATION_CITY_RE.search(text) or re.search(
+                r"\blocation\b", text, re.IGNORECASE):
+            return "exp_location"
+        return ""
+    if _EDU_SECTION_RE.search(section_label):
+        if _GPA_RE.search(text) or re.search(
+                r"overall\s*result", text, re.IGNORECASE):
+            return "edu_gpa"
+        if _EDU_FIELD_RE.search(text):
+            return "edu_field"
+        if _EDU_DEGREE_RE.search(text):
+            return "edu_degree"
+        if _SCHOOL_RE.search(text):
+            return "edu_school"
+        if _RANGE_START_RE.search(text):
+            return "edu_start"
+        if _RANGE_END_RE.search(text) or _GRADUATION_RE.search(text):
+            return "edu_end"
+        return ""
+    return ""
 _LINKEDIN_RE = re.compile(r"linkedin", re.IGNORECASE)
 _PORTFOLIO_RE = re.compile(
     r"portfolio|github|personal[\s_-]*website|website[\s_-]*url", re.IGNORECASE
@@ -348,6 +433,16 @@ def classify(field: FieldDescriptor) -> str:
             return "cover_letter"
         return "resume_upload"
 
+    # 021 (FR-011): inside a repeated work-history or education block the
+    # question is about THAT block, so it resolves to an indexed history tag
+    # rather than the profile-level one. Placed after the credential, self-ID
+    # and file branches — those matter more than which employment row a field
+    # sits in — and before every generic rule, so "GPA" inside an education
+    # block becomes edu_gpa rather than the profile's single `gpa`.
+    history = _classify_history(text, field.get("section_label") or "")
+    if history:
+        return history
+
     # 017 (FR-008): the applicant's own history — never AI-answerable.
     # Checked before the generic Q&A tags so they cannot fall through to
     # free_text_unknown, which is what let the model invent them.
@@ -403,6 +498,12 @@ def classify(field: FieldDescriptor) -> str:
         return "degree"
 
     # 017 (FR-021): the rest of an address.
+    # Before the bare-country rule: "Country/Region Phone Code" contains
+    # "Country" and would otherwise be answered with a country name.
+    if _PHONE_CODE_RE.search(text):
+        return "phone_country_code"
+    if _DRIVERS_LICENCE_RE.search(text):
+        return "drivers_licence"
     if _LOCATION_COUNTRY_RE.search(text):
         return "location_country"
     if _LOCATION_POSTAL_RE.search(text):

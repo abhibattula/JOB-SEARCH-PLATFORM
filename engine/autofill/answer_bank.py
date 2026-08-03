@@ -11,12 +11,15 @@ bank; practice/ad-hoc sentinel job ids persist nothing.
 """
 from __future__ import annotations
 
+import logging
 import re
 from datetime import datetime, timezone
 
 from rapidfuzz import fuzz
 
 from .. import db
+
+log = logging.getLogger(__name__)
 
 FUZZY_MATCH_THRESHOLD = 85
 
@@ -268,6 +271,113 @@ def suggest(question_raw: str, category: str | None, profile: dict,
         return ""
     # A refusal is normalised so callers test one token, not a sentence.
     return REFUSAL_TOKEN if is_refusal(reply) else reply
+
+
+# 021 (FR-017, contracts/observed_answer.md): what is NEVER read off a page.
+#
+# Refusal happens before the value is copied anywhere — before any log
+# statement, before any database call. This is a new place private data could
+# land, so it is refused by TAG and by QUESTION TEXT: a field the classifier
+# failed to tag is precisely the one most likely to be dangerous.
+_NEVER_OBSERVE_TAGS = frozenset({
+    "login_password", "login_email", "login_username", "signup_password",
+    "eeo_disclosure", "demographics", "disability", "veteran_status",
+})
+
+_NEVER_OBSERVE_QUESTION = re.compile(
+    r"social\s*security|\bssn\b|\bsin\b"
+    r"|national\s*(insurance|id(entity|entification)?)\b|\bnino?\b"
+    r"|\baadhaar\b|\bpan\s*(card|number)\b"
+    r"|date\s*of\s*birth|\bdob\b|\bbirth\s*(date|day)\b"
+    r"|\bpassport\b|driver'?s?\s*(licen[cs]e|permit)\s*(number|no\b|#)"
+    r"|government\s*id"
+    r"|bank\s*(account|details)|routing\s*(number|no\b)|sort\s*code"
+    r"|\biban\b|\bswift\b|credit\s*card|card\s*number|\bcvv\b"
+    r"|\bpassword\b|\bpasscode\b|security\s*(question|answer)",
+    re.IGNORECASE)
+
+
+def may_observe(question: str, tag: str | None, *, secret: bool = False
+                ) -> bool:
+    """False when this question must never be read off a page."""
+    if secret:
+        return False
+    if tag and tag in _NEVER_OBSERVE_TAGS:
+        return False
+    if tag and tag.startswith("selfid_"):
+        return False
+    return not _NEVER_OBSERVE_QUESTION.search(question or "")
+
+
+def record_observed(*, question: str, answer: str, tag: str | None = None,
+                    job_id: int | None = None,
+                    secret: bool = False) -> int | None:
+    """021 (FR-015/FR-016/FR-019): remember an answer the applicant typed
+    themselves on a real application.
+
+    Returns the row id, or None when nothing was stored.
+
+    It does NOT delegate to `save_with_provenance` (analysis A1): that
+    function's `ON CONFLICT ... DO UPDATE SET` is UNCONDITIONAL and would
+    silently destroy an answer the applicant confirmed. The conflict branch
+    here is guarded so `user`, `confirmed` and `auto_saved` rows are never
+    touched, while an earlier `observed` row is refreshed and a `model` row
+    is replaced — a real answer beats one that was generated.
+    """
+    question_raw = (question or "").strip()
+    reply = (answer or "").strip()
+    if not question_raw or not reply:
+        return None
+    # BEFORE anything is copied or logged.
+    if not may_observe(question_raw, tag, secret=secret):
+        log.debug("declined to learn an answer for a private question")
+        return None
+
+    normalized = _normalize(question_raw)
+    now = _utcnow()
+    with db._conn() as conn:
+        conn.execute(
+            "INSERT INTO answer_bank (question_normalized, question_raw,"
+            " answer, category, source, source_job_id, confirmed_at,"
+            " updated_at) VALUES (?,?,?,?,?,?,?,?)"
+            " ON CONFLICT(question_normalized) DO UPDATE SET"
+            " answer=excluded.answer, question_raw=excluded.question_raw,"
+            " source='observed', source_job_id=excluded.source_job_id,"
+            " updated_at=excluded.updated_at"
+            # THE GUARD. Without it a confirmed answer is destroyed.
+            " WHERE answer_bank.source IN ('observed', 'model')",
+            (normalized, question_raw, reply, tag, "observed", job_id, now,
+             now),
+        )
+        row = conn.execute(
+            "SELECT id FROM answer_bank WHERE question_normalized = ?",
+            (normalized,)).fetchone()
+    if job_id is not None and row is not None:
+        # `application_answers.job_id` is a REAL foreign key, and an ad-hoc
+        # "Fill this page" or practice session carries a sentinel job id with
+        # no `jobs` row. Writing it raised IntegrityError AFTER the answer_bank
+        # row had already been inserted — a half-write, surfaced only as a
+        # warning in the log. Found by the browser suite.
+        try:
+            with db._conn() as conn:
+                known = conn.execute(
+                    "SELECT 1 FROM jobs WHERE id = ?", (job_id,)).fetchone()
+            if known:
+                record_application_answer(job_id, question_raw, row["id"],
+                                          reply)
+        except Exception:  # noqa: BLE001 — the answer is saved either way
+            log.debug("could not link the learned answer to a job",
+                      exc_info=True)
+    log.info("learned an answer from an application (tag=%s)", tag or "-")
+    return row["id"] if row else None
+
+
+def forget_observed() -> int:
+    """021 (FR-018): delete every answer read off a page, and nothing else."""
+    with db._conn() as conn:
+        cursor = conn.execute(
+            "DELETE FROM answer_bank WHERE source = 'observed'")
+        return cursor.rowcount
 
 
 def record_application_answer(

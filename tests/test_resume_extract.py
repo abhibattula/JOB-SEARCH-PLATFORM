@@ -282,3 +282,107 @@ class TestProgressCallback009:
         assert progress
         done, total = progress[-1]
         assert done == total and total >= 2
+
+
+class TestTheHistoryFieldsAddedIn021:
+    """021 US2 (T039/T040/T106/T107)."""
+
+    def test_a_v2_0_0_blob_still_validates(self):
+        """No migration: every resume_sections stored before 021 must load."""
+        from engine.resume_extract import ResumeSections
+
+        old = {
+            "experience": [{"title": "Intern", "organization": "Acme",
+                            "start": "2024-05", "end": "2024-08",
+                            "bullets": ["did things"]}],
+            "education": [{"degree": "B.S.", "institution": "UT",
+                           "start": "2021", "end": "2025", "details": ""}],
+            "projects": [], "skills": ["Python"], "target_titles": [],
+        }
+        sections = ResumeSections.model_validate(old)
+        assert sections.experience[0].organization == "Acme"
+        assert sections.experience[0].location == ""
+        assert sections.experience[0].is_current is False
+        assert sections.education[0].field_of_study == ""
+        assert sections.education[0].gpa == ""
+
+    def test_the_extraction_schema_asks_for_the_new_fields(self):
+        """analysis A5: adding fields to the model without adding them to the
+        prompt means extraction never populates them, and US2 fills nothing
+        from a freshly uploaded resume."""
+        from engine import resume_extract
+
+        for token in ("location", "is_current", "field_of_study", "gpa"):
+            assert token in resume_extract._SYSTEM, token
+
+    def test_the_prompt_stays_inside_the_documented_band(self):
+        """A >6k-char prompt overflowed the local context and failed silently
+        100% of the time (the 009 finding). The system message grew in 021 —
+        pinned so it cannot creep back to that."""
+        from engine import resume_extract
+
+        assert len(resume_extract._SYSTEM) < 2000
+        worst_case = len(resume_extract._SYSTEM) \
+            + resume_extract.MAX_LOCAL_PROMPT_CHARS
+        # ~1900 tokens against the model's 8192-token context.
+        assert worst_case < 8000
+
+    def test_present_is_read_as_a_current_role(self):
+        """T107: a zero-AI backstop, mirroring the contact fallback. The app
+        must not need a good extraction run to know where you work now."""
+        from engine.resume_extract import ResumeSections, _fill_derivable_fields
+
+        out = _fill_derivable_fields(ResumeSections(experience=[
+            {"title": "RTL Intern", "organization": "Globex", "end": "Present"},
+        ]))
+        assert out.experience[0].is_current is True
+        assert out.experience[0].end == ""
+
+    def test_a_blank_end_date_does_NOT_tick_currently_work_here(self):
+        """The paired half, and the one that matters. A date the parser
+        simply failed to read is not evidence the applicant still works
+        there — and this answer ticks a checkbox on a real application."""
+        from engine.resume_extract import ResumeSections, _fill_derivable_fields
+
+        out = _fill_derivable_fields(ResumeSections(experience=[
+            {"title": "Intern", "organization": "Acme", "end": ""},
+        ]))
+        assert out.experience[0].is_current is False
+
+    def test_a_gpa_in_the_details_line_is_recovered(self):
+        from engine.resume_extract import ResumeSections, _fill_derivable_fields
+
+        out = _fill_derivable_fields(ResumeSections(education=[
+            {"degree": "B.S. Computer Engineering", "institution": "UT",
+             "details": "Dean's List. GPA: 3.6/4.0"},
+        ]))
+        assert out.education[0].gpa == "3.6/4.0"
+
+    def test_a_field_of_study_is_split_off_a_degree(self):
+        from engine.resume_extract import ResumeSections, _fill_derivable_fields
+
+        out = _fill_derivable_fields(ResumeSections(education=[
+            {"degree": "B.S. Computer Engineering", "institution": "UT"},
+        ]))
+        assert out.education[0].field_of_study == "Computer Engineering"
+
+    def test_a_degree_with_no_recognisable_prefix_is_left_alone(self):
+        """Copying the whole degree string into a field-of-study box is a
+        wrong answer, not a partial one."""
+        from engine.resume_extract import ResumeSections, _fill_derivable_fields
+
+        out = _fill_derivable_fields(ResumeSections(education=[
+            {"degree": "Computer Engineering", "institution": "UT"},
+        ]))
+        assert out.education[0].field_of_study == ""
+
+    def test_an_extracted_value_is_never_overwritten_by_the_backstop(self):
+        from engine.resume_extract import ResumeSections, _fill_derivable_fields
+
+        out = _fill_derivable_fields(ResumeSections(education=[
+            {"degree": "B.S. Computer Engineering", "institution": "UT",
+             "gpa": "3.9", "field_of_study": "Electrical Engineering",
+             "details": "GPA: 3.6"},
+        ]))
+        assert out.education[0].gpa == "3.9"
+        assert out.education[0].field_of_study == "Electrical Engineering"

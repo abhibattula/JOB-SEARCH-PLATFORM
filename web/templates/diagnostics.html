@@ -84,6 +84,30 @@
   </section>
 
   <section class="settings-section">
+    <h2>Page reports</h2>
+    <p class="muted">Press <b>Save page report</b> in the Apply Assist panel on
+      any application to record what that page actually contains. A report
+      describes the <em>shape</em> of every field — its label, its identity, its
+      section, and what the app decided about it. It never contains anything you
+      typed, any password, or the page's full address, so it is safe to share
+      as-is when something didn't fill.</p>
+    {% if page_reports %}
+    <ul class="data">
+      {% for report in page_reports %}
+      <li>
+        <a href="/api/reports/{{ report.filename }}">{{ report.filename }} ↓</a>
+        {% if report.fields is not none %}
+        <span class="muted">— {{ report.fields }} fields</span>
+        {% endif %}
+      </li>
+      {% endfor %}
+    </ul>
+    {% else %}
+    <p class="muted">No page reports yet.</p>
+    {% endif %}
+  </section>
+
+  <section class="settings-section">
     <h2>Logs</h2>
     <p class="settings-actions">
       <a class="data" href="/api/diagnostics/logs">Export logs (zip) ↓</a>

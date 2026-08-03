@@ -12,7 +12,10 @@ import sqlite3
 
 from . import db
 
-VALID_ATS = ("greenhouse", "lever", "ashby", "workable", "smartrecruiters", "workday")
+VALID_ATS = ("greenhouse", "lever", "ashby", "workable", "smartrecruiters",
+             "workday",
+             # 021 (FR-033)
+             "recruitee", "teamtailor", "personio", "breezy", "jazzhr")
 
 # yml keys that live in dedicated columns; everything else (workday host/
 # site/search, future per-board config) round-trips through `extra` JSON.

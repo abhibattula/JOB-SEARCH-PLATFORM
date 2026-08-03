@@ -1390,3 +1390,143 @@ class TestCountsSurviveAStateOnlyMessage019:
                               {"seen": 0, "filled": 0, "needs_you": 0,
                                "drafts": 0})
         assert after == {"seen": 0, "filled": 0, "needs_you": 0, "drafts": 0}
+
+
+def _drag_panel(page, dx, dy):
+    """Drag the panel by its header, as a person would."""
+    page.evaluate(
+        """([ids, dx, dy]) => {
+            const id = ids.find(i => document.getElementById(i));
+            const host = document.getElementById(id);
+            const head = host.shadowRoot.querySelector(".hd");
+            const r = head.getBoundingClientRect();
+            const from = {clientX: r.left + r.width / 2,
+                          clientY: r.top + r.height / 2};
+            head.dispatchEvent(new MouseEvent("mousedown",
+                {bubbles: true, button: 0, ...from}));
+            window.dispatchEvent(new MouseEvent("mousemove",
+                {bubbles: true, clientX: from.clientX + dx,
+                 clientY: from.clientY + dy}));
+            window.dispatchEvent(new MouseEvent("mouseup", {bubbles: true}));
+        }""", [list(HOST_IDS), dx, dy])
+    page.wait_for_timeout(150)
+
+
+def _expand(page):
+    """Open the card — the header (the drag handle) only exists expanded."""
+    page.evaluate(
+        """(ids) => {
+            const id = ids.find(i => document.getElementById(i));
+            const root = document.getElementById(id).shadowRoot;
+            const pill = root.getElementById("pill");
+            if (pill && !root.getElementById("card").hidden) { return; }
+            if (pill) { pill.click(); }
+        }""", list(HOST_IDS))
+    page.wait_for_timeout(200)
+
+
+class TestThePanelCanBeDragged:
+    """021 US5 (FR-027..FR-030), in a real browser.
+
+    The static guards in tests/test_extension_assets.py prove the SOURCE says
+    the right things. Only this proves the control works — which is the whole
+    reason this module exists (see the header: a string-presence assertion
+    once was a control's only coverage, and the control did nothing).
+    """
+
+    def test_dragging_the_header_moves_it_and_it_stays(self, context,
+                                                       app_server,
+                                                       fixture_server):
+        assert _wait_connected()
+        page = _open_and_wait_companion(
+            context, f"{fixture_server}/bare_application.html")
+        _expand(page)
+        before = _geometry(page)
+
+        _drag_panel(page, -120, -80)
+        after = _geometry(page)
+
+        assert after["left"] < before["left"] - 60, (
+            "dragging left did not move the panel: "
+            f"{before['left']} -> {after['left']}")
+        assert after["top"] < before["top"] - 40, (
+            "dragging up did not move the panel: "
+            f"{before['top']} -> {after['top']}")
+        assert _on_screen(after)
+
+    def test_the_position_survives_a_reload(self, context, app_server,
+                                            fixture_server):
+        assert _wait_connected()
+        page = _open_and_wait_companion(
+            context, f"{fixture_server}/bare_application.html")
+        _expand(page)
+        before = _geometry(page)
+        _drag_panel(page, -150, -100)
+        moved = _geometry(page)
+        # Without this the test passes trivially when the drag does nothing:
+        # an unmoved panel "restores" to where it already was.
+        assert moved["left"] < before["left"] - 100, "the drag did not happen"
+
+        page.reload()
+        page.wait_for_function(
+            "(ids) => ids.some(id => document.getElementById(id))",
+            arg=list(HOST_IDS), timeout=45_000)
+        page.wait_for_timeout(400)
+        restored = _geometry(page)
+
+        assert abs(restored["right"] - moved["right"]) < 12, (
+            "the panel forgot where it was put: "
+            f"right {moved['right']} -> {restored['right']}")
+
+    def test_it_is_still_pinned_after_a_drag(self, context, app_server,
+                                             fixture_server):
+        """FR-029: the placement must still beat a hostile stylesheet — a
+        drag that wrote style.left normally would lose to
+        `div { position: static !important }`."""
+        assert _wait_connected()
+        page = _open_and_wait_companion(
+            context, f"{fixture_server}/hostile_css.html")
+        _expand(page)
+        before = _geometry(page)
+        _drag_panel(page, -100, -60)
+        g = _geometry(page)
+        assert g["left"] < before["left"] - 50, "the drag did not happen"
+        assert g["position"] == "fixed", (
+            f"a hostile stylesheet unpinned the dragged panel: {g['position']}")
+        assert _on_screen(g)
+
+    def test_a_saved_position_is_clamped_into_a_smaller_viewport(
+            self, context, app_server, fixture_server):
+        """FR-028: a position saved on a big monitor must not strand the
+        panel off-screen on a laptop."""
+        assert _wait_connected()
+        page = _open_and_wait_companion(
+            context, f"{fixture_server}/bare_application.html")
+        _expand(page)
+        before = _geometry(page)
+        _drag_panel(page, -400, -300)
+        moved = _geometry(page)
+        assert moved["left"] < before["left"] - 300, "the drag did not happen"
+
+        page.set_viewport_size({"width": 420, "height": 380})
+        page.wait_for_timeout(400)
+
+        assert _on_screen(_geometry(page)), (
+            "the panel is off-screen after the window shrank")
+
+    def test_reset_returns_it_to_the_corner(self, context, app_server,
+                                            fixture_server):
+        assert _wait_connected()
+        page = _open_and_wait_companion(
+            context, f"{fixture_server}/bare_application.html")
+        _expand(page)
+        before = _geometry(page)
+        _drag_panel(page, -180, -120)
+        assert _geometry(page)["left"] < before["left"] - 100
+
+        _click(page, ["resetpos"])
+        page.wait_for_timeout(250)
+
+        after = _geometry(page)
+        assert abs(after["right"] - before["right"]) < 12
+        assert abs(after["bottom"] - before["bottom"]) < 12

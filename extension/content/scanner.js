@@ -422,15 +422,117 @@ window.jeScanner = (function () {
       .map(function (pair) { return pair.desc; });
   }
 
+  // 021 (FR-008, contracts/section_context.md): which region of the form a
+  // field belongs to, and which repeat of that region.
+  //
+  // This is what makes de-duplicating by question SAFE. Two "Start date"
+  // fields in two employment blocks are two real questions; collapsing them
+  // would be worse than the flood it fixes. It is also how a work-history
+  // block knows which stored employment entry answers it.
+  //
+  // Recomputed on EVERY scan and never written to the DOM. A stamped index
+  // would drift on exactly the React remounts that made the v2.0.0 panel
+  // unreadable in the first place.
+  const _SECTION_SEL = [
+    "fieldset",
+    "[role=group]",
+    "[role=region]",
+    '[data-automation-id$="Section"]',
+    '[data-automation-id$="Panel"]',
+  ].join(",");
+
+  const _HEADING_SEL = "h1,h2,h3,h4,h5,h6,legend";
+
+  function sectionNameOf(node) {
+    if (!node) { return ""; }
+    if (node.tagName.toLowerCase() === "fieldset") {
+      const legend = node.querySelector("legend");
+      // stripControls, not innerText: a legend whose block also renders a
+      // control's own text would otherwise name the section after the
+      // applicant's answer. That is the 019/020 bug, in a third place.
+      if (legend) {
+        const text = stripControls(legend);
+        if (text) { return text; }
+      }
+    }
+    const aria = (node.getAttribute("aria-label") || "").trim();
+    if (aria) { return aria; }
+    const referenced = referencedText(node);
+    if (referenced) { return referenced; }
+    const heading = node.querySelector(_HEADING_SEL);
+    if (heading) {
+      const text = stripControls(heading);
+      if (text) { return text; }
+    }
+    return "";
+  }
+
+  function precedingHeading(el) {
+    let node = el;
+    let hops = 0;
+    while (node && hops < 12) {
+      let prev = node.previousElementSibling;
+      let sideways = 0;
+      while (prev && sideways < 4) {
+        if (/^h[1-6]$/.test(prev.tagName.toLowerCase())) {
+          const text = stripControls(prev);
+          if (text) { return { label: text, node: prev }; }
+        }
+        prev = prev.previousElementSibling;
+        sideways += 1;
+      }
+      node = node.parentElement;
+      hops += 1;
+    }
+    return { label: "", node: null };
+  }
+
+  function sectionOf(el) {
+    let node = el.closest ? el.closest(_SECTION_SEL) : null;
+    while (node) {
+      const label = sectionNameOf(node);
+      // The identity is the CONTAINER, not the label — two blocks named
+      // "Work Experience" are two sections, and the index has to tell them
+      // apart even though their text is identical.
+      if (label) { return { label: label, node: node }; }
+      node = node.parentElement
+        ? node.parentElement.closest(_SECTION_SEL) : null;
+    }
+    return precedingHeading(el);
+  }
+
+  function assignSections(pairs) {
+    // `pairs` arrive in document order, so each label's container list grows
+    // in document order too and the index needs no sorting.
+    const order = new Map();
+    pairs.forEach(function (pair) {
+      const found = sectionOf(pair.el);
+      if (!found.label) {
+        // "" means UNDETERMINED, not "no section". The app degrades to a
+        // flat list; guessing a grouping is worse than not grouping.
+        pair.desc.section_label = "";
+        pair.desc.section_index = 0;
+        return;
+      }
+      let nodes = order.get(found.label);
+      if (!nodes) { nodes = []; order.set(found.label, nodes); }
+      let index = nodes.indexOf(found.node);
+      if (index === -1) { nodes.push(found.node); index = nodes.length - 1; }
+      pair.desc.section_label = found.label;
+      pair.desc.section_index = index;
+    });
+    return pairs;
+  }
+
   function serialize() {
     const els = deepQueryAll(FIELD_SELECTOR).filter(function (el) {
       // 020: readonly editors are never fields — filtered here as well as in
       // probe() so the two never disagree about what is on the page.
       return !isRichText(el) || isRichTextWritable(el);
     });
-    const pairs = els.map(function (el) {
+    const pairs = assignSections(els.map(function (el) {
       return { el: el, desc: describe(el) };
-    });
+    }));
     return groupControls(dropNestedChoiceControls(pairs));
   }
 
@@ -574,5 +676,8 @@ window.jeScanner = (function () {
 
   return { serialize, elementByIdx, docToken, probe, looksLikeApplicationForm,
            deepQueryAll, isVisible, isPlaceholderValue, formContext,
-           captchaPresent, credentialWall, isRichText, richTextValue };
+           captchaPresent, credentialWall, isRichText, richTextValue,
+           // 021 (FR-008): exposed so the browser suite can assert section
+           // resolution directly rather than inferring it from a fill.
+           sectionOf, assignSections };
 })();

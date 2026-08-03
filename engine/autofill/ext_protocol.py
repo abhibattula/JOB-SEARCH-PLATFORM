@@ -77,6 +77,13 @@ class Descriptor(_Strict):
     # both; defaults keep their payloads valid.
     members: list[Member] = []
     required: bool = False
+    # 021 (FR-008, additive — PROTOCOL_V stays 1): which region of the form
+    # this field sits in, and which repeat of that region. `section_label`
+    # is "" when UNDETERMINED, which means the app groups flat rather than
+    # guessing — a wrong grouping is worse than none. An older companion
+    # omits both and behaves exactly as v2.0.0 did.
+    section_label: str = ""
+    section_index: int = 0
     # 019 (T003, additive — PROTOCOL_V stays 1): which kind of credential
     # form the field sits in, judged by the serializer that can see the form
     # ("login": one password input; "registration": two / create-account
@@ -262,8 +269,26 @@ class AdvanceStep(_Strict):
     step_key: str
 
 
+class PageReport(_Strict):
+    """021 (FR-001): the applicant asks for a shareable description of this
+    page.
+
+    v2.0.0 met a real Workday application and reported Seen 156 with most
+    rows blank, and the suite's two Workday fixtures (9 and 2 fields) could
+    not tell us whether that was one scan or an accumulation. This is how the
+    question gets answered with evidence rather than a guess.
+
+    `url` is reduced to a bare host before anything is written — a real ATS
+    URL routinely carries a session or candidate token in its query string.
+    """
+    tab_id: int
+    frame_id: int
+    url: str = ""
+
+
 _INBOUND: dict[str, type[_Strict]] = {
     "hello": Hello,
+    "page_report": PageReport,
     "tab_opened": TabOpened,
     "fields": Fields,
     "fill_result": FillResult,

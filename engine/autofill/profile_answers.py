@@ -37,6 +37,7 @@ _DIRECT: dict[str, str] = {
     "github_url": "github_url",
     "other_url": "other_url",
     # address
+    "phone_country_code": "phone_country_code",
     "location_address1": "address_line1",
     "location_address2": "address_line2",
     "location_city": "city",
@@ -62,6 +63,7 @@ _DIRECT: dict[str, str] = {
     "notice_period": "notice_period",
     "remote_preference": "remote_preference",
     # defaults
+    "drivers_licence": "drivers_licence",
     "how_heard": "how_heard_default",
     # voluntary self-identification (D1) — stored by the applicant only,
     # never inferred, never sent to a model.
@@ -77,6 +79,8 @@ _DIRECT: dict[str, str] = {
 _YES_NO: dict[str, str] = {
     "relocate": "willing_to_relocate",
     "travel": "willing_to_travel",
+    # 021 (FR-031)
+    "security_clearance": "security_clearance",
 }
 
 # Tags this module can answer. Anything outside it falls through to the
@@ -111,6 +115,20 @@ def _yes_no(value: str | None) -> str | None:
     if folded in ("no", "n", "false"):
         return "No"
     return value
+
+
+def profile_field_for(tag: str | None) -> str | None:
+    """021 (FR-020/FR-032): which stored profile field answers this tag.
+
+    Two callers: the "Save to profile" click on a learned answer, and the
+    panel's "add it to your profile" line, which used to be a dead
+    instruction rather than a link to the field it meant.
+    """
+    if not tag:
+        return None
+    if tag in _DIRECT:
+        return _DIRECT[tag]
+    return _YES_NO.get(tag)
 
 
 def answer_for(tag: str | None, profile: dict) -> str | None:

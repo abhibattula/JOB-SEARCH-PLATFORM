@@ -289,6 +289,9 @@ def test_profile_answer_tags_and_resolution_agree():
         how_heard_default="hh", selfid_gender="Man", selfid_race="Asian",
         selfid_veteran="Not a protected veteran", selfid_disability="No",
         selfid_orientation="Straight",
+        # 021 (FR-031): asked on the applicant's real Workday application.
+        phone_country_code="+1", security_clearance="no",
+        drivers_licence="yes",
     )
     unresolved = [tag for tag in profile_answers.PROFILE_ANSWER_TAGS
                   if profile_answers.answer_for(tag, filled) is None]

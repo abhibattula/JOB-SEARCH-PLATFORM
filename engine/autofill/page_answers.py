@@ -43,12 +43,39 @@ ITEM_NEEDS_YOU_REASONS = ("version_mismatch", "no_saved_login")
 
 # The fields the panel renders. The digest is taken over exactly these, so a
 # change the applicant cannot see never causes a re-render.
-_RENDERED = ("key", "je_idx", "question", "answer", "group", "state", "reason",
-             "askable")
+_RENDERED = ("key", "je_idx", "je_idx_all", "question", "answer", "group",
+             "state", "reason", "askable", "section_label", "section_index",
+             "profile_field")
 
 
 def _normalize(question: str) -> str:
     return " ".join((question or "").split()).casefold()
+
+
+def _row_key(section_label: str, section_index: int, question: str) -> str:
+    """A row's identity in the panel, stable across scans.
+
+    Must be a STRING: panel.js keys its row Map on this, and a tuple
+    serializes to a JSON array whose `Map.get()` can never match. Must also be
+    independent of which ELEMENT won the de-duplication, or the identity
+    changes between scans and the panel rebuilds the row the applicant is
+    typing into.
+    """
+    return f"{section_label} | {section_index} | {_normalize(question)}"
+
+
+def _profile_field(tag: str | None) -> str:
+    """021 (FR-032): the profile field that would answer this question.
+
+    Kept import-light and failure-tolerant — this module is pure and is built
+    inside the decision loop, where an exception would stop a page filling.
+    """
+    try:
+        from . import profile_answers
+
+        return profile_answers.profile_field_for(tag) or ""
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def _classify(item: dict, record: dict | None) -> tuple[str, str, bool]:
@@ -87,8 +114,8 @@ def build(entries, drafter_records=None) -> list[dict]:
     for question, rec in (drafter_records or {}).items():
         records[_normalize(question)] = rec
 
-    ordered: list[str] = []
-    by_key: dict[str, dict] = {}
+    ordered: list[tuple] = []
+    by_key: dict[tuple, dict] = {}
 
     for item in entries:
         # FR-037: a secret is fill-and-forget. It goes into the field and is
@@ -103,20 +130,77 @@ def build(entries, drafter_records=None) -> list[dict]:
         answer = item.get("answer") or ""
         if not answer and record is not None:
             answer = record.get("answer") or ""
-        key = item.get("key") or question
-        if key not in by_key:
+        section_label = item.get("section_label") or ""
+        section_index = int(item.get("section_index") or 0)
+        je_idx = item.get("je_idx") or ""
+        # 021 (FR-004/FR-010): the key is the QUESTION within its section, not
+        # the element. A Workday prompt is a button plus its listbox and
+        # FIELD_SELECTOR matches both, so keying on (doc, je_idx) — as v2.0.0
+        # did — made every dropdown two identical rows. Scoping to the section
+        # is what keeps this safe: two employment blocks both asking "From"
+        # are two real questions, and merging them would be worse than the
+        # flood it fixes.
+        key = (section_label, section_index, _normalize(question))
+        existing = by_key.get(key)
+        if existing is None:
             ordered.append(key)
-        by_key[key] = {
-            "key": key,
-            "je_idx": item.get("je_idx") or "",
-            "question": question,
-            "answer": answer,
+            by_key[key] = {
+                # 021: the row's identity, as a STABLE STRING.
+                #
+                # This used to be `field_core.key(descriptor)` — a TUPLE, which
+                # serializes to a JSON array, and panel.js keys its row Map on
+                # it. `Map.get()` on a fresh array instance can never match, so
+                # every push recreated every row; only the digest's
+                # send-nothing-if-unchanged rule was hiding it. Caught by the
+                # browser suite: the input the applicant was typing into was
+                # destroyed.
+                #
+                # The de-duplication key is the right identity anyway — it does
+                # not depend on WHICH element happened to win this scan.
+                "key": _row_key(section_label, section_index, question),
+                "je_idx": je_idx,
+                # FR-005: every element behind this row, so "Show me" can
+                # reach each one. `je_idx` STAYS A STRING — panel.js uses it
+                # as one in five places and it feeds the render digest.
+                "je_idx_all": [je_idx] if je_idx else [],
+                "question": question,
+                "answer": answer,
+                "group": group,
+                "state": state,
+                "reason": item.get("reason")
+                          or (record.get("reason") if record else None),
+                "askable": askable,
+                "section_label": section_label,
+                "section_index": section_index,
+                # 021 (FR-032): "Add it to your profile and it fills
+                # automatically next time" was a dead instruction — it never
+                # said WHICH field. On the applicant's real page it appeared
+                # on Country/Region and State, both of which the app already
+                # knows about and they had simply not filled in.
+                "profile_field": _profile_field(item.get("tag")),
+            }
+            continue
+        if je_idx and je_idx not in existing["je_idx_all"]:
+            existing["je_idx_all"].append(je_idx)
+        # An answerless later decision never displaces one that carries a
+        # value — what the applicant needs to review is precisely the value
+        # we put there (the v1.8.0 rule, preserved through collapsing).
+        if not answer and existing["answer"]:
+            continue
+        existing.update({
+            # `key` is deliberately NOT updated: it is derived from the
+            # section and the question, both of which are already equal here,
+            # and a row identity that changes between scans is a row the
+            # panel rebuilds under the applicant's fingers.
+            "je_idx": existing["je_idx"] or je_idx,
+            "question": question or existing["question"],
+            "answer": answer or existing["answer"],
             "group": group,
             "state": state,
             "reason": item.get("reason")
                       or (record.get("reason") if record else None),
             "askable": askable,
-        }
+        })
 
     items = [by_key[k] for k in ordered]
     # needs-you first: it is the only group with anything to do in it.

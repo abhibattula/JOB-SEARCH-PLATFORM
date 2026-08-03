@@ -18,6 +18,43 @@
       <label>Groq API key {% if settings.llm_key_set %}(leave blank to keep the current one){% endif %}
         <input type="password" name="llm_api_key" placeholder="gsk_…" autocomplete="off">
       </label>
+
+      <!-- 021 (FR-023): this used to be a hidden PREFER_LOCAL_LLM toggle
+           that defaulted ON, which meant saving a key changed NOTHING and
+           nothing said so. The choice is now explicit, and it says exactly
+           what leaves the machine. -->
+      <fieldset>
+        <legend>What runs the AI you're waiting on</legend>
+        <p class="muted">Tailored resumes, cover letters and drafted
+          application answers. On this machine the bundled offline model
+          writes at about 5–6 words a second, so a cover letter takes two to
+          three minutes. The cloud tier does it in seconds.</p>
+        <label>
+          <input type="radio" name="ai_interactive_tier" value="cloud"
+                 {% if settings.ai_interactive_tier != "local" %}checked{% endif %}>
+          <b>Use the free cloud tier when a key is saved</b> (recommended)
+        </label>
+        <p class="muted" style="margin-left:1.5em">
+          Sends <b>your resume text and the job description</b> to the
+          provider above. Never your passwords, never a saved login, never
+          your voluntary self-identification answers. Falls back to the
+          offline model automatically when you're offline, rate-limited, or
+          the provider errors — you don't have to do anything.
+        </p>
+        <label>
+          <input type="radio" name="ai_interactive_tier" value="local"
+                 {% if settings.ai_interactive_tier == "local" %}checked{% endif %}>
+          <b>Always use the bundled offline model</b>
+        </label>
+        <p class="muted" style="margin-left:1.5em">
+          Nothing leaves this machine, ever. Slower: expect a few minutes per
+          tailored resume.
+        </p>
+        <p class="muted">Either way, <b>bulk background scoring always runs
+          offline</b> — the free cloud tiers allow about a thousand requests
+          a day and that budget belongs to what you're actually waiting for.
+          And the whole app keeps working with no key and no internet.</p>
+      </fieldset>
       <details>
         <summary class="muted">Advanced: AI provider &amp; models</summary>
         <label>Provider preset (fills the fields below — both are free, no card)

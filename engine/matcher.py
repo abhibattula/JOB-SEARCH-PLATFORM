@@ -47,22 +47,41 @@ def llm_available() -> bool:
     return bool(settings.get("LLM_API_KEY")) or local_llm.available()
 
 
-def scoring_tier() -> str:
+def scoring_tier(*, purpose: str = "bulk") -> str:
     """Which tier will actually serve the next call. 009 (FR-017): with
     PREFER_LOCAL_LLM on (the default), the bundled offline model serves
     everything when present — even with a cloud key saved; the key becomes
     the automatic fallback on local failure. 'basic' means no LLM tier at
-    all; callers use engine/basic_match.py (no _chat call)."""
+    all; callers use engine/basic_match.py (no _chat call).
+
+    021 (FR-023/FR-024): `purpose` is KEYWORD-ONLY and defaults to "bulk",
+    which is v2.0.0's exact behaviour — this function is called with no
+    arguments from four places in `engine/` and asserted eight times in the
+    suite, and all of that must keep working unchanged (analysis A2).
+
+    purpose="interactive" is work the applicant is sitting and waiting for:
+    tailoring, a drafted answer, Apply Assist. On this machine the on-device
+    model generates at ~5-6 tok/s, so a ~180-word cover letter is over two
+    minutes of pure generation. When a cloud key exists, that work goes to
+    the cloud tier and the on-device model stays the automatic fallback.
+
+    Bulk background work NEVER uses the cloud tier. Groq's free tier is
+    ~1K requests/day, and a 627-job backlog would eat two thirds of it — the
+    budget is reserved for what the applicant is waiting on. 020 already made
+    bulk ranking model-free, so nothing is lost.
+    """
     from . import settings
 
-    prefer_local = settings.get("PREFER_LOCAL_LLM") != "0"
-    if prefer_local and local_llm.available():
+    if not local_llm.available():
+        return "cloud" if settings.get("LLM_API_KEY") else "basic"
+    if purpose == "interactive" and settings.get("LLM_API_KEY") \
+            and settings.get("AI_INTERACTIVE_TIER", "cloud") != "local":
+        return "cloud"
+    if settings.get("PREFER_LOCAL_LLM") != "0":
         return "local"
     if settings.get("LLM_API_KEY"):
         return "cloud"
-    if local_llm.available():
-        return "local"
-    return "basic"
+    return "local"
 
 
 def _min_interval() -> float:
@@ -111,7 +130,8 @@ def _chat_local(messages: list[dict], purpose: str = "prose",
 
 
 def _chat(messages: list[dict], purpose: str = "prose",
-          timeout_s: float | None = None) -> str:
+          timeout_s: float | None = None, *,
+          interactive: bool = False) -> str:
     """Tier dispatcher, driven by scoring_tier() (single source of truth).
     009 (FR-017): a preferred-local failure falls through to the cloud key
     automatically when one exists. purpose="json" routes structured tasks
@@ -121,7 +141,11 @@ def _chat(messages: list[dict], purpose: str = "prose",
     own HTTP timeouts and ignores it."""
     from . import settings
 
-    tier = scoring_tier()
+    # Called with NO arguments on the bulk path, byte-for-byte as v2.0.0 did.
+    # Four callers in `engine/` and eight suite assertions depend on that
+    # shape (analysis A2), and so does every test that stubs this function.
+    tier = scoring_tier(purpose="interactive") if interactive \
+        else scoring_tier()
     if tier == "local":
         try:
             return _chat_local(messages, purpose=purpose, timeout_s=timeout_s)
@@ -132,8 +156,45 @@ def _chat(messages: list[dict], purpose: str = "prose",
                 return _chat_cloud(messages, purpose=purpose)
             raise
     if tier == "cloud":
-        return _chat_cloud(messages, purpose=purpose)
+        try:
+            return _chat_cloud(messages, purpose=purpose)
+        except Exception as exc:
+            # 021 (FR-025, analysis A7): a retired model id, a bad key or a
+            # rate limit must NEVER read as "the AI is broken" — that is the
+            # exact silent-failure class FR-022 exists to remove. Name it,
+            # then fall back on-device so the applicant still gets an answer.
+            if local_llm.available():
+                log.warning("cloud tier failed (%s) — falling back on-device",
+                            _cloud_failure_reason(exc))
+                return _chat_local(messages, purpose=purpose,
+                                   timeout_s=timeout_s)
+            raise RuntimeError(
+                f"the cloud AI could not be reached: "
+                f"{_cloud_failure_reason(exc)}") from exc
     raise RuntimeError("no LLM tier available (no cloud key, no local model)")
+
+
+def _cloud_failure_reason(exc: Exception) -> str:
+    """A sentence the applicant can act on, not a stack trace."""
+    text = f"{exc}"
+    lowered = text.lower()
+    if "model" in lowered and ("not found" in lowered or "does not exist"
+                               in lowered or "decommission" in lowered):
+        model = settings_get_model()
+        return (f"the model {model!r} is no longer offered — pick another in "
+                f"Settings")
+    if "401" in text or "invalid_api_key" in lowered or "unauthorized" \
+            in lowered:
+        return "the API key was rejected — check it in Settings"
+    if "429" in text or "rate limit" in lowered:
+        return "the free tier's rate limit was hit — it will retry shortly"
+    return f"{type(exc).__name__}: {text}"[:200]
+
+
+def settings_get_model() -> str:
+    from . import settings
+
+    return settings.get("LLM_MODEL") or DEFAULT_MODEL
 
 
 _FENCE_RE = re.compile(r"```(?:json)?\s*(.*?)\s*```", re.S)

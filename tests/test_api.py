@@ -1305,3 +1305,83 @@ class TestAssessmentProgress020:
 
         html = client.get("/").text
         assert "paused" in html.lower()
+
+
+class TestTailoringNeverFailsSilently:
+    """021 US3 (FR-022). The applicant pressed "Tailor for this job" and
+    nothing happened at all — no result, no error. Two causes:
+
+    1. the inline handler did JSON.parse(xhr.responseText).detail, which
+       THROWS on an empty body, killing the handler before it could show
+       anything;
+    2. the request queued behind a ~67 s background assessment in a
+       strict-FIFO queue, against its own deadline.
+    """
+
+    def _job(self):
+        db.upsert_job({"title": "RTL Design Engineer", "company": "Intel",
+                       "url": "https://intel.wd1.myworkdayjobs.com/j/1",
+                       "source": "workday", "description": "Verify designs.",
+                       "posted_date": None})
+        with db._conn() as conn:
+            return conn.execute("SELECT id FROM jobs").fetchone()["id"]
+
+    def test_a_failing_ai_call_returns_a_reason(self, client, monkeypatch):
+        from engine import matcher, tailor
+
+        job_id = self._job()
+        db.save_profile(resume_text="x" * 200)
+        monkeypatch.setattr(matcher, "llm_available", lambda: True)
+
+        def boom(*a, **k):
+            raise RuntimeError("on-device AI chat timed out after 300s")
+
+        monkeypatch.setattr(matcher, "_chat", boom)
+        response = client.post(f"/api/jobs/{job_id}/tailor")
+        assert response.status_code == 502
+        detail = response.json()["detail"]
+        assert "timed out" in detail
+        assert detail != ""
+
+    def test_an_unusable_result_is_also_explained(self, client, monkeypatch):
+        from engine import matcher, tailor
+
+        job_id = self._job()
+        db.save_profile(resume_text="x" * 200)
+        monkeypatch.setattr(matcher, "llm_available", lambda: True)
+        monkeypatch.setattr(tailor, "tailor_for_job", lambda *a, **k: None)
+        response = client.post(f"/api/jobs/{job_id}/tailor")
+        assert response.status_code == 502
+        assert response.json()["detail"]
+
+    def test_the_page_handler_survives_an_empty_response_body(self, client):
+        """The direct regression test for what the applicant saw. The old
+        inline handler threw on this and displayed nothing."""
+        job_id = self._job()
+        html = client.get(f"/jobs/{job_id}").text
+        assert "jeTailorDone" in html
+        # The parse must be guarded, and there must be a message for the
+        # case where there is no body at all to parse.
+        assert "catch (e)" in html
+        assert "the request was cut" in html
+
+    def test_tailoring_claims_the_interactive_lane(self, client, monkeypatch):
+        """FR-021: background assessment stands down for the whole call."""
+        from engine import matcher, upgrade
+
+        job_id = self._job()
+        db.save_profile(resume_text="x" * 200)
+        monkeypatch.setattr(matcher, "llm_available", lambda: True)
+        observed = {}
+
+        def record(*a, **k):
+            observed["pending"] = upgrade.interactive_pending()
+            observed["interactive_flag"] = k.get("interactive")
+            raise RuntimeError("stop here")
+
+        monkeypatch.setattr(matcher, "_chat", record)
+        client.post(f"/api/jobs/{job_id}/tailor")
+        assert observed["pending"] is True
+        assert observed["interactive_flag"] is True
+        # ...and released afterwards, or every later pass stands down forever.
+        assert upgrade.interactive_pending() is False

@@ -1,0 +1,136 @@
+{% extends "base.html" %}
+{% block title %}Learned answers · Job Engine{% endblock %}
+{% block content %}
+<article class="profile">
+  <h1>Learned answers</h1>
+  <p class="muted">Answers you typed yourself on a real application. The app
+    noticed the field was empty, saw you fill it, and kept the answer so the
+    same question fills itself next time.</p>
+  <p class="muted"><b>What is never kept:</b> passwords and logins, voluntary
+    self-identification, date of birth, national or government ID numbers, and
+    anything to do with a bank card or account. Those are refused before the
+    value is copied anywhere at all.</p>
+
+  <section class="settings-section">
+    <p class="settings-actions">
+      <button type="button" class="ghost" id="forget-all">Forget everything learned</button>
+      <span id="forget-result" class="data"></span>
+    </p>
+    <p class="muted">This removes only what was learned from a page. Answers
+      you wrote in the app, and answers you reviewed and accepted, are left
+      alone.</p>
+
+    <div id="learned-rows"><p class="muted">Loading…</p></div>
+  </section>
+
+  <script>
+    (function () {
+      const rows = document.getElementById('learned-rows');
+
+      async function load() {
+        const resp = await fetch('/api/autofill/answers/observed');
+        const data = await resp.json();
+        rows.textContent = '';
+        if (!data.entries || !data.entries.length) {
+          const empty = document.createElement('p');
+          empty.className = 'muted';
+          empty.textContent = 'Nothing learned yet. Answer a question '
+            + 'yourself during Apply Assist and it will appear here.';
+          rows.appendChild(empty);
+          return;
+        }
+        data.entries.forEach(function (entry) {
+          const wrap = document.createElement('div');
+          wrap.className = 'settings-section';
+
+          const q = document.createElement('p');
+          q.innerHTML = '<b></b>';
+          q.querySelector('b').textContent = entry.question;
+          wrap.appendChild(q);
+
+          const input = document.createElement('textarea');
+          input.value = entry.answer;
+          input.rows = Math.min(6, Math.max(2,
+            Math.ceil(entry.answer.length / 80)));
+          wrap.appendChild(input);
+
+          if (entry.from_job) {
+            const src = document.createElement('p');
+            src.className = 'muted';
+            src.textContent = 'From your application to ' + entry.from_job;
+            wrap.appendChild(src);
+          }
+
+          const actions = document.createElement('p');
+          actions.className = 'settings-actions';
+
+          const save = document.createElement('button');
+          save.type = 'button';
+          save.textContent = 'Save changes';
+          save.addEventListener('click', async function () {
+            const r = await fetch('/api/autofill/answers', {
+              method: 'POST',
+              headers: {'Content-Type': 'application/json'},
+              body: JSON.stringify({question_raw: entry.question,
+                                    answer: input.value}),
+            });
+            note.textContent = r.ok ? '✓ saved as your own answer' : '✕ failed';
+          });
+          actions.appendChild(save);
+
+          if (entry.profile_fact) {
+            const toProfile = document.createElement('button');
+            toProfile.type = 'button';
+            toProfile.className = 'ghost';
+            toProfile.textContent = 'Save to profile';
+            toProfile.title = 'Store this as a fact about you, so it fills '
+              + 'everywhere rather than only on this question';
+            toProfile.addEventListener('click', async function () {
+              const r = await fetch('/api/autofill/answers/observed/to-profile', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({id: entry.id}),
+              });
+              const body = await r.json();
+              note.textContent = r.ok
+                ? '✓ saved to your profile (' + body.field + ')'
+                : '✕ ' + (body.detail || 'failed');
+            });
+            actions.appendChild(toProfile);
+          }
+
+          const del = document.createElement('button');
+          del.type = 'button';
+          del.className = 'ghost';
+          del.textContent = 'Forget this one';
+          del.addEventListener('click', async function () {
+            await fetch('/api/autofill/answers/' + entry.id,
+                        {method: 'DELETE'});
+            load();
+          });
+          actions.appendChild(del);
+
+          const note = document.createElement('span');
+          note.className = 'data';
+          actions.appendChild(note);
+
+          wrap.appendChild(actions);
+          rows.appendChild(wrap);
+        });
+      }
+
+      document.getElementById('forget-all').addEventListener('click',
+        async function () {
+          const resp = await fetch('/api/autofill/answers/observed/forget',
+                                   {method: 'POST'});
+          const body = await resp.json();
+          document.getElementById('forget-result').textContent =
+            '✓ forgot ' + body.removed + ' learned answer(s)';
+          load();
+        });
+
+      load();
+    }());
+  </script>
+</article>
+{% endblock %}

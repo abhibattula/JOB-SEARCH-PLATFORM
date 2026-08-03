@@ -37,6 +37,11 @@ class ExperienceEntry(BaseModel):
     start: str = ""
     end: str = ""
     bullets: list[str] = []
+    # 021 (FR-011): what a real application asks for and this never held.
+    # Both default empty so every resume_sections blob stored by v2.0.0 and
+    # earlier still validates — no migration.
+    location: str = ""
+    is_current: bool = False
 
 
 class EducationEntry(BaseModel):
@@ -45,6 +50,11 @@ class EducationEntry(BaseModel):
     start: str = ""
     end: str = ""
     details: str = ""
+    # 021 (FR-011): ATSs ask for the field of study SEPARATELY from the
+    # degree, and Workday's "Overall Result (GPA)" was one of the questions
+    # the applicant was handed on a real application.
+    field_of_study: str = ""
+    gpa: str = ""
 
 
 class ProjectEntry(BaseModel):
@@ -87,8 +97,10 @@ _SYSTEM = (
     "structured sections. Respond with ONLY a JSON object, no prose, matching "
     "exactly this schema: {\"experience\": [{\"title\": string, "
     "\"organization\": string, \"start\": string, \"end\": string, "
+    "\"location\": string, \"is_current\": boolean, "
     "\"bullets\": [string]}], \"education\": [{\"degree\": string, "
     "\"institution\": string, \"start\": string, \"end\": string, "
+    "\"field_of_study\": string, \"gpa\": string, "
     "\"details\": string}], \"projects\": [{\"name\": string, "
     "\"description\": string, \"bullets\": [string]}], \"skills\": [string], "
     "\"contact\": {\"first_name\": string, \"last_name\": string, "
@@ -97,7 +109,10 @@ _SYSTEM = (
     "\"target_titles\": [string]}. "
     "Copy wording faithfully from the resume — never invent, embellish, or "
     "summarize away specifics. Dates as written (e.g. \"2025-05\" or "
-    "\"May 2025\"). contact holds ONLY details literally present in the "
+    "\"May 2025\"). is_current: true ONLY when the resume says the role is "
+    "ongoing (\"Present\", \"Current\"). gpa: exactly as printed (\"3.6\", "
+    "\"3.6/4.0\") or \"\" when absent — never computed, never rounded. "
+    "contact holds ONLY details literally present in the "
     "resume (empty string when absent — never guess). target_titles: up to "
     "5 job titles this resume is clearly aimed at, inferred from its "
     "experience and objective. Omit sections the resume does not contain."
@@ -236,6 +251,50 @@ def _extract_single(resume_text: str, part_note: str = "") -> ResumeSections | N
     return None
 
 
+# 021 (analysis A5 / T107): a deterministic backstop for the two history
+# fields a real application asks for most and a 1.5B model most often drops.
+# Mirrors the existing zero-AI contact fallback above: the app must not need
+# a good extraction run to know the applicant still works somewhere.
+_ONGOING_END = re.compile(r"^\s*(present|current|now|ongoing|to date|-)\s*$",
+                          re.I)
+_GPA_RE = re.compile(
+    # "GPA: 3.6", "GPA 3.6/4.0", "G.P.A. — 3.6"
+    r"\bG\.?P\.?A\.?\b[^0-9]{0,12}(\d\.\d{1,2}(?:\s*/\s*\d(?:\.\d{1,2})?)?)"
+    # or a bare "3.6/4.0", which only ever means a GPA on a resume
+    r"|(\d\.\d{1,2}\s*/\s*[45](?:\.\d{1,2})?)", re.I)
+
+
+def _fill_derivable_fields(sections: ResumeSections) -> ResumeSections:
+    """Fill what can be read off the text without asking the model twice."""
+    for role in sections.experience:
+        if not role.is_current and _ONGOING_END.match(role.end or ""):
+            # "Present" is an end-date the applicant WROTE, so this is their
+            # statement, not an inference from a blank. A blank end date is
+            # left alone — a parsing gap must never tick "I currently work
+            # here" on a real application.
+            role.is_current = True
+            role.end = ""
+    for school in sections.education:
+        if school.gpa:
+            continue
+        match = _GPA_RE.search(school.details or "")
+        if match:
+            school.gpa = (match.group(1) or match.group(2) or "").strip()
+        if not school.field_of_study and school.degree:
+            # "B.S. Computer Engineering" -> "Computer Engineering". Only when
+            # a recognised degree prefix is present; otherwise the whole
+            # degree string would be copied into a field-of-study box.
+            trimmed = re.sub(
+                r"^\s*(?:b\.?\s?s\.?|b\.?\s?a\.?|m\.?\s?s\.?|m\.?\s?a\.?"
+                r"|ph\.?\s?d\.?|b\.?tech|m\.?tech|associate(?:'?s)?"
+                r"|bachelor(?:'?s)?|master(?:'?s)?|doctorate)"
+                r"[\s,]*(?:degree)?[\s,]*(?:of|in)?[\s,]*",
+                "", school.degree, flags=re.I).strip()
+            if trimmed and trimmed.casefold() != (school.degree or "").casefold():
+                school.field_of_study = trimmed
+    return sections
+
+
 def extract(resume_text: str, on_progress=None) -> ResumeSections | None:
     """Extract structured sections, or None when no AI tier is available or
     nothing validates. Never raises.
@@ -251,7 +310,8 @@ def extract(resume_text: str, on_progress=None) -> ResumeSections | None:
     if tier == "basic":
         return None
     if tier != "local":
-        return _extract_single(resume_text[:24000])
+        single = _extract_single(resume_text[:24000])
+        return _fill_derivable_fields(single) if single else None
 
     chunks = _split_chunks(resume_text)
     total = len(chunks)
@@ -270,4 +330,5 @@ def extract(resume_text: str, on_progress=None) -> ResumeSections | None:
                 on_progress(i, total)
             except Exception:
                 pass
-    return _merge(parts)
+    merged = _merge(parts)
+    return _fill_derivable_fields(merged) if merged else None

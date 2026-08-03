@@ -404,6 +404,11 @@ def get_settings():
         "autofill_use_tailored_pdf": settings.get("AUTOFILL_USE_TAILORED_PDF") != "0",
         # 015 (D3/FR-016)
         "preferred_browser": settings.get("PREFERRED_BROWSER") or "chrome",
+        # 021 (FR-023): which tier serves work the applicant is waiting
+        # on. Defaults to cloud so a saved key actually does something —
+        # the v2.0.0 failure was that saving one changed nothing at all.
+        "ai_interactive_tier": settings.get("AI_INTERACTIVE_TIER")
+        or "cloud",
     }
 
 
@@ -420,6 +425,7 @@ async def save_settings(
     alerts_enabled: str | None = Form(None),
     theme: str | None = Form(None),
     autofill_use_tailored_pdf: str | None = Form(None),
+    ai_interactive_tier: str | None = Form(None),
     onboarding_dismissed: str | None = Form(None),
     preferred_browser: str | None = Form(None),
     max_score_per_run: str | None = Form(None),
@@ -447,6 +453,8 @@ async def save_settings(
             "AUTOFILL_USE_TAILORED_PDF",
             "1" if autofill_use_tailored_pdf == "1" else "0",
         )
+    if ai_interactive_tier in ("cloud", "local"):  # unknown ignored
+        settings.set("AI_INTERACTIVE_TIER", ai_interactive_tier)
     if onboarding_dismissed == "1":
         settings.set("ONBOARDING_DISMISSED", "1")
     if preferred_browser in ("chrome", "msedge", "auto"):  # unknown ignored
@@ -640,15 +648,21 @@ def tailor_job(job_id: int, request: Request):
         raise HTTPException(
             status_code=409, detail="Add an AI key in Settings to generate tailoring."
         )
-    result = tailor.tailor_for_job(
-        profile["resume_text"], job["title"], job["company"],
-        job.get("description") or "",
-    )
+    try:
+        result = tailor.tailor_for_job(
+            profile["resume_text"], job["title"], job["company"],
+            job.get("description") or "",
+        )
+    except tailor.TailorError as exc:
+        # 021 (FR-022): say WHY. A button that silently does nothing destroys
+        # trust in every other AI surface in the app.
+        raise HTTPException(status_code=502,
+                            detail=f"Tailoring didn't complete — {exc}") from exc
     if result is None:
         raise HTTPException(
             status_code=502,
-            detail="Tailoring didn't complete — the on-device AI timed out "
-            "or returned an invalid result. The app is fine; try again "
+            detail="Tailoring didn't complete — the AI returned something "
+            "that wasn't a usable result. The app is fine; try again "
             "(Diagnostics shows the AI runtime state).",
         )
     db.set_tailor(job_id, result.model_dump_json())
@@ -725,6 +739,9 @@ PROFILE_017_FIELDS = (
     # never inferred, never sent to a model
     "selfid_gender", "selfid_race", "selfid_veteran", "selfid_disability",
     "selfid_orientation",
+    # 021 (FR-031): asked on the applicant's real Workday application and
+    # unanswerable until now.
+    "phone_country_code", "security_clearance", "drivers_licence",
 )
 
 
@@ -1016,6 +1033,62 @@ def local_llm_selftest():
         return {"ok": True, "reply": reply}
     except Exception:
         return {"ok": False, "reply": ""}
+
+
+_REPORT_NAME_OK = __import__("re").compile(r"^page-[0-9TZ]+\.json$")
+
+
+def _reports_dir():
+    from engine import paths
+
+    return paths.data_dir() / "reports"
+
+
+@router.get("/reports")
+def list_page_reports():
+    """021 (FR-002): the page reports the companion has written.
+
+    Newest first. These describe SHAPE only — no field value, no secret, no
+    full URL — so they are safe to attach to a bug report unmodified.
+    """
+    directory = _reports_dir()
+    if not directory.is_dir():
+        return {"reports": []}
+    rows = []
+    for path in directory.glob("page-*.json"):
+        try:
+            stat = path.stat()
+        except OSError:
+            continue
+        fields = None
+        try:
+            fields = len(json.loads(path.read_text(encoding="utf-8"))["fields"])
+        except (OSError, ValueError, KeyError, TypeError):
+            pass
+        rows.append({"filename": path.name, "bytes": stat.st_size,
+                     "modified_at": stat.st_mtime, "fields": fields})
+    rows.sort(key=lambda r: r["modified_at"], reverse=True)
+    return {"reports": rows}
+
+
+@router.get("/reports/{filename}")
+def download_page_report(filename: str):
+    """One report, as a download.
+
+    The name is matched against a strict pattern rather than sanitized.
+    Sanitizing invites an encoding that slips through; an allowlist of the
+    exact shape this app writes cannot.
+    """
+    if not _REPORT_NAME_OK.match(filename):
+        raise HTTPException(status_code=404, detail="no such report")
+    path = _reports_dir() / filename
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="no such report")
+    return Response(
+        content=path.read_bytes(),
+        media_type="application/json",
+        headers={"Content-Disposition": f'attachment; filename="{filename}"'},
+    )
 
 
 @router.get("/diagnostics/tailor-selftest")

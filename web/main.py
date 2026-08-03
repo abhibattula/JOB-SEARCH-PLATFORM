@@ -123,6 +123,53 @@ templates.env.globals["current_theme"] = _current_theme
 # 008 (FR-032): plain-language changelog behind the What's New overlay —
 # keyed by APP_VERSION, shown once per version.
 WHATS_NEW: dict[str, list[str]] = {
+    "2.1.0": [
+        "Apply Assist is readable on a real application. On a Workday form "
+        "it was listing 149 things needing you, most of them blank rows, and "
+        "the same question over and over. Each question now appears once, "
+        "named, grouped under the part of the form it belongs to — “Work "
+        "Experience 2”, “Education 1” — and a field the app cannot name is "
+        "left out rather than shown as an empty row.",
+        "Your work history and education fill themselves. Your resume was "
+        "already read into employers, job titles, dates, schools, degrees "
+        "and GPA — and the fill layer had never once looked at it. The "
+        "second employment block on a form now gets your second job. If you "
+        "have fewer entries than the form has blocks, the extra ones are "
+        "left for you rather than filled from the wrong job. You can correct "
+        "any of it on the Profile page before it is ever typed into a form.",
+        "Answers you type are remembered. Fill in something the app left to "
+        "you and it keeps the answer, so that question fills itself on the "
+        "next application. Everything it has learned is on the new Learned "
+        "answers page — editable, deletable, and forgettable in one press. "
+        "Passwords, self-identification, date of birth, government ID and "
+        "anything to do with a bank are never kept at all.",
+        "The AI can be fast now. The app has always been able to use a free "
+        "cloud tier, but it was switched off in a way nobody could find — "
+        "saving a key changed nothing. Settings now asks you outright, and "
+        "says exactly what leaves your machine: your resume text and the job "
+        "description, never a password, never a saved login, never your "
+        "self-identification. It falls back to the offline model on its own "
+        "when you are offline or rate-limited, and everything still works "
+        "with no key and no internet.",
+        "“Generate a tailored resume” no longer does nothing. It was failing "
+        "in two ways at once — the page's error handler crashed on an empty "
+        "response and showed you nothing, and the request queued behind "
+        "background scoring. It now always tells you what happened, and "
+        "anything you are waiting on takes priority over background work.",
+        "Drag the Apply Assist panel wherever you like. It stays there, on "
+        "every page and every session, and cannot end up off-screen.",
+        "Five more free job boards — Recruitee, Teamtailor, Personio, Breezy "
+        "and JazzHR — all reaching the employer's own careers page.",
+        "New profile fields for the things real applications kept asking "
+        "and this could not answer: phone country code, security clearance, "
+        "and driving licence. When something is missing, the panel now links "
+        "straight to the field instead of just naming it.",
+        "A new “Save page report” button in the panel writes a description "
+        "of any application page — what fields it has and what the app "
+        "decided about each one. It records shape only: never anything you "
+        "typed, never a password, never the page's full address, so it is "
+        "safe to send on when something does not fill.",
+    ],
     "2.0.0": [
         "Every job in your feed now has a match score. Two-thirds of your "
         "eligible jobs had none at all — the old scoring stage spent about a "
@@ -758,6 +805,12 @@ def create_app() -> FastAPI:
             {"entries": entries, "version": APP_VERSION},
         )
 
+    @app.get("/learned-answers", response_class=HTMLResponse)
+    def learned_answers_page(request: Request):
+        """021 (FR-018): everything the app read off a real application —
+        editable, deletable, and forgettable in one press."""
+        return templates.TemplateResponse(request, "learned_answers.html", {})
+
     @app.get("/diagnostics", response_class=HTMLResponse)
     def diagnostics_page(request: Request):
         from engine import paths
@@ -769,6 +822,7 @@ def create_app() -> FastAPI:
             tail = "\n".join(
                 log_path.read_text(encoding="utf-8", errors="replace").splitlines()[-40:]
             )
+        from .routes_api import list_page_reports
         from .routes_bridge import companion_doctor
 
         return templates.TemplateResponse(
@@ -779,6 +833,8 @@ def create_app() -> FastAPI:
                 "legacy_bytes": browser_setup.legacy_size_bytes(),
                 # 015 (FR-014): the pairing chain, human-readable
                 "doctor": companion_doctor(),
+                # 021 (FR-002): value-free page captures, newest first
+                "page_reports": list_page_reports()["reports"],
             },
         )
 

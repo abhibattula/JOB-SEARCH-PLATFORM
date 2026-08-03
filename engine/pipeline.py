@@ -65,7 +65,13 @@ INGEST_MAX_AGE_DAYS = 14
 
 # 008 (FR-013): sources that fetch ENTIRE boards, where absence from a
 # successful fetch authoritatively means the posting is gone.
-FULL_BOARD_SOURCES = ("greenhouse", "lever", "ashby", "workable", "smartrecruiters")
+FULL_BOARD_SOURCES = ("greenhouse", "lever", "ashby", "workable",
+                      "smartrecruiters",
+                      # 021 (FR-033): same shape, same guarantee — a
+                      # successful fetch that omits a posting means it
+                      # is gone.
+                      "recruitee", "teamtailor", "personio", "breezy",
+                      "jazzhr")
 
 # 008: scraped-board rows can't be board-diffed; their apply URLs get a
 # bounded HEAD liveness check instead.

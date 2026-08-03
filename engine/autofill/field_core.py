@@ -175,6 +175,58 @@ def is_placeholder_value(text: str | None) -> bool:
     return bool(_PLACEHOLDER_VALUE.match(value))
 
 
+# 021 (FR-007): ids a framework generated, which name nothing. React emits
+# `:r1a:` and `react-select-4-input`; Workday and many form libraries emit
+# `input-23`. Turning one of those into a question is noise dressed up as
+# information — worse than admitting the field could not be named.
+_OPAQUE_IDENTIFIER = re.compile(
+    r"^(?::[a-z0-9]+:$"
+    r"|(?:input|field|textbox|select|combobox|text|control|el|elem|item|"
+    r"radix|headless|mui|chakra|downshift|react[-_]?select)"
+    r"[-_:]*\d*(?:[-_][a-z0-9]+)*$"
+    r"|[a-f0-9]{8,}$"
+    r"|\d+$)", re.I)
+
+_IDENT_SPLIT = re.compile(r"[_\-.:\s]+|(?<=[a-z0-9])(?=[A-Z])")
+
+
+def humanize_identifier(raw: str) -> str:
+    """A field's stable identifier, rendered as a question.
+
+    `countryRegionPhoneCode` -> "Country Region Phone Code". Returns "" for
+    anything a framework generated, because naming a question `input-23`
+    tells the applicant less than nothing.
+    """
+    value = (raw or "").strip()
+    if not value or _OPAQUE_IDENTIFIER.match(value):
+        return ""
+    words = [w for w in _IDENT_SPLIT.split(value) if w]
+    if not words:
+        return ""
+    # Drop a trailing repeat index ("gpa-1" -> "Gpa"): the section index
+    # already says which block this is, and repeating it in the question
+    # would defeat the de-duplication it feeds.
+    if len(words) > 1 and words[-1].isdigit():
+        words = words[:-1]
+    out = " ".join(w[:1].upper() + w[1:] for w in words if w)
+    return out.strip()
+
+
+def displayed_value(descriptor: dict) -> str:
+    """What the applicant can actually see in this field, or "".
+
+    Mirrors the present-value rule inside `decide` exactly — a choice control
+    resting on "Select…" DISPLAYS text but the applicant has chosen nothing.
+    021 uses this to tell "they answered it" from "it was always like that";
+    reading it any other way would learn "Select…" as a real answer.
+    """
+    present = (descriptor.get("value") or "").strip()
+    if present and is_choice_control(descriptor) and \
+            is_placeholder_value(present):
+        return ""
+    return present
+
+
 def key(descriptor: dict) -> tuple:
     """Ledger key: (per-document token, scan-time stamp)."""
     return (descriptor.get("doc"), descriptor.get("je_idx"))
