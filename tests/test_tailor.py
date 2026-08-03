@@ -128,10 +128,13 @@ class TestTailorHardening016:
     def _capture(self, monkeypatch, reply="not json at all"):
         captured = {"calls": 0}
 
-        def fake_chat(messages, purpose="prose", timeout_s=None):
+        def fake_chat(messages, purpose="prose", timeout_s=None, **kw):
             captured["calls"] += 1
             captured["messages"] = messages
             captured["timeout_s"] = timeout_s
+            # 021 (FR-021): tailoring declares itself interactive so the
+            # background assessment stands down for it.
+            captured["interactive"] = kw.get("interactive")
             return reply
 
         monkeypatch.setattr(tailor.matcher, "_chat", fake_chat)
@@ -152,3 +155,77 @@ class TestTailorHardening016:
         assert result is None
         assert captured["calls"] == 1
         assert captured["timeout_s"] == 300
+
+
+class TestTailoringDeclaresItselfInteractive:
+    """021 US3 (FR-021/T059)."""
+
+    def test_it_asks_the_interactive_tier(self, tmp_db, monkeypatch):
+        from engine import matcher, tailor
+
+        seen = {}
+
+        def fake_chat(messages, purpose="prose", timeout_s=None, **kw):
+            seen.update(kw)
+            return '{"summary_line":"s","tailored_bullets":["a"],' \
+                   '"cover_letter":"c","ats_keywords":[]}'
+
+        monkeypatch.setattr(matcher, "llm_available", lambda: True)
+        monkeypatch.setattr(matcher, "_chat", fake_chat)
+        tailor.tailor_for_job("resume", "RTL Engineer", "Intel", "jd")
+        assert seen.get("interactive") is True
+
+    def test_on_device_it_asks_for_less(self, tmp_db, monkeypatch):
+        """T059: output tokens are the dominant on-device cost — 020 measured
+        generation at ~5-6 tok/s for grammar-constrained JSON, so a 180-word
+        cover letter plus six bullets is minutes of pure generation."""
+        from engine import matcher, tailor
+
+        seen = {}
+
+        def fake_chat(messages, purpose="prose", timeout_s=None, **kw):
+            seen["system"] = messages[0]["content"]
+            return '{"summary_line":"s","tailored_bullets":["a"],' \
+                   '"cover_letter":"c","ats_keywords":[]}'
+
+        monkeypatch.setattr(matcher, "llm_available", lambda: True)
+        monkeypatch.setattr(matcher, "_chat", fake_chat)
+        monkeypatch.setattr(matcher, "scoring_tier",
+                            lambda **kw: "local")
+        tailor.tailor_for_job("resume", "RTL Engineer", "Intel", "jd")
+        assert "120 words" in seen["system"]
+        assert "3-4 strings" in seen["system"]
+
+    def test_on_the_cloud_tier_the_full_request_is_kept(self, tmp_db,
+                                                        monkeypatch):
+        """Cutting quality on a path that already answers in seconds would be
+        a bad trade made for no reason."""
+        from engine import matcher, tailor
+
+        seen = {}
+
+        def fake_chat(messages, purpose="prose", timeout_s=None, **kw):
+            seen["system"] = messages[0]["content"]
+            return '{"summary_line":"s","tailored_bullets":["a"],' \
+                   '"cover_letter":"c","ats_keywords":[]}'
+
+        monkeypatch.setattr(matcher, "llm_available", lambda: True)
+        monkeypatch.setattr(matcher, "_chat", fake_chat)
+        monkeypatch.setattr(matcher, "scoring_tier",
+                            lambda **kw: "cloud")
+        tailor.tailor_for_job("resume", "RTL Engineer", "Intel", "jd")
+        assert "180 words" in seen["system"]
+        assert "4-6 strings" in seen["system"]
+
+    def test_a_failure_carries_a_reason(self, tmp_db, monkeypatch):
+        from engine import matcher, tailor
+
+        monkeypatch.setattr(matcher, "llm_available", lambda: True)
+
+        def boom(*a, **k):
+            raise RuntimeError("on-device AI chat timed out after 300s")
+
+        monkeypatch.setattr(matcher, "_chat", boom)
+        with pytest.raises(tailor.TailorError) as caught:
+            tailor.tailor_for_job("resume", "RTL", "Intel", "jd")
+        assert "timed out" in str(caught.value)

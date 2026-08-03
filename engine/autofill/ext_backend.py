@@ -704,6 +704,47 @@ def _handle_credential_save(msg) -> None:
     send(_outbound("rescan", reason="credential_saved"))
 
 
+# 021 (FR-015): fields a scan has seen EMPTY, keyed (doc, je_idx). This is
+# what separates "the applicant answered this" from "the employer prefilled
+# it" — a value present on FIRST sight is the employer's own data or the
+# browser's password manager, and is never the applicant's answer to learn.
+_seen_empty: set[tuple] = set()
+
+
+def _learn_if_the_applicant_typed_it(raw: dict, decision, ledger: dict,
+                                     job_id: int, question: str) -> None:
+    """021 (FR-015/FR-017, contracts/observed_answer.md).
+
+    Called for EVERY decided field, before the action dispatch, because the
+    two branches that matter look different: a classified field with a value
+    returns `settle`/`skipped_existing`, but an UNCLASSIFIED one returns a
+    plain `skip` (`field_core.decide`, tag == "free_text_unknown"). Keying
+    only on the settle path would silently miss every essay answer — the
+    class the applicant most wants learned (analysis A6).
+    """
+    from . import answer_bank, field_core
+
+    lkey = field_core.key(raw)
+    value = field_core.displayed_value(raw)
+    if not value:
+        _seen_empty.add(lkey)
+        return
+    if lkey not in _seen_empty:
+        return  # already answered when we first saw it — not ours to learn
+    entry = ledger.get(lkey)
+    outcome = entry[0] if isinstance(entry, tuple) else entry
+    if outcome == "filled" or decision.action == "fill":
+        _seen_empty.discard(lkey)
+        return  # WE put that there
+    _seen_empty.discard(lkey)
+    try:
+        answer_bank.record_observed(
+            question=question, answer=value, tag=decision.tag,
+            job_id=job_id, secret=bool(getattr(decision, "secret", False)))
+    except Exception:  # noqa: BLE001 — never let learning break a fill
+        log.warning("could not record an observed answer", exc_info=True)
+
+
 def _handle_page_report(msg) -> None:
     """021 (FR-001/FR-002): write a shareable description of this page.
 
@@ -990,6 +1031,8 @@ def _handle_fields(msg) -> None:
         note_shape(raw, decision=decision.action, tag=decision.tag or "")
         if decision.action == "ignore":
             continue
+        _learn_if_the_applicant_typed_it(raw, decision, ledger, job_id,
+                                         question_of(raw))
         seen += 1
         if (raw.get("required") and raw.get("visible")
                 and decision.action in ("fill", "skip")
@@ -1239,6 +1282,7 @@ def _start_answer_feed(tab_id: int, job_id: int) -> None:
     _page_entries.clear()
     _page_shape.clear()
     _scan_counts.clear()
+    _seen_empty.clear()
     _page_entries[job_id] = {}
     _answers_digest.clear()
     _answers_force.add(tab_id)
@@ -1577,6 +1621,7 @@ def reset_for_tests() -> None:
         _page_entries.clear()
         _page_shape.clear()
         _scan_counts.clear()
+        _seen_empty.clear()
         _answers_digest.clear()
         _answers_force.clear()
         _counters.update(dropped_fields=0, scan_errors=0)

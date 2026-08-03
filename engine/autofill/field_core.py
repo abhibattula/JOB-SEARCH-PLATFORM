@@ -212,6 +212,21 @@ def humanize_identifier(raw: str) -> str:
     return out.strip()
 
 
+def displayed_value(descriptor: dict) -> str:
+    """What the applicant can actually see in this field, or "".
+
+    Mirrors the present-value rule inside `decide` exactly — a choice control
+    resting on "Select…" DISPLAYS text but the applicant has chosen nothing.
+    021 uses this to tell "they answered it" from "it was always like that";
+    reading it any other way would learn "Select…" as a real answer.
+    """
+    present = (descriptor.get("value") or "").strip()
+    if present and is_choice_control(descriptor) and \
+            is_placeholder_value(present):
+        return ""
+    return present
+
+
 def key(descriptor: dict) -> tuple:
     """Ledger key: (per-document token, scan-time stamp)."""
     return (descriptor.get("doc"), descriptor.get("je_idx"))

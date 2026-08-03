@@ -113,6 +113,20 @@ def _yes_no(value: str | None) -> str | None:
     return value
 
 
+def profile_field_for(tag: str | None) -> str | None:
+    """021 (FR-020/FR-032): which stored profile field answers this tag.
+
+    Two callers: the "Save to profile" click on a learned answer, and the
+    panel's "add it to your profile" line, which used to be a dead
+    instruction rather than a link to the field it meant.
+    """
+    if not tag:
+        return None
+    if tag in _DIRECT:
+        return _DIRECT[tag]
+    return _YES_NO.get(tag)
+
+
 def answer_for(tag: str | None, profile: dict) -> str | None:
     """The applicant's own answer to a classified question, or None.
 

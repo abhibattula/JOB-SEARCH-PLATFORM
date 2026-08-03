@@ -758,6 +758,12 @@ def create_app() -> FastAPI:
             {"entries": entries, "version": APP_VERSION},
         )
 
+    @app.get("/learned-answers", response_class=HTMLResponse)
+    def learned_answers_page(request: Request):
+        """021 (FR-018): everything the app read off a real application —
+        editable, deletable, and forgettable in one press."""
+        return templates.TemplateResponse(request, "learned_answers.html", {})
+
     @app.get("/diagnostics", response_class=HTMLResponse)
     def diagnostics_page(request: Request):
         from engine import paths
