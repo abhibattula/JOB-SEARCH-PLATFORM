@@ -254,3 +254,108 @@ Python:  3.12 (.venv — the system Python cannot collect the suite, no fitz)
     NOTE: do not mutate PRUNE_AFTER_SCANS itself — a test loops over it, so
     setting it to 10**9 hangs the run rather than failing it. Mutate the
     prune BODY.
+
+
+== T099-T101 RESULT: GATES AFTER THE FEATURE ==
+
+    unit battery     2087 passed   (was 1731)   +356, none lost
+    browser suite     109 passed   (was  104)     +5, none lost
+    secret hygiene     20 passed   (was   13)     +7
+    frozen smoke      PASS on v2.1.0
+
+  The frozen smoke reported, on the packaged build:
+    local-llm-selftest   ok, real reply
+    tailor-selftest      completed AND parsed, isolated runtime, 0 restarts
+    bridge/info          app_version 2.1.0, protocol_v 1
+    companion            stamped, pairing fresh, port match
+
+  Run the browser suite ALONE, and on macOS as well as Windows.
+
+
+== WHAT THE BROWSER SUITE CAUGHT THAT 2078 UNIT TESTS COULD NOT ==
+
+  Three defects, none of them visible to a unit test:
+
+  1. THE ROW IDENTITY WAS AN ARRAY.
+     panel.js keys its row Map on item.key, which was
+     field_core.key(descriptor) — a TUPLE, serializing to a JSON array.
+     Map.get() on a fresh array instance can NEVER match, so every push
+     recreated every row. The digest's send-nothing-if-unchanged rule was
+     the only thing hiding it; the moment the payload gained new fields,
+     the input the applicant was typing into was destroyed.
+
+     Fixed by deriving the key from (section, section index, normalized
+     question): a string, stable across scans, independent of which element
+     won the de-duplication or whether React remounted it.
+
+  2. A SETTLED FIELD NEVER REFRESHED last_seen_scan.
+     decision.action == "settle" takes none of the note_answer branches, so
+     a field already filled went three scans untouched and was PRUNED —
+     losing the v1.8.0 guarantee that a filled field stays in the review
+     list, and changing the feed, which made the panel rebuild rows.
+
+  3. PLACEMENT STOLE FOCUS.
+     reconcile called appendChild every pass and relied on its reordering
+     side-effect. Re-inserting a node BLURS a focused element inside it.
+     Nodes are now placed by index, moved only when genuinely out of
+     position, and never while holding the focus.
+
+  And one found in the LOG rather than an assertion:
+     application_answers.job_id is a real FK; an ad-hoc "Fill this page"
+     session carries a sentinel job id with no jobs row. The insert raised
+     IntegrityError AFTER the answer_bank row was written — a half-write
+     surfaced only as a warning nobody would read.
+
+  LESSON, and it is the same one as 020: the unit suite was GREEN at 2072
+  when all four of these existed. The browser gate is not a formality.
+
+
+== T074-T080 RESULT: THE DRAG HAS REAL COVERAGE ==
+
+  Five real-browser tests, because static string assertions were its only
+  coverage — and tests/integration/test_companion_widget.py exists precisely
+  because that once hid a control that did nothing at all.
+
+  Mutation-checked: disabling startDrag fails all five.
+
+  Worth recording — THREE of them initially passed WITH the drag disabled,
+  because an unmoved panel "restores" to where it already was and is
+  trivially still on screen. Each now asserts the drag actually happened
+  before asserting what follows from it. A test that cannot fail is not
+  coverage, and it takes a mutation run to find that out.
+
+
+== T034 RESULT: THE FEED COST AT REAL PAGE SCALE ==
+
+  144 entries (12 sections x 6 questions, every one arriving as TWO elements
+  — the Workday prompt shape) collapsing to 72 rows:
+
+    page_answers.build          median 0.43 ms   max 0.90 ms
+    build + digest              median 0.56 ms   max 1.78 ms
+
+  Well inside one animation frame (16.7 ms), and this runs once per scan on
+  a 2 s poll. The de-duplication is not a cost worth optimising.
+
+  The DOM half is now cheaper BY CONSTRUCTION rather than by measurement:
+  reconcile no longer re-appends every row on every pass. It places by index
+  and moves a node only when it is genuinely out of position — which is the
+  same change that stopped focus being stolen.
+
+
+== STILL THE APPLICANT'S ==
+
+  T012 / CHK101 / CHK104
+    Press "Save page report" on the real Intel Workday application. That
+    settles the per-scan field count and measures section-detection coverage
+    on a genuine page. Everything else in this feature was built from
+    mechanisms read out of the source, which is why it did not block.
+
+  T047 / SC-002
+    Re-run Apply Assist on that same application and record filled /
+    needs-you / seen against 5 / 149 / 156.
+
+  T061 / SC-006
+    Save a free Groq key, then time one tailoring request on each tier.
+
+  T103 / T104, and 019's still-outstanding T076
+    The manual passes, on the INSTALLED build.

@@ -23,7 +23,7 @@ conditions for Workstreams A–C.
 - [X] CHK110 A collapsed row's "Show me" reaches every element behind it
 - [X] CHK111 Fields absent from the document stop being reported as outstanding
 - [X] CHK112 Advancing a wizard step does not leave the prior step's fields listed
-- [ ] CHK113 `reconcile()` on the 150-field fixture stays within one animation frame
+- [X] CHK113 `reconcile()` on the 150-field fixture stays within one animation frame — measured: build 0.43 ms / build+digest 0.56 ms median against a 16.7 ms frame, and the DOM half no longer re-appends at all
 - [X] CHK114 A row holding the applicant's focus is still never rebuilt under their typing
 
 ## Section context
@@ -47,9 +47,9 @@ conditions for Workstreams A–C.
 
 ## Regression safety
 
-- [ ] CHK128 Unit and browser suite counts both exceed v2.0.0's 1731 and 104, none lost
+- [X] CHK128 Unit and browser suite counts both exceed v2.0.0's 1731 and 104, none lost — 2087 and 109
 - [ ] CHK129 The browser suite has been run on Windows **and** macOS before the tag
-- [ ] CHK130 The frozen smoke passes against the packaged build
+- [X] CHK130 The frozen smoke passes against the packaged build — PASS on v2.1.0, including a real on-device reply and tailoring completing AND parsing
 - [X] CHK131 Rich-text cover letters still fill (020's fix is not regressed by the new selector work)
 - [X] CHK132 `stripControls` still strips rich-text editors — the bug macOS caught in 020
 
