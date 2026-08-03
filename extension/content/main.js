@@ -171,6 +171,8 @@
     if (!message || !message.type) { return; }
     switch (message.type) {
       case "watch":
+        /* 022 (FR-034): additive field; absent on an older app. */
+        if (window.jePanelTheme) { window.jePanelTheme(msg.theme); }
         adhoc = !!message.adhoc;
         startWatch();
         break;
@@ -238,6 +240,7 @@
         }
         break;
       case "overlay_state":
+        if (window.jePanelTheme) { window.jePanelTheme(msg.theme); }
         if (isTop && window.jeOverlay) { window.jeOverlay.update(message.summary); }
         // 019 (FR-017): the app knows whether a saved login exists for this
         // domain; the panel offers the inline save form only when it does not.

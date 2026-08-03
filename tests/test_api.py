@@ -1129,7 +1129,12 @@ class Test010Dashboard:
         assert 'class="dashboard"' in resp.text
         assert "Top matches" in resp.text
         assert "Next actions" in resp.text
-        assert "Your applications" in resp.text
+        # 022: "Your applications" became "Applications" when the three cards
+        # became one strip. The possessive earns nothing in a strip that is
+        # entirely about the applicant. "Next actions" was NOT shortened —
+        # this assertion caught "Next" on its own being cryptic, and the
+        # markup was changed back rather than the test bent to fit it.
+        assert "Applications" in resp.text
 
     def test_dashboard_lists_scored_match(self, client):
         job = seed_job()

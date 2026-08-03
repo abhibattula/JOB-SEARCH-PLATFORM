@@ -115,13 +115,13 @@ plus all of US2, US3 and US4 — and Phases 4–6 finish US1 screen by screen.
 
 ## Phase 7: US5 — the extension panel
 
-- [ ] T058 [US5] Write tests for contract P1–P6 in `tests/test_ext_protocol.py` and `tests/integration/test_companion_widget.py` — **watch them fail** *(FR-036, SC-006)*
-- [ ] T059 [US5] Add the additive `theme` field to `watch_start` and `overlay_state` in `engine/autofill/ext_backend.py`, sourced from `settings.get("THEME")` and normalised as `web/main.py:112-119` does *(FR-034, FR-035)*
-- [ ] T060 [US5] Replace the hardcoded GitHub-dark block at `extension/content/panel.js:255-360` with the injected token set *(FR-002, FR-033, SC-002)*
-- [ ] T061 [US5] Implement the panel's theme resolution order: field → `prefers-color-scheme` → light *(FR-034, SC-006)*
-- [ ] T062 [US5] Render the `panel`-size provenance stamp in the panel's score circle *(FR-018, FR-033)*
-- [ ] T063 [US5] Assert `PROTOCOL_V` is still 1 and no secret travels on a theme-carrying message (P1, P2) *(FR-035, FR-036, FR-046)*
-- [ ] T064 [US5] Run the 021 drag, persistence and clamping browser tests unchanged — they must pass without modification (FR-037) *(FR-037)*
+- [X] T058 [US5] Write tests for contract P1–P6 in `tests/test_ext_protocol.py` and `tests/integration/test_companion_widget.py` — **watch them fail** *(FR-036, SC-006)*
+- [X] T059 [US5] Add the additive `theme` field to `watch_start` and `overlay_state` in `engine/autofill/ext_backend.py`, sourced from `settings.get("THEME")` and normalised as `web/main.py:112-119` does *(FR-034, FR-035)*
+- [X] T060 [US5] Replace the hardcoded GitHub-dark block at `extension/content/panel.js:255-360` with the injected token set *(FR-002, FR-033, SC-002)*
+- [X] T061 [US5] Implement the panel's theme resolution order: field → `prefers-color-scheme` → light *(FR-034, SC-006)*
+- [X] T062 [US5] Render the `panel`-size provenance stamp in the panel's score circle *(FR-018, FR-033)*
+- [X] T063 [US5] Assert `PROTOCOL_V` is still 1 and no secret travels on a theme-carrying message (P1, P2) *(FR-035, FR-036, FR-046)*
+- [X] T064 [US5] Run the 021 drag, persistence and clamping browser tests unchanged — they must pass without modification (FR-037) *(FR-037)*
 
 ## Phase 8: US6 — generated PDFs
 

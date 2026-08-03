@@ -72,7 +72,7 @@ def register(send, close, version: str, browser: str = ""):
         tab_id = _watch["tab_id"]
         job_id = _watch["job_id"]
     if tab_id is not None:
-        send(_outbound("watch_start", tab_id=tab_id, job_id=job_id))
+        send(_outbound("watch_start", tab_id=tab_id, job_id=job_id, theme=_theme()))
     return old_close
 
 
@@ -241,6 +241,22 @@ MAX_PAGE_ENTRIES = 200
 _pending_submissions: list[dict] = []
 
 
+
+def _theme() -> str:
+    """022 (FR-034): the applicant's explicit light/dark choice, or "" when
+    they have expressed none — "" tells the panel to follow the operating
+    system, exactly as web/main.py normalises it for the app itself.
+
+    ADDITIVE on messages that already exist: outbound envelopes are plain
+    dicts with no schema, so PROTOCOL_V stays 1 and a companion older than
+    this release never looks for the field.
+    """
+    from engine import settings
+
+    value = settings.get("THEME") or ""
+    return value if value in ("light", "dark") else ""
+
+
 def _outbound(type_: str, **payload) -> dict:
     from . import ext_protocol
 
@@ -272,7 +288,7 @@ def adopt_tab(tab_id: int, job_id: int) -> None:
         _inflight.clear()
         _frame_seen.clear()
         _start_answer_feed(tab_id, job_id)
-    send(_outbound("watch_start", tab_id=tab_id, job_id=job_id))
+    send(_outbound("watch_start", tab_id=tab_id, job_id=job_id, theme=_theme()))
 
 
 def open_practice(url: str) -> None:
@@ -400,7 +416,7 @@ def _handle_advance_result(msg) -> None:
             with _lock:
                 tab_id = _watch["tab_id"]
             if tab_id is not None:
-                send(_outbound("overlay_state", tab_id=tab_id, summary={
+                send(_outbound("overlay_state", tab_id=tab_id, theme=_theme(), summary={
                     "session": escort_mod.STATE_READY,
                     "message": "Review & submit — your turn",
                 }))
@@ -476,7 +492,7 @@ def _handle_session_control(msg) -> None:
     action = (msg.action or "").strip().lower()
     if action == "stop":
         bc.stop_queue()
-        send(_outbound("overlay_state", tab_id=msg.tab_id, summary={
+        send(_outbound("overlay_state", tab_id=msg.tab_id, theme=_theme(), summary={
             "seen": 0, "filled": 0, "needs_you": 0, "drafts": 0,
             "needs_you_idx": [], "attention": [], "session": "stopped",
             "message": "stopped — nothing was submitted",
@@ -491,7 +507,7 @@ def _handle_session_control(msg) -> None:
         else:
             escort.enabled = True
             escort.resume()   # the applicant looked; the cap starts over
-        send(_outbound("overlay_state", tab_id=msg.tab_id, summary={
+        send(_outbound("overlay_state", tab_id=msg.tab_id, theme=_theme(), summary={
             "session": "filling",
             "message": ("escort paused — you advance the pages"
                         if action == "pause_escort"
@@ -507,7 +523,7 @@ def _handle_session_control(msg) -> None:
                            message=str(exc)[:200]))
             return
         if current is None:
-            send(_outbound("overlay_state", tab_id=msg.tab_id, summary={
+            send(_outbound("overlay_state", tab_id=msg.tab_id, theme=_theme(), summary={
                 "seen": 0, "filled": 0, "needs_you": 0, "drafts": 0,
                 "needs_you_idx": [], "attention": [], "session": "done",
                 "message": "that was the last one",
@@ -572,7 +588,7 @@ def _handle_tab_opened(msg) -> None:
         _inflight.clear()
         _frame_seen.clear()
         _start_answer_feed(msg.tab_id, job_id)
-    send(_outbound("watch_start", tab_id=msg.tab_id, job_id=job_id))
+    send(_outbound("watch_start", tab_id=msg.tab_id, job_id=job_id, theme=_theme()))
 
 
 def _handle_child_tab(msg) -> None:
@@ -586,7 +602,7 @@ def _handle_child_tab(msg) -> None:
         _watch["tab_id"] = msg.tab_id
         _inflight.clear()
         _frame_seen.clear()
-    send(_outbound("watch_start", tab_id=msg.tab_id, job_id=job_id))
+    send(_outbound("watch_start", tab_id=msg.tab_id, job_id=job_id, theme=_theme()))
 
 
 def _frame_domain(url: str) -> str | None:
@@ -1250,7 +1266,7 @@ def _handle_fields(msg) -> None:
                        step_key=step.key))
     session_state = verdict.state or ("filling" if running else "done")
 
-    send(_outbound("overlay_state", tab_id=msg.tab_id, summary={
+    send(_outbound("overlay_state", tab_id=msg.tab_id, theme=_theme(), summary={
         "seen": total_seen, "filled": filled_total, "drafts": draft_count,
         "needs_you": len(needs_you_idx),
         "needs_you_idx": needs_you_idx,
@@ -1485,7 +1501,7 @@ def _handle_fill_here(msg) -> None:
         _inflight.clear()
         _frame_seen.clear()
         _start_answer_feed(msg.tab_id, ADHOC_JOB_ID)
-    send(_outbound("watch_start", tab_id=msg.tab_id, job_id=ADHOC_JOB_ID))
+    send(_outbound("watch_start", tab_id=msg.tab_id, job_id=ADHOC_JOB_ID, theme=_theme()))
 
 
 def link_adhoc(tab_id: int) -> dict:

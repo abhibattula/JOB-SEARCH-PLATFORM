@@ -60,6 +60,11 @@ def score_page(title: str, company: str, description: str, url: str = "") -> dic
 
     return {
         "match_score": match_score,
+        # 022 (FR-015/FR-018): the badge's provenance, stated rather than
+        # implied. This path is ALWAYS basic_match — a keyword guess — but it
+        # has been rendering in confident colour bands that read like a real
+        # assessment. Explicit, so it stays honest if discovery ever upgrades.
+        "method": "basic" if match_score is not None else None,
         "band": band,
         "matching_skills": matching,
         "missing_skills": missing,

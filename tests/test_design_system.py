@@ -255,16 +255,14 @@ class TestColourLivesOnlyInTokens:
             f"Raw colour outside the token block: {offenders}. "
             "Every colour must come from a token (contract T2).")
 
-    @pytest.mark.xfail(
-        strict=True,
-        reason="Phase 7 (T060) replaces the panel's hardcoded GitHub-dark "
-               "block with the injected tokens. strict=True means this "
-               "STARTS FAILING the moment the panel is fixed, which is the "
-               "signal to delete this marker -- it cannot rot into a "
-               "permanent exemption.")
     def test_panel_has_no_raw_colour(self):
         js = PANEL_JS.read_text(encoding="utf-8", errors="replace")
         style = "\n".join(re.findall(r"`([^`]*)`", js, re.S))
+        # The panel's :host block IS its token definition — colour is legal
+        # there and nowhere else, exactly as :root is for the app. The shadow
+        # root is opened with all:initial, so these cannot be inherited and
+        # have to be declared here.
+        style = re.sub(r":host[^{]*\{[^}]*\}", "", style)
         offenders = sorted(set(_HEX.findall(style)))
         assert not offenders, (
             f"The browser panel still hardcodes colour: {offenders[:12]}. "

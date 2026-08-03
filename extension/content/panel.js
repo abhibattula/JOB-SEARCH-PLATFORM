@@ -173,6 +173,28 @@ window.jePanel = (function () {
     };
   }
 
+
+  /* 022 (FR-034, contract panel-theme.md): the applicant's theme arrives as
+     an ADDITIVE field on watch_start / overlay_state — outbound messages are
+     plain dicts with no schema, so PROTOCOL_V stays 1 and a companion that
+     predates this simply never looks for it.
+
+     Resolution order: explicit choice -> OS preference -> light. */
+  /* Exposed so main.js can call it from watch_start and
+     overlay_state without reaching into the module. */
+  function applyTheme(theme) {
+    const host = document.getElementById("je-companion-host");
+    if (!host) { return; }
+    if (theme === "dark" || theme === "light") {
+      host.setAttribute("data-theme", theme);
+    } else {
+      /* No stated preference: let the :host media query in STYLE decide,
+         which reads prefers-color-scheme. */
+      host.removeAttribute("data-theme");
+    }
+  }
+  window.jePanelTheme = applyTheme;
+
   function applyPos(el) {
     el.style.setProperty(
       "inset", "auto " + pos.right + "px " + pos.bottom + "px auto",
@@ -247,6 +269,44 @@ window.jePanel = (function () {
   const STYLE = `
     *{box-sizing:border-box}
     :host{contain:layout style}
+
+    /* 022: the app's tokens, INJECTED — the shadow root is opened with
+       all:initial, so nothing can be inherited. Same names as
+       web/static/styles.css so the two surfaces cannot drift.
+       :host carries data-theme; the media query decides only when the
+       applicant has expressed no preference. */
+    :host{
+      --paper:#f6f7f5; --leaf:#ffffff; --ink:#12211c; --ink-soft:#4a5b53;
+      --rule:#dfe4e0; --edge:#76857d; --seal:#1f6f5c; --pencil:#4a5f7a;
+      --flag:#9a6116; --stop:#a63a2e; --paper-sunken:#eceeea;
+      --seal-tint:#e8f2ee; --pencil-tint:#eef2f7; --flag-tint:#fbf3e7;
+      --stop-tint:#f9ece9; --on-ink:#f6f7f5;
+    }
+    :host([data-theme="dark"]){
+      --paper:#12160f; --leaf:#1a1f18; --ink:#dfe6dd; --ink-soft:#9aa89e;
+      --rule:#2b332a; --edge:#697665; --seal:#4fc4a1; --pencil:#8fa8c4;
+      --flag:#e0a53c; --stop:#ef7367; --paper-sunken:#0d100b;
+      --seal-tint:#10261d; --pencil-tint:#161d27; --flag-tint:#2a2110;
+      --stop-tint:#2d1512; --on-ink:#12160f;
+    }
+    @media (prefers-color-scheme: dark){
+      :host(:not([data-theme="light"]):not([data-theme="dark"])){
+        --paper:#12160f; --leaf:#1a1f18; --ink:#dfe6dd; --ink-soft:#9aa89e;
+        --rule:#2b332a; --edge:#697665; --seal:#4fc4a1; --pencil:#8fa8c4;
+        --flag:#e0a53c; --stop:#ef7367; --paper-sunken:#0d100b;
+        --seal-tint:#10261d; --pencil-tint:#161d27; --flag-tint:#2a2110;
+        --stop-tint:#2d1512; --on-ink:#12160f;
+      }
+    }
+    /* 022 (FR-018): the provenance stamp, same treatments as the app —
+       ring style carries the signal so it survives greyscale. */
+    .score.stamp--pencil{color:var(--pencil);border-style:dashed;
+      background:var(--pencil-tint)}
+    .score.stamp--ink{color:var(--ink);border-style:solid}
+    .score.stamp--sealed{color:var(--seal);border-style:double;
+      border-width:5px;background:var(--seal-tint)}
+    .score.stamp--unscored{color:var(--ink-soft);border-style:dotted;
+      background:transparent}
     /* The UA rule for [hidden] is display:none, but an AUTHOR rule such as
        .card{display:flex} outranks it, so el.hidden = true would leave the
        card on screen. Restate it here, in the author layer, where it wins.
@@ -254,111 +314,111 @@ window.jePanel = (function () {
     [hidden]{display:none!important}
     .pill{display:flex;align-items:center;gap:7px;cursor:pointer;
       font:600 13px/1 system-ui,-apple-system,sans-serif;
-      background:#0d1117;color:#e6edf3;border:1px solid #30363d;
+      background:var(--leaf);color:var(--ink);border:1px solid var(--rule);
       border-radius:999px;padding:9px 14px;
       box-shadow:0 6px 20px rgba(0,0,0,.4)}
-    .pill:hover{background:#161b22}
-    .pill .mark{width:8px;height:8px;border-radius:50%;background:#3fb950;
+    .pill:hover{background:var(--paper)}
+    .pill .mark{width:8px;height:8px;border-radius:50%;background:var(--seal);
       flex:none}
-    .pill .mark.idle{background:#8b949e}
-    .pill .mark.warn{background:#d29922}
+    .pill .mark.idle{background:var(--ink-soft)}
+    .pill .mark.warn{background:var(--flag)}
     .card{font:13px/1.45 system-ui,-apple-system,sans-serif;width:340px;
       max-height:calc(100vh - 32px);display:flex;flex-direction:column;
-      background:#0d1117;color:#e6edf3;border:1px solid #30363d;
+      background:var(--leaf);color:var(--ink);border:1px solid var(--rule);
       border-radius:12px;box-shadow:0 10px 30px rgba(0,0,0,.45);
       overflow:hidden}
     .hd{display:flex;align-items:center;gap:8px;padding:9px 11px;
-      background:#161b22;border-bottom:1px solid #30363d;flex:none}
+      background:var(--paper);border-bottom:1px solid var(--rule);flex:none}
     .hd .tag{font-weight:700;letter-spacing:.2px}
     .hd .sp{flex:1}
-    .dot{width:8px;height:8px;border-radius:50%;background:#3fb950;flex:none}
-    .dot.idle{background:#8b949e}
-    .icon{cursor:pointer;color:#8b949e;font-size:14px;line-height:1;
+    .dot{width:8px;height:8px;border-radius:50%;background:var(--seal);flex:none}
+    .dot.idle{background:var(--ink-soft)}
+    .icon{cursor:pointer;color:var(--ink-soft);font-size:14px;line-height:1;
       padding:3px 5px;border-radius:5px;user-select:none;background:none;
       border:0}
-    .icon:hover{background:#21262d;color:#e6edf3}
+    .icon:hover{background:var(--paper-sunken);color:var(--ink)}
     .bd{padding:11px;overflow-y:auto;flex:1;min-height:0}
-    .co{color:#8b949e;font-size:12px;white-space:nowrap;overflow:hidden;
+    .co{color:var(--ink-soft);font-size:12px;white-space:nowrap;overflow:hidden;
       text-overflow:ellipsis}
     .ti{font-weight:600;margin:1px 0 9px;white-space:nowrap;overflow:hidden;
       text-overflow:ellipsis}
     .row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
     .score{width:46px;height:46px;border-radius:50%;display:flex;
       align-items:center;justify-content:center;font-weight:700;font-size:16px;
-      border:2px solid #30363d;flex:none}
-    .score.strong{color:#3fb950;border-color:#238636}
-    .score.good{color:#d29922;border-color:#9e6a03}
-    .score.fair{color:#8b949e}
-    .score.none{font-size:11px;font-weight:600;color:#8b949e}
+      border:2px solid var(--rule);flex:none}
+    .score.strong{color:var(--seal);border-color:var(--seal)}
+    .score.good{color:var(--flag);border-color:var(--flag)}
+    .score.fair{color:var(--ink-soft)}
+    .score.none{font-size:11px;font-weight:600;color:var(--ink-soft)}
     .meta{min-width:0}
     .band{font-weight:600;text-transform:capitalize}
-    .band.strong{color:#3fb950}.band.good{color:#d29922}.band.fair{color:#8b949e}
+    .band.strong{color:var(--seal)}.band.good{color:var(--flag)}.band.fair{color:var(--ink-soft)}
     .chip{display:inline-block;margin-top:2px;padding:1px 7px;
-      border-radius:999px;font-size:11px;font-weight:600;background:#21262d;
-      color:#8b949e}
-    .chip.grade{background:#132a17;color:#3fb950}
-    .chip.exempt{background:#132033;color:#58a6ff}
+      border-radius:999px;font-size:11px;font-weight:600;background:var(--paper-sunken);
+      color:var(--ink-soft)}
+    .chip.grade{background:var(--seal-tint);color:var(--seal)}
+    .chip.exempt{background:var(--pencil-tint);color:var(--seal)}
     button.act{width:100%;padding:9px;border:0;border-radius:8px;
-      background:#238636;color:#fff;font-weight:600;font-size:13px;
+      background:var(--seal);color:var(--on-ink);font-weight:600;font-size:13px;
       cursor:pointer;margin-bottom:6px}
-    button.act:hover{background:#2ea043}
-    button.act[disabled]{background:#21262d;color:#8b949e;cursor:default}
-    button.act.ghost{background:#21262d;color:#e6edf3;
-      border:1px solid #30363d}
-    button.act.ghost:hover{background:#30363d}
-    button.act.danger{background:#9e2f24}
-    button.act.danger:hover{background:#c03a2c}
-    .formnote{color:#8b949e;font-size:12px;margin-bottom:9px}
-    .wallnote{color:#e6edf3;font-size:12px;margin-bottom:9px;
-      background:#161b22;border:1px solid #30363d;border-left:3px solid #58a6ff;
+    button.act:hover{background:var(--seal)}
+    button.act[disabled]{background:var(--paper-sunken);color:var(--ink-soft);cursor:default}
+    button.act.ghost{background:var(--paper-sunken);color:var(--ink);
+      border:1px solid var(--rule)}
+    button.act.ghost:hover{background:var(--rule)}
+    button.act.danger{background:var(--stop)}
+    button.act.danger:hover{background:var(--stop)}
+    .formnote{color:var(--ink-soft);font-size:12px;margin-bottom:9px}
+    .wallnote{color:var(--ink);font-size:12px;margin-bottom:9px;
+      background:var(--paper);border:1px solid var(--rule);border-left:3px solid var(--seal);
       border-radius:6px;padding:8px 10px}
     .loginform{display:flex;flex-direction:column;gap:6px;margin:8px 0}
     .loginform input{font:13px system-ui,-apple-system,sans-serif;
-      background:#0d1117;color:#e6edf3;border:1px solid #30363d;
+      background:var(--leaf);color:var(--ink);border:1px solid var(--rule);
       border-radius:6px;padding:7px 9px}
-    .loginform input:focus-visible{outline:2px solid #58a6ff;outline-offset:1px}
-    .credhint{color:#8b949e;font-size:11px;line-height:1.35}
-    .prog{display:flex;gap:10px;font-size:12px;color:#8b949e;margin:8px 0 4px;
+    .loginform input:focus-visible{outline:2px solid var(--seal);outline-offset:1px}
+    .credhint{color:var(--ink-soft);font-size:11px;line-height:1.35}
+    .prog{display:flex;gap:10px;font-size:12px;color:var(--ink-soft);margin:8px 0 4px;
       flex-wrap:wrap}
-    .prog b{color:#e6edf3;font-weight:600}
-    .prog .warn b{color:#d29922}
-    .notice{margin-top:7px;padding:6px 8px;background:#21262d;
-      border-radius:6px;color:#d29922;font-size:12px}
-    .foot{padding:8px 11px;border-top:1px solid #30363d;color:#8b949e;
-      font-size:11px;flex:none;background:#0d1117}
-    .muted{color:#8b949e;font-size:12px}
+    .prog b{color:var(--ink);font-weight:600}
+    .prog .warn b{color:var(--flag)}
+    .notice{margin-top:7px;padding:6px 8px;background:var(--paper-sunken);
+      border-radius:6px;color:var(--flag);font-size:12px}
+    .foot{padding:8px 11px;border-top:1px solid var(--rule);color:var(--ink-soft);
+      font-size:11px;flex:none;background:var(--leaf)}
+    .muted{color:var(--ink-soft);font-size:12px}
     /* answer groups */
-    .grp{margin-top:9px;border-top:1px solid #21262d;padding-top:7px}
+    .grp{margin-top:9px;border-top:1px solid var(--paper-sunken);padding-top:7px}
     .grph{width:100%;text-align:left;background:none;border:0;cursor:pointer;
-      color:#8b949e;font:600 11px system-ui;text-transform:uppercase;
+      color:var(--ink-soft);font:600 11px system-ui;text-transform:uppercase;
       letter-spacing:.04em;padding:3px 0}
-    .grph:hover{color:#e6edf3}
-    .grph[aria-expanded="true"]{color:#e6edf3}
-    .grpn{color:#8b949e;font-weight:600}
+    .grph:hover{color:var(--ink)}
+    .grph[aria-expanded="true"]{color:var(--ink)}
+    .grpn{color:var(--ink-soft);font-weight:600}
     .grpb{margin-top:5px}
     .hd{cursor:move;user-select:none}
     .hd button{cursor:pointer}
     .sec{margin:0 0 8px}
     .sech{font-size:11px;text-transform:uppercase;letter-spacing:.04em;
-      color:#8b949e;margin:6px 0 4px;padding-bottom:2px;
-      border-bottom:1px solid #21262d}
-    .qa{margin:0 0 9px;padding-bottom:7px;border-bottom:1px solid #21262d}
+      color:var(--ink-soft);margin:6px 0 4px;padding-bottom:2px;
+      border-bottom:1px solid var(--paper-sunken)}
+    .qa{margin:0 0 9px;padding-bottom:7px;border-bottom:1px solid var(--paper-sunken)}
     .qa:last-child{border-bottom:0;margin-bottom:0}
-    .q{font-size:12px;color:#c9d1d9;margin-bottom:3px}
-    .a{font-size:12px;color:#e6edf3;white-space:pre-wrap;word-break:break-word}
-    .a.drafted{color:#a371f7}
-    .a.muted{color:#8b949e}
+    .q{font-size:12px;color:var(--ink);margin-bottom:3px}
+    .a{font-size:12px;color:var(--ink);white-space:pre-wrap;word-break:break-word}
+    .a.drafted{color:var(--pencil)}
+    .a.muted{color:var(--ink-soft)}
     .acts{display:flex;gap:6px;margin-top:5px}
-    .sm{padding:3px 8px;font:11px system-ui;background:#21262d;color:#e6edf3;
-      border:1px solid #30363d;border-radius:5px;cursor:pointer}
-    .sm:hover{background:#30363d}
-    .why{font-size:11px;color:#d29922;margin-top:3px}
-    .plink{color:#58a6ff}
+    .sm{padding:3px 8px;font:11px system-ui;background:var(--paper-sunken);color:var(--ink);
+      border:1px solid var(--rule);border-radius:5px;cursor:pointer}
+    .sm:hover{background:var(--rule)}
+    .why{font-size:11px;color:var(--flag);margin-top:3px}
+    .plink{color:var(--seal)}
     .ask{width:100%;margin-top:4px;padding:5px 7px;font:12px system-ui;
-      background:#0d1117;color:#e6edf3;border:1px solid #30363d;
+      background:var(--leaf);color:var(--ink);border:1px solid var(--rule);
       border-radius:5px}
     .ask:disabled{opacity:.6}
-    :focus-visible{outline:2px solid #58a6ff;outline-offset:2px}
+    :focus-visible{outline:2px solid var(--seal);outline-offset:2px}
     @media (prefers-reduced-motion: reduce){*{transition:none!important}}
   `;
 
@@ -550,6 +610,7 @@ window.jePanel = (function () {
 
   function setScore(result) {
     state.score = result || null;
+    state.method = (result && result.method) || "basic";
     paint();
   }
 
@@ -650,12 +711,19 @@ window.jePanel = (function () {
     els.scorerow.hidden = !s;
     if (s) {
       if (s.needs_resume) {
-        els.score.className = "score none";
+        els.score.className = "score none stamp--unscored";
         els.score.textContent = "—";
         els.band.textContent = "";
       } else {
         const band = s.band || "fair";
-        els.score.className = "score " + band;
+        /* 022 (FR-015/FR-018): the ring states how the number was
+           produced, exactly as the app's feed does. The discovery path is
+           always basic_match, so this badge is a pencil mark — it has been
+           rendering in confident colour bands that read like a full
+           assessment. */
+        els.score.className = "score " + band + " "
+          + (state.method === "llm" ? "stamp--sealed"
+             : state.method === "local" ? "stamp--ink" : "stamp--pencil");
         els.score.textContent = String(s.score);
         els.band.className = "band " + band;
         els.band.textContent = band + " match";
