@@ -147,6 +147,11 @@ performed on a frozen build.
 ## 11. Ship gates
 
 ```
+# FIRST — the version gate. It compares the tag, packaging/windows.iss and
+# engine.APP_VERSION, and it exists because they drifted silently once
+# before. Running it locally turns a failed CI round-trip into two seconds.
+set GITHUB_REF_NAME=v2.1.0 && .venv\Scripts\python.exe packaging\check_version.py
+
 .venv\Scripts\python.exe -m pytest -q                    # twice
 .venv\Scripts\python.exe -m pytest -m browser -q         # ALONE, not in background
 .venv\Scripts\python.exe -m pytest -q tests/test_secret_hygiene.py
