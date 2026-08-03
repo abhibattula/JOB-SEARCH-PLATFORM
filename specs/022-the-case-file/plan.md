@@ -27,7 +27,7 @@ cannot wrap, and the panel starts following the applicant's theme.
 **Project Type**: Desktop web application with a browser extension and a PDF renderer
 **Performance Goals**: feed renders zero DOM replacements per minute while unchanged (from 12); nav occupies one row at ≥1024px; compact density shows at least as many jobs per screen as today
 **Constraints**: fully offline — no network asset of any kind; $0 recurring; `engine/` never imports `web/`; no JS framework and no build step; `PROTOCOL_V` stays 1; ~229 KB of vendored fonts
-**Scale/Scope**: 9 app screens, 11 partials, 1 stylesheet (565 → ~950 lines), 1 extension panel, 1 PDF renderer, ~47 functional requirements
+**Scale/Scope**: 9 app screens, 11 partials, 1 stylesheet rewritten around a new token set, 1 extension panel, 1 PDF renderer, 49 functional requirements, 85 tasks
 
 ## Constitution Check
 
@@ -122,15 +122,19 @@ Phases are sequential. **Phase 1 ends at an approval gate** — the applicant se
 the Feed in light and dark with the stamp at all three provenance levels, and
 approves or redirects before Phase 2 begins (SC-011).
 
+Phase numbers match `tasks.md` exactly (analysis I1 — they previously did not).
+
 | Phase | Content | Gate |
 |---|---|---|
-| **0** | Vendor fonts + licences; write the token block; write `test_design_system.py` **first**, watch it fail against today's stylesheet | the new test fails for the right reason (~35 undefined classes) |
-| **1** | Two-tier tab nav; the provenance stamp; the Feed (compact + comfortable, responsive fallback); the 204 fingerprint | **APPLICANT APPROVAL — screenshots, light and dark, all three stamps** |
-| **2** | Job detail, Profile, Settings — including `.grid-2`, `.hint`, `.switch`, section indexes | design-system test green for those templates |
-| **3** | Apply Assist: the whole unstyled review vocabulary; ink/pencil/flag; the `--bg`/`--border` defect | design-system test green; `test_routes_autofill` re-read |
-| **4** | Companion, Diagnostics, Analytics, Learned answers | zero undefined classes across the whole app |
-| **5** | Extension panel tokens + theme + stamp; PDFs | browser suite green on both platforms; PDFs ATS-safe |
-| **6** | Docs, full verification set | all gates green — **held, no tag** |
+| **1** | Vendor fonts + licences; **capture the jobs-per-screen baseline before anything is restyled** | baseline recorded in `baseline.txt` |
+| **2** | Write `test_design_system.py` **first** and watch it fail; then the token block, `@font-face`, the global reduced-motion override, the `--bg`/`--border` fix | the new test fails for the right reason (~35 undefined classes), then T2–T7 pass |
+| **3** | Two-tier tab nav; the provenance stamp; the Feed (compact + comfortable, responsive fallback); the 204 fingerprint | **APPLICANT APPROVAL — screenshots, light and dark, all three stamps** |
+| **4** | Job detail, Profile, Settings — including `.grid-2`, `.hint`, `.switch`, section indexes | allowlist shrinks; anchors still resolve |
+| **5** | Apply Assist: the whole unstyled review vocabulary; ink/pencil/flag | allowlist shrinks; `test_routes_autofill` re-read individually |
+| **6** | Companion, Diagnostics, Analytics, Learned answers | **zero undefined classes across the whole app** — allowlist empty |
+| **7** | Extension panel tokens + theme + stamp | browser suite green; `PROTOCOL_V` still 1 |
+| **8** | PDFs | ATS-safe, Unicode coverage intact |
+| **9** | Docs, full verification set | all gates green — **held, no tag** |
 
 ## Risks
 
