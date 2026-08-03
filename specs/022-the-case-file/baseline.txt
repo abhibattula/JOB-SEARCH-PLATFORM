@@ -1,0 +1,81 @@
+022 "The Case File" — measured baselines
+========================================
+All numbers are measured on this machine, not estimated. Anything not
+measured yet says so.
+
+T004a — FEED THROUGHPUT BASELINE (SC-012)          measured 2026-08-03
+---------------------------------------------------------------------
+Build: v2.1.0 (commit 03a5ff6), real Chromium, viewport 1366x768,
+60 seeded jobs, network-isolated, sort=score, window=all.
+
+  state                                fully visible   partly   row height
+  -----------------------------------  -------------   ------   ----------
+  first launch (What's New showing)          0            0        40.1 px
+  new install (setup card showing)           0            0        40.1 px
+  settled (both dismissed)                   6            7        40.1 px
+
+  topbar height: 45.4 px
+
+THE NUMBER TO BEAT FOR SC-012: **6 fully-visible job rows** at 1366x768.
+Compact density must show at least 6. Anything less is a regression.
+
+Findings this measurement produced, which no test would have caught:
+
+  F-A  The feed shows SIX jobs per screen on a standard laptop. Roughly
+       695 px of the 768 px viewport is consumed before the first job:
+       topbar 45 + setup card ~240 + dashboard ~315 + toolbar ~95. The
+       dashboard's three cards and the two-row filter toolbar are the
+       bulk of it.
+
+  F-B  On first launch of a new version the What's New panel fills the
+       ENTIRE viewport — nine full-width bullets with no max-height —
+       so a new install shows zero jobs until it is dismissed twice
+       (What's New, then the setup card).
+
+  F-C  `wait_until="networkidle"` never settles on the feed, because the
+       5-second poll keeps the network permanently busy. This is FR-027
+       observed from the outside: any tool that waits for a quiet network
+       hangs on this page.
+
+Both F-A and F-B are worth fixing in this feature and are not currently
+in any FR. Raised for the applicant's decision rather than absorbed
+silently — the scope was agreed as a redesign, not an IA change, and
+collapsing the dashboard changes what the home screen IS.
+
+T001-T003 — VENDORED FONTS                          measured 2026-08-03
+---------------------------------------------------------------------
+  web/static/fonts/  (woff2, for the app)
+    archivo-latin.woff2               88.0 KB
+    archivo-latin-ext.woff2           84.2 KB
+    plexmono-400-latin.woff2          14.4 KB
+    plexmono-400-latin-ext.woff2      13.0 KB
+    plexmono-600-latin.woff2          15.3 KB
+    plexmono-600-latin-ext.woff2      14.0 KB
+                              TOTAL  228.9 KB
+
+  assets/fonts/  (TTF, for the PDF renderer)
+    Archivo-Regular.ttf              179.2 KB   usWeightClass 400
+    Archivo-Bold.ttf                 187.7 KB   usWeightClass 700
+
+  Rejected during T003: the variable TTF (Archivo[wdth,wght].ttf,
+  643 KB). fpdf2 2.8.7 ACCEPTS it registered as style "B" but renders
+  the default instance, so bold would have been visually identical to
+  regular and the PDF hierarchy (FR-038) would have silently vanished.
+  Verified by reading usWeightClass off both static files instead:
+  400 and 700, genuinely different.
+
+T004 — PACKAGING                                    verified 2026-08-03
+---------------------------------------------------------------------
+  packaging/jobengine.spec:16  ships web/static  -> fonts included
+  packaging/jobengine.spec:47  ships assets/fonts -> TTFs included
+  No packaging change required. Confirmed by reading the spec.
+
+STILL OUTSTANDING (the applicant's, carried from 019/021)
+---------------------------------------------------------------------
+  T012/021  press "Save page report" on the real Intel Workday form
+  T047/021  re-run Apply Assist there; record filled/needs-you/seen
+            against 5 / 149 / 156
+  T061/021  save a free Groq key; time one tailoring request per tier
+  T076/019  install, press the reload arrow at chrome://extensions,
+            save a Workday login, escort to Review, confirm Submit is
+            never pressed

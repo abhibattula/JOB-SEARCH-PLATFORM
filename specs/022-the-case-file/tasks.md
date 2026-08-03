@@ -19,11 +19,11 @@ plus all of US2, US3 and US4 — and Phases 4–6 finish US1 screen by screen.
 
 ## Phase 1: Setup
 
-- [ ] T001 Download Archivo Variable (wdth,wght; latin + latin-ext) and IBM Plex Mono 400/600 woff2 into `web/static/fonts/`, ~229 KB total *(FR-006)*
-- [ ] T002 [P] Vendor the OFL licence for each family into `web/static/fonts/`
-- [ ] T003 [P] Download Archivo TTF (regular + bold) into `assets/fonts/` for the PDF renderer *(FR-040)*
-- [ ] T004 Confirm `packaging/jobengine.spec` picks up `web/static/fonts/` with no spec change, and that `paths.resource_path("assets/fonts")` resolves the new TTFs
-- [ ] T004a **BASELINE, before any styling change** (SC-012, analysis O1): run the current build and record how many job rows are visible in one 1366×768 viewport at the default feed. T033 has nothing to compare against if this is not captured first. Write the number into `specs/022-the-case-file/baseline.txt` *(SC-012)*
+- [X] T001 Download Archivo Variable (wdth,wght; latin + latin-ext) and IBM Plex Mono 400/600 woff2 into `web/static/fonts/`, ~229 KB total *(FR-006)*
+- [X] T002 [P] Vendor the OFL licence for each family into `web/static/fonts/`
+- [X] T003 [P] Download Archivo TTF (regular + bold) into `assets/fonts/` for the PDF renderer *(FR-040)*
+- [X] T004 Confirm `packaging/jobengine.spec` picks up `web/static/fonts/` with no spec change, and that `paths.resource_path("assets/fonts")` resolves the new TTFs
+- [X] T004a **BASELINE, before any styling change** (SC-012, analysis O1): run the current build and record how many job rows are visible in one 1366×768 viewport at the default feed. T033 has nothing to compare against if this is not captured first. Write the number into `specs/022-the-case-file/baseline.txt` *(SC-012)*
 
 ## Phase 2: Foundational (BLOCKING — nothing below starts until this is green)
 
