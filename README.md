@@ -7,6 +7,7 @@
 > | **[docs/USER_MANUAL.md](docs/USER_MANUAL.md)** | **The complete manual** — what the program is, how every part works and connects, how to run and test it, all settings, troubleshooting |
 > | [docs/USER_GUIDE.md](docs/USER_GUIDE.md) | Short daily-use guide — reading the feed, filters, statuses, profile |
 > | [docs/RELEASING.md](docs/RELEASING.md) | Building and publishing the Windows/Mac installers |
+> | [CHANGELOG.md](CHANGELOG.md) | Every released version, newest first |
 > | [specs/](specs/) | Full requirement → design → task history (spec-kit) |
 
 A zero-subscription, local-first web app that finds **entry-level software and
@@ -15,23 +16,17 @@ and scores every posting against **your resume** with actionable gap analysis �
 the things tools like Simplify and Jobright charge subscriptions for, running
 entirely on your machine for $0.
 
-### v2.2.0 — The Case File
+**Latest release — [v2.2.0 "The Case File"](CHANGELOG.md)** · one design
+system across the app, the browser companion and the generated PDFs. A match
+score now shows **how it was produced** — a dashed ring for a keyword guess,
+solid for the offline model, double for a full analysis — so a guess can never
+be mistaken for an assessment. The feed stopped rebuilding itself every five
+seconds (12 times a minute → 0), the home strip gave the space back (**6 jobs
+per screen → 13**, measured), and navigation became four tabs that never wrap.
 
-One design system across the app, the browser panel and the generated
-PDFs. The headline is that **a match score now shows how it was
-produced** — a dashed ring for a keyword guess, solid for the offline
-model, double for a full analysis — so a guess can never be mistaken for
-an assessment.
-
-The feed stops replacing itself every five seconds, the home dashboard
-went from three tall cards to one strip (**6 jobs visible per screen
-became 13**, measured), navigation became four tabs that never wrap, and
-Profile gained per-section counts telling you exactly how much Apply
-Assist will still have to hand back to you on a real form.
-
-It began as an audit, not a restyle: roughly 35 class names were used in
-the pages and defined in no stylesheet, including the entire Apply
-Assist review list. A test now fails the build if that ever recurs.
+It began as an audit rather than a restyle: ~35 CSS class names were used in
+the pages and defined in no stylesheet, including the whole Apply Assist
+review list. A test now fails the build if that recurs.
 
 ## What it does
 
