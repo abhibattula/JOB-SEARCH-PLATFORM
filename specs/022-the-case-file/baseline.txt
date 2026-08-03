@@ -127,3 +127,35 @@ a one-way door — a link back is always rendered.
 Nothing was dropped. Tests assert each piece is still present, that a
 top match still shows its provenance stamp, and that the three-card
 grid is gone.
+
+PHASE 9 VERIFICATION                               2026-08-03
+---------------------------------------------------------------------
+  unit battery (-m "not browser")   2196 passed, 0 failed
+  browser suite, WINDOWS            109 passed, 0 failed
+  secret hygiene                    included above, passed
+  packaging/check_version.py        OK 2.2.0 (engine, windows.iss,
+                                    extension/manifest.json)
+
+  browser suite, macOS              NOT RUN — needs the CI workflow,
+                                    which only fires on a v* tag. This
+                                    is the gate that forced v2.0.0's tag
+                                    to be cut twice.
+  frozen-build smoke                NOT RUN — needs a full PyInstaller
+                                    build.
+
+THE BROWSER SUITE EARNED ITS KEEP AGAIN
+---------------------------------------------------------------------
+First run after Phase 7: 14 FAILED, all on a 60-second timeout with no
+error text, while 2184 unit tests were green.
+
+Cause: main.js names its message parameter `message`; the theme line
+added in Phase 7 said `msg.theme`. `msg` is undefined there, so the
+first watch message threw a ReferenceError — and one error in a content
+script kills the entire companion, so the widget never appeared at all.
+
+`node --check` passed the file. Syntax validity is not reference
+validity. A test now fails if `msg.` appears anywhere in main.js.
+
+Second finding from the same run: extension/manifest.json still declared
+2.1.0 after APP_VERSION moved to 2.2.0 — the same shape as the
+packaging/windows.iss slip that nearly shipped v2.1.0 broken.

@@ -133,17 +133,17 @@ plus all of US2, US3 and US4 — and Phases 4–6 finish US1 screen by screen.
 
 ## Phase 9: Verification, documentation, and the held gate
 
-- [ ] T070 Run the full unit battery twice; the second run catches order dependence. **Name the preservation guarantees explicitly** (analysis G2) so they cannot silently lose coverage if this task is ever narrowed: prose links keep a non-colour cue (`test_web.py:100`), banners render server-side (`:77`), assets stay version-stamped (`:178`), the command palette stays keyboard-reachable (`:64`), form controls keep accessible labels (`:88`) *(FR-041, FR-043, FR-044, FR-045, SC-010)*
-- [ ] T071 Run the browser suite on Windows
+- [X] T070 Run the full unit battery twice; the second run catches order dependence. **Name the preservation guarantees explicitly** (analysis G2) so they cannot silently lose coverage if this task is ever narrowed: prose links keep a non-colour cue (`test_web.py:100`), banners render server-side (`:77`), assets stay version-stamped (`:178`), the command palette stays keyboard-reachable (`:64`), form controls keep accessible labels (`:88`) *(FR-041, FR-043, FR-044, FR-045, SC-010)*
+- [X] T071 Run the browser suite on Windows
 - [ ] T072 Run the browser suite on macOS — a gate, not a note (020's tag was cut twice because macOS caught what Windows passed)
-- [ ] T073 Run `tests/test_secret_hygiene.py`; confirm no restyled surface exposes a secret (FR-046) *(FR-046)*
+- [X] T073 Run `tests/test_secret_hygiene.py`; confirm no restyled surface exposes a secret (FR-046) *(FR-046)*
 - [ ] T074 Run `packaging/check_version.py` **first**, then `packaging/smoke_test.py` on the frozen build
 - [ ] T075 Verify no network request for any asset, with the machine actually disconnected (CHK059) *(FR-006)*
 - [ ] T076 Walk all nine screens in light and dark; work the `checklists/design.md` items, recording judgements for CHK011, CHK028, CHK033
-- [ ] T077 [P] Update `docs/USER_MANUAL.md` with the design system, the provenance stamp, density, and the navigation change
-- [ ] T078 [P] Update `docs/USER_GUIDE.md` for the new navigation and the stamp
-- [ ] T079 [P] Update `README.md`
-- [ ] T080 [P] Add the `WHATS_NEW` entry for this release
+- [X] T077 [P] Update `docs/USER_MANUAL.md` with the design system, the provenance stamp, density, and the navigation change
+- [X] T078 [P] Update `docs/USER_GUIDE.md` for the new navigation and the stamp
+- [X] T079 [P] Update `README.md`
+- [X] T080 [P] Add the `WHATS_NEW` entry for this release
 - [ ] T081 **HELD: no tag, no release, no version pushed until the applicant says go** (SC-011) *(SC-011)*
 
 ---
