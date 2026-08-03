@@ -107,6 +107,17 @@ _AGE_18_RE = re.compile(
     re.IGNORECASE)
 _NON_COMPETE_RE = re.compile(r"non[\s_-]*compete", re.IGNORECASE)
 _CLEARANCE_RE = re.compile(r"security\s+clearance|\bclearance\b", re.IGNORECASE)
+# 021 (FR-031): "Country/Region Phone Code*" was one of the few rows the
+# applicant could even READ in the 149-row flood, and the profile had no fact
+# behind it. It must be matched BEFORE the bare-country rule, or it is
+# answered with a country name.
+_PHONE_CODE_RE = re.compile(
+    r"(country|region|dial|area)[\s_/-]*code|phone[\s_-]*code", re.IGNORECASE)
+# The licence QUESTION ("do you hold one?"), never the licence NUMBER — that
+# is a government identifier and is on the never-observe list.
+_DRIVERS_LICENCE_RE = re.compile(
+    r"driver'?s?[\s_-]*(licen[cs]e|permit)(?![\s_-]*(number|no\b|#))",
+    re.IGNORECASE)
 _BACKGROUND_CHECK_RE = re.compile(r"background\s+check", re.IGNORECASE)
 _DRUG_TEST_RE = re.compile(r"drug\s+(test|screen)", re.IGNORECASE)
 _RELOCATE_RE = re.compile(r"\brelocat", re.IGNORECASE)
@@ -487,6 +498,12 @@ def classify(field: FieldDescriptor) -> str:
         return "degree"
 
     # 017 (FR-021): the rest of an address.
+    # Before the bare-country rule: "Country/Region Phone Code" contains
+    # "Country" and would otherwise be answered with a country name.
+    if _PHONE_CODE_RE.search(text):
+        return "phone_country_code"
+    if _DRIVERS_LICENCE_RE.search(text):
+        return "drivers_licence"
     if _LOCATION_COUNTRY_RE.search(text):
         return "location_country"
     if _LOCATION_POSTAL_RE.search(text):

@@ -130,6 +130,27 @@
       <input type="text" name="sponsorship_detail"
              value="{{ profile.sponsorship_detail or '' }}">
     </label>
+    <!-- 021 (FR-031): asked on the applicant's real Workday application and
+         unanswerable until now. "Country/Region Phone Code*" was one of the
+         few rows they could even read in the 149-row flood. -->
+    <label id="field-phone_country_code">Country/region phone code
+      <input type="text" name="phone_country_code" placeholder="+1"
+             value="{{ profile.phone_country_code or '' }}">
+    </label>
+    <label id="field-security_clearance">Do you hold a security clearance?
+      <select name="security_clearance">
+        <option value="" {% if not profile.security_clearance %}selected{% endif %}>—</option>
+        <option value="yes" {% if profile.security_clearance == "yes" %}selected{% endif %}>Yes</option>
+        <option value="no" {% if profile.security_clearance == "no" %}selected{% endif %}>No</option>
+      </select>
+    </label>
+    <label id="field-drivers_licence">Do you hold a valid driving licence?
+      <select name="drivers_licence">
+        <option value="" {% if not profile.drivers_licence %}selected{% endif %}>—</option>
+        <option value="yes" {% if profile.drivers_licence == "yes" %}selected{% endif %}>Yes</option>
+        <option value="no" {% if profile.drivers_licence == "no" %}selected{% endif %}>No</option>
+      </select>
+    </label>
   </div>
 
   <h2>Education &amp; experience</h2>

@@ -64,6 +64,8 @@ window.jePanel = (function () {
     answers: [],
     truncated: false,
     notice: "",
+    // 021 (FR-032): where the app is, so a needs-you row can link into it.
+    appOrigin: "http://127.0.0.1:8756",
     // Auto-expand fires ONCE per condition. After the applicant collapses the
     // card we do not keep re-opening it at them.
     autoExpanded: { session: false, needs: false },
@@ -144,12 +146,102 @@ window.jePanel = (function () {
   // rendered at the bottom of the document instead of the corner of the
   // screen. `!important` because a plain inline declaration loses to a page
   // rule like `div { position: static !important }`.
+  // 021 (FR-027..FR-030): the applicant drags the panel out of the way.
+  //
+  // Offsets from the RIGHT and BOTTOM, not page coordinates: it keeps the
+  // existing `inset` idiom, behaves correctly when the window is resized,
+  // and does not scroll away from the form.
+  //
+  // Every declaration stays `!important`. A drag implementation that wrote
+  // `style.left` normally would resurrect the exact bug documented above —
+  // a page rule like `div { position: static !important }` outranks a plain
+  // inline declaration.
+  const DEFAULT_POS = { right: 16, bottom: 16 };
+  const POS_KEY = "je_panel_pos";
+  let pos = { right: DEFAULT_POS.right, bottom: DEFAULT_POS.bottom };
+
+  function clampPos(candidate) {
+    // FR-028: a position saved on a large monitor must not strand the panel
+    // off-screen on a laptop. Keep a usable amount of it reachable.
+    const width = host ? host.offsetWidth || 340 : 340;
+    const height = host ? host.offsetHeight || 120 : 120;
+    const maxRight = Math.max(0, window.innerWidth - 60);
+    const maxBottom = Math.max(0, window.innerHeight - 40);
+    return {
+      right: Math.min(Math.max(candidate.right, 60 - width), maxRight),
+      bottom: Math.min(Math.max(candidate.bottom, 40 - height), maxBottom),
+    };
+  }
+
+  function applyPos(el) {
+    el.style.setProperty(
+      "inset", "auto " + pos.right + "px " + pos.bottom + "px auto",
+      "important");
+  }
+
   function pin(el) {
     el.style.cssText = "all:initial";
     el.style.setProperty("position", "fixed", "important");
-    el.style.setProperty("inset", "auto 16px 16px auto", "important");
     el.style.setProperty("z-index", "2147483647", "important");
     el.style.setProperty("display", "block", "important");
+    applyPos(el);
+  }
+
+  function savePos() {
+    try {
+      if (chrome && chrome.storage && chrome.storage.local) {
+        chrome.storage.local.set({ [POS_KEY]: pos });
+      }
+    } catch (e) { /* storage unavailable — the panel still moves */ }
+  }
+
+  function restorePos() {
+    try {
+      if (!chrome || !chrome.storage || !chrome.storage.local) { return; }
+      chrome.storage.local.get(POS_KEY, function (stored) {
+        const saved = stored && stored[POS_KEY];
+        if (!saved || typeof saved.right !== "number") { return; }
+        pos = clampPos(saved);
+        if (host) { applyPos(host); }
+      });
+    } catch (e) { /* first run, or a context that has no storage */ }
+  }
+
+  function resetPos() {
+    pos = { right: DEFAULT_POS.right, bottom: DEFAULT_POS.bottom };
+    if (host) { applyPos(host); }
+    savePos();
+  }
+
+  function startDrag(evt) {
+    if (!host || evt.button !== 0) { return; }
+    // Not from a control — the header carries Collapse and Dismiss.
+    if (evt.target.closest && evt.target.closest("button")) { return; }
+    evt.preventDefault();
+    const startX = evt.clientX;
+    const startY = evt.clientY;
+    const from = { right: pos.right, bottom: pos.bottom };
+
+    function move(e) {
+      // Dragging right REDUCES the right offset; dragging down reduces
+      // bottom. Clamped live so it can never be dragged out of reach.
+      pos = clampPos({ right: from.right - (e.clientX - startX),
+                       bottom: from.bottom - (e.clientY - startY) });
+      applyPos(host);
+    }
+    function done() {
+      window.removeEventListener("mousemove", move, true);
+      window.removeEventListener("mouseup", done, true);
+      savePos();
+    }
+    window.addEventListener("mousemove", move, true);
+    window.addEventListener("mouseup", done, true);
+  }
+
+  function onViewportResize() {
+    if (!host) { return; }
+    pos = clampPos(pos);
+    applyPos(host);
   }
 
   const STYLE = `
@@ -244,6 +336,8 @@ window.jePanel = (function () {
     .grph[aria-expanded="true"]{color:#e6edf3}
     .grpn{color:#8b949e;font-weight:600}
     .grpb{margin-top:5px}
+    .hd{cursor:move;user-select:none}
+    .hd button{cursor:pointer}
     .sec{margin:0 0 8px}
     .sech{font-size:11px;text-transform:uppercase;letter-spacing:.04em;
       color:#8b949e;margin:6px 0 4px;padding-bottom:2px;
@@ -259,6 +353,7 @@ window.jePanel = (function () {
       border:1px solid #30363d;border-radius:5px;cursor:pointer}
     .sm:hover{background:#30363d}
     .why{font-size:11px;color:#d29922;margin-top:3px}
+    .plink{color:#58a6ff}
     .ask{width:100%;margin-top:4px;padding:5px 7px;font:12px system-ui;
       background:#0d1117;color:#e6edf3;border:1px solid #30363d;
       border-radius:5px}
@@ -278,6 +373,8 @@ window.jePanel = (function () {
       <div class="hd">
         <span class="dot" id="dot"></span>
         <span class="tag">Job Engine</span><span class="sp"></span>
+        <button class="icon" id="resetpos" title="Reset position"
+                aria-label="Reset position">↺</button>
         <button class="icon" id="collapse" title="Collapse"
                 aria-label="Collapse">▁</button>
         <button class="icon" id="dismiss" title="Dismiss"
@@ -375,6 +472,11 @@ window.jePanel = (function () {
     });
     root.getElementById("collapse").addEventListener(
       "click", function () { setCollapsed(true); });
+    // 021 (FR-027/FR-030): drag by the header; reset to the corner.
+    root.getElementById("resetpos").addEventListener("click", resetPos);
+    root.querySelector(".hd").addEventListener("mousedown", startDrag);
+    els.pill.addEventListener("mousedown", startDrag);
+    window.addEventListener("resize", onViewportResize);
     root.getElementById("dismiss").addEventListener("click", onDismiss);
     els.primary.addEventListener("click", onPrimary);
     els.next.addEventListener("click", function () {
@@ -404,6 +506,7 @@ window.jePanel = (function () {
       setNotice("Saved. Signing you in…");
     });
     (document.body || document.documentElement).appendChild(host);
+    restorePos();
     paint();
     return true;
   }
@@ -903,6 +1006,19 @@ window.jePanel = (function () {
     row.input.hidden = !item.askable;
     if (item.askable && !row.input.disabled) {
       row.why.textContent = reasonText(item.reason);
+      // 021 (FR-032): "Add it to your profile" was a dead instruction that
+      // never said WHICH field. On the applicant's real page it appeared on
+      // Country/Region and State - fields the app already knows about and
+      // they had simply not filled in.
+      if (item.reason === "profile_fact_missing" && item.profile_field) {
+        const link = document.createElement("a");
+        link.className = "plink";
+        link.textContent = " Open that field →";
+        link.href = state.appOrigin + "/profile#field-" + item.profile_field;
+        link.target = "_blank";
+        link.rel = "noopener";
+        row.why.appendChild(link);
+      }
     }
   }
 

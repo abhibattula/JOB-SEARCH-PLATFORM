@@ -1144,3 +1144,67 @@ class TestTheProtocolStaysAdditive:
         raw = msg.descriptors[0].as_watcher_dict()
         assert raw["section_label"] == "Education"
         assert raw["section_index"] == 1
+
+
+class TestThePanelCanBeMoved:
+    """021 US5 (FR-027..FR-030). The panel sat on top of the very controls
+    being filled and could not be moved.
+
+    Real drag behaviour is asserted in the browser suite; these are the
+    static guards that run on every commit — and the most important one is
+    that every placement declaration stays `!important`."""
+
+    def _panel(self):
+        return (EXT / "content" / "panel.js").read_text(encoding="utf-8")
+
+    def test_every_placement_declaration_stays_important(self):
+        """The v1.0.0-to-v1.7.0 bug, documented in panel.js itself: a plain
+        inline declaration LOSES to a page rule like
+        `div { position: static !important }`. A drag implementation that
+        wrote style.left normally would resurrect it."""
+        js = self._panel()
+        start = js.index("function applyPos")
+        block = js[start:start + 400]
+        assert '"important"' in block, (
+            "applyPos writes placement without !important — a hostile page "
+            "stylesheet will win")
+
+    def test_it_never_writes_a_bare_left_or_top(self):
+        """Offsets from right/bottom keep the existing `inset` idiom and
+        survive a window resize. Page coordinates would scroll away."""
+        js = self._panel()
+        for forbidden in ("style.left =", "style.top =",
+                          'setProperty("left"', 'setProperty("top"'):
+            assert forbidden not in js, forbidden
+
+    def test_the_position_is_persisted_outside_the_page(self):
+        """localStorage is per-origin, so the panel would forget its place on
+        every new employer's domain."""
+        js = self._panel()
+        assert "chrome.storage.local" in js
+        assert "localStorage" not in js
+
+    def test_a_restored_position_is_clamped(self):
+        js = self._panel()
+        assert "function clampPos" in js
+        start = js.index("function restorePos")
+        assert "clampPos" in js[start:start + 500], (
+            "a position saved on a big monitor would strand the panel "
+            "off-screen on a laptop")
+
+    def test_a_resize_reclamps(self):
+        js = self._panel()
+        assert "function onViewportResize" in js
+        assert '"resize", onViewportResize' in js
+
+    def test_dragging_ignores_the_header_buttons(self):
+        """Collapse and Dismiss live in the drag handle."""
+        js = self._panel()
+        start = js.index("function startDrag")
+        block = js[start:start + 500]
+        assert 'closest("button")' in block
+
+    def test_there_is_a_way_back_to_the_corner(self):
+        js = self._panel()
+        assert "function resetPos" in js
+        assert 'id="resetpos"' in js

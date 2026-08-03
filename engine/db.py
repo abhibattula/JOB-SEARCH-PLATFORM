@@ -266,6 +266,12 @@ _MIGRATIONS = {
         ("selfid_disability", "TEXT"),
         ("selfid_orientation", "TEXT"),
         ("target_titles", "TEXT"),
+        # 021 (FR-031): facts a real application asked the applicant for
+        # and this profile could not answer. "Country/Region Phone Code*"
+        # was one of the few rows they could even READ in the flood.
+        ("phone_country_code", "TEXT"),
+        ("security_clearance", "TEXT"),
+        ("drivers_licence", "TEXT"),
     ],
     # 017: one row per (job, question) + when it was last refreshed
     "ai_drafts": [
@@ -1317,6 +1323,8 @@ _PROFILE_COLUMNS = (
     "how_heard_default", "selfid_gender", "selfid_race",
     "selfid_veteran", "selfid_disability", "selfid_orientation",
     "target_titles",
+    # 021 (FR-031)
+    "phone_country_code", "security_clearance", "drivers_licence",
 )
 
 

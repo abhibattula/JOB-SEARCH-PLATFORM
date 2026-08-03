@@ -739,6 +739,9 @@ PROFILE_017_FIELDS = (
     # never inferred, never sent to a model
     "selfid_gender", "selfid_race", "selfid_veteran", "selfid_disability",
     "selfid_orientation",
+    # 021 (FR-031): asked on the applicant's real Workday application and
+    # unanswerable until now.
+    "phone_country_code", "security_clearance", "drivers_licence",
 )
 
 

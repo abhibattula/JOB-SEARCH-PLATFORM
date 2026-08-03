@@ -37,6 +37,7 @@ _DIRECT: dict[str, str] = {
     "github_url": "github_url",
     "other_url": "other_url",
     # address
+    "phone_country_code": "phone_country_code",
     "location_address1": "address_line1",
     "location_address2": "address_line2",
     "location_city": "city",
@@ -62,6 +63,7 @@ _DIRECT: dict[str, str] = {
     "notice_period": "notice_period",
     "remote_preference": "remote_preference",
     # defaults
+    "drivers_licence": "drivers_licence",
     "how_heard": "how_heard_default",
     # voluntary self-identification (D1) — stored by the applicant only,
     # never inferred, never sent to a model.
@@ -77,6 +79,8 @@ _DIRECT: dict[str, str] = {
 _YES_NO: dict[str, str] = {
     "relocate": "willing_to_relocate",
     "travel": "willing_to_travel",
+    # 021 (FR-031)
+    "security_clearance": "security_clearance",
 }
 
 # Tags this module can answer. Anything outside it falls through to the

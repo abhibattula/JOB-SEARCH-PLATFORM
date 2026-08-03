@@ -44,11 +44,26 @@ ITEM_NEEDS_YOU_REASONS = ("version_mismatch", "no_saved_login")
 # The fields the panel renders. The digest is taken over exactly these, so a
 # change the applicant cannot see never causes a re-render.
 _RENDERED = ("key", "je_idx", "je_idx_all", "question", "answer", "group",
-             "state", "reason", "askable", "section_label", "section_index")
+             "state", "reason", "askable", "section_label", "section_index",
+             "profile_field")
 
 
 def _normalize(question: str) -> str:
     return " ".join((question or "").split()).casefold()
+
+
+def _profile_field(tag: str | None) -> str:
+    """021 (FR-032): the profile field that would answer this question.
+
+    Kept import-light and failure-tolerant — this module is pure and is built
+    inside the decision loop, where an exception would stop a page filling.
+    """
+    try:
+        from . import profile_answers
+
+        return profile_answers.profile_field_for(tag) or ""
+    except Exception:  # noqa: BLE001
+        return ""
 
 
 def _classify(item: dict, record: dict | None) -> tuple[str, str, bool]:
@@ -135,6 +150,12 @@ def build(entries, drafter_records=None) -> list[dict]:
                 "askable": askable,
                 "section_label": section_label,
                 "section_index": section_index,
+                # 021 (FR-032): "Add it to your profile and it fills
+                # automatically next time" was a dead instruction — it never
+                # said WHICH field. On the applicant's real page it appeared
+                # on Country/Region and State, both of which the app already
+                # knows about and they had simply not filled in.
+                "profile_field": _profile_field(item.get("tag")),
             }
             continue
         if je_idx and je_idx not in existing["je_idx_all"]:
