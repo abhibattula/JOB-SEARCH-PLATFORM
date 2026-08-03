@@ -116,6 +116,35 @@
 
       <section>
         <h2>Apply with tailored materials</h2>
+        <script>
+          /* 021 (FR-022): this used to be an inline
+               JSON.parse(event.detail.xhr.responseText).detail
+             which THROWS on an empty or non-JSON body. A slow request that
+             got dropped therefore killed the handler and showed the
+             applicant nothing at all — the reported "the resume did not
+             generate after I click generate a tailored resume", with no
+             error, no result, and no way to tell which. */
+          function jeTailorDone(button, event) {
+            var note = button.parentElement.querySelector('[role=alert]')
+              || button.nextElementSibling.nextElementSibling;
+            if (event.detail.successful) { window.location.reload(); return; }
+            var xhr = event.detail.xhr || {};
+            var message = '';
+            try {
+              message = JSON.parse(xhr.responseText || '{}').detail || '';
+            } catch (e) { message = ''; }
+            if (!message) {
+              message = xhr.status
+                ? 'Tailoring failed (' + xhr.status + '). Diagnostics shows '
+                  + 'the AI runtime state.'
+                : 'Tailoring didn’t finish — the request was cut '
+                  + 'off before the app answered. On-device this takes a few '
+                  + 'minutes; Settings can point it at the free cloud tier '
+                  + 'instead.';
+            }
+            if (note) { note.innerText = message; }
+          }
+        </script>
         {% if tailoring %}
         <h3>Resume headline</h3>
         <p class="copy-block" onclick="copyText(this.innerText)"
@@ -145,7 +174,7 @@
         </div>
         <button class="tailor-btn ghost" hx-post="/api/jobs/{{ job.id }}/tailor" hx-swap="none"
                 hx-indicator="#tailor-rewait"
-                hx-on::after-request="if(event.detail.successful) window.location.reload(); else this.nextElementSibling.nextElementSibling.innerText = JSON.parse(event.detail.xhr.responseText).detail">
+                hx-on::after-request="jeTailorDone(this, event)">
           Regenerate
         </button>
         <span id="tailor-rewait" class="htmx-indicator data">generating — this runs on-device and can take a few minutes…</span>
@@ -158,7 +187,7 @@
           specific posting from your real resume (nothing is invented).</p>
         <button class="tailor-btn" hx-post="/api/jobs/{{ job.id }}/tailor" hx-swap="none"
                 hx-indicator="#tailor-wait"
-                hx-on::after-request="if(event.detail.successful) window.location.reload(); else this.nextElementSibling.nextElementSibling.innerText = JSON.parse(event.detail.xhr.responseText).detail">
+                hx-on::after-request="jeTailorDone(this, event)">
           Tailor for this job
         </button>
         <span id="tailor-wait" class="htmx-indicator data">generating — this runs on-device and can take a few minutes…</span>

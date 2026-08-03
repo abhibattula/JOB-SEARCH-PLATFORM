@@ -404,6 +404,11 @@ def get_settings():
         "autofill_use_tailored_pdf": settings.get("AUTOFILL_USE_TAILORED_PDF") != "0",
         # 015 (D3/FR-016)
         "preferred_browser": settings.get("PREFERRED_BROWSER") or "chrome",
+        # 021 (FR-023): which tier serves work the applicant is waiting
+        # on. Defaults to cloud so a saved key actually does something —
+        # the v2.0.0 failure was that saving one changed nothing at all.
+        "ai_interactive_tier": settings.get("AI_INTERACTIVE_TIER")
+        or "cloud",
     }
 
 
@@ -420,6 +425,7 @@ async def save_settings(
     alerts_enabled: str | None = Form(None),
     theme: str | None = Form(None),
     autofill_use_tailored_pdf: str | None = Form(None),
+    ai_interactive_tier: str | None = Form(None),
     onboarding_dismissed: str | None = Form(None),
     preferred_browser: str | None = Form(None),
     max_score_per_run: str | None = Form(None),
@@ -447,6 +453,8 @@ async def save_settings(
             "AUTOFILL_USE_TAILORED_PDF",
             "1" if autofill_use_tailored_pdf == "1" else "0",
         )
+    if ai_interactive_tier in ("cloud", "local"):  # unknown ignored
+        settings.set("AI_INTERACTIVE_TIER", ai_interactive_tier)
     if onboarding_dismissed == "1":
         settings.set("ONBOARDING_DISMISSED", "1")
     if preferred_browser in ("chrome", "msedge", "auto"):  # unknown ignored
@@ -640,15 +648,21 @@ def tailor_job(job_id: int, request: Request):
         raise HTTPException(
             status_code=409, detail="Add an AI key in Settings to generate tailoring."
         )
-    result = tailor.tailor_for_job(
-        profile["resume_text"], job["title"], job["company"],
-        job.get("description") or "",
-    )
+    try:
+        result = tailor.tailor_for_job(
+            profile["resume_text"], job["title"], job["company"],
+            job.get("description") or "",
+        )
+    except tailor.TailorError as exc:
+        # 021 (FR-022): say WHY. A button that silently does nothing destroys
+        # trust in every other AI surface in the app.
+        raise HTTPException(status_code=502,
+                            detail=f"Tailoring didn't complete — {exc}") from exc
     if result is None:
         raise HTTPException(
             status_code=502,
-            detail="Tailoring didn't complete — the on-device AI timed out "
-            "or returned an invalid result. The app is fine; try again "
+            detail="Tailoring didn't complete — the AI returned something "
+            "that wasn't a usable result. The app is fine; try again "
             "(Diagnostics shows the AI runtime state).",
         )
     db.set_tailor(job_id, result.model_dump_json())

@@ -12,6 +12,7 @@ No real model is ever loaded here; every test stubs the assessor.
 from __future__ import annotations
 
 import threading
+import time
 
 import pytest
 
@@ -688,3 +689,63 @@ class TestFairness020:
 
         inference.set_executors_for_tests(None)
         inference.reset_for_tests()
+
+
+class TestBackgroundWorkYieldsToTheApplicant:
+    """021 US3 (FR-021). 020 made this pass stand down for a FILL SESSION,
+    which left the other thing the applicant waits on — pressing "Tailor for
+    this job" — queued behind a ~67 s assessment in a strict-FIFO queue,
+    against its own deadline. That is one of the two reasons "generate a
+    tailored resume" appeared to do nothing."""
+
+    def test_no_claim_means_no_stand_down(self):
+        assert upgrade.interactive_pending() is False
+        assert upgrade._should_stand_down() is False
+
+    def test_a_claim_stands_the_pass_down(self):
+        with upgrade.interactive():
+            assert upgrade.interactive_pending() is True
+            assert upgrade._should_stand_down() is True
+        assert upgrade.interactive_pending() is False
+
+    def test_claims_nest(self):
+        """Tailoring calls the drafter calls the matcher — an inner release
+        must not un-pause the pass while the outer call is still running."""
+        with upgrade.interactive():
+            with upgrade.interactive():
+                assert upgrade.interactive_pending() is True
+            assert upgrade.interactive_pending() is True
+        assert upgrade.interactive_pending() is False
+
+    def test_a_claim_is_released_even_when_the_request_raises(self):
+        """A leaked claim would make every later pass stand down forever,
+        which reads as "the AI stopped working"."""
+        with pytest.raises(ValueError):
+            with upgrade.interactive():
+                raise ValueError("boom")
+        assert upgrade.interactive_pending() is False
+
+    def test_the_pass_returns_to_work_once_the_applicant_is_served(
+            self, monkeypatch):
+        monkeypatch.setattr(upgrade, "PAUSE_POLL_S", 0.01)
+        upgrade.begin_interactive()
+        released = threading.Event()
+
+        def release():
+            time.sleep(0.05)
+            upgrade.end_interactive()
+            released.set()
+
+        threading.Thread(target=release, daemon=True).start()
+        assert upgrade._wait_out_any_session() is True
+        assert released.is_set()
+
+    def test_it_gives_up_rather_than_pausing_forever(self, monkeypatch):
+        """Passes are resumable, so giving up is free — but hanging is not."""
+        monkeypatch.setattr(upgrade, "PAUSE_POLL_S", 0.01)
+        monkeypatch.setattr(upgrade, "MAX_PAUSE_S", 0.03)
+        upgrade.begin_interactive()
+        try:
+            assert upgrade._wait_out_any_session() is False
+        finally:
+            upgrade.end_interactive()

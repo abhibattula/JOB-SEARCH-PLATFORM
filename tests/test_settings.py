@@ -232,3 +232,53 @@ class TestAssessmentLimit020:
         assert settings.get("MAX_SCORE_PER_RUN") == "40"
         client.post("/api/settings", data={"max_score_per_run": "banana"})
         assert settings.get("MAX_SCORE_PER_RUN") == "40"
+
+
+class TestTheInteractiveTierChoice:
+    """021 US3 (FR-023): the fast tier already shipped and was unreachable.
+    PREFER_LOCAL_LLM defaulted ON, so saving a key changed nothing and
+    nothing in the UI said so."""
+
+    @pytest.fixture()
+    def client(self, tmp_db, monkeypatch):
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        monkeypatch.setenv("REFRESH_SYNC", "1")
+        from engine import pipeline
+
+        monkeypatch.setattr(pipeline, "_source_names", lambda: [])
+        monkeypatch.setattr(pipeline, "load_companies", lambda: [])
+        from fastapi.testclient import TestClient
+
+        from web.main import create_app
+
+        return TestClient(create_app())
+
+    def test_it_defaults_to_cloud_so_a_saved_key_actually_does_something(
+            self, client):
+        assert client.get("/api/settings").json()["ai_interactive_tier"] \
+            == "cloud"
+
+    def test_the_applicant_can_send_it_back_on_device(self, client):
+        client.post("/api/settings", data={"ai_interactive_tier": "local"})
+        assert client.get("/api/settings").json()["ai_interactive_tier"] \
+            == "local"
+        from engine import settings
+
+        assert settings.get("AI_INTERACTIVE_TIER") == "local"
+
+    def test_a_nonsense_value_is_ignored_not_stored(self, client):
+        """A bad value here would silently change which tier serves the
+        applicant's work — ignore it rather than store it."""
+        client.post("/api/settings", data={"ai_interactive_tier": "local"})
+        client.post("/api/settings", data={"ai_interactive_tier": "banana"})
+        assert client.get("/api/settings").json()["ai_interactive_tier"] \
+            == "local"
+
+    def test_the_settings_page_says_what_leaves_the_machine(self, client):
+        """FR-023 is not satisfied by a toggle. The applicant has to be able
+        to read what each choice sends."""
+        html = client.get("/settings").text
+        assert "resume text and the job description" in html
+        assert "Never your passwords" in html
+        assert "bulk background scoring always runs" in html.lower() \
+            or "bulk background scoring always runs" in html

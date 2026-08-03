@@ -79,10 +79,13 @@ def reset_for_tests() -> None:
     browser_controller so each test starts from a clean pass. Joins a live
     pass first — one leaking into the next test would assess against a
     database that no longer holds those job ids."""
-    global _state
+    global _state, _interactive
     join_for_tests(timeout=15)
     with _lock:
         _state = _blank()
+        # 021: a leaked interactive claim would make every later pass stand
+        # down forever, which reads as "the AI stopped working".
+        _interactive = 0
 
 
 def join_for_tests(timeout: float = 30.0) -> None:
@@ -196,8 +199,54 @@ def _embed_pending(resume_text: str, profile: dict):
         return None
 
 
+# 021 (FR-021): applicant-initiated AI work in flight. 020 made this pass
+# stand down for a FILL SESSION, which left the other thing the applicant
+# waits on — pressing "Tailor for this job" — queued behind a ~67 s
+# assessment in a strict-FIFO queue against its own deadline. That is one of
+# the two reasons "generate a tailored resume" appeared to do nothing.
+_interactive: int = 0
+
+
+def begin_interactive() -> None:
+    """The applicant asked for something. Background work yields to it."""
+    global _interactive
+    with _lock:
+        _interactive += 1
+
+
+def end_interactive() -> None:
+    global _interactive
+    with _lock:
+        _interactive = max(0, _interactive - 1)
+
+
+def interactive_pending() -> bool:
+    with _lock:
+        return _interactive > 0
+
+
+class interactive:
+    """`with upgrade.interactive():` around anything the applicant is
+    waiting on. Re-entrant by counting, so nested callers are safe."""
+
+    def __enter__(self):
+        begin_interactive()
+        return self
+
+    def __exit__(self, *exc):
+        end_interactive()
+        return False
+
+
+def _should_stand_down() -> bool:
+    from .autofill import browser_controller as bc
+
+    return bc.session_is_live() or interactive_pending()
+
+
 def _wait_out_any_session() -> bool:
-    """Stand down while the applicant is filling an application.
+    """Stand down while the applicant is filling an application — or waiting
+    on any AI request they asked for themselves.
 
     Returns True to continue the pass, False to end it. Polls instead of
     exiting on sight so a short session does not cost a whole pass; past
@@ -206,16 +255,14 @@ def _wait_out_any_session() -> bool:
     """
     import time
 
-    from .autofill import browser_controller as bc
-
-    if not bc.session_is_live():
+    if not _should_stand_down():
         return True
 
-    log.info("assessment standing down: an application is being filled")
+    log.info("assessment standing down: the applicant is waiting on something")
     with _lock:
         _state["paused_for_session"] = True
     waited = 0.0
-    while bc.session_is_live():
+    while _should_stand_down():
         if waited >= MAX_PAUSE_S:
             return False
         time.sleep(PAUSE_POLL_S)

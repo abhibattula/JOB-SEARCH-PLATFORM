@@ -267,3 +267,140 @@ class Test009OfflineFirst:
         monkeypatch.setattr(matcher, "_chat_local", local_boom)
         with pytest.raises(RuntimeError, match="choked"):
             matcher._chat([{"role": "user", "content": "hello"}])
+
+
+class TestThePurposeAwareTier:
+    """021 US3 (FR-023/FR-024/FR-025, analysis A2).
+
+    The fast tier already shipped. matcher.DEFAULT_BASE_URL is Groq's free
+    API and Settings has rendered the key field since 008 — but scoring_tier()
+    returned "local" whenever the bundled model was present and
+    PREFER_LOCAL_LLM defaulted ON, so saving a key changed NOTHING and nothing
+    in the UI said so.
+    """
+
+    @pytest.fixture()
+    def with_key_and_model(self, tmp_db, monkeypatch):
+        from engine import matcher, settings
+
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: True)
+        settings.set("LLM_API_KEY", "gsk_test")
+        return settings
+
+    def test_zero_arg_calls_behave_exactly_as_before(self, with_key_and_model):
+        """analysis A2: called with no arguments from four places in engine/
+        and asserted eight times in this suite. That contract is load-bearing
+        and this is the test that says so."""
+        from engine import matcher
+
+        assert matcher.scoring_tier() == "local"
+
+    def test_interactive_work_prefers_the_cloud_when_a_key_exists(
+            self, with_key_and_model):
+        from engine import matcher
+
+        assert matcher.scoring_tier(purpose="interactive") == "cloud"
+
+    def test_bulk_work_stays_local_even_with_a_key(self, with_key_and_model):
+        """FR-024: the free tier is ~1K requests/day. A 627-job backlog would
+        eat two thirds of it; that budget belongs to what the applicant is
+        waiting on. 020 already made bulk ranking model-free anyway."""
+        from engine import matcher
+
+        assert matcher.scoring_tier(purpose="bulk") == "local"
+
+    def test_the_applicant_can_send_interactive_work_back_on_device(
+            self, with_key_and_model):
+        from engine import matcher
+
+        with_key_and_model.set("AI_INTERACTIVE_TIER", "local")
+        assert matcher.scoring_tier(purpose="interactive") == "local"
+
+    def test_without_a_key_interactive_work_is_local(self, tmp_db, monkeypatch):
+        from engine import matcher, settings
+
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: True)
+        settings.set("LLM_API_KEY", "")
+        assert matcher.scoring_tier(purpose="interactive") == "local"
+
+    def test_with_no_model_and_no_key_every_purpose_is_basic(self, tmp_db,
+                                                             monkeypatch):
+        """FR-026: the app still works. Callers fall to basic_match."""
+        from engine import matcher, settings
+
+        monkeypatch.delenv("LLM_API_KEY", raising=False)
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: False)
+        settings.set("LLM_API_KEY", "")
+        assert matcher.scoring_tier() == "basic"
+        assert matcher.scoring_tier(purpose="interactive") == "basic"
+
+    def test_with_no_model_but_a_key_every_purpose_is_cloud(self, tmp_db,
+                                                            monkeypatch):
+        from engine import matcher, settings
+
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: False)
+        settings.set("LLM_API_KEY", "gsk_test")
+        assert matcher.scoring_tier() == "cloud"
+        assert matcher.scoring_tier(purpose="interactive") == "cloud"
+
+
+class TestACloudFailureIsNamedAndFallsBack:
+    """021 (FR-025, analysis A7). A retired model id, a rejected key or a
+    rate limit must never read as "the AI is broken" — that is the exact
+    silent-failure class FR-022 exists to remove."""
+
+    @pytest.fixture()
+    def cloud_first(self, tmp_db, monkeypatch):
+        from engine import matcher, settings
+
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: True)
+        settings.set("LLM_API_KEY", "gsk_test")
+        return matcher
+
+    def test_a_cloud_failure_falls_back_on_device(self, cloud_first,
+                                                  monkeypatch):
+        from engine import matcher
+
+        def boom(*a, **k):
+            raise RuntimeError("model `llama-3.3-70b-versatile` "
+                               "has been decommissioned")
+
+        monkeypatch.setattr(matcher, "_chat_cloud", boom)
+        monkeypatch.setattr(matcher, "_chat_local",
+                            lambda *a, **k: "on-device answer")
+        assert matcher._chat([{"role": "user", "content": "hi"}],
+                             interactive=True) == "on-device answer"
+
+    def test_with_no_local_model_the_failure_is_explained(self, tmp_db,
+                                                          monkeypatch):
+        from engine import matcher, settings
+
+        monkeypatch.setattr(matcher.local_llm, "available", lambda: False)
+        settings.set("LLM_API_KEY", "gsk_test")
+
+        def boom(*a, **k):
+            raise RuntimeError("model `x` does not exist")
+
+        monkeypatch.setattr(matcher, "_chat_cloud", boom)
+        with pytest.raises(RuntimeError) as caught:
+            matcher._chat([{"role": "user", "content": "hi"}],
+                          interactive=True)
+        assert "no longer offered" in str(caught.value)
+
+    @pytest.mark.parametrize("raised,expected", [
+        (RuntimeError("model `x` has been decommissioned"), "no longer offered"),
+        (RuntimeError("Error code: 401 - invalid_api_key"), "key was rejected"),
+        (RuntimeError("Error code: 429 - rate limit reached"), "rate limit"),
+    ])
+    def test_each_failure_gets_words_the_applicant_can_act_on(self, raised,
+                                                              expected):
+        from engine import matcher
+
+        assert expected in matcher._cloud_failure_reason(raised)
+
+    def test_an_unrecognised_failure_still_says_something(self):
+        from engine import matcher
+
+        reason = matcher._cloud_failure_reason(ValueError("weird"))
+        assert "ValueError" in reason and "weird" in reason
