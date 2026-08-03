@@ -5,6 +5,23 @@
 **Status**: Draft
 **Input**: User description: "can we do a full visual redesign into a more interactive smooth and make it more user frendly do not create and oush a version until i approve the design check where can i do improvements etc"
 
+## Clarifications
+
+### Session 2026-08-03
+
+- Q: The approved preview showed a roomy record card, but the spec said the
+  desktop feed stays a dense table. Which is right for scanning hundreds of
+  jobs? → A: Dense table remains the default (compact); a comfortable/compact
+  toggle in the toolbar gives the roomier two-line record on demand; stacked
+  cards appear only when the viewport is too narrow for the columns.
+- Q: 77 assertions in `test_api.py` reference markup. How freely should class
+  names be renamed? → A: Rename freely to build a coherent system, then re-read
+  each broken assertion individually to decide whether the test or the markup
+  was right. Assertions are never blanket-updated.
+- Q: How should the Phase 1 approval gate be conducted? → A: Screenshots — the
+  Feed in light and dark plus the stamp at all three provenance levels — sent to
+  the applicant for approval before the remaining eight screens are touched.
+
 ## User Scenarios & Testing *(mandatory)*
 
 The applicant is a computer-engineering new grad on OPT who uses this app for
@@ -261,7 +278,14 @@ present.
 - **FR-025**: The feed MUST render as stacked records rather than a horizontally
   overflowing table when the viewport is too narrow for its columns.
 - **FR-026**: The applicant MUST be able to choose a comfortable or compact feed
-  density, and that choice MUST persist across restarts.
+  density from the feed's own toolbar, and that choice MUST persist across
+  restarts.
+- **FR-026a**: Compact MUST be the default density, and MUST present the feed as
+  a single-line-per-job table so that scanning throughput is not reduced by this
+  feature.
+- **FR-026b**: Comfortable MUST present each job across two lines with its
+  identity leading and its score trailing, without changing which jobs are
+  shown.
 
 **Motion and responsiveness**
 
@@ -348,8 +372,11 @@ present.
 - **SC-010**: The full existing verification set passes: unit battery twice,
   real-browser suite on both Windows and macOS, secret-hygiene suite, and the
   packaged-build smoke test.
-- **SC-011**: The applicant approves the built result before any version is
-  created.
+- **SC-011**: The applicant approves the Feed — seen in light and dark, with the
+  stamp at all three provenance levels — before the remaining eight screens are
+  touched, and approves the built result before any version is created.
+- **SC-012**: Feed scanning throughput does not regress: at the default density
+  the number of jobs visible in one screen is at least what it is today.
 
 ## Assumptions
 
@@ -368,5 +395,11 @@ present.
   keyword-only nor on-device.
 - No change is made to what the engine ingests, scores, drafts or fills; this
   feature changes presentation only.
+- Class names may be renamed freely where the redesign makes them inaccurate.
+  Every assertion that breaks as a result is re-read individually to decide
+  whether the test or the markup was correct; assertions are never
+  blanket-updated to match new output.
+- Typefaces are downloaded once during implementation and vendored into the
+  repository, so the built application never requests them from a network.
 - No version is tagged, built for release, or pushed until the applicant
   approves the built result.

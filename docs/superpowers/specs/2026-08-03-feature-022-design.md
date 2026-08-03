@@ -217,12 +217,15 @@ unconditionally).
 
 ### 4.6 Per-surface changes
 
-**Feed** — rows become records: role and company lead, the stamp sits right,
-sponsorship and grade as quiet marks. Below ~900px the table becomes stacked
-record cards; today a 7–9 column table has no responsive fallback at all.
-A comfortable/compact density toggle, persisted through the generic
-`settings.get()` / `settings.set()` store (`engine/settings.py:44,54`), for
-scanning hundreds of jobs.
+**Feed** — the dense table stays, restyled: the stamp replaces the `~`/`•`
+match cell, sponsorship and grade become quiet marks. **Compact is the default
+and remains one line per job** — clarified 2026-08-03 after the approved preview
+implied otherwise; scanning throughput is the applicant's primary need and a
+card layout would cut visible jobs by roughly two thirds. A comfortable density
+gives a two-line record on demand, persisted through the generic
+`settings.get()` / `settings.set()` store (`engine/settings.py:44,54`). Below
+~900px the table becomes stacked record cards; today a 7–9 column table has no
+responsive fallback at all.
 
 **Job detail** — the large stamp anchors the analysis column; `.jd` and
 `.job-url` get real treatment; tailored output renders in pencil until accepted.
