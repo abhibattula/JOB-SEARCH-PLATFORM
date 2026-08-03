@@ -1,58 +1,75 @@
 {% from "partials/stamp.html" import stamp %}
 {# 010 FR-017: the home lead — top matches, application stats, next actions.
-   Rendered above the feed on the home page. #}
-{% if dashboard %}
+
+   022 (F-A): this was three full-height cards, ~315px of a 768px viewport,
+   and the main reason the feed showed only six jobs on a laptop. Measured
+   while capturing the SC-012 baseline; no test would have found it.
+
+   The information is the home screen's reason to exist, so none of it is
+   dropped — it becomes one strip, and the applicant can hide it outright. #}
+{% if dashboard and not dashboard_hidden %}
 <section class="dashboard" aria-label="Dashboard">
-  <div class="dash-grid">
-    <div class="dash-card">
-      <h2>Top matches</h2>
+  <div class="dash-strip">
+    <div class="dash-group dash-matches">
+      <span class="dash-label">Top matches</span>
       {% if dashboard.top_matches %}
-      {% for m in dashboard.top_matches %}
-      <div class="match-row">
-        <a href="/jobs/{{ m.id }}">{{ m.title }} <span class="muted">— {{ m.company }}</span></a>
+      {% for m in dashboard.top_matches[:3] %}
+      <a class="dash-match" href="/jobs/{{ m.id }}"
+         title="{{ m.title }} — {{ m.company }}">
         {{ stamp(m.match_score, m.match_method, 'sm') }}
-      </div>
+        <span class="dash-match-text">
+          <strong>{{ m.title }}</strong>
+          <span class="muted">{{ m.company }}</span>
+        </span>
+      </a>
       {% endfor %}
       {% else %}
-      <p class="muted">No scored matches yet — add your resume and an AI key
-        in Settings, then refresh.</p>
+      <span class="muted">None scored yet — add your resume on
+        <a href="/profile">Profile</a>.</span>
       {% endif %}
     </div>
 
-    <div class="dash-card">
-      <h2>Your applications</h2>
-      <div class="stat-row">
-        <div class="stat"><span class="num">{{ dashboard.stats.applied }}</span><span class="lbl">applied</span></div>
-        <div class="stat"><span class="num">{{ dashboard.stats.interview }}</span><span class="lbl">interviewing</span></div>
-        <div class="stat"><span class="num">{{ dashboard.stats.saved }}</span><span class="lbl">saved</span></div>
-      </div>
+    <div class="dash-group">
+      <span class="dash-label">Applications</span>
+      <span class="dash-stat"><b>{{ dashboard.stats.applied }}</b> applied</span>
+      <span class="dash-stat"><b>{{ dashboard.stats.interview }}</b> interviewing</span>
+      <span class="dash-stat"><b>{{ dashboard.stats.saved }}</b> saved</span>
     </div>
 
-    <div class="dash-card">
-      <h2>Next actions</h2>
-      <ul class="next-actions" id="next-actions"
-          hx-get="/api/next-actions" hx-trigger="load" hx-swap="none">
-        <li class="muted">Checking…</li>
-      </ul>
-      <script>
-        document.body.addEventListener('htmx:afterRequest', function (e) {
-          const p = e.detail.pathInfo && e.detail.pathInfo.requestPath;
-          if (!p || p.indexOf('/api/next-actions') === -1) { return; }
-          let data;
-          try { data = JSON.parse(e.detail.xhr.responseText); } catch (_e) { return; }
-          const ul = document.getElementById('next-actions');
-          if (!ul) { return; }
-          if (!data.actions.length) {
-            ul.innerHTML = '<li class="muted">Nothing needs you right now.</li>';
-            return;
-          }
-          ul.innerHTML = data.actions.map(function (a) {
-            return '<li><span><span class="na-kind">' + a.kind.replace('_', ' ') +
-              '</span>' + a.label + '</span><a href="' + a.href + '">Open</a></li>';
-          }).join('');
-        });
-      </script>
+    <div class="dash-group">
+      <span class="dash-label">Next</span>
+      <span id="next-actions" class="dash-next"
+            hx-get="/api/next-actions" hx-trigger="load" hx-swap="none">
+        <span class="muted">checking…</span>
+      </span>
     </div>
+
+    <a class="dash-hide"
+       href="/api/dashboard?hidden=1&amp;back={{ query_string | urlencode }}"
+       title="Hide this strip — the feed gets the space back">Hide</a>
   </div>
+  <script>
+    document.body.addEventListener('htmx:afterRequest', function (e) {
+      const p = e.detail.pathInfo && e.detail.pathInfo.requestPath;
+      if (!p || p.indexOf('/api/next-actions') === -1) { return; }
+      let data;
+      try { data = JSON.parse(e.detail.xhr.responseText); } catch (_e) { return; }
+      const host = document.getElementById('next-actions');
+      if (!host) { return; }
+      if (!data.actions.length) {
+        host.innerHTML = '<span class="muted">nothing needs you</span>';
+        return;
+      }
+      const first = data.actions[0];
+      const more = data.actions.length - 1;
+      host.innerHTML = '<a href="' + first.href + '">' + first.label + '</a>'
+        + (more > 0 ? ' <span class="muted">+' + more + ' more</span>' : '');
+    });
+  </script>
 </section>
+{% elif dashboard %}
+{# Hidden is never a one-way door. #}
+<p class="dash-show"><a
+   href="/api/dashboard?hidden=0&amp;back={{ query_string | urlencode }}">Show
+   top matches and application counts</a></p>
 {% endif %}

@@ -562,6 +562,7 @@ def _feed_context(
 
     from engine import settings as _settings
     density = _settings.get("FEED_DENSITY") or "compact"
+    dashboard_hidden = _settings.get("DASHBOARD_HIDDEN") == "1"
     if density not in ("compact", "comfortable"):
         density = "compact"
 
@@ -570,6 +571,9 @@ def _feed_context(
         # layout would cut what fits on screen from ~28 to ~8, and the
         # applicant works through hundreds of postings.
         "density": density,
+        # 022 (F-A): the three-card dashboard was ~315px of a
+        # 768px viewport. It is a strip now, and hideable.
+        "dashboard_hidden": dashboard_hidden,
         # 022 (FR-027): what the client compares against on the next poll.
         "feed_fp": feed_fingerprint(
             jobs, total, page, str(request.url.query or "")),

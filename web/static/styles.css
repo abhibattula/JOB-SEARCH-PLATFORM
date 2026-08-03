@@ -1141,3 +1141,48 @@ main { padding-top: var(--s3); }
   background: var(--ink); color: var(--on-ink); border-radius: var(--r-sm);
   padding: 0.1rem var(--s2); font-size: var(--fs-xs); cursor: pointer; }
 .saved { color: var(--seal); }
+
+/* ============================================================
+   022 (F-A) — the dashboard strip
+
+   Was three full-height cards, ~315px of a 768px viewport, which
+   is why the feed showed six jobs on a laptop. Same information,
+   one row, and hideable.
+   ============================================================ */
+.dashboard { display: block; margin-bottom: var(--s3); }
+.dash-strip {
+  display: flex; flex-wrap: wrap; align-items: center;
+  gap: var(--s3) var(--s5);
+  border: 1px solid var(--rule); border-radius: var(--r-lg);
+  background: var(--leaf); padding: var(--s2) var(--s4);
+}
+.dash-group { display: flex; align-items: center; gap: var(--s3);
+  min-width: 0; }
+.dash-matches { flex: 1 1 22rem; min-width: 0; }
+.dash-label {
+  font-family: var(--mono); font-size: var(--fs-xs); text-transform: uppercase;
+  letter-spacing: 0.07em; color: var(--ink-soft); flex: none;
+}
+.dash-match { display: flex; align-items: center; gap: var(--s2);
+  min-width: 0; max-width: 15rem; color: var(--ink); }
+.dash-match:hover { text-decoration: none; }
+.dash-match:hover strong { color: var(--seal); }
+.dash-match-text { display: grid; min-width: 0; line-height: 1.15; }
+.dash-match-text strong, .dash-match-text .muted {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+  font-size: var(--fs-sm); font-weight: 600;
+}
+.dash-match-text .muted { font-weight: 400; font-size: var(--fs-xs); }
+.dash-stat { font-size: var(--fs-sm); color: var(--ink-soft);
+  white-space: nowrap; }
+.dash-stat b { font-family: var(--mono); font-size: var(--fs-lg);
+  color: var(--ink); margin-right: 0.15rem; }
+.dash-next { font-size: var(--fs-sm); }
+.dash-hide { margin-left: auto; font-size: var(--fs-xs);
+  color: var(--ink-soft); flex: none; }
+.dash-hide:hover { color: var(--ink); }
+.dash-show { margin: 0 0 var(--s2); font-size: var(--fs-sm); }
+/* the strip carries a stamp, so keep it small here too */
+.dash-strip .stamp--sm { width: 1.7rem; height: 1.7rem;
+  font-size: 0.7rem; border-width: 1.5px; }
+.dash-strip .stamp--sm.stamp--sealed { border-width: 3px; }

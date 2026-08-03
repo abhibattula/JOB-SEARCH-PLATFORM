@@ -349,6 +349,18 @@ async def set_job_status(job_id: int, request: Request, status: str | None = Non
     return job_summary(db.get_job(job_id))
 
 
+@router.get("/dashboard")
+def set_dashboard_visible(hidden: int = 0, back: str = ""):
+    """022 (F-A): hide or restore the home strip. A GET so it is a plain
+    link that works with no JavaScript."""
+    from fastapi.responses import RedirectResponse
+
+    from engine import settings
+
+    settings.set("DASHBOARD_HIDDEN", "1" if hidden else "0")
+    return RedirectResponse(f"/?{back}" if back else "/", status_code=303)
+
+
 @router.get("/feed-density")
 def set_feed_density(value: str = "compact", back: str = ""):
     """022 (FR-026): remember the applicant's row density.

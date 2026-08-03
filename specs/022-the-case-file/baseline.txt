@@ -107,3 +107,23 @@ FOUND IN THE GATE SCREENSHOTS, not by any test:
        ANY such element — so the applicant got a confirmation for
        something they never did, on every single page load. Fixed:
        only controls a person operates now toast.
+
+F-A FIXED — THE DASHBOARD STRIP                    measured 2026-08-03
+---------------------------------------------------------------------
+The applicant approved fixing F-A. Same harness, same viewport.
+
+  build                          fully visible   row h   nav h
+  -----------------------------  -------------   -----   -----
+  v2.1.0 baseline                      6         40.1    45.4
+  022 before the dashboard fix         6         36.0    39.2
+  022 with the dashboard strip        13         36.0    39.2
+
+**2.2x the baseline.** Three full-height cards (~315 px) became one
+strip (~60 px) carrying the same information: top three matches with
+their stamps, the three application counts, and the first next-action
+with a "+N more". It can also be hidden outright, and hiding it is not
+a one-way door — a link back is always rendered.
+
+Nothing was dropped. Tests assert each piece is still present, that a
+top match still shows its provenance stamp, and that the three-card
+grid is gone.
