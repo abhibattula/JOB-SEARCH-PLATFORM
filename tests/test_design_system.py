@@ -43,22 +43,10 @@ EXCLUDED_TEMPLATES = {
 # never GROWS. Red becomes a ratchet. Task T056 empties this set, at which
 # point the assertion becomes the plain "zero undefined" gate (SC-001).
 # ---------------------------------------------------------------------------
-KNOWN_UNDEFINED: frozenset[str] = frozenset({
-    # Phase 4 — profile / settings / job detail: DONE
-    "profile",  # the page wrapper; styled with the rest in Phase 6
-    # Phase 5 — Apply Assist
-    "answers-review", "answer-list", "answer-item", "q", "why",
-    "answer-capture", "fill-coverage", "activity-log", "autofill-activity",
-    "autofill-active", "fill-where", "fill-where-warning", "saved",
-    "autofill-page", "autofill-job-check",
-    "a",  # a one-letter class on the drafted-answer paragraph
-
-    # Phase 6 — remaining screens
-    "lead", "stamp-problem", "browser-mismatch", "unclean-banner",
-    "whats-new", "update-banner", "reset-learned", "answer-bank-delete",
-    "eeo-answer-input", "import-decision",
-    "board-followup", "fu-date", "fu-notes", "fu-save",
-})
+KNOWN_UNDEFINED: frozenset[str] = frozenset()
+# T056: EMPTY. Every class used in every template now resolves to a rule
+# (SC-001). The ratchet above is now the plain "zero undefined" gate the
+# audit asked for, and any new undefined class fails the build immediately.
 
 
 # ---------------------------------------------------------------------------

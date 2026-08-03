@@ -981,3 +981,163 @@ main { padding-top: var(--s3); }
 }
 /* Older engines without :has() keep the stacked layout rather than break;
    `.check` above covers every checkbox that carries the class. */
+
+/* ============================================================
+   022 Phase 5 — Apply Assist review (FR-013)
+
+   The screen the applicant reads DURING a live application, and
+   every class on it was undefined. Question, answer and reason
+   rendered as three identical paragraphs.
+
+   States come straight from the engine (page_answers.py) and
+   carry the same vocabulary as the rest of the app:
+     filled              -> ink    you confirmed it
+     drafted / drafting  -> pencil the AI wrote it, unchecked
+     needs_you / refused -> flag   it needs you
+   ============================================================ */
+.autofill-active { display: grid; gap: var(--s3); }
+.autofill-activity, .fill-where {
+  font-size: var(--fs-sm); color: var(--ink-soft); margin: 0;
+}
+.fill-coverage {
+  font-family: var(--mono); font-size: var(--fs-sm);
+  color: var(--ink-soft); margin: 0;
+}
+.answers-review {
+  border: 1px solid var(--rule); border-radius: var(--r-lg);
+  background: var(--leaf); padding: var(--s4);
+}
+.answers-review h3 { margin: 0 0 var(--s3); font-family: var(--display);
+  font-size: var(--fs-lg); font-stretch: 108%; }
+.answer-list { list-style: none; margin: 0; padding: 0;
+  display: grid; gap: var(--s2); }
+
+.answer-item {
+  border: 1px solid var(--rule); border-left: 3px solid var(--rule);
+  border-radius: var(--r-md); padding: var(--s3) var(--s4);
+  background: var(--paper); display: grid; gap: 0.3rem;
+}
+.answer-item .q {
+  margin: 0; font-weight: 600; line-height: 1.35; color: var(--ink);
+}
+.answer-item .a {
+  margin: 0; font-family: var(--mono); font-size: var(--fs-sm);
+  line-height: 1.45; color: var(--ink);
+}
+.answer-item .why {
+  margin: 0; font-size: var(--fs-sm); line-height: 1.4;
+}
+
+/* you confirmed it */
+.answer-item[data-state="filled"] { border-left-color: var(--ink); }
+.answer-item[data-state="filled"] .a { color: var(--ink); }
+/* the AI wrote it and nobody has checked it */
+.answer-item[data-state="drafted"],
+.answer-item[data-state="drafting"] {
+  border-left-color: var(--pencil); background: var(--pencil-tint);
+}
+.answer-item[data-state="drafted"] .a,
+.answer-item[data-state="drafting"] .a { color: var(--pencil); }
+/* it needs you */
+.answer-item[data-state="needs_you"],
+.answer-item[data-state="refused"] {
+  border-left-color: var(--flag); background: var(--flag-tint);
+}
+.answer-item[data-state="needs_you"] .why,
+.answer-item[data-state="refused"] .why { color: var(--flag); }
+
+.answer-capture { display: flex; gap: var(--s2); margin-top: var(--s1);
+  flex-wrap: wrap; }
+.answer-capture input {
+  flex: 1 1 16rem; min-width: 0; padding: 0.38rem var(--s2);
+  border: 1px solid var(--edge); border-radius: var(--r-md);
+  background: var(--leaf); color: var(--ink); font: inherit;
+}
+.answer-capture button {
+  padding: 0.38rem var(--s4); border: 1px solid var(--edge);
+  border-radius: var(--r-md); background: var(--ink); color: var(--on-ink);
+  font: inherit; cursor: pointer;
+}
+.activity-log {
+  list-style: none; margin: 0; padding: 0; display: grid; gap: 0.15rem;
+  font-family: var(--mono); font-size: var(--fs-sm); color: var(--ink-soft);
+  max-height: 14rem; overflow-y: auto;
+}
+.autofill-page { display: grid; gap: var(--s4); }
+.autofill-job-check { display: flex; align-items: center; gap: var(--s2); }
+
+/* ============================================================
+   022 — motion, deliberately restrained and engine-agnostic
+
+   Windows renders in WebView2 (Chromium), macOS in WKWebView
+   (WebKit). Scroll-driven animation exists only in Chromium, so
+   using it would give this machine motion and the Mac build
+   silence. Everything below is keyframes and transforms, which
+   behave identically on both, and all of it is switched off by
+   the global reduced-motion override further up.
+   ============================================================ */
+@keyframes je-rise { from { opacity: 0; transform: translateY(6px); } }
+
+.feed tbody tr, .answer-item, .dash-card, .sheet {
+  animation: je-rise var(--dur-2) var(--ease) both;
+}
+/* Stagger, capped: a 100-row feed must not cascade for two seconds. */
+.feed tbody tr:nth-child(1)  { animation-delay: 0ms; }
+.feed tbody tr:nth-child(2)  { animation-delay: 16ms; }
+.feed tbody tr:nth-child(3)  { animation-delay: 32ms; }
+.feed tbody tr:nth-child(4)  { animation-delay: 48ms; }
+.feed tbody tr:nth-child(5)  { animation-delay: 64ms; }
+.feed tbody tr:nth-child(6)  { animation-delay: 80ms; }
+.feed tbody tr:nth-child(7)  { animation-delay: 96ms; }
+.feed tbody tr:nth-child(n+8) { animation-delay: 112ms; }
+
+/* Hover lifts the row a hair rather than repainting it. */
+.feed tbody tr { transition: background var(--dur-1) var(--ease); }
+.answer-item { transition: border-color var(--dur-1) var(--ease),
+  background var(--dur-1) var(--ease); }
+.stamp { transition: transform var(--dur-1) var(--ease); }
+.feed tbody tr:hover .stamp { transform: scale(1.06); }
+
+/* ============================================================
+   022 Phase 6 — the remaining screens
+   ============================================================ */
+.profile { min-width: 0; }
+.lead { font-size: var(--fs-lg); line-height: 1.5; max-width: 62ch;
+  color: var(--ink); }
+.stamp-problem { border-left: 3px solid var(--stop); }
+.browser-mismatch { border-left: 3px solid var(--flag); }
+.unclean-banner { border-left: 3px solid var(--flag); }
+.fill-where-warning { border-left: 3px solid var(--flag); }
+
+/* 022 (F-B, found while measuring the baseline): on a new version the
+   What's New panel filled the ENTIRE viewport — nine full-width bullets
+   with no bound — so a fresh install showed zero jobs until it was
+   dismissed. It is now a readable column that scrolls inside itself. */
+.whats-new, .update-banner { max-width: 68ch; }
+.whats-new ul, .update-banner ul { max-height: 46vh; overflow-y: auto;
+  padding-left: 1.1rem; }
+.whats-new li { margin-bottom: var(--s2); line-height: 1.5; }
+
+.reset-learned, .answer-bank-delete {
+  border: 1px solid var(--edge); background: var(--leaf); color: var(--ink-soft);
+  border-radius: var(--r-sm); padding: 0.12rem var(--s2);
+  font: inherit; font-size: var(--fs-xs); cursor: pointer; }
+.reset-learned:hover, .answer-bank-delete:hover {
+  color: var(--stop); border-color: var(--stop); }
+.eeo-answer-input { padding: 0.35rem var(--s2); border: 1px solid var(--edge);
+  border-radius: var(--r-md); background: var(--leaf); color: var(--ink);
+  font: inherit; }
+.import-decision { display: flex; gap: var(--s2); align-items: center;
+  flex-wrap: wrap; }
+
+.board-followup { display: grid; gap: var(--s1); margin-top: var(--s2);
+  padding-top: var(--s2); border-top: 1px solid var(--rule); }
+.fu-date { font-family: var(--mono); font-size: var(--fs-xs);
+  color: var(--flag); }
+.fu-notes { width: 100%; font: inherit; font-size: var(--fs-sm);
+  border: 1px solid var(--rule); border-radius: var(--r-sm);
+  background: var(--leaf); color: var(--ink); padding: var(--s1) var(--s2); }
+.fu-save { justify-self: start; border: 1px solid var(--edge);
+  background: var(--ink); color: var(--on-ink); border-radius: var(--r-sm);
+  padding: 0.1rem var(--s2); font-size: var(--fs-xs); cursor: pointer; }
+.saved { color: var(--seal); }

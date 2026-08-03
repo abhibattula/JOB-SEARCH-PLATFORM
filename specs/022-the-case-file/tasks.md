@@ -94,24 +94,24 @@ plus all of US2, US3 and US4 — and Phases 4–6 finish US1 screen by screen.
 
 ## Phase 5: US1 — Apply Assist (the largest single repair)
 
-- [ ] T044 [US1] Write a test asserting the review list renders question, reason and state as separable elements (FR-013) — **watch it fail** *(FR-013)*
-- [ ] T045 [US1] Define the whole unstyled review vocabulary in `styles.css`: `.answers-review`, `.answer-list`, `.answer-item`, `.q`, `.why`, `.answer-capture`, `.fill-coverage`, `.activity-log`, `.autofill-activity`, `.autofill-active`, `.fill-where`, `.fill-where-warning`, `.saved` (analysis C2 added the last three) *(FR-013)*
-- [ ] T046 [US1] Map filled / drafted / needs-you onto ink / pencil / flag per the semantic-state contract, matching `FillItem.flag` values *(FR-003)*
-- [ ] T047 [US1] Define `.autofill-page` and `.autofill-job-check` in `web/templates/autofill.html`
-- [ ] T048 [US1] Verify the 017 sticky controls still stick, now on real tokens (T010's fix) *(FR-014)*
-- [ ] T049 [US1] Re-read every assertion in `tests/test_routes_autofill.py` broken by the restyle, individually, deciding each time whether the test or the markup was right
+- [X] T044 [US1] Write a test asserting the review list renders question, reason and state as separable elements (FR-013) — **watch it fail** *(FR-013)*
+- [X] T045 [US1] Define the whole unstyled review vocabulary in `styles.css`: `.answers-review`, `.answer-list`, `.answer-item`, `.q`, `.why`, `.answer-capture`, `.fill-coverage`, `.activity-log`, `.autofill-activity`, `.autofill-active`, `.fill-where`, `.fill-where-warning`, `.saved` (analysis C2 added the last three) *(FR-013)*
+- [X] T046 [US1] Map filled / drafted / needs-you onto ink / pencil / flag per the semantic-state contract, matching `FillItem.flag` values *(FR-003)*
+- [X] T047 [US1] Define `.autofill-page` and `.autofill-job-check` in `web/templates/autofill.html`
+- [X] T048 [US1] Verify the 017 sticky controls still stick, now on real tokens (T010's fix) *(FR-014)*
+- [X] T049 [US1] Re-read every assertion in `tests/test_routes_autofill.py` broken by the restyle, individually, deciding each time whether the test or the markup was right
 
 ## Phase 6: US1 — remaining screens
 
-- [ ] T050 [P] [US1] Define `.lead`, `.stamp-problem`, `.browser-mismatch` for `companion.html`; keep the 019 ok/bad/warn wizard states distinct (CHK042)
-- [ ] T051 [P] [US1] Restyle `diagnostics.html` on the new tokens
-- [ ] T052 [P] [US1] Restyle `analytics.html`; confirm `.chart-svg` follows the tokens for free
-- [ ] T053 [P] [US1] Define `.reset-learned`, `.answer-bank-delete`, `.eeo-answer-input` for `learned_answers.html` and `partials/profile_answer_bank.html`
-- [ ] T054 [P] [US1] Define `.board-followup`, `.fu-date`, `.fu-notes`, `.fu-save` in `partials/pipeline_board.html` and `.import-decision` in `partials/import_review.html`
-- [ ] T055 [US1] Restyle `partials/whats_new.html` and `partials/update_banner.html`; define `.whats-new` and `.update-banner` rather than leaving them riding on `.mission-panel`; confirm they still render server-side with no layout shift *(FR-042)*
-- [ ] T055a [US1] Define the classes no other task claimed (analysis C2): `.profile` (used ×4 across `profile.html`, `settings.html`, `diagnostics.html`, `learned_answers.html`) and `.unclean-banner` (`base.html:53`) *(FR-009)*
-- [ ] T056 [US1] **`test_design_system.py` T1 must now pass: zero undefined classes across the whole app** — SC-001 *(FR-009, SC-001)*
-- [ ] T057 [US1] Confirm the three practice-sandbox templates are untouched (FR-047, CHK008) *(FR-047)*
+- [X] T050 [P] [US1] Define `.lead`, `.stamp-problem`, `.browser-mismatch` for `companion.html`; keep the 019 ok/bad/warn wizard states distinct (CHK042)
+- [X] T051 [P] [US1] Restyle `diagnostics.html` on the new tokens
+- [X] T052 [P] [US1] Restyle `analytics.html`; confirm `.chart-svg` follows the tokens for free
+- [X] T053 [P] [US1] Define `.reset-learned`, `.answer-bank-delete`, `.eeo-answer-input` for `learned_answers.html` and `partials/profile_answer_bank.html`
+- [X] T054 [P] [US1] Define `.board-followup`, `.fu-date`, `.fu-notes`, `.fu-save` in `partials/pipeline_board.html` and `.import-decision` in `partials/import_review.html`
+- [X] T055 [US1] Restyle `partials/whats_new.html` and `partials/update_banner.html`; define `.whats-new` and `.update-banner` rather than leaving them riding on `.mission-panel`; confirm they still render server-side with no layout shift *(FR-042)*
+- [X] T055a [US1] Define the classes no other task claimed (analysis C2): `.profile` (used ×4 across `profile.html`, `settings.html`, `diagnostics.html`, `learned_answers.html`) and `.unclean-banner` (`base.html:53`) *(FR-009)*
+- [X] T056 [US1] **`test_design_system.py` T1 must now pass: zero undefined classes across the whole app** — SC-001 *(FR-009, SC-001)*
+- [X] T057 [US1] Confirm the three practice-sandbox templates are untouched (FR-047, CHK008) *(FR-047)*
 
 ## Phase 7: US5 — the extension panel
 
