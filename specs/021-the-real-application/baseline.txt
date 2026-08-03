@@ -359,3 +359,28 @@ Python:  3.12 (.venv — the system Python cannot collect the suite, no fitz)
 
   T103 / T104, and 019's still-outstanding T076
     The manual passes, on the INSTALLED build.
+
+
+== T105 RESULT: v2.1.0 SHIPPED AND VERIFIED (2026-08-03) ==
+
+  Release v2.1.0  draft=false  pre=false  published 2026-08-03T08:43:29Z
+  Both jobs SUCCESS — including the macOS browser suite (CHK129), the gate
+  that forced v2.0.0's tag to be re-cut.
+
+  Both installers downloaded and checked by magic bytes + SHA-256 against
+  the release body. Both match exactly.
+
+    JobEngine-Setup-2.1.0.exe   1,528,149,041 bytes  magic 4d5a (PE)
+      001f3fd53d9f6fe3216a06b9baeb18ffde3978ef726b1cd639aba5a04e9c9174
+
+    JobEngine-2.1.0.dmg         1,596,613,049 bytes  magic 7801 (zlib)
+      151a9cc205f05e3e38b822a192483399930f63f92e2aedb70b8a6c2737747bb0
+
+  The tag was cut twice, but nothing was published in between: packaging/
+  windows.iss still said 2.0.0, and the version gate compares tag ==
+  windows.iss == APP_VERSION. Caught by READING the workflow rather than
+  waiting for it to fail, so the run was cancelled a minute in rather than
+  burning twenty on a build that could not start.
+
+  LESSON: run packaging/check_version.py locally before tagging. It is two
+  seconds and it is now the first line of the quickstart's ship gates.
