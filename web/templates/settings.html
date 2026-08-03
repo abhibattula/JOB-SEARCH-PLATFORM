@@ -4,8 +4,20 @@
 <article class="profile">
   <h1>Settings</h1>
 
-  <section class="settings-section">
-    <h2>AI matching</h2>
+  {# 022 (FR-023): Settings is longer than a viewport too. #}
+  <div class="page-with-index">
+  <nav class="section-index" aria-label="Settings sections">
+    <a href="#sec-ai-matching">AI matching</a>
+    <a href="#sec-saved-logins-apply-assist">Saved logins</a>
+    <a href="#sec-company-watchlist">Company watchlist</a>
+    <a href="#sec-updates">Updates</a>
+  </nav>
+  <div class="sheets">
+
+  <section class="settings-section sheet" id="sec-ai-matching">
+    <div class="sheet-head">
+      <h2>AI matching</h2>
+    </div>
     {% if settings.llm_key_set %}
     <p>API key on file: <span class="data">{{ settings.llm_api_key_masked }}</span></p>
     {% else %}
@@ -161,8 +173,10 @@
     </form>
   </section>
 
-  <section class="settings-section" id="credentials-section">
-    <h2>Saved logins (Apply Assist)</h2>
+  <section class="settings-section sheet" id="sec-saved-logins-apply-assist">
+    <div class="sheet-head">
+      <h2>Saved logins (Apply Assist)</h2>
+    </div>
     <p class="muted">Stored in your OS's own credential store (Windows
       Credential Manager / macOS Keychain) — never in this app's database.
       Passwords are write-only: once saved, this page never displays them
@@ -275,8 +289,10 @@
     </script>
   </section>
 
-  <section class="settings-section" id="watchlist-section">
-    <h2>Company watchlist</h2>
+  <section class="settings-section sheet" id="sec-company-watchlist">
+    <div class="sheet-head">
+      <h2>Company watchlist</h2>
+    </div>
     <p class="muted">Career boards fetched directly from each company's own
       site — the most trustworthy source of postings. Add any company that
       uses Greenhouse, Lever, Ashby, or Workable: the identifier is the last
@@ -338,13 +354,137 @@
     </script>
   </section>
 
-  <section class="settings-section">
-    <h2>Updates</h2>
+  <section class="settings-section sheet" id="sec-updates">
+    <div class="sheet-head">
+      <h2>Updates</h2>
+    </div>
     <div class="settings-actions">
       <button type="button" class="ghost" hx-post="/api/settings/check-update"
               hx-target="#update-result" hx-swap="innerHTML">Check for updates</button>
       <span id="update-result" class="data"></span>
     </div>
   </section>
+  </div>
+  </div>
+
+<script>
+/* 022 Phase 4 — what makes Profile "interactive and clear".
+
+   Three things, all vanilla and all cheap:
+
+   1. TALLIES. Every section counts its own filled fields, and the page
+      counts the lot. This is not decoration: a blank profile field is a
+      field Apply Assist has to hand back to the applicant on a real
+      employer form, so "6 / 9" is a direct readout of how much manual
+      work is left. It recounts as you type.
+
+   2. SCROLLSPY. The index marks where you are.
+
+   3. A SAVE BAR that appears only once something actually changed, so
+      "did that save?" stops being a question. */
+(function () {
+  "use strict";
+  var root = document.querySelector(".sheets");
+  if (!root) { return; }
+
+  function fields(scope) {
+    return Array.prototype.filter.call(
+      scope.querySelectorAll("input, select, textarea"),
+      function (el) {
+        if (el.type === "hidden" || el.type === "file"
+            || el.type === "submit" || el.type === "button") { return false; }
+        return !el.disabled;
+      });
+  }
+
+  function isFilled(el) {
+    if (el.type === "checkbox" || el.type === "radio") { return el.checked; }
+    return String(el.value || "").trim() !== "";
+  }
+
+  var sections = Array.prototype.slice.call(
+    root.querySelectorAll("section[data-complete]"));
+
+  function recount() {
+    var done = 0, all = 0;
+    sections.forEach(function (section) {
+      var list = fields(section);
+      var filled = list.filter(isFilled).length;
+      done += filled; all += list.length;
+
+      var text = list.length ? filled + " / " + list.length : "";
+      var state = !list.length ? "" :
+        (filled === list.length ? "full" : (filled === 0 ? "empty" : ""));
+
+      var badge = section.querySelector("[data-tally]");
+      if (badge) {
+        badge.textContent = text;
+        badge.className = "sheet-tally " + state;
+        badge.title = list.length
+          ? filled + " of " + list.length + " filled in this section"
+          : "";
+      }
+      var link = document.querySelector(
+        '[data-tally-for="' + section.id + '"]');
+      if (link) {
+        link.textContent = list.length ? filled + "/" + list.length : "";
+        link.className = "tally " + state;
+      }
+    });
+
+    var count = document.querySelector("[data-profile-count]");
+    var bar = document.querySelector("[data-profile-bar]");
+    if (count) { count.textContent = done + " / " + all; }
+    if (bar) { bar.style.width = all ? (100 * done / all) + "%" : "0"; }
+  }
+
+  root.addEventListener("input", recount);
+  root.addEventListener("change", recount);
+  recount();
+
+  /* --- scrollspy --- */
+  var links = {};
+  document.querySelectorAll(".section-index a").forEach(function (a) {
+    var id = (a.getAttribute("href") || "").slice(1);
+    if (id) { links[id] = a; }
+  });
+  if (window.IntersectionObserver) {
+    var seen = {};
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) { seen[entry.target.id] = entry; });
+      var best = null;
+      Object.keys(seen).forEach(function (id) {
+        var entry = seen[id];
+        if (!entry.isIntersecting) { return; }
+        if (!best || entry.boundingClientRect.top
+                     < best.boundingClientRect.top) { best = entry; }
+      });
+      Object.keys(links).forEach(function (id) {
+        links[id].classList.toggle("here", !!best && best.target.id === id);
+      });
+    }, { rootMargin: "-10% 0px -70% 0px", threshold: 0 });
+    document.querySelectorAll("section[id]").forEach(function (s) {
+      observer.observe(s);
+    });
+  }
+
+  /* --- the save bar --- */
+  var form = document.querySelector("form.profile-form");
+  var bar = document.querySelector(".save-bar");
+  if (form && bar) {
+    var clean = new FormData(form);
+    var initial = {};
+    clean.forEach(function (value, key) { initial[key] = value; });
+    form.addEventListener("input", function () {
+      var now = new FormData(form), changed = false;
+      now.forEach(function (value, key) {
+        if (String(initial[key] === undefined ? "" : initial[key])
+            !== String(value)) { changed = true; }
+      });
+      bar.hidden = !changed;
+    });
+  }
+}());
+</script>
 </article>
 {% endblock %}

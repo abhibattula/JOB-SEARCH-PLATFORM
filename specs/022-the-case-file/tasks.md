@@ -77,20 +77,20 @@ plus all of US2, US3 and US4 — and Phases 4–6 finish US1 screen by screen.
 ### GATE
 
 - [X] T034 Run the app, capture the Feed in light and dark at all three provenance levels plus the unscored state
-- [ ] T035 **Send screenshots to the applicant. STOP. Do not begin Phase 4 until they approve or redirect** (SC-011, CHK061–CHK062) *(SC-011)*
+- [X] T035 **Send screenshots to the applicant. STOP. Do not begin Phase 4 until they approve or redirect** (SC-011, CHK061–CHK062) *(SC-011)*
 
 ---
 
 ## Phase 4: US1 — job detail, Profile, Settings
 
-- [ ] T036 Write a test asserting every `id="field-*"` anchor referenced anywhere in the app or extension still exists in `profile.html` (FR-024) — **watch it pass now, so it guards the relayout** *(FR-024)*
-- [ ] T037 [US1] Define `.grid-2` and `.hint` so Profile's five sections lay out in two columns with distinguishable hints (`profile.html:54,103,157,203,272`) *(FR-010, FR-011)*
-- [ ] T038 [US1] Add the sticky section index to `web/templates/profile.html` (FR-023) *(FR-023)*
-- [ ] T039 [P] [US1] Define `.switch` and restyle the escort control (`settings.html:186`) *(FR-012)*
-- [ ] T040 [P] [US1] Add the section index to `web/templates/settings.html`; give the 021 AI-tier choice its due weight *(FR-023)*
-- [ ] T041 [P] [US1] Define `.jd` and `.job-url`; restyle `web/templates/job_detail.html` on the new tokens
-- [ ] T042 [US1] Render tailored output in `--pencil` until accepted (semantic state contract) *(FR-003)*
-- [ ] T043 [US1] Re-run `test_design_system.py`; these three templates must contribute zero undefined classes
+- [X] T036 Write a test asserting every `id="field-*"` anchor referenced anywhere in the app or extension still exists in `profile.html` (FR-024) — **watch it pass now, so it guards the relayout** *(FR-024)*
+- [X] T037 [US1] Define `.grid-2` and `.hint` so Profile's five sections lay out in two columns with distinguishable hints (`profile.html:54,103,157,203,272`) *(FR-010, FR-011)*
+- [X] T038 [US1] Add the sticky section index to `web/templates/profile.html` (FR-023) *(FR-023)*
+- [X] T039 [P] [US1] Define `.switch` and restyle the escort control (`settings.html:186`) *(FR-012)*
+- [X] T040 [P] [US1] Add the section index to `web/templates/settings.html`; give the 021 AI-tier choice its due weight *(FR-023)*
+- [X] T041 [P] [US1] Define `.jd` and `.job-url`; restyle `web/templates/job_detail.html` on the new tokens
+- [X] T042 [US1] Render tailored output in `--pencil` until accepted (semantic state contract) *(FR-003)*
+- [X] T043 [US1] Re-run `test_design_system.py`; these three templates must contribute zero undefined classes
 
 ## Phase 5: US1 — Apply Assist (the largest single repair)
 

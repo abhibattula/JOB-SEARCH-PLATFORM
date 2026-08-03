@@ -7,8 +7,34 @@
     across every application, and only ever pauses to ask about something
     genuinely new.</p>
 
+  {# 022 (FR-023): ~50 fields in one unbroken scroll. The index makes
+     them navigable; the tallies say how much Apply Assist will still
+     have to leave for you on a real employer form. #}
+  <div class="page-with-index">
+  <nav class="section-index" aria-label="Profile sections">
+    <a href="#sec-basic-info">Basic info<span class="tally" data-tally-for="sec-basic-info"></span></a>
+    <a href="#sec-work-authorization">Work authorization<span class="tally" data-tally-for="sec-work-authorization"></span></a>
+    <a href="#sec-contact-and-address">Contact &amp; address<span class="tally" data-tally-for="sec-contact-and-address"></span></a>
+    <a href="#sec-work-authorization-detail">Work authorization detail<span class="tally" data-tally-for="sec-work-authorization-detail"></span></a>
+    <a href="#sec-education-and-experience">Education &amp; experience<span class="tally" data-tally-for="sec-education-and-experience"></span></a>
+    <a href="#sec-preferences">Preferences<span class="tally" data-tally-for="sec-preferences"></span></a>
+    <a href="#sec-voluntary-self-identification">Voluntary self-identification<span class="tally" data-tally-for="sec-voluntary-self-identification"></span></a>
+    <a href="#sec-resume-and-job-search">Resume &amp; job search<span class="tally" data-tally-for="sec-resume-and-job-search"></span></a>
+    <a href="#sec-work-history-and-education">Work history &amp; education<span class="tally" data-tally-for="sec-work-history-and-education"></span></a>
+  </nav>
+  <div class="sheets">
+    <div class="profile-progress">
+      <span class="n" data-profile-count>—</span>
+      <span class="bar"><span data-profile-bar style="width:0"></span></span>
+      <span class="muted">filled — anything left blank is handed to you on the form</span>
+    </div>
+
   <form class="profile-form" method="post" action="/api/profile" enctype="multipart/form-data">
-    <h2>Basic info</h2>
+  <section class="sheet sheet--fields" id="sec-basic-info" data-complete>
+    <div class="sheet-head">
+      <h2>Basic info</h2>
+      <span class="sheet-tally" data-tally></span>
+    </div>
     <label>First name
       <input type="text" name="first_name" value="{{ profile.first_name if profile and profile.first_name else '' }}">
     </label>
@@ -29,7 +55,12 @@
       <input type="text" name="portfolio_url" value="{{ profile.portfolio_url if profile and profile.portfolio_url else '' }}">
     </label>
 
-    <h2>Work authorization</h2>
+  </section>
+  <section class="sheet sheet--fields" id="sec-work-authorization" data-complete>
+    <div class="sheet-head">
+      <h2>Work authorization</h2>
+      <span class="sheet-tally" data-tally></span>
+    </div>
     <p class="muted">Used only to ground AI-drafted suggestions for
       application questions (Apply Assist) — every sponsorship/work-
       authorization answer is still shown to you for review before it's
@@ -48,7 +79,12 @@
     </label>
 
     
-  <h2>Contact &amp; address</h2>
+  </section>
+  <section class="sheet sheet--fields" id="sec-contact-and-address" data-complete>
+    <div class="sheet-head">
+      <h2>Contact &amp; address</h2>
+      <span class="sheet-tally" data-tally></span>
+    </div>
   <p class="muted">Applications ask for these constantly. Anything you leave
     blank is left blank on the form and highlighted for you — never guessed.</p>
   <div class="grid-2">
@@ -97,7 +133,12 @@
     </label>
   </div>
 
-  <h2>Work authorization detail</h2>
+  </section>
+  <section class="sheet sheet--fields" id="sec-work-authorization-detail" data-complete>
+    <div class="sheet-head">
+      <h2>Work authorization detail</h2>
+      <span class="sheet-tally" data-tally></span>
+    </div>
   <p class="muted">The questions a form asks after the yes/no one. Without
     these, Apply Assist has to leave them for you.</p>
   <div class="grid-2">
@@ -153,7 +194,12 @@
     </label>
   </div>
 
-  <h2>Education &amp; experience</h2>
+  </section>
+  <section class="sheet sheet--fields" id="sec-education-and-experience" data-complete>
+    <div class="sheet-head">
+      <h2>Education &amp; experience</h2>
+      <span class="sheet-tally" data-tally></span>
+    </div>
   <div class="grid-2">
     <label>Highest education
       <select name="highest_education">
@@ -199,7 +245,12 @@
     </label>
   </div>
 
-  <h2>Preferences</h2>
+  </section>
+  <section class="sheet sheet--fields" id="sec-preferences" data-complete>
+    <div class="sheet-head">
+      <h2>Preferences</h2>
+      <span class="sheet-tally" data-tally></span>
+    </div>
   <div class="grid-2">
     <label>Desired salary
       <input type="text" name="desired_salary"
@@ -263,7 +314,12 @@
     </label>
   </div>
 
-  <h2>Voluntary self-identification</h2>
+  </section>
+  <section class="sheet sheet--fields" id="sec-voluntary-self-identification" data-complete>
+    <div class="sheet-head">
+      <h2>Voluntary self-identification</h2>
+      <span class="sheet-tally" data-tally></span>
+    </div>
   <p class="muted">Entirely optional, stored only on this machine, and never
     sent to any AI. Apply Assist uses these <em>only</em> to select the
     matching option when a form asks — it will never infer them from your
@@ -350,7 +406,12 @@
 
   {% include "partials/profile_answer_bank.html" %}
 
-    <h2>Resume &amp; job search</h2>
+  </section>
+  <section class="sheet sheet--fields" id="sec-resume-and-job-search" data-complete>
+    <div class="sheet-head">
+      <h2>Resume &amp; job search</h2>
+      <span class="sheet-tally" data-tally></span>
+    </div>
 
     {# 009 (FR-012/FR-014): background import progress / review screen #}
     <div id="import-region" hx-get="/partials/profile/import"
@@ -451,6 +512,7 @@
     </script>
 
     <button type="submit">Save profile</button>
+  </section>
   </form>
 
   <!-- 021 (FR-014): the parsed work history and education. Applications ask
@@ -458,7 +520,11 @@
        even though your resume had already been read into this shape. It was
        read by a small on-device model, so check it before it is typed into
        an employer's form. -->
-  <h2>Work history &amp; education</h2>
+  <section class="sheet sheet--fields" id="sec-work-history-and-education" data-complete>
+    <div class="sheet-head">
+      <h2>Work history &amp; education</h2>
+      <span class="sheet-tally" data-tally></span>
+    </div>
   <p class="muted">Applications ask for these one block at a time — the second
     employer box gets your second job here, in this order. Anything left blank
     is handed to you on the form rather than guessed at.</p>
@@ -568,5 +634,128 @@
       render();
     }());
   </script>
+  </section>
+  </div>
+  </div>
+
+<script>
+/* 022 Phase 4 — what makes Profile "interactive and clear".
+
+   Three things, all vanilla and all cheap:
+
+   1. TALLIES. Every section counts its own filled fields, and the page
+      counts the lot. This is not decoration: a blank profile field is a
+      field Apply Assist has to hand back to the applicant on a real
+      employer form, so "6 / 9" is a direct readout of how much manual
+      work is left. It recounts as you type.
+
+   2. SCROLLSPY. The index marks where you are.
+
+   3. A SAVE BAR that appears only once something actually changed, so
+      "did that save?" stops being a question. */
+(function () {
+  "use strict";
+  var root = document.querySelector(".sheets");
+  if (!root) { return; }
+
+  function fields(scope) {
+    return Array.prototype.filter.call(
+      scope.querySelectorAll("input, select, textarea"),
+      function (el) {
+        if (el.type === "hidden" || el.type === "file"
+            || el.type === "submit" || el.type === "button") { return false; }
+        return !el.disabled;
+      });
+  }
+
+  function isFilled(el) {
+    if (el.type === "checkbox" || el.type === "radio") { return el.checked; }
+    return String(el.value || "").trim() !== "";
+  }
+
+  var sections = Array.prototype.slice.call(
+    root.querySelectorAll("section[data-complete]"));
+
+  function recount() {
+    var done = 0, all = 0;
+    sections.forEach(function (section) {
+      var list = fields(section);
+      var filled = list.filter(isFilled).length;
+      done += filled; all += list.length;
+
+      var text = list.length ? filled + " / " + list.length : "";
+      var state = !list.length ? "" :
+        (filled === list.length ? "full" : (filled === 0 ? "empty" : ""));
+
+      var badge = section.querySelector("[data-tally]");
+      if (badge) {
+        badge.textContent = text;
+        badge.className = "sheet-tally " + state;
+        badge.title = list.length
+          ? filled + " of " + list.length + " filled in this section"
+          : "";
+      }
+      var link = document.querySelector(
+        '[data-tally-for="' + section.id + '"]');
+      if (link) {
+        link.textContent = list.length ? filled + "/" + list.length : "";
+        link.className = "tally " + state;
+      }
+    });
+
+    var count = document.querySelector("[data-profile-count]");
+    var bar = document.querySelector("[data-profile-bar]");
+    if (count) { count.textContent = done + " / " + all; }
+    if (bar) { bar.style.width = all ? (100 * done / all) + "%" : "0"; }
+  }
+
+  root.addEventListener("input", recount);
+  root.addEventListener("change", recount);
+  recount();
+
+  /* --- scrollspy --- */
+  var links = {};
+  document.querySelectorAll(".section-index a").forEach(function (a) {
+    var id = (a.getAttribute("href") || "").slice(1);
+    if (id) { links[id] = a; }
+  });
+  if (window.IntersectionObserver) {
+    var seen = {};
+    var observer = new IntersectionObserver(function (entries) {
+      entries.forEach(function (entry) { seen[entry.target.id] = entry; });
+      var best = null;
+      Object.keys(seen).forEach(function (id) {
+        var entry = seen[id];
+        if (!entry.isIntersecting) { return; }
+        if (!best || entry.boundingClientRect.top
+                     < best.boundingClientRect.top) { best = entry; }
+      });
+      Object.keys(links).forEach(function (id) {
+        links[id].classList.toggle("here", !!best && best.target.id === id);
+      });
+    }, { rootMargin: "-10% 0px -70% 0px", threshold: 0 });
+    document.querySelectorAll("section[id]").forEach(function (s) {
+      observer.observe(s);
+    });
+  }
+
+  /* --- the save bar --- */
+  var form = document.querySelector("form.profile-form");
+  var bar = document.querySelector(".save-bar");
+  if (form && bar) {
+    var clean = new FormData(form);
+    var initial = {};
+    clean.forEach(function (value, key) { initial[key] = value; });
+    form.addEventListener("input", function () {
+      var now = new FormData(form), changed = false;
+      now.forEach(function (value, key) {
+        if (String(initial[key] === undefined ? "" : initial[key])
+            !== String(value)) { changed = true; }
+      });
+      bar.hidden = !changed;
+    });
+  }
+}());
+</script>
 </article>
 {% endblock %}

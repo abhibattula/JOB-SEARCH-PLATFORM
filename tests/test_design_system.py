@@ -44,8 +44,8 @@ EXCLUDED_TEMPLATES = {
 # point the assertion becomes the plain "zero undefined" gate (SC-001).
 # ---------------------------------------------------------------------------
 KNOWN_UNDEFINED: frozenset[str] = frozenset({
-    # Phase 4 — profile / settings / job detail
-    "grid-2", "hint", "switch", "jd", "job-url", "profile",
+    # Phase 4 — profile / settings / job detail: DONE
+    "profile",  # the page wrapper; styled with the rest in Phase 6
     # Phase 5 — Apply Assist
     "answers-review", "answer-list", "answer-item", "q", "why",
     "answer-capture", "fill-coverage", "activity-log", "autofill-activity",
